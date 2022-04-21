@@ -2909,6 +2909,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_plain"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95455e7e29fada2052e72170af226fbe368a4ca33dee847875325d9fdb133858"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "sha-1"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3168,6 +3177,7 @@ dependencies = [
  "rand_pcg",
  "serde",
  "serde_json",
+ "serde_plain",
  "sha3",
  "shell-words",
  "subtle",
@@ -3177,6 +3187,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "typescript-type-def",
  "url",
  "webrtc",
  "wgpu",
@@ -3452,6 +3463,29 @@ name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dcf81ac59edc17cc8697ff311e8f5ef2d99fcbd9817b34cec66f90b6c3dfd987"
+
+[[package]]
+name = "typescript-type-def"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd93d9ce46b1c18ad201d6a9cbb74365e6fbd299eeb0e13499b5b6b7e5b63f47"
+dependencies = [
+ "typescript-type-def-derive",
+]
+
+[[package]]
+name = "typescript-type-def-derive"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9353c666b254b4c3441020e9e953d16106963ca728cf880884732d0c294e4f4a"
+dependencies = [
+ "darling 0.13.3",
+ "ident_case",
+ "proc-macro-error",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "ultraviolet"

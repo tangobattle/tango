@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let g = tango_core::game::Game::new(
         tango_core::ipc::Client::new_from_stdout(),
-        args.keymapping,
+        args.keymapping.try_into()?,
         args.rom_path.into(),
         args.save_path.into(),
         args.session_id,

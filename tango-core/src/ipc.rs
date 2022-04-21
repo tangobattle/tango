@@ -1,4 +1,6 @@
-#[derive(serde::Serialize, serde::Deserialize)]
+use crate::game;
+
+#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub struct Args {
     pub rom_path: String,
     pub save_path: String,
@@ -8,7 +10,40 @@ pub struct Args {
     pub replay_prefix: String,
     pub matchmaking_connect_addr: String,
     pub ice_servers: Vec<String>,
-    pub keymapping: crate::game::Keymapping,
+    pub keymapping: Keymapping,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+pub struct Keymapping {
+    up: String,
+    down: String,
+    left: String,
+    right: String,
+    a: String,
+    b: String,
+    l: String,
+    r: String,
+    select: String,
+    start: String,
+}
+
+impl TryInto<game::Keymapping> for Keymapping {
+    type Error = serde_plain::Error;
+
+    fn try_into(self) -> Result<game::Keymapping, Self::Error> {
+        Ok(game::Keymapping {
+            up: serde_plain::from_str(&self.up)?,
+            down: serde_plain::from_str(&self.down)?,
+            left: serde_plain::from_str(&self.left)?,
+            right: serde_plain::from_str(&self.right)?,
+            a: serde_plain::from_str(&self.a)?,
+            b: serde_plain::from_str(&self.b)?,
+            l: serde_plain::from_str(&self.l)?,
+            r: serde_plain::from_str(&self.r)?,
+            select: serde_plain::from_str(&self.select)?,
+            start: serde_plain::from_str(&self.start)?,
+        })
+    }
 }
 
 impl Args {
@@ -17,7 +52,7 @@ impl Args {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub enum Notification {
     Running,
     Waiting,
