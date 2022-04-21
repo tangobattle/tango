@@ -7,20 +7,20 @@ export default function App(): JSX.Element {
   React.useEffect(() => {
     (async () => {
       const proc = spawnCore({
-        romPath: "roms/exe6f.gba",
-        savePath: "roms/exe6f.sav",
-        sessionID: "zz",
-        matchType: 0,
-        replayPrefix: "replay",
-        matchmakingConnectAddr: "wss://mm.tango.murk.land",
-        iceServers: [
+        rom_path: "roms/exe6f.gba",
+        save_path: "roms/exe6f.sav",
+        session_id: "zz",
+        match_type: 0,
+        replay_prefix: "replay",
+        matchmaking_connect_addr: "wss://mm.tango.murk.land",
+        ice_servers: [
           "stun://stun.l.google.com:19302",
           "stun://stun1.l.google.com:19302",
           "stun://stun2.l.google.com:19302",
           "stun://stun3.l.google.com:19302",
           "stun://stun4.l.google.com:19302",
         ],
-        inputDelay: 3,
+        input_delay: 3,
         keymapping: {
           up: "Up",
           down: "Down",
