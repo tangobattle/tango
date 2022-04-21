@@ -1,0 +1,62 @@
+name: release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                include:
+                    - target: x86_64-pc-windows-gnu
+                      sysroot: /usr/x86_64-w64-mingw32/
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                  submodules: recursive
+
+            - uses: pat-s/always-upload-cache@v2
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+            - run: sudo apt-get update && sudo apt-get install -y mingw-w64 pandoc
+
+            - uses: actions-rs/toolchain@v1
+              with:
+                  toolchain: stable
+                  target: ${{ matrix.target }}
+
+            - run: BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${{ matrix.sysroot }}" cargo build --release --target ${{ matrix.target }}
+
+            - run: pandoc --standalone -o README.html README.md
+
+            - run: mkdir out
+
+            - run: >
+                  cd out &&
+                  mkdir tango-core &&
+                  cp ../README.html ../games.toml ../target/x86_64-pc-windows-gnu/release/tango-core.exe tango-core &&
+                  mv tango-core tango-core-${{ github.ref_name }} &&
+                  zip -r tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip tango-core-${{ github.ref_name }} &&
+                  cp tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip ..
+
+            - run: >
+                  cd out &&
+                  mkdir tango-replaytools &&
+                  cp ../target/x86_64-pc-windows-gnu/release/replayview.exe ../target/x86_64-pc-windows-gnu/release/replaydump.exe tango-replaytools &&
+                  mv tango-replaytools tango-replaytools-${{ github.ref_name }} &&
+                  zip -r tango-replaytools-${{ github.ref_name }}-${{ matrix.target }}.zip tango-replaytools-${{ github.ref_name }} &&
+                  cp tango-replaytools-${{ github.ref_name }}-${{ matrix.target }}.zip ..
+
+            - uses: softprops/action-gh-release@v1
+              with:
+                  files: |
+                      tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip
+                      tango-replaytools-${{ github.ref_name }}-${{ matrix.target }}.zip
