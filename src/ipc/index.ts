@@ -1,14 +1,20 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import * as types from "./types";
+import { app } from "@electron/remote";
+import path from "path";
 
 export class Core {
   private proc: ChildProcessWithoutNullStreams;
   private exitPromise: Promise<void>;
 
   constructor(args: types.Args, { signal }: { signal?: AbortSignal } = {}) {
-    this.proc = spawn("core/tango-core", [JSON.stringify(args)], {
-      signal,
-    });
+    this.proc = spawn(
+      path.join(app.getAppPath(), "core", "tango-core"),
+      [JSON.stringify(args)],
+      {
+        signal,
+      }
+    );
     this.exitPromise = new Promise((resolve) => {
       this.proc.addListener("exit", () => {
         this.proc.kill();
