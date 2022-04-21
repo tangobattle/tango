@@ -382,7 +382,7 @@ impl Facade {
         self.0
             .borrow()
             .ipc_client
-            .send_notification(ipc::Notification::Done)
+            .send_notification(ipc::Notification::State(ipc::State::Done))
             .expect("send notification");
         std::process::exit(0);
     }

@@ -54,6 +54,11 @@ impl Args {
 
 #[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub enum Notification {
+    State(State),
+}
+
+#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+pub enum State {
     Running,
     Waiting,
     Connecting,
