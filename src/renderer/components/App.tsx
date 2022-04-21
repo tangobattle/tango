@@ -1,4 +1,4 @@
-import { spawnCore } from "../../ipc";
+import { Core } from "../../ipc";
 import { Box, CssBaseline, ThemeProvider } from "@mui/material";
 import React from "react";
 import theme from "../theme";
@@ -6,7 +6,7 @@ import theme from "../theme";
 export default function App(): JSX.Element {
   React.useEffect(() => {
     (async () => {
-      const proc = spawnCore({
+      const core = new Core({
         rom_path: "roms/exe6f.gba",
         save_path: "roms/exe6f.sav",
         session_id: "zz",
@@ -35,13 +35,10 @@ export default function App(): JSX.Element {
         },
       });
 
-      for await (const data of proc.stdout) {
-        console.log(`ipc: ${data}`);
+      for await (const event of core.readEventStream()) {
+        console.log(event);
       }
-
-      proc.addListener("exit", (code) => {
-        console.log(code);
-      });
+      console.log(await core.wait());
     })();
   });
   return (
