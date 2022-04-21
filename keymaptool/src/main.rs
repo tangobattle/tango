@@ -7,11 +7,13 @@ fn main() -> anyhow::Result<()> {
 
     let event_loop = Some(winit::event_loop::EventLoop::new());
 
-    let size = winit::dpi::LogicalSize::new(100i32, 100i32);
+    let size = winit::dpi::LogicalSize::new(400u32, 50u32);
     let _window = winit::window::WindowBuilder::new()
         .with_title("keymaptool")
         .with_inner_size(size)
         .with_min_inner_size(size)
+        .with_always_on_top(true)
+        .with_decorations(false)
         .build(event_loop.as_ref().expect("event loop"))?;
 
     let mut key_held = vec![false; 255];
