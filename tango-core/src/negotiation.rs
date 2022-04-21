@@ -81,7 +81,7 @@ pub async fn negotiate(
     battle_settings: &battle::Settings,
 ) -> Result<Negotiation, Error> {
     log::info!("negotiating match, session_id = {}", session_id);
-    ipc_client.report_waiting()?;
+    ipc_client.send_notification(ipc::Notification::Waiting)?;
 
     let api = webrtc::api::APIBuilder::new().build();
     let (peer_conn, dc, side) = tango_matchmaking::client::connect(
@@ -126,7 +126,7 @@ pub async fn negotiate(
             .sdp
     );
 
-    ipc_client.report_connecting()?;
+    ipc_client.send_notification(ipc::Notification::Connecting)?;
     let mut nonce = [0u8; 16];
     rand::rngs::OsRng {}.fill(&mut nonce);
     let commitment = make_rng_commitment(&nonce)?;

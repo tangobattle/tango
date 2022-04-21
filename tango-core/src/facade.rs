@@ -380,10 +380,10 @@ impl Facade {
 
     pub fn end_match(&self) {
         self.0
-            .borrow_mut()
+            .borrow()
             .ipc_client
-            .report_done()
-            .expect("ipc client");
+            .send_notification(ipc::Notification::Done)
+            .expect("send notification");
         std::process::exit(0);
     }
 }

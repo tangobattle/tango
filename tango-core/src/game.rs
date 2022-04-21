@@ -244,7 +244,8 @@ impl Game {
     }
 
     pub fn run(mut self) -> anyhow::Result<()> {
-        self.ipc_client.report_running()?;
+        self.ipc_client
+            .send_notification(ipc::Notification::Running)?;
 
         let current_input = self.current_input.clone();
 

@@ -1,3 +1,30 @@
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Args {
+    pub rom_path: String,
+    pub save_path: String,
+    pub session_id: String,
+    pub input_delay: u32,
+    pub match_type: u16,
+    pub replay_prefix: String,
+    pub matchmaking_connect_addr: String,
+    pub ice_servers: Vec<String>,
+    pub keymapping: crate::game::Keymapping,
+}
+
+impl Args {
+    pub fn parse(s: &str) -> anyhow::Result<Self> {
+        Ok(serde_json::from_str(s)?)
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub enum Notification {
+    Running,
+    Waiting,
+    Connecting,
+    Done,
+}
+
 #[derive(Clone)]
 pub struct Client(std::sync::Arc<parking_lot::Mutex<Inner>>);
 
@@ -12,44 +39,11 @@ impl Client {
         })))
     }
 
-    pub fn report_running(&self) -> std::io::Result<()> {
+    pub fn send_notification(&self, n: Notification) -> std::io::Result<()> {
         let mut inner = self.0.lock();
-        inner.writer.write(b"running\n")?;
+        serde_json::to_writer(&mut inner.writer, &n)?;
+        inner.writer.write_all(b"\n")?;
         inner.writer.flush()?;
         Ok(())
     }
-
-    pub fn report_waiting(&self) -> std::io::Result<()> {
-        let mut inner = self.0.lock();
-        inner.writer.write(b"waiting\n")?;
-        inner.writer.flush()?;
-        Ok(())
-    }
-
-    pub fn report_connecting(&self) -> std::io::Result<()> {
-        let mut inner = self.0.lock();
-        inner.writer.write(b"connecting\n")?;
-        inner.writer.flush()?;
-        Ok(())
-    }
-
-    pub fn report_done(&self) -> std::io::Result<()> {
-        let mut inner = self.0.lock();
-        inner.writer.write(b"done\n")?;
-        inner.writer.flush()?;
-        Ok(())
-    }
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct Args {
-    pub rom_path: String,
-    pub save_path: String,
-    pub session_id: String,
-    pub input_delay: u32,
-    pub match_type: u16,
-    pub replay_prefix: String,
-    pub matchmaking_connect_addr: String,
-    pub ice_servers: Vec<String>,
-    pub keymapping: crate::game::Keymapping,
 }

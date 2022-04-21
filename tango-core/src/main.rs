@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = serde_json::from_str::<tango_core::ipc::Args>(
+    let args = tango_core::ipc::Args::parse(
         &std::env::args()
             .nth(1)
             .ok_or_else(|| anyhow::anyhow!("missing startup args"))?,
