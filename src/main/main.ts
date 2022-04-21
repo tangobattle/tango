@@ -1,6 +1,8 @@
 import { app, BrowserWindow } from "electron";
 import * as path from "path";
 import * as url from "url";
+import * as remoteMain from "@electron/remote/main";
+remoteMain.initialize();
 
 let mainWindow: Electron.BrowserWindow | null;
 
@@ -32,6 +34,8 @@ function createWindow() {
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
+
+  remoteMain.enable(mainWindow.webContents);
 }
 
 // This method will be called when Electron has finished

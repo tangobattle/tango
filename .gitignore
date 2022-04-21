@@ -157,3 +157,7 @@ packages
 
 # Local History for Visual Studio Code
 .history/
+
+/core
+/roms
+/saves
