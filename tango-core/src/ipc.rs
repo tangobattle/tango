@@ -40,3 +40,16 @@ impl Client {
         Ok(())
     }
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Args {
+    pub rom_path: String,
+    pub save_path: String,
+    pub session_id: String,
+    pub input_delay: u32,
+    pub match_type: u16,
+    pub replay_prefix: String,
+    pub matchmaking_connect_addr: String,
+    pub ice_servers: Vec<String>,
+    pub keymapping: crate::game::Keymapping,
+}
