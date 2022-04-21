@@ -39,6 +39,7 @@ export default function App(): JSX.Element {
         console.log(event);
       }
       console.log(await core.wait());
+      console.log(core.stderr());
     })();
   });
   return (
