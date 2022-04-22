@@ -11,8 +11,11 @@ use crate::protocol;
 use crate::replay;
 use crate::transport;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Settings {
+    pub ice_servers: Vec<webrtc::ice_transport::ice_server::RTCIceServer>,
+    pub matchmaking_connect_addr: String,
+    pub session_id: String,
     pub replay_prefix: std::path::PathBuf,
     pub match_type: u16,
     pub input_delay: u32,

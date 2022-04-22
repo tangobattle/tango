@@ -1,19 +1,24 @@
 use crate::game;
 
-#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub struct Args {
     pub rom_path: String,
     pub save_path: String,
+    pub keymapping: Keymapping,
+    pub match_settings: Option<MatchSettings>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+pub struct MatchSettings {
     pub session_id: String,
     pub input_delay: u32,
     pub match_type: u16,
     pub replay_prefix: String,
     pub matchmaking_connect_addr: String,
     pub ice_servers: Vec<String>,
-    pub keymapping: Keymapping,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub struct Keymapping {
     up: String,
     down: String,
@@ -52,12 +57,12 @@ impl Args {
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub enum Notification {
     State(State),
 }
 
-#[derive(serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub enum State {
     Running,
     Waiting,

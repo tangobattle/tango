@@ -43,10 +43,7 @@ impl Game {
         keymapping: Keymapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
-        session_id: String,
-        matchmaking_connect_addr: String,
-        ice_servers: Vec<String>,
-        battle_settings: battle::Settings,
+        match_settings: Option<battle::Settings>,
     ) -> Result<Game, anyhow::Error> {
         log::info!(
             "wgpu adapters: {:?}",
@@ -118,40 +115,6 @@ impl Game {
         )?;
         core.as_mut().load_save(save_vf)?;
 
-        let ice_servers = ice_servers
-            .iter()
-            .map(|url| {
-                let url = url::Url::parse(url)?;
-                Ok(webrtc::ice_transport::ice_server::RTCIceServer {
-                    urls: vec![format!(
-                        "{}:{}{}{}",
-                        url.scheme(),
-                        url.host_str()
-                            .ok_or_else(|| anyhow::anyhow!("missing host: {}", url))?,
-                        url.port()
-                            .map_or_else(|| "".to_owned(), |x| format!(":{}", x)),
-                        url.query()
-                            .map_or_else(|| "".to_owned(), |x| format!("?{}", x))
-                    )],
-                    username: url.username().to_owned(),
-                    credential: url.password().unwrap_or("").to_owned(),
-                    ..Default::default()
-                })
-            })
-            .collect::<Result<Vec<_>, anyhow::Error>>()?;
-
-        log::info!("parsed ice servers: {:?}", ice_servers);
-
-        let negotiation = handle.block_on(async {
-            negotiation::negotiate(
-                &mut ipc_client,
-                &session_id,
-                &matchmaking_connect_addr,
-                &ice_servers,
-            )
-            .await
-        })?;
-
         let hooks = hooks::HOOKS.get(&core.as_ref().game_title()).unwrap();
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
@@ -162,18 +125,21 @@ impl Game {
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
-        core.set_traps(hooks.primary_traps(
-            handle.clone(),
-            facade::Facade::new(
-                match_.clone(),
-                joyflags.clone(),
-                ipc_client.clone(),
-                cancellation_token.clone(),
-            ),
-        ));
+        if let Some(_) = match_settings {
+            core.set_traps(hooks.primary_traps(
+                handle.clone(),
+                facade::Facade::new(
+                    match_.clone(),
+                    joyflags.clone(),
+                    ipc_client.clone(),
+                    cancellation_token.clone(),
+                ),
+            ));
+        }
+
+        let thread = mgba::thread::Thread::new(core);
 
         let audio_mux = audio::mux_stream::MuxStream::new();
-        let thread = mgba::thread::Thread::new(core);
         let primary_mux_handle =
             audio_mux.open_stream(audio::timewarp_stream::TimewarpStream::new(
                 thread.handle(),
@@ -181,7 +147,17 @@ impl Game {
                 audio_supported_config.channels(),
             ));
 
-        {
+        if let Some(match_settings) = match_settings {
+            let negotiation = handle.block_on(async {
+                negotiation::negotiate(
+                    &mut ipc_client,
+                    &match_settings.session_id,
+                    &match_settings.matchmaking_connect_addr,
+                    &match_settings.ice_servers,
+                )
+                .await
+            })?;
+
             let match_ = match_.clone();
             handle.block_on(async {
                 *match_.lock().await = Some(std::sync::Arc::new(battle::Match::new(
@@ -193,8 +169,22 @@ impl Game {
                     negotiation.rng,
                     negotiation.side,
                     thread.handle(),
-                    battle_settings,
+                    match_settings,
                 )));
+            });
+
+            handle.spawn(async move {
+                {
+                    let match_ = match_.lock().await.clone().unwrap();
+                    tokio::select! {
+                        Err(e) = match_.run() => {
+                            log::info!("match thread ending: {:?}", e);
+                        }
+                        _ = cancellation_token.cancelled() => {
+                        }
+                    }
+                }
+                *match_.lock().await = None;
             });
         }
 
@@ -227,20 +217,6 @@ impl Game {
 
         let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
         stream.play()?;
-
-        handle.spawn(async move {
-            {
-                let match_ = match_.lock().await.clone().unwrap();
-                tokio::select! {
-                    Err(e) = match_.run() => {
-                        log::info!("match thread ending: {:?}", e);
-                    }
-                    _ = cancellation_token.cancelled() => {
-                    }
-                }
-            }
-            *match_.lock().await = None;
-        });
 
         Ok(Game {
             _rt: rt,

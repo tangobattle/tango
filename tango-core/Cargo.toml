@@ -1,6 +1,6 @@
 [package]
 name = "tango-core"
-version = "2.0.0-0.0.6"
+version = "3.0.0-0.0.0"
 edition = "2021"
 license = "AGPL-3.0-or-later"
 default-run = "tango-core"
