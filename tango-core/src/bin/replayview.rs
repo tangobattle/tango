@@ -7,9 +7,12 @@ struct Cli {
     dump: bool,
 
     #[clap(parse(from_os_str))]
-    path: Option<std::path::PathBuf>,
+    path: std::path::PathBuf,
 
-    #[clap(parse(from_os_str))]
+    #[clap(long, parse(from_os_str))]
+    rom_path: std::path::PathBuf,
+
+    #[clap(long, parse(from_os_str))]
     patch_path: Option<std::path::PathBuf>,
 }
 
@@ -22,14 +25,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let path = match args.path {
-        Some(path) => path,
-        None => native_dialog::FileDialog::new()
-            .add_filter("tango replay", &["tangoreplay"])
-            .show_open_single_file()?
-            .ok_or_else(|| anyhow::anyhow!("no file selected"))?,
-    };
-    let mut f = std::fs::File::open(path)?;
+    let mut f = std::fs::File::open(args.path)?;
 
     let replay = tango_core::replay::Replay::decode(&mut f)?;
     log::info!(
@@ -44,59 +40,9 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let rom_path = std::fs::read_dir("roms")?
-        .flat_map(|dirent| {
-            let dirent = dirent.as_ref().expect("dirent");
-            let mut core = mgba::core::Core::new_gba("tango_core").expect("new_gba");
-            let vf = match mgba::vfile::VFile::open(&dirent.path(), mgba::vfile::flags::O_RDONLY) {
-                Ok(vf) => vf,
-                Err(e) => {
-                    log::warn!(
-                        "failed to open {} for probing: {}",
-                        dirent.path().display(),
-                        e
-                    );
-                    return vec![];
-                }
-            };
-
-            if let Err(e) = core.as_mut().load_rom(vf) {
-                log::warn!(
-                    "failed to load {} for probing: {}",
-                    dirent.path().display(),
-                    e
-                );
-                return vec![];
-            }
-
-            if core.as_ref().game_title() != replay.state.rom_title() {
-                log::warn!(
-                    "{} is not eligible (title is {})",
-                    dirent.path().display(),
-                    core.as_ref().game_title()
-                );
-                return vec![];
-            }
-
-            if core.as_ref().crc32() != replay.state.rom_crc32() {
-                log::warn!(
-                    "{} is not eligible (crc32 is {:08x})",
-                    dirent.path().display(),
-                    core.as_ref().crc32()
-                );
-                return vec![];
-            }
-
-            return vec![dirent.path()];
-        })
-        .next()
-        .ok_or_else(|| anyhow::format_err!("could not find eligible rom"))?;
-
-    log::info!("found rom: {}", rom_path.display());
-
     let mut core = mgba::core::Core::new_gba("tango_core")?;
 
-    let vf = mgba::vfile::VFile::open(&rom_path, mgba::vfile::flags::O_RDONLY)?;
+    let vf = mgba::vfile::VFile::open(&args.rom_path, mgba::vfile::flags::O_RDONLY)?;
     core.as_mut().load_rom(vf)?;
 
     if let Some(patch_path) = args.patch_path {
