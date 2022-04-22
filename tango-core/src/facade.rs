@@ -1,8 +1,8 @@
-use crate::{audio, battle, game, input, ipc};
+use crate::{battle, game, input, ipc};
 
 pub struct BattleStateFacadeGuard<'a> {
     guard: tokio::sync::MutexGuard<'a, battle::BattleState>,
-    in_progress: std::sync::Arc<battle::InProgress>,
+    match_: std::sync::Arc<battle::Match>,
 }
 
 impl<'a> BattleStateFacadeGuard<'a> {
@@ -55,7 +55,7 @@ impl<'a> BattleStateFacadeGuard<'a> {
         }
 
         if let Err(e) = self
-            .in_progress
+            .match_
             .transport()
             .expect("transport not available")
             .send_input(
@@ -96,15 +96,18 @@ impl<'a> BattleStateFacadeGuard<'a> {
             .clone();
         let last_committed_remote_input = battle.last_committed_remote_input();
 
-        let (committed_state, dirty_state, last_input) = battle
-            .fastforwarder()
-            .fastforward(
-                &committed_state,
-                &input_pairs,
-                last_committed_remote_input,
-                &left,
-            )
-            .expect("fastforward");
+        let (committed_state, dirty_state, last_input) = match battle.fastforwarder().fastforward(
+            &committed_state,
+            &input_pairs,
+            last_committed_remote_input,
+            &left,
+        ) {
+            Ok(t) => t,
+            Err(e) => {
+                log::error!("fastforwarder failed with error: {}", e);
+                return false;
+            }
+        };
 
         core.load_state(&dirty_state).expect("load dirty state");
 
@@ -177,7 +180,7 @@ impl<'a> BattleStateFacadeGuard<'a> {
             .expect("attempted to get battle information while no battle was active!")
             .local_delay();
 
-        self.in_progress
+        self.match_
             .transport()
             .expect("no transport")
             .send_init(self.guard.number, local_delay, init)
@@ -187,7 +190,7 @@ impl<'a> BattleStateFacadeGuard<'a> {
     }
 
     pub async fn receive_init(&mut self) -> Option<Vec<u8>> {
-        let init = match self.in_progress.receive_remote_init().await {
+        let init = match self.match_.receive_remote_init().await {
             Some(init) => init,
             None => {
                 return None;
@@ -269,18 +272,12 @@ impl<'a> BattleStateFacadeGuard<'a> {
     }
 }
 
-#[derive(Clone)]
-pub struct InProgressFacade {
-    arc: std::sync::Arc<battle::InProgress>,
-    primary_mux_handle: audio::mux_stream::MuxHandle,
-}
-
-impl InProgressFacade {
+impl MatchFacade {
     pub async fn lock_battle_state(&self) -> BattleStateFacadeGuard<'_> {
         let guard = self.arc.lock_battle_state().await;
         BattleStateFacadeGuard {
-            in_progress: self.arc.clone(),
             guard,
+            match_: self.arc.clone(),
         }
     }
 
@@ -288,13 +285,8 @@ impl InProgressFacade {
         self.arc.start_battle(core).await.expect("start battle");
     }
 
-    pub async fn end_battle(&self, mut core: mgba::core::CoreMutRef<'_>) {
+    pub async fn end_battle(&self) {
         self.arc.end_battle().await;
-        core.gba_mut()
-            .sync_mut()
-            .expect("sync")
-            .set_fps_target(game::EXPECTED_FPS as f32);
-        self.primary_mux_handle.switch();
     }
 
     pub async fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
@@ -306,44 +298,14 @@ impl InProgressFacade {
     }
 }
 
-impl MatchFacade {
-    pub async fn in_progress(&self) -> Option<InProgressFacade> {
-        let in_progress = match &*self.arc.lock_in_progress().await {
-            Some(in_progress) => in_progress.clone(),
-            None => {
-                return None;
-            }
-        };
-        Some(InProgressFacade {
-            arc: in_progress,
-            primary_mux_handle: self.primary_mux_handle.clone(),
-        })
-    }
-
-    pub async fn is_aborted(&self) -> bool {
-        self.arc.lock_in_progress().await.is_none()
-    }
-
-    pub async fn abort(&mut self, mut core: mgba::core::CoreMutRef<'_>) {
-        core.gba_mut()
-            .sync_mut()
-            .expect("sync")
-            .set_fps_target(game::EXPECTED_FPS as f32);
-        self.primary_mux_handle.switch();
-        *self.arc.lock_in_progress().await = None;
-    }
-}
-
 #[derive(Clone)]
 pub struct MatchFacade {
     arc: std::sync::Arc<battle::Match>,
-    primary_mux_handle: audio::mux_stream::MuxHandle,
 }
 
 struct InnerFacade {
-    match_: std::sync::Arc<battle::Match>,
+    match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-    primary_mux_handle: audio::mux_stream::MuxHandle,
     ipc_client: ipc::Client,
 }
 
@@ -352,23 +314,24 @@ pub struct Facade(std::rc::Rc<std::cell::RefCell<InnerFacade>>);
 
 impl Facade {
     pub fn new(
-        match_: std::sync::Arc<battle::Match>,
+        match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        primary_mux_handle: audio::mux_stream::MuxHandle,
         ipc_client: ipc::Client,
     ) -> Self {
         Self(std::rc::Rc::new(std::cell::RefCell::new(InnerFacade {
             match_,
             joyflags,
-            primary_mux_handle,
             ipc_client,
         })))
     }
-    pub fn match_(&mut self) -> MatchFacade {
-        MatchFacade {
-            arc: self.0.borrow().match_.clone(),
-            primary_mux_handle: self.0.borrow().primary_mux_handle.clone(),
-        }
+    pub async fn match_(&self) -> Option<MatchFacade> {
+        let match_ = match &*self.0.borrow().match_.lock().await {
+            Some(match_) => match_.clone(),
+            None => {
+                return None;
+            }
+        };
+        Some(MatchFacade { arc: match_ })
     }
 
     pub fn joyflags(&self) -> u32 {
@@ -376,6 +339,10 @@ impl Facade {
             .borrow()
             .joyflags
             .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub async fn abort_match(&self) {
+        *self.0.borrow().match_.lock().await = None;
     }
 
     pub fn end_match(&self) {

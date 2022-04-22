@@ -155,7 +155,7 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     let thread = mgba::thread::Thread::new(core);
-    thread.start();
+    thread.start().expect("start thread");
     thread.handle().pause();
     thread.handle().run_on_core(|mut core| {
         core.gba_mut()

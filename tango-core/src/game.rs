@@ -25,6 +25,7 @@ pub struct Game {
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: Option<winit::event_loop::EventLoop<()>>,
     _audio_device: cpal::Device,
+    _primary_mux_handle: audio::mux_stream::MuxHandle,
     _window: winit::window::Window,
     pixels: pixels::Pixels,
     vbuf: Arc<Mutex<Vec<u8>>>,
@@ -161,35 +162,39 @@ impl Game {
         let audio_supported_config = audio::get_supported_config(&audio_device)?;
         log::info!("selected audio config: {:?}", audio_supported_config);
 
-        let audio_mux = audio::mux_stream::MuxStream::new();
-        let primary_mux_handle = audio_mux.open_stream();
-
-        let m = battle::Match::new(
-            audio_supported_config.clone(),
-            rom_path.clone(),
-            hooks,
-            audio_mux.clone(),
-            negotiation.dc,
-            negotiation.rng,
-            negotiation.side,
-            battle_settings,
-        );
-        m.start(handle.clone());
-
-        let match_ = std::sync::Arc::new(m);
-
+        let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         core.set_traps(hooks.primary_traps(
             handle.clone(),
-            facade::Facade::new(
-                match_.clone(),
-                joyflags.clone(),
-                primary_mux_handle.clone(),
-                ipc_client.clone(),
-            ),
+            facade::Facade::new(match_.clone(), joyflags.clone(), ipc_client.clone()),
         ));
 
+        let audio_mux = audio::mux_stream::MuxStream::new();
         let thread = mgba::thread::Thread::new(core);
-        thread.start();
+        let primary_mux_handle =
+            audio_mux.open_stream(audio::timewarp_stream::TimewarpStream::new(
+                thread.handle(),
+                audio_supported_config.sample_rate(),
+                audio_supported_config.channels(),
+            ));
+
+        {
+            let match_ = match_.clone();
+            handle.block_on(async {
+                *match_.lock().await = Some(std::sync::Arc::new(battle::Match::new(
+                    audio_supported_config.clone(),
+                    rom_path.clone(),
+                    hooks,
+                    audio_mux.clone(),
+                    negotiation.dc,
+                    negotiation.rng,
+                    negotiation.side,
+                    thread.handle(),
+                    battle_settings,
+                )));
+            });
+        }
+
+        thread.start()?;
         thread
             .handle()
             .lock_audio()
@@ -216,19 +221,24 @@ impl Game {
             });
         }
 
-        primary_mux_handle.set_stream(audio::timewarp_stream::TimewarpStream::new(
-            thread.handle(),
-            audio_supported_config.sample_rate(),
-            audio_supported_config.channels(),
-        ));
-
         let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
         stream.play()?;
+
+        handle.spawn(async move {
+            {
+                let match_ = match_.lock().await.clone().unwrap();
+                if let Err(e) = match_.run().await {
+                    log::info!("match thread ending: {:?}", e);
+                }
+            }
+            *match_.lock().await = None;
+        });
 
         Ok(Game {
             _rt: rt,
             ipc_client,
             _audio_device: audio_device,
+            _primary_mux_handle: primary_mux_handle,
             keymapping,
             fps_counter,
             current_input,

@@ -25,10 +25,6 @@ pub struct BattleState {
 }
 
 pub struct Match {
-    in_progress: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<InProgress>>>>,
-}
-
-pub struct InProgress {
     audio_supported_config: cpal::SupportedStreamConfig,
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
@@ -38,6 +34,7 @@ pub struct InProgress {
     battle_state: tokio::sync::Mutex<BattleState>,
     remote_init_sender: tokio::sync::mpsc::Sender<protocol::Init>,
     remote_init_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<protocol::Init>>,
+    primary_thread_handle: mgba::thread::Handle,
     audio_mux: audio::mux_stream::MuxStream,
 }
 
@@ -110,8 +107,41 @@ pub enum NegotiationProgress {
 
 const MAX_QUEUE_LENGTH: usize = 60;
 
-impl InProgress {
-    async fn run(&self) -> anyhow::Result<()> {
+impl Match {
+    pub fn new(
+        audio_supported_config: cpal::SupportedStreamConfig,
+        rom_path: std::path::PathBuf,
+        hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
+        audio_mux: audio::mux_stream::MuxStream,
+        dc: std::sync::Arc<datachannel::DataChannel>,
+        mut rng: rand_pcg::Mcg128Xsl64,
+        side: tango_matchmaking::client::ConnectionSide,
+        primary_thread_handle: mgba::thread::Handle,
+        settings: Settings,
+    ) -> Self {
+        let (remote_init_sender, remote_init_receiver) = tokio::sync::mpsc::channel(1);
+        let did_polite_win_last_battle = rng.gen::<bool>();
+        Self {
+            audio_supported_config,
+            rom_path,
+            hooks,
+            dc,
+            rng: tokio::sync::Mutex::new(rng),
+            settings,
+            battle_state: tokio::sync::Mutex::new(BattleState {
+                number: 0,
+                battle: None,
+                won_last_battle: did_polite_win_last_battle
+                    == (side == tango_matchmaking::client::ConnectionSide::Polite),
+            }),
+            remote_init_sender,
+            remote_init_receiver: tokio::sync::Mutex::new(remote_init_receiver),
+            audio_mux,
+            primary_thread_handle,
+        }
+    }
+
+    pub async fn run(&self) -> anyhow::Result<()> {
         loop {
             match protocol::Packet::deserialize(
                 match self.dc.receive().await {
@@ -121,10 +151,7 @@ impl InProgress {
                 .as_slice(),
             )? {
                 protocol::Packet::Init(init) => {
-                    self.remote_init_sender
-                        .send(init)
-                        .await
-                        .expect("receive init");
+                    self.remote_init_sender.send(init).await?;
                 }
                 protocol::Packet::Input(input) => {
                     let state_committed_rx = {
@@ -226,19 +253,20 @@ impl InProgress {
         )));
 
         let audio_core_thread = mgba::thread::Thread::new(audio_core);
-        audio_core_thread.start();
-
+        audio_core_thread.start()?;
         let audio_core_handle = audio_core_thread.handle();
+
         audio_core_handle.pause();
-        let audio_core_mux_handle = self.audio_mux.open_stream();
-        audio_core_mux_handle.set_stream(audio::timewarp_stream::TimewarpStream::new(
-            audio_core_handle.clone(),
-            self.audio_supported_config.sample_rate(),
-            self.audio_supported_config.channels(),
-        ));
+        let audio_core_mux_handle =
+            self.audio_mux
+                .open_stream(audio::timewarp_stream::TimewarpStream::new(
+                    audio_core_handle.clone(),
+                    self.audio_supported_config.sample_rate(),
+                    self.audio_supported_config.channels(),
+                ));
         {
             let audio_core_mux_handle = audio_core_mux_handle.clone();
-            let save_state = core.save_state().expect("save state");
+            let save_state = core.save_state()?;
             audio_core_handle.run_on_core(move |mut core| {
                 core.gba_mut()
                     .sync_mut()
@@ -279,6 +307,7 @@ impl InProgress {
             audio_save_state_holder,
             _audio_core_thread: audio_core_thread,
             _audio_core_mux_handle: audio_core_mux_handle,
+            primary_thread_handle: self.primary_thread_handle.clone(),
         });
         log::info!("battle has started");
         Ok(())
@@ -286,62 +315,6 @@ impl InProgress {
 
     pub async fn end_battle(&self) {
         self.battle_state.lock().await.battle = None;
-    }
-}
-
-impl Match {
-    pub fn new(
-        audio_supported_config: cpal::SupportedStreamConfig,
-        rom_path: std::path::PathBuf,
-        hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
-        audio_mux: audio::mux_stream::MuxStream,
-        dc: std::sync::Arc<datachannel::DataChannel>,
-        mut rng: rand_pcg::Mcg128Xsl64,
-        side: tango_matchmaking::client::ConnectionSide,
-        settings: Settings,
-    ) -> Self {
-        let (remote_init_sender, remote_init_receiver) = tokio::sync::mpsc::channel(1);
-        let did_polite_win_last_battle = rng.gen::<bool>();
-        Match {
-            in_progress: std::sync::Arc::new(tokio::sync::Mutex::new(Some(std::sync::Arc::new(
-                InProgress {
-                    audio_supported_config,
-                    rom_path,
-                    hooks,
-                    dc,
-                    rng: tokio::sync::Mutex::new(rng),
-                    settings,
-                    battle_state: tokio::sync::Mutex::new(BattleState {
-                        number: 0,
-                        battle: None,
-                        won_last_battle: did_polite_win_last_battle
-                            == (side == tango_matchmaking::client::ConnectionSide::Polite),
-                    }),
-                    remote_init_sender,
-                    remote_init_receiver: tokio::sync::Mutex::new(remote_init_receiver),
-                    audio_mux,
-                },
-            )))),
-        }
-    }
-
-    pub async fn lock_in_progress(
-        &self,
-    ) -> tokio::sync::MutexGuard<'_, Option<std::sync::Arc<InProgress>>> {
-        self.in_progress.lock().await
-    }
-
-    pub fn start(&self, handle: tokio::runtime::Handle) {
-        let in_progress = self.in_progress.clone();
-        handle.spawn(async move {
-            let inner_in_progress = in_progress.lock().await.clone().unwrap();
-            tokio::select! {
-                Err(e) = inner_in_progress.run() => {
-                    log::info!("match thread ending: {:?}", e);
-                },
-            };
-            *in_progress.lock().await = None;
-        });
     }
 }
 
@@ -365,6 +338,7 @@ pub struct Battle {
     replay_writer: replay::Writer,
     fastforwarder: fastforwarder::Fastforwarder,
     audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
+    primary_thread_handle: mgba::thread::Handle,
     _audio_core_thread: mgba::thread::Thread,
     _audio_core_mux_handle: audio::mux_stream::MuxHandle,
 }
@@ -511,5 +485,18 @@ impl Battle {
             - (self.last_committed_remote_input.remote_tick as i32
                 - self.last_committed_remote_input.local_tick as i32
                 - self.remote_delay() as i32)
+    }
+}
+
+impl Drop for Battle {
+    fn drop(&mut self) {
+        // HACK: This is the only safe way to set the FPS without clogging everything else up.
+        self.primary_thread_handle
+            .lock_audio()
+            .core_mut()
+            .gba_mut()
+            .sync_mut()
+            .expect("sync")
+            .set_fps_target(game::EXPECTED_FPS as f32);
     }
 }

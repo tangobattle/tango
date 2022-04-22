@@ -83,16 +83,11 @@ impl Thread {
         }
     }
 
-    pub fn start(&self) -> bool {
-        unsafe { mgba_sys::mCoreThreadStart(&mut self.0.lock().raw) }
-    }
-
-    pub fn join(&self) {
-        unsafe { mgba_sys::mCoreThreadJoin(&mut self.0.lock().raw) }
-    }
-
-    pub fn end(&self) {
-        unsafe { mgba_sys::mCoreThreadEnd(&mut self.0.lock().raw) }
+    pub fn start(&self) -> anyhow::Result<()> {
+        if !unsafe { mgba_sys::mCoreThreadStart(&mut self.0.lock().raw) } {
+            anyhow::bail!("failed to start thread");
+        }
+        Ok(())
     }
 }
 
@@ -136,4 +131,16 @@ impl Handle {
         core.gba_mut().sync_mut().unwrap().lock_audio();
         AudioGuard { thread }
     }
+
+    pub fn join(&self) {
+        unsafe { mgba_sys::mCoreThreadJoin(self.ptr) }
+    }
+
+    pub fn end(&self) {
+        unsafe { mgba_sys::mCoreThreadEnd(self.ptr) }
+    }
 }
+
+unsafe impl Send for Handle {}
+
+unsafe impl Sync for Handle {}
