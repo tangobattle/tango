@@ -7,16 +7,15 @@ fn main() -> anyhow::Result<()> {
 
     let event_loop = Some(winit::event_loop::EventLoop::new());
 
-    let size = winit::dpi::LogicalSize::new(400u32, 50u32);
+    let size = winit::dpi::LogicalSize::new(0u32, 0u32);
     let _window = winit::window::WindowBuilder::new()
         .with_title("keymaptool")
         .with_inner_size(size)
         .with_min_inner_size(size)
         .with_always_on_top(true)
         .with_decorations(false)
+        .with_transparent(true)
         .build(event_loop.as_ref().expect("event loop"))?;
-
-    let mut key_held = vec![false; 255];
 
     event_loop
         .expect("event loop")
@@ -27,7 +26,8 @@ fn main() -> anyhow::Result<()> {
                     ..
                 } => {
                     match window_event {
-                        winit::event::WindowEvent::CloseRequested => {
+                        winit::event::WindowEvent::CloseRequested
+                        | winit::event::WindowEvent::Focused(false) => {
                             *control_flow = winit::event_loop::ControlFlow::Exit;
                         }
                         winit::event::WindowEvent::KeyboardInput { input, .. } => {
@@ -38,20 +38,15 @@ fn main() -> anyhow::Result<()> {
                             };
                             match input.state {
                                 winit::event::ElementState::Pressed => {
-                                    if key_held[keycode as usize] {
-                                        return;
-                                    }
-                                    key_held[keycode as usize] = true;
                                     std::io::stdout()
                                         .write_all(
                                             serde_plain::to_string(&keycode).unwrap().as_bytes(),
                                         )
                                         .unwrap();
                                     std::io::stdout().write_all(b"\n").unwrap();
+                                    *control_flow = winit::event_loop::ControlFlow::Exit;
                                 }
-                                winit::event::ElementState::Released => {
-                                    key_held[keycode as usize] = false;
-                                }
+                                _ => {}
                             }
                         }
                         _ => {}
