@@ -307,6 +307,7 @@ struct InnerFacade {
     match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     ipc_client: ipc::Client,
+    cancellation_token: tokio_util::sync::CancellationToken,
 }
 
 #[derive(Clone)]
@@ -317,11 +318,13 @@ impl Facade {
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         ipc_client: ipc::Client,
+        cancellation_token: tokio_util::sync::CancellationToken,
     ) -> Self {
         Self(std::rc::Rc::new(std::cell::RefCell::new(InnerFacade {
             match_,
             joyflags,
             ipc_client,
+            cancellation_token,
         })))
     }
     pub async fn match_(&self) -> Option<MatchFacade> {
@@ -343,6 +346,7 @@ impl Facade {
 
     pub async fn abort_match(&self) {
         *self.0.borrow().match_.lock().await = None;
+        self.0.borrow().cancellation_token.cancel();
     }
 
     pub fn end_match(&self) {

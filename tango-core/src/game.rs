@@ -162,10 +162,17 @@ impl Game {
         let audio_supported_config = audio::get_supported_config(&audio_device)?;
         log::info!("selected audio config: {:?}", audio_supported_config);
 
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
+
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         core.set_traps(hooks.primary_traps(
             handle.clone(),
-            facade::Facade::new(match_.clone(), joyflags.clone(), ipc_client.clone()),
+            facade::Facade::new(
+                match_.clone(),
+                joyflags.clone(),
+                ipc_client.clone(),
+                cancellation_token.clone(),
+            ),
         ));
 
         let audio_mux = audio::mux_stream::MuxStream::new();
@@ -227,8 +234,12 @@ impl Game {
         handle.spawn(async move {
             {
                 let match_ = match_.lock().await.clone().unwrap();
-                if let Err(e) = match_.run().await {
-                    log::info!("match thread ending: {:?}", e);
+                tokio::select! {
+                    Err(e) = match_.run() => {
+                        log::info!("match thread ending: {:?}", e);
+                    }
+                    _ = cancellation_token.cancelled() => {
+                    }
                 }
             }
             *match_.lock().await = None;
