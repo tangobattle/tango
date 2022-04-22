@@ -1,6 +1,6 @@
 use bincode::Options;
 
-pub const VERSION: u8 = 0x0e;
+pub const VERSION: u8 = 0x0f;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
@@ -35,9 +35,6 @@ impl Packet {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Hello {
     pub protocol_version: u8,
-    pub game_title: String,
-    pub game_crc32: u32,
-    pub match_type: u16,
     pub rng_commitment: Vec<u8>,
 }
 

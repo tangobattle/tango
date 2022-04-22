@@ -1,4 +1,4 @@
-use crate::{battle, datachannel, ipc, protocol};
+use crate::{datachannel, ipc, protocol};
 use rand::Rng;
 use rand::SeedableRng;
 use sha3::digest::ExtendableOutput;
@@ -73,12 +73,9 @@ fn make_rng_commitment(nonce: &[u8]) -> std::io::Result<[u8; 32]> {
 
 pub async fn negotiate(
     ipc_client: &mut ipc::Client,
-    game_title: &str,
-    game_crc32: u32,
     session_id: &str,
     matchmaking_connect_addr: &str,
     ice_servers: &[webrtc::ice_transport::ice_server::RTCIceServer],
-    battle_settings: &battle::Settings,
 ) -> Result<Negotiation, Error> {
     log::info!("negotiating match, session_id = {}", session_id);
     ipc_client.send_notification(ipc::Notification::State(ipc::State::Waiting))?;
@@ -136,9 +133,6 @@ pub async fn negotiate(
     dc.send(
         protocol::Packet::Hello(protocol::Hello {
             protocol_version: protocol::VERSION,
-            game_title: game_title.to_owned(),
-            game_crc32,
-            match_type: battle_settings.match_type,
             rng_commitment: commitment.to_vec(),
         })
         .serialize()
@@ -172,10 +166,6 @@ pub async fn negotiate(
 
     if hello.protocol_version != protocol::VERSION {
         return Err(Error::ProtocolVersionMismatch);
-    }
-
-    if hello.match_type != battle_settings.match_type {
-        return Err(Error::MatchTypeMismatch);
     }
 
     dc.send(

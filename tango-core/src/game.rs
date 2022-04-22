@@ -145,12 +145,9 @@ impl Game {
         let negotiation = handle.block_on(async {
             negotiation::negotiate(
                 &mut ipc_client,
-                &core.as_ref().game_title(),
-                core.as_ref().crc32(),
                 &session_id,
                 &matchmaking_connect_addr,
                 &ice_servers,
-                &battle_settings,
             )
             .await
         })?;
