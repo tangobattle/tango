@@ -48,7 +48,7 @@ export const ConfigProvider = ({
     <Context.Provider
       value={{
         config: currentConfig,
-        save: async (cfg) => {
+        async save(cfg) {
           config.save(cfg, getConfigPath());
           setCurrentConfig(cfg);
         },

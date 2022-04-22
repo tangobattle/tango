@@ -3,6 +3,7 @@ import { getROMsPath } from "../../paths";
 import { scan } from "../../rom";
 
 export interface ROMsValue {
+  rescan(): Promise<void>;
   roms: { [filename: string]: string };
 }
 
@@ -40,10 +41,15 @@ export const ROMsProvider = ({
 }: {
   children?: React.ReactNode;
 } = {}) => {
+  const [currentROMs, setCurrentROMs] = React.useState(scanROMs());
+
   return (
     <Context.Provider
       value={{
-        roms: scanROMs(),
+        async rescan() {
+          setCurrentROMs(await scan(getROMsPath()));
+        },
+        roms: currentROMs,
       }}
     >
       {children}
