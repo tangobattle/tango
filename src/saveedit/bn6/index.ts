@@ -1,4 +1,6 @@
-import { CHIPS, MODCARDS, NCPS } from "./data";
+import CHIPS from "./data/chips.json";
+import MODCARDS from "./data/modcards.json";
+import NCPS from "./data/ncps.json";
 import array2d from "../../array2d";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
