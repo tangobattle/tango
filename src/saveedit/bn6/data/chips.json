@@ -5262,8 +5262,8 @@
     "class": "giga"
   },
   {
-    "section": "mega",
-    "index": 46,
+    "section": "secret",
+    "index": 3,
     "name": {
       "en": "DblBeast",
       "ja": "ダブルビースト"
@@ -5282,7 +5282,7 @@
   },
   {
     "section": "secret",
-    "index": 3,
+    "index": 4,
     "name": {
       "en": "Gregar",
       "ja": "グレイガ"
@@ -5301,7 +5301,7 @@
   },
   {
     "section": "secret",
-    "index": 3,
+    "index": 4,
     "name": {
       "en": "Falzar",
       "ja": "ファルザー"
