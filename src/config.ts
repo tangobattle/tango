@@ -32,11 +32,9 @@ export const DEFAULT: Config = {
   ],
 };
 
-const CONFIG_FILENAME = "config.json";
-
-export async function load() {
+export async function load(filename: string) {
   let data;
-  const p = path.join(app.getAppPath(), CONFIG_FILENAME);
+  const p = path.join(app.getAppPath(), filename);
   try {
     data = await readFile(p);
   } catch (e) {
@@ -53,9 +51,9 @@ export async function load() {
   }
 }
 
-export async function save(config: Config) {
+export async function save(config: Config, filename: string) {
   await writeFile(
-    path.join(app.getAppPath(), CONFIG_FILENAME),
+    path.join(app.getAppPath(), filename),
     JSON.stringify(config, null, 4) + "\n"
   );
 }

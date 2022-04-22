@@ -1,0 +1,6 @@
+{
+  "MEGAMAN6_FXX": { "crc32": 3739677353, "netplayCompatiblity": "bn6" },
+  "MEGAMAN6_GXX": { "crc32": 2034573698, "netplayCompatiblity": "bn6" },
+  "ROCKEXE6_RXX": { "crc32": 771448894, "netplayCompatiblity": "exe6" },
+  "ROCKEXE6_GXX": { "crc32": 1652920714, "netplayCompatiblity": "exe6" }
+}

@@ -1,6 +1,9 @@
 import * as crc32 from "crc-32";
 import path from "path";
 import { readdir, readFile } from "fs/promises";
+import _roms from "./roms.json";
+
+const roms = _roms as { [title: string]: KnownROM };
 
 export interface ROMInfo {
   title: string;
@@ -19,13 +22,6 @@ export interface KnownROM {
   netplayCompatiblity: string;
 }
 
-export const KNOWN_ROMS: { [title: string]: KnownROM } = {
-  MEGAMAN6_FXX: { crc32: 0xdee6f2a9, netplayCompatiblity: "bn6" },
-  MEGAMAN6_GXX: { crc32: 0x79452182, netplayCompatiblity: "bn6" },
-  ROCKEXE6_RXX: { crc32: 0x2dfb603e, netplayCompatiblity: "exe6" },
-  ROCKEXE6_GXX: { crc32: 0x6285918a, netplayCompatiblity: "exe6" },
-};
-
 export async function scan(dir: string) {
   const games = {} as { [filename: string]: string };
   const promises = [];
@@ -36,7 +32,7 @@ export async function scan(dir: string) {
           const romInfo = getROMInfo(
             (await readFile(path.join(dir, f))).buffer
           );
-          const knownROM = KNOWN_ROMS[romInfo.title];
+          const knownROM = roms[romInfo.title];
           if (knownROM == null) {
             throw `unknown rom title: ${romInfo.title}`;
           }

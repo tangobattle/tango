@@ -1,5 +1,6 @@
 import React, { useContext } from "react";
 import * as config from "../../config";
+import { getConfigPath } from "../../paths";
 
 export interface ConfigContextValue {
   config: config.Config;
@@ -14,8 +15,8 @@ function makeLoadConfig() {
   let err: any;
   const promise = (async () => {
     try {
-      result = await config.load();
-      await config.save(result);
+      result = await config.load(getConfigPath());
+      await config.save(result, getConfigPath());
     } catch (e) {
       err = e;
       status = "error";
@@ -48,7 +49,7 @@ export const ConfigProvider = ({
       value={{
         config: currentConfig,
         save: async (cfg) => {
-          config.save(cfg);
+          config.save(cfg, getConfigPath());
           setCurrentConfig(cfg);
         },
       }}
