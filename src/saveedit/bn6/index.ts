@@ -225,9 +225,7 @@ export default class BN6Editor {
         continue;
       }
 
-      const block = NCPS[placement.id]!;
-
-      let squares = array2d.from(block.squares, 5, 5);
+      let squares = array2d.from(NCPS[placement.id]!.squares, 5, 5);
       for (let i = 0; i < placement.rot; ++i) {
         squares = array2d.rot90(squares);
       }
