@@ -3,6 +3,6 @@ export type Keymapping={"up":string;"down":string;"left":string;"right":string;"
 export type U32=number;
 export type U16=number;
 export type MatchSettings={"session_id":string;"input_delay":U32;"match_type":U16;"replay_prefix":string;"replay_metadata":string;"matchmaking_connect_addr":string;"ice_servers":(string)[];};
-export type Args={"rom_path":string;"save_path":string;"patch_path":(string|null);"keymapping":Keymapping;"replay_metadata":string;"match_settings":(MatchSettings|null);};
+export type Args={"rom_path":string;"save_path":string;"keymapping":Keymapping;"match_settings":(MatchSettings|null);};
 export type State=("Running"|"Waiting"|"Connecting"|"Done");
 export type Notification={"State":State;};
