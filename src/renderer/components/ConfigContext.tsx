@@ -6,9 +6,7 @@ export interface ConfigContextValue {
   save(cfg: config.Config): Promise<void>;
 }
 
-const Context = React.createContext(
-  null as any as ConfigContextValue /* should never be null */
-);
+const Context = React.createContext(null! as ConfigContextValue);
 
 function makeLoadConfig() {
   let status: "pending" | "error" | "ok" = "pending";
