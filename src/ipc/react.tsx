@@ -28,7 +28,7 @@ export function useCore(args: ipc.Args) {
     return () => {
       abortController.abort();
     };
-  }, []);
+  }, [args]);
 
   return { state, stderr, exitStatus };
 }
