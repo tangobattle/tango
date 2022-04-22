@@ -4,7 +4,7 @@ interface Array2D<T> extends Array<T> {
 }
 
 export default function array2d<T>(nrows: number, ncols: number): Array2D<T> {
-  const arr2d = new Array(nrows * ncols) as Array2D<T>;
+  const arr2d = new Array<T>(nrows * ncols) as Array2D<T>;
   arr2d.nrows = nrows;
   arr2d.ncols = ncols;
   return arr2d;
