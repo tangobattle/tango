@@ -5281,8 +5281,8 @@
     "class": "mega"
   },
   {
-    "section": "giga",
-    "index": 6,
+    "section": "secret",
+    "index": 3,
     "name": {
       "en": "Gregar",
       "ja": "グレイガ"
@@ -5300,8 +5300,8 @@
     "class": "giga"
   },
   {
-    "section": "giga",
-    "index": 6,
+    "section": "secret",
+    "index": 3,
     "name": {
       "en": "Falzar",
       "ja": "ファルザー"
