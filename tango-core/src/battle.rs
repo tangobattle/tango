@@ -301,7 +301,7 @@ impl Match {
             audio_rendezvous_tx,
             committed_state: None,
             local_pending_turn: None,
-            replay_writer: replay::Writer::new(Box::new(replay_file), local_player_index)?,
+            replay_writer: replay::Writer::new(Box::new(replay_file), &vec![], local_player_index)?,
             fastforwarder: fastforwarder::Fastforwarder::new(
                 &self.rom_path,
                 self.hooks,

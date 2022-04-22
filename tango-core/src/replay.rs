@@ -9,9 +9,10 @@ pub struct Writer {
 }
 
 const HEADER: &[u8] = b"TOOT";
-const VERSION: u8 = 0x0a;
+const VERSION: u8 = 0x0b;
 
 pub struct Replay {
+    pub metadata: Vec<u8>,
     pub local_player_index: u8,
     pub state: mgba::state::State,
     pub input_pairs: Vec<input::Pair<input::Input>>,
@@ -34,6 +35,10 @@ impl Replay {
                 "invalid version",
             ));
         }
+
+        let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
+        let mut metadata = vec![0u8; metadata_len as usize];
+        r.read_exact(&mut metadata[..])?;
 
         let mut zr = zstd::stream::read::Decoder::new(r)?;
 
@@ -95,6 +100,7 @@ impl Replay {
         }
 
         Ok(Self {
+            metadata,
             local_player_index,
             state,
             input_pairs,
@@ -105,10 +111,13 @@ impl Replay {
 impl Writer {
     pub fn new(
         mut writer: Box<dyn std::io::Write + Send>,
+        metadata: &[u8],
         local_player_index: u8,
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
         writer.write_u8(VERSION)?;
+        writer.write_u32::<byteorder::LittleEndian>(metadata.len() as u32)?;
+        writer.write_all(metadata)?;
         let mut encoder = zstd::Encoder::new(writer, 3)?.auto_finish();
         encoder.write_u8(local_player_index)?;
         encoder.flush()?;
