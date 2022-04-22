@@ -18,8 +18,8 @@ export interface KnownROM {
 }
 
 export const KNOWN_ROMS: { [title: string]: KnownROM } = {
-  MEGAMAN6_FXX: { crc32: 0xdee6f2a9, netplayCompatiblity: "bn6f" },
-  MEGAMAN6_GXX: { crc32: 0x79452182, netplayCompatiblity: "bn6g" },
-  ROCKEXE6_RXX: { crc32: 0x2dfb603e, netplayCompatiblity: "exe6f" },
-  ROCKEXE6_GXX: { crc32: 0x6285918a, netplayCompatiblity: "exe6g" },
+  MEGAMAN6_FXX: { crc32: 0xdee6f2a9, netplayCompatiblity: "bn6" },
+  MEGAMAN6_GXX: { crc32: 0x79452182, netplayCompatiblity: "bn6" },
+  ROCKEXE6_RXX: { crc32: 0x2dfb603e, netplayCompatiblity: "exe6" },
+  ROCKEXE6_GXX: { crc32: 0x6285918a, netplayCompatiblity: "exe6" },
 };
