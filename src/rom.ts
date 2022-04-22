@@ -1,4 +1,6 @@
 import * as crc32 from "crc-32";
+import path from "path";
+import { readdir, readFile } from "fs/promises";
 
 export interface ROMInfo {
   title: string;
@@ -23,3 +25,40 @@ export const KNOWN_ROMS: { [title: string]: KnownROM } = {
   ROCKEXE6_RXX: { crc32: 0x2dfb603e, netplayCompatiblity: "exe6" },
   ROCKEXE6_GXX: { crc32: 0x6285918a, netplayCompatiblity: "exe6" },
 };
+
+export async function scan(dir: string) {
+  const games = {} as { [filename: string]: string };
+  const promises = [];
+  for (const f of await readdir(dir)) {
+    promises.push(
+      (async (f) => {
+        try {
+          const romInfo = getROMInfo(
+            (await readFile(path.join(dir, f))).buffer
+          );
+          const knownROM = KNOWN_ROMS[romInfo.title];
+          if (knownROM == null) {
+            throw `unknown rom title: ${romInfo.title}`;
+          }
+          if (romInfo.crc32 != knownROM.crc32) {
+            throw `mismatched crc32: expected ${knownROM.crc32
+              .toString(16)
+              .padStart(8, "0")}, got ${romInfo.crc32
+              .toString(16)
+              .padStart(8, "0")}`;
+          }
+
+          games[f] = romInfo.title;
+        } catch (e) {
+          throw `failed to scan ${f}: ${e}`;
+        }
+      })(f)
+    );
+  }
+  for (const result of await Promise.allSettled(promises)) {
+    if (result.status == "rejected") {
+      console.warn("rom skipped:", result.reason);
+    }
+  }
+  return games;
+}
