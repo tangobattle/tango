@@ -6,7 +6,6 @@ pub struct Args {
     pub save_path: String,
     pub patch_path: Option<String>,
     pub keymapping: Keymapping,
-    pub replay_metadata: String,
     pub match_settings: Option<MatchSettings>,
 }
 
