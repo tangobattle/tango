@@ -6,6 +6,7 @@ pub struct Args {
     pub save_path: String,
     pub patch_path: Option<String>,
     pub keymapping: Keymapping,
+    pub replay_metadata: String,
     pub match_settings: Option<MatchSettings>,
 }
 
@@ -15,6 +16,7 @@ pub struct MatchSettings {
     pub input_delay: u32,
     pub match_type: u16,
     pub replay_prefix: String,
+    pub replay_metadata: String,
     pub matchmaking_connect_addr: String,
     pub ice_servers: Vec<String>,
 }

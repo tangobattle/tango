@@ -25,6 +25,7 @@ fn main() -> Result<(), anyhow::Error> {
             Ok::<_, anyhow::Error>(tango_core::battle::Settings {
                 matchmaking_connect_addr: s.matchmaking_connect_addr,
                 session_id: s.session_id,
+                replay_metadata: s.replay_metadata.into(),
                 replay_prefix: s.replay_prefix.into(),
                 match_type: s.match_type,
                 input_delay: s.input_delay,

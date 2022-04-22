@@ -17,6 +17,7 @@ pub struct Settings {
     pub matchmaking_connect_addr: String,
     pub session_id: String,
     pub replay_prefix: std::path::PathBuf,
+    pub replay_metadata: Vec<u8>,
     pub match_type: u16,
     pub input_delay: u32,
 }
@@ -301,7 +302,11 @@ impl Match {
             audio_rendezvous_tx,
             committed_state: None,
             local_pending_turn: None,
-            replay_writer: replay::Writer::new(Box::new(replay_file), &vec![], local_player_index)?,
+            replay_writer: replay::Writer::new(
+                Box::new(replay_file),
+                &self.settings.replay_metadata,
+                local_player_index,
+            )?,
             fastforwarder: fastforwarder::Fastforwarder::new(
                 &self.rom_path,
                 self.hooks,
