@@ -11,6 +11,9 @@ struct Cli {
     path: Option<std::path::PathBuf>,
 
     #[clap(parse(from_os_str))]
+    patch_path: Option<std::path::PathBuf>,
+
+    #[clap(parse(from_os_str))]
     output_path: Option<std::path::PathBuf>,
 
     #[clap(short('a'), long, default_value = "-c:a aac -ar 48000 -b:a 384k -ac 2")]
@@ -109,8 +112,15 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
     core.enable_video_buffer();
+
     let vf = mgba::vfile::VFile::open(&rom_path, mgba::vfile::flags::O_RDONLY)?;
     core.as_mut().load_rom(vf)?;
+
+    if let Some(patch_path) = args.patch_path {
+        let patch_vf = mgba::vfile::VFile::open(&patch_path, mgba::vfile::flags::O_RDONLY)?;
+        core.as_mut().load_patch(patch_vf)?;
+    }
+
     core.as_mut().reset();
 
     let done = std::sync::Arc::new(parking_lot::Mutex::new(false));

@@ -8,6 +8,9 @@ struct Cli {
 
     #[clap(parse(from_os_str))]
     path: Option<std::path::PathBuf>,
+
+    #[clap(parse(from_os_str))]
+    patch_path: Option<std::path::PathBuf>,
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -92,8 +95,15 @@ fn main() -> Result<(), anyhow::Error> {
     log::info!("found rom: {}", rom_path.display());
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
+
     let vf = mgba::vfile::VFile::open(&rom_path, mgba::vfile::flags::O_RDONLY)?;
     core.as_mut().load_rom(vf)?;
+
+    if let Some(patch_path) = args.patch_path {
+        let patch_vf = mgba::vfile::VFile::open(&patch_path, mgba::vfile::flags::O_RDONLY)?;
+        core.as_mut().load_patch(patch_vf)?;
+    }
+
     core.enable_video_buffer();
 
     let vbuf = std::sync::Arc::new(parking_lot::Mutex::new(vec![

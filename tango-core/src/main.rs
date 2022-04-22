@@ -60,6 +60,7 @@ fn main() -> Result<(), anyhow::Error> {
         args.keymapping.try_into()?,
         args.rom_path.into(),
         args.save_path.into(),
+        args.patch_path.map(|p| p.into()),
         match_settings,
     )?;
     g.run()?;

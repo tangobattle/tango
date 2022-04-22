@@ -43,6 +43,7 @@ impl Game {
         keymapping: Keymapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
+        patch_path: Option<std::path::PathBuf>,
         match_settings: Option<battle::Settings>,
     ) -> Result<Game, anyhow::Error> {
         log::info!(
@@ -114,6 +115,11 @@ impl Game {
             mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
         )?;
         core.as_mut().load_save(save_vf)?;
+
+        if let Some(patch_path) = patch_path {
+            let patch_vf = mgba::vfile::VFile::open(&patch_path, mgba::vfile::flags::O_RDONLY)?;
+            core.as_mut().load_patch(patch_vf)?;
+        }
 
         let hooks = hooks::HOOKS.get(&core.as_ref().game_title()).unwrap();
 

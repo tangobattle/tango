@@ -4,6 +4,7 @@ use crate::game;
 pub struct Args {
     pub rom_path: String,
     pub save_path: String,
+    pub patch_path: Option<String>,
     pub keymapping: Keymapping,
     pub match_settings: Option<MatchSettings>,
 }

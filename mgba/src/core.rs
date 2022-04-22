@@ -205,6 +205,13 @@ impl<'a> CoreMutRef<'a> {
         Ok(())
     }
 
+    pub fn load_patch(&mut self, mut vf: vfile::VFile) -> anyhow::Result<()> {
+        if !unsafe { (*self.ptr).loadPatch.unwrap()(self.ptr, vf.release()) } {
+            anyhow::bail!("failed to load patch")
+        }
+        Ok(())
+    }
+
     pub fn load_state(&mut self, state: &state::State) -> anyhow::Result<()> {
         if !unsafe {
             (*self.ptr).loadState.unwrap()(
