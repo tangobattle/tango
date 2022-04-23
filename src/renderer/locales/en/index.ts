@@ -1,5 +1,7 @@
-import translation from "./translation.json";
+import common from "./common.json";
+import supervisor from "./supervisor.json";
 
 export default {
-  translation,
+  common,
+  supervisor,
 } as { [namespace: string]: { [key: string]: string } };

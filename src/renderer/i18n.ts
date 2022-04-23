@@ -27,6 +27,8 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: "en",
+    ns: ["common", "supervisor"],
+    defaultNS: "common",
 
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default

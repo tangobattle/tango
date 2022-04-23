@@ -1,0 +1,6 @@
+{
+  "status.starting": "Starting emulator...",
+  "status.running": "Running...",
+  "status.waiting": "Waiting for opponent...",
+  "status.connecting": "Connecting to opponent..."
+}

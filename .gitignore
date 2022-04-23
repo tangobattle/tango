@@ -161,5 +161,6 @@ packages
 /core
 /roms
 /saves
-
+/patches
+/replays
 config.json

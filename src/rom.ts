@@ -3,27 +3,28 @@ import path from "path";
 import { readdir, readFile } from "fs/promises";
 import _roms from "./roms.json";
 
-const roms = _roms as { [title: string]: KnownROM };
+export const KNOWN_ROMS = _roms as { [name: string]: KnownROM };
 
 export interface ROMInfo {
-  title: string;
+  name: string;
   crc32: number;
 }
 
 const decoder = new TextDecoder("ascii");
 
 export function getROMInfo(buffer: ArrayBuffer) {
-  const title = decoder.decode(new Uint8Array(buffer, 0x000000a0, 12));
-  return { title, crc32: crc32.buf(new Uint8Array(buffer)) >>> 0 };
+  const name = decoder.decode(new Uint8Array(buffer, 0x000000a0, 12));
+  return { name, crc32: crc32.buf(new Uint8Array(buffer)) >>> 0 };
 }
 
 export interface KnownROM {
+  title: { [language: string]: string };
   crc32: number;
   netplayCompatiblity: string;
 }
 
 export async function scan(dir: string) {
-  const games = {} as { [filename: string]: string };
+  const games = {} as { [name: string]: string };
   const promises = [];
   for (const f of await readdir(dir)) {
     promises.push(
@@ -32,9 +33,9 @@ export async function scan(dir: string) {
           const romInfo = getROMInfo(
             (await readFile(path.join(dir, f))).buffer
           );
-          const knownROM = roms[romInfo.title];
+          const knownROM = KNOWN_ROMS[romInfo.name];
           if (knownROM == null) {
-            throw `unknown rom title: ${romInfo.title}`;
+            throw `unknown rom name: ${romInfo.name}`;
           }
           if (romInfo.crc32 != knownROM.crc32) {
             throw `mismatched crc32: expected ${knownROM.crc32
@@ -44,7 +45,7 @@ export async function scan(dir: string) {
               .padStart(8, "0")}`;
           }
 
-          games[f] = romInfo.title;
+          games[romInfo.name] = f;
         } catch (e) {
           throw `failed to scan ${f}: ${e}`;
         }

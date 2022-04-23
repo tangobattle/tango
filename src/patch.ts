@@ -134,4 +134,10 @@ export function applyIPS(rom: Uint8Array, patch: Uint8Array) {
       offset += 3;
     }
   }
+  return rom;
 }
+
+export default {
+  ips: applyIPS,
+  bps: applyBPS,
+};
