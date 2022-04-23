@@ -45,6 +45,18 @@ export default function PlayPane({ active }: { active: boolean }) {
   const romInfo = romName != "" ? KNOWN_ROMS[romName] : null;
   const patchInfo = patchName != "" ? patches[patchName] : null;
 
+  React.useEffect(() => {
+    if (selection != null) {
+      const [romName, patchName] = selection;
+      if (
+        !Object.prototype.hasOwnProperty.call(roms, romName) ||
+        !Object.prototype.hasOwnProperty.call(patches, patchName)
+      ) {
+        setSelection(null);
+      }
+    }
+  }, [roms, patches, selection]);
+
   const romNames = Object.keys(roms);
   romNames.sort((k1, k2) => {
     const title1 = KNOWN_ROMS[k1].title[i18n.resolvedLanguage];
@@ -148,7 +160,6 @@ export default function PlayPane({ active }: { active: boolean }) {
             <Tooltip title={<Trans i18nKey="play:reload-roms" />}>
               <IconButton
                 onClick={() => {
-                  // TODO: If the ROM no longer exists, unset the selection.
                   rescanROMs();
                 }}
               >

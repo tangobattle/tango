@@ -200,6 +200,16 @@ export default function SavesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
 
   const [selection, setSelection] = React.useState<string | null>(null);
+  const [started, setStarted] = React.useState(false);
+
+  React.useEffect(() => {
+    if (
+      selection != null &&
+      !Object.prototype.hasOwnProperty.call(saves, selection)
+    ) {
+      setSelection(null);
+    }
+  }, [saves, selection]);
 
   const groupedSaves: { [key: string]: string[] } = {};
   for (const k of Object.keys(saves)) {
@@ -259,7 +269,6 @@ export default function SavesPane({ active }: { active: boolean }) {
             <Tooltip title={<Trans i18nKey="saves:reload-saves" />}>
               <IconButton
                 onClick={() => {
-                  // TODO: If the save no longer exists, unset the selection.
                   rescanSaves();
                 }}
               >
