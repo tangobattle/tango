@@ -40,6 +40,7 @@ pub struct Game {
 impl Game {
     pub fn new(
         mut ipc_client: ipc::Client,
+        window_title: String,
         keymapping: Keymapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
@@ -82,7 +83,7 @@ impl Game {
                 mgba::gba::SCREEN_HEIGHT * 3,
             );
             winit::window::WindowBuilder::new()
-                .with_title("tango")
+                .with_title(window_title)
                 .with_inner_size(size)
                 .with_min_inner_size(size)
                 .build(event_loop.as_ref().expect("event loop"))?

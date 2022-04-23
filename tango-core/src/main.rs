@@ -58,6 +58,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let g = tango_core::game::Game::new(
         tango_core::ipc::Client::new_from_stdout(),
+        args.window_title,
         args.keymapping.try_into()?,
         args.rom_path.into(),
         args.save_path.into(),

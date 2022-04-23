@@ -2,6 +2,7 @@ use crate::game;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub struct Args {
+    pub window_title: String,
     pub rom_path: String,
     pub save_path: String,
     pub keymapping: Keymapping,
