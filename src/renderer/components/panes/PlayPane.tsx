@@ -93,13 +93,15 @@ export default function PlayPane({ active }: { active: boolean }) {
               }
 
               const [romName, patchName] = JSON.parse(v);
-              return (
+              return patchName != null ? (
                 <>
-                  {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}{" "}
-                  {patchName != null ? (
-                    <small>{patches[patchName].title}</small>
-                  ) : null}
+                  {patches[patchName].title}{" "}
+                  <small>
+                    {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
+                  </small>
                 </>
+              ) : (
+                KNOWN_ROMS[romName].title[i18n.resolvedLanguage]
               );
             }}
             onChange={(e) => {
