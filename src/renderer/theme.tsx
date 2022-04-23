@@ -16,6 +16,11 @@ const theme = createTheme({
       defaultProps: {
         disableElevation: true,
       },
+      styleOverrides: {
+        sizeMedium: {
+          height: "40px",
+        },
+      },
     },
   },
 });
