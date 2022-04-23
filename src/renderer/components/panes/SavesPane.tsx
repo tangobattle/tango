@@ -109,7 +109,7 @@ function SaveViewer({
       }
     }
 
-    const tagChip2Idx = editor.getTagChip1Index(editor.getEquippedFolder());
+    const tagChip2Idx = editor.getTagChip2Index(editor.getEquippedFolder());
     if (tagChip2Idx != null) {
       const tagChip2 = editor.getChip(editor.getEquippedFolder(), tagChip2Idx)!;
       if (chip.id == tagChip2.id && chip.code == tagChip2.code) {
@@ -327,6 +327,7 @@ export default function SavesPane({ active }: { active: boolean }) {
           </Button>
           {started ? (
             <CoreSupervisor
+              incarnation={incarnation}
               romPath={path.join(
                 getROMsPath(),
                 roms[saves[selection!].romName]

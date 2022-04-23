@@ -17,6 +17,7 @@ export function CoreSupervisor({
   patchPath,
   matchSettings,
   windowTitle,
+  incarnation,
   onExit,
 }: {
   romPath: string;
@@ -27,6 +28,7 @@ export function CoreSupervisor({
     replayPrefix: string;
     replayInfo: ReplayInfo;
   };
+  incarnation: number;
   windowTitle: string;
   onExit: (exitStatus: ipc.ExitStatus) => void;
 }) {
@@ -101,7 +103,7 @@ export function CoreSupervisor({
       }
       abortControllerRef.current.abort();
     };
-  }, [romPath, patchPath, windowTitle, matchSettings]);
+  }, [romPath, savePath, patchPath, windowTitle, matchSettings, incarnation]);
 
   return (
     <Modal open={true}>
@@ -111,10 +113,11 @@ export function CoreSupervisor({
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
-          width: 400,
+          width: 300,
           bgcolor: "background.paper",
           boxShadow: 24,
-          p: 4,
+          px: 3,
+          py: 2,
         }}
       >
         <Stack
