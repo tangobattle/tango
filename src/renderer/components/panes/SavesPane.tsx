@@ -23,13 +23,21 @@ import GridViewIcon from "@mui/icons-material/GridView";
 import MenuItem from "@mui/material/MenuItem";
 import { useSaves } from "../SavesContext";
 import { KNOWN_ROMS } from "../../../rom";
-import { getSavesPath } from "../../../paths";
+import { getROMsPath, getSavesPath } from "../../../paths";
 import { readFile } from "fs/promises";
 import path from "path";
 import * as bn6 from "../../../saveedit/bn6";
 import i18n from "../../i18n";
+import { CoreSupervisor } from "../CoreSupervisor";
+import { useROMs } from "../ROMsContext";
 
-function SaveViewer({ filename }: { filename: string }) {
+function SaveViewer({
+  filename,
+  incarnation,
+}: {
+  filename: string;
+  incarnation: number;
+}) {
   const [tab, setTab] = React.useState("navicust");
   const [editor, setEditor] = React.useState<bn6.Editor | null>(null);
 
@@ -43,7 +51,7 @@ function SaveViewer({ filename }: { filename: string }) {
         )
       );
     })();
-  }, [filename]);
+  }, [filename, incarnation]);
 
   if (editor == null) {
     return null;
@@ -197,10 +205,12 @@ function SaveViewer({ filename }: { filename: string }) {
 
 export default function SavesPane({ active }: { active: boolean }) {
   const { saves, rescan: rescanSaves } = useSaves();
+  const { roms } = useROMs();
   const { i18n } = useTranslation();
 
   const [selection, setSelection] = React.useState<string | null>(null);
   const [started, setStarted] = React.useState(false);
+  const [incarnation, setIncarnation] = React.useState(0);
 
   React.useEffect(() => {
     if (
@@ -279,7 +289,7 @@ export default function SavesPane({ active }: { active: boolean }) {
         </Box>
         {selection != null ? (
           <Box flexGrow={1} display="flex">
-            <SaveViewer filename={selection} />
+            <SaveViewer filename={selection} incarnation={incarnation} />
           </Box>
         ) : (
           <Box
@@ -305,9 +315,34 @@ export default function SavesPane({ active }: { active: boolean }) {
           spacing={2}
           sx={{ px: 1 }}
         >
-          <Button variant="contained" startIcon={<PlayArrowIcon />}>
+          <Button
+            variant="contained"
+            disabled={selection == null}
+            startIcon={<PlayArrowIcon />}
+            onClick={() => {
+              setStarted(true);
+            }}
+          >
             <Trans i18nKey="saves:play" />
           </Button>
+          {started ? (
+            <CoreSupervisor
+              romPath={path.join(
+                getROMsPath(),
+                roms[saves[selection!].romName]
+              )}
+              savePath={path.join(getSavesPath(), selection!)}
+              windowTitle={
+                KNOWN_ROMS[saves[selection!].romName].title[
+                  i18n.resolvedLanguage
+                ]
+              }
+              onExit={(_exitStatus) => {
+                setIncarnation((incarnation) => incarnation + 1);
+                setStarted(false);
+              }}
+            />
+          ) : null}
         </Stack>
       </Stack>
     </Box>

@@ -13,19 +13,21 @@ import { ReplayInfo } from "../../replay";
 
 export function CoreSupervisor({
   romPath,
+  savePath,
   patchPath,
-  replayPrefix,
-  replayInfo,
+  matchSettings,
   windowTitle,
-  sessionID,
   onExit,
 }: {
   romPath: string;
-  patchPath: string | null;
-  replayPrefix: string;
-  replayInfo: ReplayInfo;
+  savePath: string;
+  patchPath?: string;
+  matchSettings?: {
+    sessionID: string;
+    replayPrefix: string;
+    replayInfo: ReplayInfo;
+  };
   windowTitle: string;
-  sessionID?: string;
   onExit: (exitStatus: ipc.ExitStatus) => void;
 }) {
   const { config } = useConfig();
@@ -52,26 +54,26 @@ export function CoreSupervisor({
     let romTmpFile: tmp.FileResult | null = null;
 
     (async () => {
-      romTmpFile = await makeROM(romPath, patchPath);
+      romTmpFile = await makeROM(romPath, patchPath || null);
 
       const core = new ipc.Core(
         {
           window_title: windowTitle,
           rom_path: romTmpFile!.path,
-          save_path: "saves/exe6f.sav",
+          save_path: savePath,
           keymapping: configRef.current.keymapping,
           match_settings:
-            sessionID == null
+            matchSettings == null
               ? null
               : {
-                  session_id: sessionID,
+                  session_id: matchSettings.sessionID,
                   input_delay: 0,
                   match_type: 0,
                   matchmaking_connect_addr:
                     configRef.current.matchmakingConnectAddr,
                   ice_servers: configRef.current.iceServers,
-                  replay_prefix: replayPrefix,
-                  replay_metadata: JSON.stringify(replayInfo),
+                  replay_prefix: matchSettings.replayPrefix,
+                  replay_metadata: JSON.stringify(matchSettings.replayInfo),
                 },
         },
         {
@@ -99,7 +101,7 @@ export function CoreSupervisor({
       }
       abortControllerRef.current.abort();
     };
-  }, [romPath, patchPath, replayInfo, replayPrefix, windowTitle, sessionID]);
+  }, [romPath, patchPath, windowTitle, matchSettings]);
 
   return (
     <Modal open={true}>
