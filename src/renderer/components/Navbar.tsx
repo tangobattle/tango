@@ -7,12 +7,12 @@ import { styled } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
 import { useTranslation } from "react-i18next";
 
-import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import SportsMmaOutlinedIcon from "@mui/icons-material/SportsMmaOutlined";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import GridViewOutlinedIcon from "@mui/icons-material/GridViewOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 
-import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
+import SportsMmaIcon from "@mui/icons-material/SportsMma";
 import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
 import GridViewIcon from "@mui/icons-material/GridView";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -88,8 +88,8 @@ export default function Navbar({
             onSelect("play");
           }}
           title={t("navbar:play")}
-          unselectedIcon={<SportsEsportsOutlinedIcon />}
-          selectedIcon={<SportsEsportsIcon />}
+          unselectedIcon={<SportsMmaOutlinedIcon />}
+          selectedIcon={<SportsMmaIcon />}
         />
         <NavbarButton
           selected={selected == "saves"}

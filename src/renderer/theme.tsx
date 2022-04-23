@@ -22,6 +22,27 @@ const theme = createTheme({
         },
       },
     },
+    MuiTabs: {
+      styleOverrides: {
+        root: {
+          minHeight: "0",
+        },
+      },
+    },
+    MuiTab: {
+      styleOverrides: {
+        root: {
+          minHeight: "0",
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          height: "auto",
+        },
+      },
+    },
   },
 });
 

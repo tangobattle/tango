@@ -8,5 +8,6 @@
   "patch.authors": "Authors",
   "patch.version": "Version",
   "match-type.single": "Single battle",
-  "match-type.triple": "Triple battle"
+  "match-type.triple": "Triple battle",
+  "reload-roms": "Refresh games"
 }

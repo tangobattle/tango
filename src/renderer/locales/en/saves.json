@@ -1,5 +1,9 @@
 {
+  "select-save": "Select a save file",
   "tab.navicust": "NaviCust",
   "tab.folder": "Folder",
-  "tab.modcards": "Modcards"
+  "tab.modcards": "Modcards",
+  "play": "Play",
+  "folder.regular-chip": "REG",
+  "folder.tag-chip": "TAG"
 }

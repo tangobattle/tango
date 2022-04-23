@@ -1,6 +1,9 @@
 import CHIPS from "./data/chips.json";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
+
+export { CHIPS, MODCARDS, NCPS };
+
 import array2d from "../../array2d";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -11,7 +14,7 @@ export interface GameInfo {
   version: "falzar" | "gregar";
 }
 
-export default class BN6Editor {
+export class Editor {
   private dv: DataView;
   private gameInfo: GameInfo;
   private navicustDirty: boolean;
@@ -64,22 +67,19 @@ export default class BN6Editor {
   };
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    buffer = buffer.slice(
-      BN6Editor.SRAM_START_OFFSET,
-      BN6Editor.SRAM_END_OFFSET
-    );
-    BN6Editor.maskSave(new DataView(buffer));
+    buffer = buffer.slice(Editor.SRAM_START_OFFSET, Editor.SRAM_END_OFFSET);
+    Editor.maskSave(new DataView(buffer));
     return buffer;
   }
 
   static rawToSramDump(buffer: ArrayBuffer) {
     const arr = new Uint8Array(0x10000);
-    arr.set(new Uint8Array(buffer), BN6Editor.SRAM_START_OFFSET);
-    BN6Editor.maskSave(
+    arr.set(new Uint8Array(buffer), Editor.SRAM_START_OFFSET);
+    Editor.maskSave(
       new DataView(
         arr.buffer,
-        BN6Editor.SRAM_START_OFFSET,
-        BN6Editor.SRAM_END_OFFSET - BN6Editor.SRAM_START_OFFSET
+        Editor.SRAM_START_OFFSET,
+        Editor.SRAM_END_OFFSET - Editor.SRAM_START_OFFSET
       )
     );
     return arr.buffer;
@@ -99,11 +99,11 @@ export default class BN6Editor {
   constructor(buffer: ArrayBuffer) {
     if (
       buffer.byteLength !=
-      BN6Editor.SRAM_END_OFFSET - BN6Editor.SRAM_START_OFFSET
+      Editor.SRAM_END_OFFSET - Editor.SRAM_START_OFFSET
     ) {
       throw (
         "invalid byte length of save file: expected " +
-        (BN6Editor.SRAM_END_OFFSET - BN6Editor.SRAM_START_OFFSET) +
+        (Editor.SRAM_END_OFFSET - Editor.SRAM_START_OFFSET) +
         " but got " +
         buffer.byteLength
       );
@@ -117,11 +117,11 @@ export default class BN6Editor {
     const gn = decoder.decode(
       new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x1c70, 20)
     );
-    if (!Object.prototype.hasOwnProperty.call(BN6Editor.GAMES, gn)) {
+    if (!Object.prototype.hasOwnProperty.call(Editor.GAMES, gn)) {
       throw "unknown game name: " + gn;
     }
 
-    this.gameInfo = BN6Editor.GAMES[gn];
+    this.gameInfo = Editor.GAMES[gn];
 
     if (this.getChecksum() != this.computeChecksum()) {
       throw "checksum does not match";
@@ -149,7 +149,7 @@ export default class BN6Editor {
   }
 
   computeChecksum() {
-    let checksum = BN6Editor.CHECKSUM_START[this.gameInfo.version];
+    let checksum = Editor.CHECKSUM_START[this.gameInfo.version];
     const arr = new Uint8Array(
       this.dv.buffer,
       this.dv.byteOffset,

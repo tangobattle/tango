@@ -10,6 +10,7 @@ import { findPatchVersion } from "../../../patchinfo";
 import Select from "@mui/material/Select";
 import ListSubheader from "@mui/material/ListSubheader";
 import InputAdornment from "@mui/material/InputAdornment";
+import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import ListItemText from "@mui/material/ListItemText";
 import Box from "@mui/material/Box";
@@ -23,12 +24,13 @@ import Typography from "@mui/material/Typography";
 import Tooltip from "@mui/material/Tooltip";
 import SportsMmaIcon from "@mui/icons-material/SportsMma";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import RefreshIcon from "@mui/icons-material/Refresh";
 import { CopyButton } from "../CopyButton";
 
 const MATCH_TYPES = ["single", "triple"];
 
 export default function PlayPane({ active }: { active: boolean }) {
-  const { roms } = useROMs();
+  const { roms, rescan: rescanROMs } = useROMs();
   const { patches } = usePatches();
   const { t, i18n } = useTranslation();
 
@@ -75,81 +77,92 @@ export default function PlayPane({ active }: { active: boolean }) {
   return (
     <Box
       sx={{
-        p: 3,
         minWidth: 0,
         flexGrow: 1,
         display: active ? "flex" : "none",
       }}
     >
-      <Stack sx={{ flexGrow: 1 }} spacing={1}>
-        <Box flexGrow={0} flexShrink={0}>
-          <FormControl fullWidth size="small">
-            <InputLabel id="select-game-label">
-              <Trans i18nKey="play:select-game" />
-            </InputLabel>
-            <Select
-              labelId="select-game-label"
-              value={selection != null ? JSON.stringify(selection) : ""}
-              label={<Trans i18nKey="play:select-game" />}
-              renderValue={(v) => {
-                if (v == "") {
-                  return null;
-                }
+      <Stack sx={{ flexGrow: 1, my: 1 }} spacing={1}>
+        <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
+          <Stack spacing={1} direction="row">
+            <FormControl fullWidth size="small">
+              <InputLabel id="select-game-label">
+                <Trans i18nKey="play:select-game" />
+              </InputLabel>
+              <Select
+                labelId="select-game-label"
+                value={selection != null ? JSON.stringify(selection) : ""}
+                label={<Trans i18nKey="play:select-game" />}
+                renderValue={(v) => {
+                  if (v == "") {
+                    return null;
+                  }
 
-                const [romName, patchName] = JSON.parse(v);
-                return patchName != null ? (
-                  <>
-                    {patches[patchName].title}{" "}
-                    <small>
+                  const [romName, patchName] = JSON.parse(v);
+                  return patchName != null ? (
+                    <>
+                      {patches[patchName].title}{" "}
+                      <small>
+                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
+                      </small>
+                    </>
+                  ) : (
+                    KNOWN_ROMS[romName].title[i18n.resolvedLanguage]
+                  );
+                }}
+                onChange={(e) => {
+                  setSelection(
+                    JSON.parse(e.target.value as string) as [string, string]
+                  );
+                  setSelectedPatchVersion(null);
+                }}
+              >
+                {romNames.map((romName) => {
+                  const eligiblePatchNames = Object.keys(patches).filter(
+                    (p) => patches[p].forROM == romName
+                  );
+                  eligiblePatchNames.sort();
+
+                  return [
+                    <ListSubheader key="title" sx={{ userSelect: "none" }}>
                       {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
-                    </small>
-                  </>
-                ) : (
-                  KNOWN_ROMS[romName].title[i18n.resolvedLanguage]
-                );
-              }}
-              onChange={(e) => {
-                setSelection(
-                  JSON.parse(e.target.value as string) as [string, string]
-                );
-                setSelectedPatchVersion(null);
-              }}
-            >
-              {romNames.map((romName) => {
-                const eligiblePatchNames = Object.keys(patches).filter(
-                  (p) => patches[p].forROM == romName
-                );
-                eligiblePatchNames.sort();
-
-                return [
-                  <ListSubheader key="title" sx={{ userSelect: "none" }}>
-                    {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
-                  </ListSubheader>,
-                  <MenuItem
-                    key={romName}
-                    value={JSON.stringify([romName, null])}
-                  >
-                    <Trans i18nKey="play:unpatched"></Trans>
-                  </MenuItem>,
-                  ...eligiblePatchNames.map((patchName) => {
-                    const v = JSON.stringify([romName, patchName]);
-                    return (
-                      <MenuItem key={v} value={v}>
-                        {patches[patchName].title}
-                      </MenuItem>
-                    );
-                  }),
-                ];
-              })}
-            </Select>
-          </FormControl>
+                    </ListSubheader>,
+                    <MenuItem
+                      key={romName}
+                      value={JSON.stringify([romName, null])}
+                    >
+                      <Trans i18nKey="play:unpatched"></Trans>
+                    </MenuItem>,
+                    ...eligiblePatchNames.map((patchName) => {
+                      const v = JSON.stringify([romName, patchName]);
+                      return (
+                        <MenuItem key={v} value={v}>
+                          {patches[patchName].title}
+                        </MenuItem>
+                      );
+                    }),
+                  ];
+                })}
+              </Select>
+            </FormControl>
+            <Tooltip title={<Trans i18nKey="play:reload-roms" />}>
+              <IconButton
+                onClick={() => {
+                  // TODO: If the ROM no longer exists, unset the selection.
+                  rescanROMs();
+                }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
         </Box>
         {romInfo != null ? (
-          <Box flexGrow={1} overflow="auto">
+          <Box flexGrow={1} overflow="auto" sx={{ px: 1 }}>
             {patchInfo != null ? (
               <>
                 <Typography variant="h6" sx={{ userSelect: "none" }}>
-                  <Trans i18nKey="play:patch.authors"></Trans>
+                  <Trans i18nKey="play:patch.authors" />
                 </Typography>
                 <Typography>
                   {patchInfo
@@ -171,7 +184,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                     .reduce((prev, curr) => [prev, ", ", curr])}
                 </Typography>
                 <Typography variant="h6" sx={{ userSelect: "none" }}>
-                  <Trans i18nKey="play:patch.version"></Trans>
+                  <Trans i18nKey="play:patch.version" />
                 </Typography>
                 <Select
                   size="small"
@@ -209,7 +222,14 @@ export default function PlayPane({ active }: { active: boolean }) {
           </Box>
         )}
 
-        <Stack flexGrow={0} flexShrink={0} direction="row" spacing={2}>
+        <Stack
+          flexGrow={0}
+          flexShrink={0}
+          direction="row"
+          justifyContent="flex-end"
+          spacing={1}
+          sx={{ px: 1 }}
+        >
           <Box flexGrow={1} flexShrink={0}>
             <TextField
               disabled={selection == null}
@@ -217,7 +237,7 @@ export default function PlayPane({ active }: { active: boolean }) {
               label={<Trans i18nKey={"play:link-code"} />}
               value={linkCode}
               onChange={(e) => {
-                setLinkCode(e.target.value);
+                setLinkCode(e.target.value.replace(/\s/g, "").toLowerCase());
               }}
               fullWidth
               InputProps={{
@@ -275,6 +295,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                 labelId="save-file-label"
                 disabled={selection == null}
                 size="small"
+                value={""}
                 label={<Trans i18nKey={"play:save-file"} />}
                 fullWidth
               ></Select>
@@ -283,7 +304,7 @@ export default function PlayPane({ active }: { active: boolean }) {
           <Button
             variant="contained"
             startIcon={<SportsMmaIcon />}
-            disabled={selection == null}
+            disabled={selection == null || linkCode == ""}
           >
             <Trans i18nKey="play:fight" />
           </Button>
