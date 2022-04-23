@@ -1,3 +1,5 @@
+import translation from "./translation.json";
+
 export default {
-  translation: require("./translation.json"),
+  translation,
 } as { [namespace: string]: { [key: string]: string } };
