@@ -1,5 +1,5 @@
 {
-  "MEGAMAN6_FXX": {
+  "MEGAMAN6_FXXBR6E": {
     "title": {
       "en": "Mega Man Battle Network 6: Cybeast Falzar",
       "ja": "ロックマンエグゼ6 電脳獣ファルザー（英語版）"
@@ -7,7 +7,7 @@
     "crc32": 3739677353,
     "netplayCompatibility": "bn6"
   },
-  "MEGAMAN6_GXX": {
+  "MEGAMAN6_GXXBR5E": {
     "title": {
       "en": "Mega Man Battle Network 6: Cybeast Gregar",
       "ja": "ロックマンエグゼ6 電脳獣グレイガ（英語版）"
@@ -15,7 +15,7 @@
     "crc32": 2034573698,
     "netplayCompatibility": "bn6"
   },
-  "ROCKEXE6_RXX": {
+  "ROCKEXE6_RXXBR6J": {
     "title": {
       "en": "Rockman EXE 6: Dennoujuu Falzer",
       "ja": "ロックマンエグゼ6 電脳獣ファルザー"
@@ -23,7 +23,7 @@
     "crc32": 771448894,
     "netplayCompatibility": "exe6"
   },
-  "ROCKEXE6_GXX": {
+  "ROCKEXE6_GXXBR5J": {
     "title": {
       "en": "Rockman EXE 6: Dennoujuu Glaga",
       "ja": "ロックマンエグゼ6 電脳獣グレイガ"

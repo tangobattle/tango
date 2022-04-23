@@ -28,36 +28,36 @@ export default class BN6Editor {
   static GAMES: { [key: string]: GameInfo } = {
     // Japan
     "REXE6 F 20050924a JP": {
-      romName: "ROCKEXE6_RXX",
+      romName: "ROCKEXE6_RXXBR6J",
       region: "JP",
       version: "falzar",
     },
     "REXE6 G 20050924a JP": {
-      romName: "ROCKEXE6_GXX",
+      romName: "ROCKEXE6_GXXBR5J",
       region: "JP",
       version: "gregar",
     },
 
     // US
     "REXE6 F 20060110a US": {
-      romName: "MEGAMAN6_FXX",
+      romName: "MEGAMAN6_FXXBR6E",
       region: "US",
       version: "falzar",
     },
     "REXE6 G 20060110a US": {
-      romName: "MEGAMAN6_GXX",
+      romName: "MEGAMAN6_GXXBR5E",
       region: "US",
       version: "gregar",
     },
 
     // Poland :^)
     "REXE6 F 20060110a PL": {
-      romName: "MEGAMAN6_FXX",
+      romName: "MEGAMAN6_FXXBR6P",
       region: "PL",
       version: "falzar",
     },
     "REXE6 G 20060110a PL": {
-      romName: "MEGAMAN6_GXX",
+      romName: "MEGAMAN6_GXXBR5P",
       region: "PL",
       version: "gregar",
     },
@@ -174,6 +174,10 @@ export default class BN6Editor {
 
   getChecksum() {
     return this.dv.getUint32(0x1c6c, true);
+  }
+
+  getGameInfo() {
+    return this.gameInfo;
   }
 
   rebuildChecksum() {

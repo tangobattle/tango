@@ -45,8 +45,8 @@ export default function PlayPane({ active }: { active: boolean }) {
 
   const romNames = Object.keys(roms);
   romNames.sort((k1, k2) => {
-    const title1 = KNOWN_ROMS[k1].title;
-    const title2 = KNOWN_ROMS[k2].title;
+    const title1 = KNOWN_ROMS[k1].title[i18n.resolvedLanguage];
+    const title2 = KNOWN_ROMS[k2].title[i18n.resolvedLanguage];
     return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
   });
 

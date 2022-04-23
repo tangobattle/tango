@@ -9,6 +9,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 import Navbar, { NavbarSelection } from "./Navbar";
 import PlayPane from "./panes/PlayPane";
 import SavesPane from "./panes/SavesPane";
+import { scan } from "../../saves";
 
 function AppBody() {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");

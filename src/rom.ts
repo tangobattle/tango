@@ -13,7 +13,7 @@ export interface ROMInfo {
 const decoder = new TextDecoder("ascii");
 
 export function getROMInfo(buffer: ArrayBuffer) {
-  const name = decoder.decode(new Uint8Array(buffer, 0x000000a0, 12));
+  const name = decoder.decode(new Uint8Array(buffer, 0x000000a0, 16));
   return { name, crc32: crc32.buf(new Uint8Array(buffer)) >>> 0 };
 }
 
