@@ -1,0 +1,12 @@
+{
+  "select-game": "Select a game",
+  "unpatched": "Base game",
+  "fight": "Fight!",
+  "no-game-selected": "No game selected",
+  "link-code": "Link code",
+  "save-file": "Save file",
+  "patch.authors": "Authors",
+  "patch.version": "Version",
+  "match-type.single": "Single battle",
+  "match-type.triple": "Triple battle"
+}

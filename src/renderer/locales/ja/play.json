@@ -1,0 +1,10 @@
+{
+  "select-game": "ゲーム選択",
+  "unpatched": "ベースゲーム",
+  "fight": "対戦する",
+  "no-game-selected": "選択したゲームがない",
+  "save-file": "セーブファイル",
+  "link-code": "リンクコード",
+  "match-type.single": "シングルバトル",
+  "match-type.triple": "トリプルバトル"
+}

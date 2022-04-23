@@ -27,7 +27,7 @@ i18n
   .use(initReactI18next)
   .init({
     fallbackLng: "en",
-    ns: ["common", "supervisor"],
+    ns: Object.keys(locales.en.default),
     defaultNS: "common",
 
     interpolation: {

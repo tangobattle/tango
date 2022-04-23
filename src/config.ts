@@ -4,12 +4,14 @@ import path from "path";
 import * as ipc from "./ipc";
 
 export interface Config {
+  nickname: string;
   keymapping: ipc.Args["keymapping"];
   matchmakingConnectAddr: string;
   iceServers: string[];
 }
 
 export const DEFAULT: Config = {
+  nickname: "i_forgor",
   keymapping: {
     up: "Up",
     down: "Down",

@@ -12,6 +12,7 @@ function createWindow() {
     height: 600,
     title: "Tango",
     resizable: false,
+    fullscreenable: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -61,7 +62,10 @@ app.on("activate", () => {
 });
 
 app.on("web-contents-created", (_event, contents) => {
-  contents.on("will-navigate", (event, _navigationUrl) => {
-    event.preventDefault();
+  contents.on("will-navigate", (event, navigationUrl) => {
+    const parsedUrl = new URL(navigationUrl);
+    if (parsedUrl.protocol != "mailto:") {
+      event.preventDefault();
+    }
   });
 });

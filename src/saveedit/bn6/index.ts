@@ -6,6 +6,7 @@ import array2d from "../../array2d";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 export interface GameInfo {
+  romName: string;
   region: "US" | "JP" | "PL";
   version: "falzar" | "gregar";
 }
@@ -27,30 +28,36 @@ export default class BN6Editor {
   static GAMES: { [key: string]: GameInfo } = {
     // Japan
     "REXE6 F 20050924a JP": {
+      romName: "ROCKEXE6_RXX",
       region: "JP",
       version: "falzar",
     },
     "REXE6 G 20050924a JP": {
+      romName: "ROCKEXE6_GXX",
       region: "JP",
       version: "gregar",
     },
 
     // US
     "REXE6 F 20060110a US": {
+      romName: "MEGAMAN6_FXX",
       region: "US",
       version: "falzar",
     },
     "REXE6 G 20060110a US": {
+      romName: "MEGAMAN6_GXX",
       region: "US",
       version: "gregar",
     },
 
     // Poland :^)
     "REXE6 F 20060110a PL": {
+      romName: "MEGAMAN6_FXX",
       region: "PL",
       version: "falzar",
     },
     "REXE6 G 20060110a PL": {
+      romName: "MEGAMAN6_GXX",
       region: "PL",
       version: "gregar",
     },

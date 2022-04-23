@@ -2,43 +2,35 @@ import * as ipc from "../../ipc";
 import React from "react";
 import tmp from "tmp-promise";
 import { useConfig } from "./ConfigContext";
-import { usePatches } from "./PatchesContext";
-import { useROMs } from "./ROMsContext";
 import { makeROM } from "../../game";
-import { Trans, useTranslation } from "react-i18next";
-import { KNOWN_ROMS } from "../../rom";
+import { Trans } from "react-i18next";
 import Modal from "@mui/material/Modal";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
-import { findPatchVersion, PatchVersionInfo } from "../../patchinfo";
 import { ReplayInfo } from "../../replay";
-import { getPatchesPath, getReplaysPath, getROMsPath } from "../../paths";
-import path from "path";
 
 export function CoreSupervisor({
-  romName,
-  patchName,
-  patchVersionRequirement,
+  romPath,
+  patchPath,
+  replayPrefix,
+  replayInfo,
+  windowTitle,
   sessionID,
   onExit,
 }: {
-  romName: string;
-  patchName: string | null;
-  patchVersionRequirement?: string;
+  romPath: string;
+  patchPath: string | null;
+  replayPrefix: string;
+  replayInfo: ReplayInfo;
+  windowTitle: string;
   sessionID?: string;
   onExit: (exitStatus: ipc.ExitStatus) => void;
 }) {
-  const { roms } = useROMs();
   const { config } = useConfig();
-  const { patches } = usePatches();
-  const { i18n } = useTranslation();
 
-  const romsRef = React.useRef(roms);
   const configRef = React.useRef(config);
-  const patchesRef = React.useRef(patches);
-  const i18nRef = React.useRef(i18n);
 
   const onExitRef = React.useRef(onExit);
   React.useEffect(() => {
@@ -60,46 +52,11 @@ export function CoreSupervisor({
     let romTmpFile: tmp.FileResult | null = null;
 
     (async () => {
-      const romFilename = romsRef.current[romName];
-      let netplayCompatibility = KNOWN_ROMS[romName].netplayCompatibility;
-
-      let patchVersion: { name: string; info: PatchVersionInfo } | null = null;
-      if (patchName != null) {
-        const patchInfo = patchesRef.current[patchName];
-        const patchVersionName = findPatchVersion(
-          patchInfo,
-          patchVersionRequirement || "*"
-        );
-        if (patchVersionName == null) {
-          throw "could not find patch with appropriate version";
-        }
-
-        const patchVersionInfo = patchInfo.versions[patchVersionName];
-        patchVersion = {
-          name: patchVersionName,
-          info: patchVersionInfo,
-        };
-        netplayCompatibility = patchVersionInfo.netplayCompatibility;
-      }
-
-      romTmpFile = await makeROM(
-        path.join(getROMsPath(), romFilename),
-        patchVersion != null
-          ? path.join(
-              getPatchesPath(),
-              patchName!,
-              `v${patchVersion.name}.${patchVersion.info.format}`
-            )
-          : null
-      );
+      romTmpFile = await makeROM(romPath, patchPath);
 
       const core = new ipc.Core(
         {
-          window_title: `${
-            KNOWN_ROMS[romName].title[i18nRef.current.resolvedLanguage]
-          }${
-            patchName != null ? ` + ${patchesRef.current[patchName].title}` : ""
-          }`,
+          window_title: windowTitle,
           rom_path: romTmpFile!.path,
           save_path: "saves/exe6f.sav",
           keymapping: configRef.current.keymapping,
@@ -107,20 +64,14 @@ export function CoreSupervisor({
             sessionID == null
               ? null
               : {
-                  session_id: `${netplayCompatibility}-${sessionID}`,
+                  session_id: sessionID,
                   input_delay: 0,
                   match_type: 0,
                   matchmaking_connect_addr:
                     configRef.current.matchmakingConnectAddr,
                   ice_servers: configRef.current.iceServers,
-                  replay_prefix: path.join(getReplaysPath(), sessionID),
-                  replay_metadata: JSON.stringify({
-                    rom: romName,
-                    patch:
-                      patchVersion != null
-                        ? { name: patchName, version: patchVersion.name }
-                        : null,
-                  } as ReplayInfo),
+                  replay_prefix: replayPrefix,
+                  replay_metadata: JSON.stringify(replayInfo),
                 },
         },
         {
@@ -148,7 +99,7 @@ export function CoreSupervisor({
       }
       abortControllerRef.current.abort();
     };
-  }, [romName, patchName, patchVersionRequirement, sessionID]);
+  }, [romPath, patchPath, replayInfo, replayPrefix, windowTitle, sessionID]);
 
   return (
     <Modal open={true}>
