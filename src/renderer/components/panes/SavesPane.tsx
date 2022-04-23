@@ -1,4 +1,5 @@
 import { Trans, useTranslation } from "react-i18next";
+import semver from "semver";
 import React from "react";
 import Stack from "@mui/material/Stack";
 import Tabs from "@mui/material/Tabs";
@@ -24,7 +25,7 @@ import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import MenuItem from "@mui/material/MenuItem";
 import { useSaves } from "../SavesContext";
 import { KNOWN_ROMS } from "../../../rom";
-import { getROMsPath, getSavesPath } from "../../../paths";
+import { getPatchesPath, getROMsPath, getSavesPath } from "../../../paths";
 import { readFile } from "fs/promises";
 import path from "path";
 import * as bn6 from "../../../saveedit/bn6";
@@ -32,6 +33,7 @@ import i18n from "../../i18n";
 import { CoreSupervisor } from "../CoreSupervisor";
 import { useROMs } from "../ROMsContext";
 import { shell } from "@electron/remote";
+import { usePatches } from "../PatchesContext";
 
 function SaveViewer({
   filename,
@@ -207,6 +209,7 @@ function SaveViewer({
 
 export default function SavesPane({ active }: { active: boolean }) {
   const { saves, rescan: rescanSaves } = useSaves();
+  const { patches } = usePatches();
   const { roms } = useROMs();
   const { i18n } = useTranslation();
 
@@ -235,6 +238,38 @@ export default function SavesPane({ active }: { active: boolean }) {
     const title2 = KNOWN_ROMS[k2].title[i18n.resolvedLanguage];
     return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
   });
+
+  const [selectedPatch, setSelectedPatch] = React.useState<string | null>(null);
+
+  const eligiblePatchNames = React.useMemo(() => {
+    const eligiblePatchNames =
+      selection != null
+        ? Object.keys(patches).filter(
+            (p) => patches[p].forROM == saves[selection].romName
+          )
+        : [];
+    eligiblePatchNames.sort();
+    return eligiblePatchNames;
+  }, [patches, saves, selection]);
+
+  const patchInfo = selectedPatch != null ? patches[selectedPatch] : null;
+
+  const patchVersions = React.useMemo(
+    () =>
+      patchInfo != null ? semver.rsort(Object.keys(patchInfo.versions)) : null,
+    [patchInfo]
+  );
+
+  const [selectedPatchVersion, setSelectedPatchVersion] = React.useState<
+    string | null
+  >(null);
+  React.useEffect(() => {
+    if (patchVersions == null) {
+      setSelectedPatchVersion("");
+      return;
+    }
+    setSelectedPatchVersion(patchVersions[0]);
+  }, [patchVersions]);
 
   return (
     <Box
@@ -332,6 +367,64 @@ export default function SavesPane({ active }: { active: boolean }) {
           spacing={2}
           sx={{ px: 1 }}
         >
+          <Box flexGrow={5} flexShrink={0}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="game-label">
+                <Trans i18nKey="saves:patch-name" />
+              </InputLabel>
+              <Select
+                labelId="game-label"
+                disabled={selection == null}
+                size="small"
+                value={JSON.stringify(selectedPatch)}
+                label={<Trans i18nKey={"saves:patch-name"} />}
+                onChange={(e) => {
+                  setSelectedPatch(JSON.parse(e.target.value));
+                }}
+                fullWidth
+              >
+                <MenuItem value="null">
+                  <Trans i18nKey="play:unpatched" />
+                </MenuItem>
+                {eligiblePatchNames.map((patchName) => {
+                  const v = JSON.stringify(patchName);
+                  return (
+                    <MenuItem key={v} value={v}>
+                      {patches[patchName].title}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+          </Box>
+          <Box flexGrow={1} flexShrink={0}>
+            <FormControl fullWidth size="small">
+              <InputLabel id="patch-version-label">
+                <Trans i18nKey="saves:patch-version" />
+              </InputLabel>
+              <Select
+                labelId="patch-version-label"
+                disabled={selection == null || selectedPatch == null}
+                size="small"
+                value={selectedPatchVersion || ""}
+                label={<Trans i18nKey={"saves:patch-version"} />}
+                onChange={(e) => {
+                  setSelectedPatchVersion(e.target.value);
+                }}
+                fullWidth
+              >
+                {patchVersions != null
+                  ? patchVersions.map((version) => {
+                      return (
+                        <MenuItem key={version} value={version}>
+                          {version}
+                        </MenuItem>
+                      );
+                    })
+                  : []}
+              </Select>
+            </FormControl>
+          </Box>
           <Button
             variant="contained"
             disabled={selection == null}
@@ -349,12 +442,23 @@ export default function SavesPane({ active }: { active: boolean }) {
                 getROMsPath(),
                 roms[saves[selection!].romName]
               )}
+              patchPath={
+                selectedPatchVersion != null
+                  ? path.join(
+                      getPatchesPath(),
+                      selectedPatch!,
+                      `v${selectedPatchVersion}.${
+                        patchInfo!.versions[selectedPatchVersion].format
+                      }`
+                    )
+                  : undefined
+              }
               savePath={path.join(getSavesPath(), selection!)}
-              windowTitle={
+              windowTitle={`${
                 KNOWN_ROMS[saves[selection!].romName].title[
                   i18n.resolvedLanguage
                 ]
-              }
+              }${selectedPatchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
               onExit={(_exitStatus) => {
                 setIncarnation((incarnation) => incarnation + 1);
                 setStarted(false);
