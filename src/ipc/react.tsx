@@ -11,7 +11,7 @@ export function useCore() {
   const abortControllerRef = React.useRef<AbortController>();
 
   return {
-    start: (args: ipc.Args) => {
+    start(args: ipc.Args) {
       if (abortControllerRef.current != null) {
         throw new Error("core already started");
       }
@@ -34,7 +34,7 @@ export function useCore() {
         });
       });
     },
-    stop: () => {
+    stop() {
       if (abortControllerRef.current != null) {
         abortControllerRef.current.abort();
       }

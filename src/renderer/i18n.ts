@@ -1,10 +1,28 @@
 import i18n from "i18next";
-import Backend from "i18next-fs-backend";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
+import locales from "./locales";
+
 i18n
-  .use(Backend)
+  .use({
+    type: "backend",
+    init: () => {
+      void null;
+    },
+    read: function (
+      language: string,
+      namespace: string,
+      callback: (err: any, data?: { [key: string]: string }) => void
+    ) {
+      const locale = locales[language];
+      if (!locale) {
+        callback(`${language} not found`);
+        return;
+      }
+      callback(null, locale.default[namespace]);
+    },
+  })
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({

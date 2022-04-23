@@ -11,7 +11,7 @@ const Context = React.createContext(null! as ConfigContextValue);
 
 function makeLoadConfig() {
   let status: "pending" | "error" | "ok" = "pending";
-  let result: config.Config;
+  let result: ConfigContextValue["config"];
   let err: any;
   const promise = (async () => {
     try {

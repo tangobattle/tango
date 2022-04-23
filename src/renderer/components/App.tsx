@@ -1,5 +1,5 @@
 import ThemeProvider from "@mui/system/ThemeProvider";
-import { useTranslation, withTranslation, Trans } from "react-i18next";
+import { Trans } from "react-i18next";
 import React, { Suspense } from "react";
 import theme from "../theme";
 
@@ -12,7 +12,7 @@ export default function App(): JSX.Element {
       <Suspense fallback={null}>
         <ConfigProvider>
           <ROMsProvider>
-            <Trans i18nKey="hello">hello1</Trans>
+            <Trans i18nKey="hello">hello</Trans>
           </ROMsProvider>
         </ConfigProvider>
       </Suspense>
