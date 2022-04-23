@@ -65,7 +65,7 @@ export function CoreSupervisor({
 
       let patchVersion: { name: string; info: PatchVersionInfo } | null = null;
       if (patchName != null) {
-        const patchInfo = patches[patchName];
+        const patchInfo = patchesRef.current[patchName];
         const patchVersionName = findPatchVersion(
           patchInfo,
           patchVersionRequirement || "*"
