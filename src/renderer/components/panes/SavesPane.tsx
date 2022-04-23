@@ -308,6 +308,13 @@ export default function SavesPane({ active }: { active: boolean }) {
                   );
                 }}
                 onChange={(e) => {
+                  if (
+                    selection == null ||
+                    saves[e.target.value].romName != saves[selection].romName
+                  ) {
+                    setSelectedPatch(null);
+                    setSelectedPatchVersion(null);
+                  }
                   setSelection(e.target.value);
                 }}
               >
@@ -397,6 +404,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 label={<Trans i18nKey={"saves:patch-name"} />}
                 onChange={(e) => {
                   setSelectedPatch(JSON.parse(e.target.value));
+                  setSelectedPatchVersion(null);
                 }}
                 fullWidth
               >
