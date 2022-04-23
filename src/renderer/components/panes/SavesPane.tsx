@@ -290,6 +290,23 @@ export default function SavesPane({ active }: { active: boolean }) {
                 labelId="select-save-label"
                 label={<Trans i18nKey="saves:select-save" />}
                 value={selection ?? ""}
+                renderValue={(v) => {
+                  if (v == "") {
+                    return null;
+                  }
+                  return (
+                    <>
+                      {v}{" "}
+                      <small>
+                        {
+                          KNOWN_ROMS[saves[v].romName].title[
+                            i18n.resolvedLanguage
+                          ]
+                        }
+                      </small>
+                    </>
+                  );
+                }}
                 onChange={(e) => {
                   setSelection(e.target.value);
                 }}

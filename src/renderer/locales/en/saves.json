@@ -6,5 +6,7 @@
   "tab.modcards": "Modcards",
   "play": "Play",
   "folder.regular-chip": "REG",
-  "folder.tag-chip": "TAG"
+  "folder.tag-chip": "TAG",
+  "patch-name": "Game",
+  "patch-version": "Version"
 }
