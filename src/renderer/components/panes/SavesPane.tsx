@@ -105,7 +105,7 @@ function SaveViewer({
     if (tagChip1Idx != null) {
       const tagChip1 = editor.getChip(editor.getEquippedFolder(), tagChip1Idx)!;
       if (chip.id == tagChip1.id && chip.code == tagChip1.code) {
-        chip.isRegular = true;
+        chip.isTag1 = true;
       }
     }
 
@@ -113,7 +113,7 @@ function SaveViewer({
     if (tagChip2Idx != null) {
       const tagChip2 = editor.getChip(editor.getEquippedFolder(), tagChip2Idx)!;
       if (chip.id == tagChip2.id && chip.code == tagChip2.code) {
-        chip.isRegular = true;
+        chip.isTag2 = true;
       }
     }
   }
