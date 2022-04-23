@@ -20,7 +20,7 @@ export function getROMInfo(buffer: ArrayBuffer) {
 export interface KnownROM {
   title: { [language: string]: string };
   crc32: number;
-  netplayCompatiblity: string;
+  netplayCompatibility: string;
 }
 
 export async function scan(dir: string) {

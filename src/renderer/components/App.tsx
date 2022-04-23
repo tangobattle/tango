@@ -2,86 +2,83 @@ import ThemeProvider from "@mui/system/ThemeProvider";
 import { Trans, useTranslation } from "react-i18next";
 import React, { Suspense } from "react";
 import theme from "../theme";
-
 import { ConfigProvider, useConfig } from "./ConfigContext";
 import { ROMsProvider, useROMs } from "./ROMsContext";
 import { PatchesProvider, usePatches } from "./PatchesContext";
 import { KNOWN_ROMS } from "../../rom";
 import { CoreSupervisor } from "./CoreSupervisor";
+import { findPatchVersion } from "../../patchinfo";
+import Select from "@mui/material/Select";
+import ListSubheader from "@mui/material/ListSubheader";
+import MenuItem from "@mui/material/MenuItem";
+import Box from "@mui/material/Box";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
 
 function PlayGameButton() {
   const { roms } = useROMs();
   const { patches } = usePatches();
   const { i18n } = useTranslation();
 
-  const [selectedROM, setSelectedROM] = React.useState<string | null>(null);
-  const [selectedPatch, setSelectedPatch] = React.useState<string | null>(null);
+  const [selection, setSelection] = React.useState<string | null>();
   const [started, setStarted] = React.useState(false);
 
   const romNames = Object.keys(roms);
   romNames.sort();
 
-  const eligiblePatchNames = Object.keys(patches).filter(
-    (p) => patches[p].forROM == selectedROM
-  );
-  eligiblePatchNames.sort();
-
   return (
-    <>
-      <div>
-        <select
-          size={4}
-          style={{ width: "400px" }}
-          onChange={(e) => {
-            setSelectedPatch(null);
-            setSelectedROM(e.target.value);
+    <Box>
+      <FormControl sx={{ width: "100%" }} size="small">
+        <InputLabel>
+          <Trans i18nKey="select-game"></Trans>
+        </InputLabel>
+        <Select
+          variant="standard"
+          value={selection}
+          renderValue={(v) => {
+            if (v == null) {
+              return null;
+            }
+            const [romName, ...rest] = v.split("+");
+            const patchName = rest.join("+");
+            let name = KNOWN_ROMS[romName].title[i18n.resolvedLanguage];
+            if (patchName != "") {
+              name += ` + ${patches[patchName].title}`;
+            }
+            return name;
+          }}
+          onChange={(event) => {
+            setSelection(event.target.value);
           }}
         >
           {romNames.map((romName) => {
-            return (
-              <option key={romName} value={romName}>
+            const eligiblePatchNames = Object.keys(patches).filter(
+              (p) => patches[p].forROM == romName
+            );
+            eligiblePatchNames.sort();
+
+            return [
+              <ListSubheader key="title">
                 {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
-              </option>
-            );
+              </ListSubheader>,
+              <MenuItem key={romName} value={romName}>
+                Unpatched
+              </MenuItem>,
+              ...eligiblePatchNames.map((patchName) => {
+                return (
+                  <MenuItem
+                    key={romName + "+" + patchName}
+                    value={romName + "+" + patchName}
+                  >
+                    {patches[patchName].title}
+                  </MenuItem>
+                );
+              }),
+            ];
           })}
-        </select>
-      </div>
-      <div>
-        <select
-          size={4}
-          style={{ width: "400px" }}
-          onChange={(e) => {
-            setSelectedPatch(e.target.value || null);
-          }}
-        >
-          <option value={""}>(base game)</option>
-          {eligiblePatchNames.map((patchName) => {
-            return (
-              <option key={patchName} value={patchName}>
-                {patches[patchName].title}
-              </option>
-            );
-          })}
-        </select>
-        <button
-          onClick={() => {
-            setStarted(true);
-          }}
-        >
-          leg's go!
-        </button>
-        {started ? (
-          <CoreSupervisor
-            romName={selectedROM!}
-            patchName={selectedPatch}
-            sessionID="bingus"
-            onExit={(exitStatus) => {
-              setStarted(false);
-            }}
-          />
-        ) : null}
-      </div>
-    </>
+        </Select>
+      </FormControl>
+    </Box>
   );
 }
 

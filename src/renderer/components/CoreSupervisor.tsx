@@ -61,7 +61,7 @@ export function CoreSupervisor({
 
     (async () => {
       const romFilename = romsRef.current[romName];
-      let netplayCompatiblity = KNOWN_ROMS[romName].netplayCompatiblity;
+      let netplayCompatibility = KNOWN_ROMS[romName].netplayCompatibility;
 
       let patchVersion: { name: string; info: PatchVersionInfo } | null = null;
       if (patchName != null) {
@@ -79,7 +79,7 @@ export function CoreSupervisor({
           name: patchVersionName,
           info: patchVersionInfo,
         };
-        netplayCompatiblity = patchVersionInfo.netplayCompatibility;
+        netplayCompatibility = patchVersionInfo.netplayCompatibility;
       }
 
       romTmpFile = await makeROM(
@@ -107,7 +107,7 @@ export function CoreSupervisor({
             sessionID == null
               ? null
               : {
-                  session_id: `${netplayCompatiblity}-${sessionID}`,
+                  session_id: `${netplayCompatibility}-${sessionID}`,
                   input_delay: 0,
                   match_type: 0,
                   matchmaking_connect_addr:

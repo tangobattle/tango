@@ -5,7 +5,7 @@
       "ja": "ロックマンエグゼ6 電脳獣ファルザー（英語版）"
     },
     "crc32": 3739677353,
-    "netplayCompatiblity": "bn6"
+    "netplayCompatibility": "bn6"
   },
   "MEGAMAN6_GXX": {
     "title": {
@@ -13,7 +13,7 @@
       "ja": "ロックマンエグゼ6 電脳獣グレイガ（英語版）"
     },
     "crc32": 2034573698,
-    "netplayCompatiblity": "bn6"
+    "netplayCompatibility": "bn6"
   },
   "ROCKEXE6_RXX": {
     "title": {
@@ -21,7 +21,7 @@
       "ja": "ロックマンエグゼ6 電脳獣ファルザー"
     },
     "crc32": 771448894,
-    "netplayCompatiblity": "exe6"
+    "netplayCompatibility": "exe6"
   },
   "ROCKEXE6_GXX": {
     "title": {
@@ -29,6 +29,6 @@
       "ja": "ロックマンエグゼ6 電脳獣グレイガ"
     },
     "crc32": 1652920714,
-    "netplayCompatiblity": "exe6"
+    "netplayCompatibility": "exe6"
   }
 }
