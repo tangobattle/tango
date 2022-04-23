@@ -41,16 +41,17 @@ export default function PlayPane({ active }: { active: boolean }) {
   const [linkCode, setLinkCode] = React.useState("");
   const [started, setStarted] = React.useState(false);
 
-  const [romName, patchName] = selection ?? ["", ""];
-  const romInfo = romName != "" ? KNOWN_ROMS[romName] : null;
-  const patchInfo = patchName != "" ? patches[patchName] : null;
+  const [romName, patchName] = selection ?? [null, null];
+  const romInfo = romName != null ? KNOWN_ROMS[romName] : null;
+  const patchInfo = patchName != null ? patches[patchName] : null;
 
   React.useEffect(() => {
     if (selection != null) {
       const [romName, patchName] = selection;
       if (
         !Object.prototype.hasOwnProperty.call(roms, romName) ||
-        !Object.prototype.hasOwnProperty.call(patches, patchName)
+        (patchName != null &&
+          !Object.prototype.hasOwnProperty.call(patches, patchName))
       ) {
         setSelection(null);
       }
