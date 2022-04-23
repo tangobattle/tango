@@ -42,7 +42,7 @@ jobs:
             - run: >
                   cd out &&
                   mkdir tango-core &&
-                  cp ../README.html ../games.toml ../target/x86_64-pc-windows-gnu/release/tango-core.exe tango-core &&
+                  cp ../target/x86_64-pc-windows-gnu/release/tango-core.exe tango-core &&
                   mv tango-core tango-core-${{ github.ref_name }} &&
                   zip -r tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip tango-core-${{ github.ref_name }} &&
                   cp tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip ..
