@@ -1,4 +1,8 @@
-export function applyBPS(rom: Uint8Array, patch: Uint8Array) {
+export function applyBPS(
+  rom: Uint8Array,
+  patch: Uint8Array,
+  ignoreCRC32 = false
+) {
   // From https://github.com/SMWCentral/OnlineTools, licensed under the MIT license.
   function crc32(bytes: Uint8Array) {
     let c;
@@ -55,7 +59,7 @@ export function applyBPS(rom: Uint8Array, patch: Uint8Array) {
     throw new Error("not a BPS patch");
   }
   if (decode() != rom.length) throw new Error("wrong input file");
-  if (crc32(rom) != u32at(patch.length - 12)) {
+  if (!ignoreCRC32 && crc32(rom) != u32at(patch.length - 12)) {
     throw new Error("wrong input file");
   }
 
