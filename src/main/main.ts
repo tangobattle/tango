@@ -59,3 +59,9 @@ app.on("activate", () => {
     createWindow();
   }
 });
+
+app.on("web-contents-created", (_event, contents) => {
+  contents.on("will-navigate", (event, _navigationUrl) => {
+    event.preventDefault();
+  });
+});
