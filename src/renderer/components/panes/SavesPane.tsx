@@ -145,7 +145,7 @@ function SaveViewer({ filename }: { filename: string }) {
         sx={{ px: 1, height: 0, minWidth: 0 }}
         overflow="auto"
       >
-        <Table>
+        <Table size="small">
           <TableBody>
             {chips.map(({ id, code, count, isRegular, isTag1, isTag2 }, i) => {
               return (

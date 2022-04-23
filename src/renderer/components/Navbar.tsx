@@ -24,10 +24,7 @@ const Drawer = styled(MuiDrawer, {
   whiteSpace: "nowrap",
   boxSizing: "border-box",
   overflowX: "hidden",
-  width: `calc(${theme.spacing(7)} + 1px)`,
-  [theme.breakpoints.up("sm")]: {
-    width: `calc(${theme.spacing(8)} + 1px)`,
-  },
+  width: `calc(${theme.spacing(6)} + 1px)`,
 }));
 
 function NavbarButton({
@@ -50,7 +47,7 @@ function NavbarButton({
         selected={selected}
         sx={{
           minHeight: 48,
-          px: 2.5,
+          px: 1.5,
           justifyContent: "center",
         }}
       >
