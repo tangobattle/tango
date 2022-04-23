@@ -20,6 +20,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ListSubheader from "@mui/material/ListSubheader";
 import GridViewIcon from "@mui/icons-material/GridView";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import MenuItem from "@mui/material/MenuItem";
 import { useSaves } from "../SavesContext";
 import { KNOWN_ROMS } from "../../../rom";
@@ -30,6 +31,7 @@ import * as bn6 from "../../../saveedit/bn6";
 import i18n from "../../i18n";
 import { CoreSupervisor } from "../CoreSupervisor";
 import { useROMs } from "../ROMsContext";
+import { shell } from "@electron/remote";
 
 function SaveViewer({
   filename,
@@ -276,6 +278,21 @@ export default function SavesPane({ active }: { active: boolean }) {
                 })}
               </Select>
             </FormControl>
+            <Tooltip title={<Trans i18nKey="saves:open-dir" />}>
+              <IconButton
+                onClick={() => {
+                  if (selection == null) {
+                    shell.openPath(getSavesPath());
+                  } else {
+                    shell.showItemInFolder(
+                      path.join(getSavesPath(), selection)
+                    );
+                  }
+                }}
+              >
+                <FolderOpenIcon />
+              </IconButton>
+            </Tooltip>
             <Tooltip title={<Trans i18nKey="saves:reload-saves" />}>
               <IconButton
                 onClick={() => {
