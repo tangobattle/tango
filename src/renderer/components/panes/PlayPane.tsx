@@ -736,7 +736,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                   disabled={saveName == null || patchName == null}
                   size="small"
                   value={patchVersion || ""}
-                  label={<Trans i18nKey={"saves:patch-version"} />}
+                  label={<Trans i18nKey={"play:patch-version"} />}
                   onChange={(e) => {
                     setPatchVersion(e.target.value);
                   }}
