@@ -12,7 +12,7 @@ const DEBUFF_COLOR = "#b55ade";
 const BUFF_COLOR = "#ffbd18";
 const OFF_COLOR = "#bdbdbd";
 
-export function ModcardsViewer({ editor }: { editor: bn6.Editor }) {
+export default function ModcardsViewer({ editor }: { editor: bn6.Editor }) {
   const { i18n } = useTranslation();
 
   const modcards: { id: number; enabled: boolean }[] = [];

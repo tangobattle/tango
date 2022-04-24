@@ -97,7 +97,7 @@ function FolderChipRow({
   );
 }
 
-export function FolderViewer({ editor }: { editor: bn6.Editor }) {
+export default function FolderViewer({ editor }: { editor: bn6.Editor }) {
   const chips: {
     id: number;
     code: string;
