@@ -7,50 +7,26 @@ import * as bn6 from "../../saveedit/bn6";
 
 const NAVICUST_COLORS = {
   red: {
-    name: {
-      en: "red",
-      ja: "赤",
-    },
     color: "#de1000",
     plusColor: "#bd0000",
   },
   pink: {
-    name: {
-      en: "pink",
-      ja: "ピンク",
-    },
     color: "#de8cc6",
     plusColor: "#bd6ba5",
   },
   yellow: {
-    name: {
-      en: "yellow",
-      ja: "黄",
-    },
     color: "#dede00",
     plusColor: "#bdbd00",
   },
   green: {
-    name: {
-      en: "green",
-      ja: "緑",
-    },
     color: "#18c600",
     plusColor: "#00a500",
   },
   blue: {
-    name: {
-      en: "blue",
-      ja: "青",
-    },
     color: "#2984de",
     plusColor: "#0860b8",
   },
   white: {
-    name: {
-      en: "white",
-      ja: "白",
-    },
     color: "#dedede",
     plusColor: "#bdbdbd",
   },
@@ -171,13 +147,15 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                           borderStyle: "solid",
                           borderColor,
                           borderWidth: `${borderWidth / 2}px`,
+                          width: `${borderWidth * 8}px`,
+                          height: `${borderWidth * 5}px`,
                           padding: 0,
                         }}
                       >
                         <div
                           style={{
-                            width: `${borderWidth * 6}px`,
-                            height: `${borderWidth * 4}px`,
+                            width: "100%",
+                            height: "100%",
                             background:
                               color != null
                                 ? NAVICUST_COLORS[
@@ -210,13 +188,15 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                         borderStyle: "solid",
                         borderColor: "transparent",
                         borderWidth: `${borderWidth / 2}px`,
+                        width: `${borderWidth * 8}px`,
+                        height: `${borderWidth * 5}px`,
                         padding: 0,
                       }}
                     >
                       <div
                         style={{
-                          width: `${borderWidth * 6}px`,
-                          height: `${borderWidth * 4}px`,
+                          width: "100%",
+                          height: "100%",
                           background:
                             color != null
                               ? NAVICUST_COLORS[
@@ -285,6 +265,8 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                               borderColor: borderColor,
                               borderWidth: `${borderWidth / 2}px`,
                               borderStyle: "solid",
+                              width: `${borderWidth * 9}px`,
+                              height: `${borderWidth * 9}px`,
                               padding: 0,
                               opacity:
                                 i == 0 ||
@@ -298,8 +280,8 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                           >
                             <div
                               style={{
-                                width: `${borderWidth * 8}px`,
-                                height: `${borderWidth * 8}px`,
+                                width: "100%",
+                                height: "100%",
                                 background,
                               }}
                             />

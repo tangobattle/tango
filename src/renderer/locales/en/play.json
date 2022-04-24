@@ -20,5 +20,11 @@
   "folder.tag-chip": "TAG",
   "patch-name": "Patch",
   "patch-version": "Version",
-  "show-hide-extra-options": "Show/hide extra options"
+  "show-hide-extra-options": "Show/hide extra options",
+  "navicust.color.red": "red",
+  "navicust.color.pink": "pink",
+  "navicust.color.yellow": "yellow",
+  "navicust.color.green": "green",
+  "navicust.color.blue": "blue",
+  "navicust.color.white": "white"
 }
