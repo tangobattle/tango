@@ -359,9 +359,12 @@ export default function PlayPane({ active }: { active: boolean }) {
                           sessionID: `${netplayCompatibility}-${MATCH_TYPES[matchType]}-${startedState.linkCode}`,
                           replaysPath: path.join(
                             getReplaysPath(),
-                            `${datefns.format(now, "yyyyMMddHHmmmmss")}-${
-                              startedState.linkCode
-                            }`
+                            `${datefns.format(
+                              now,
+                              "yyyyMMddHHmmmmss"
+                            )}-${netplayCompatibility}-${
+                              MATCH_TYPES[matchType]
+                            }-${startedState.linkCode}`
                           ),
                           replayInfo: {
                             ts: now.valueOf(),
