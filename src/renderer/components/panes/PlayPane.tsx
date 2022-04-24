@@ -555,207 +555,212 @@ export default function PlayPane({ active }: { active: boolean }) {
             </Stack>
           </Box>
         )}
-        <Stack
-          flexGrow={0}
-          flexShrink={0}
-          direction="row"
-          justifyContent="flex-end"
-          spacing={1}
-          sx={{ px: 1 }}
-        >
-          <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
-            <IconButton
-              onClick={() => {
-                setExtraOptionsOpen((o) => !o);
-              }}
-            >
-              {extraOptionsOpen ? (
-                <KeyboardArrowDownIcon />
-              ) : (
-                <KeyboardArrowUpIcon />
-              )}
-            </IconButton>
-          </Tooltip>
-          <Box flexGrow={1} flexShrink={0}>
-            <TextField
-              disabled={saveName == null}
-              size="small"
-              label={<Trans i18nKey={"play:link-code"} />}
-              value={linkCode}
-              onChange={(e) => {
-                setLinkCode(e.target.value.replace(/\s/g, "").toLowerCase());
-              }}
-              fullWidth
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start" sx={{ mr: 0 }}>
-                    {romInfo != null ? (
-                      <>
-                        {netplayCompatibility}-
-                        <Select
-                          variant="standard"
-                          value={matchType}
-                          onChange={(e) => {
-                            setMatchType(e.target.value as number);
-                          }}
-                          renderValue={(v) => MATCH_TYPES[v]}
-                          disabled={saveName == null}
-                        >
-                          {MATCH_TYPES.map((v, k) => (
-                            <MenuItem key={k} value={k}>
-                              <ListItemText
-                                primary={v}
-                                secondary={
-                                  k == 0 ? (
-                                    <Trans i18nKey="play:match-type.single" />
-                                  ) : k == 1 ? (
-                                    <Trans i18nKey="play:match-type.triple" />
-                                  ) : null
-                                }
-                              />
-                            </MenuItem>
-                          ))}
-                        </Select>
-                        -
-                      </>
-                    ) : null}
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <CopyButton disabled={saveName == null} value={sessionID} />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
-          <Button
-            variant="contained"
-            startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
-            disabled={saveName == null}
-            onClick={() => {
-              setStarted(true);
-            }}
-          >
-            {linkCode != "" ? (
-              <Trans i18nKey="play:fight" />
-            ) : (
-              <Trans i18nKey="play:play" />
-            )}
-            {started ? (
-              <CoreSupervisor
-                incarnation={incarnation}
-                romPath={path.join(
-                  getROMsPath(),
-                  roms[saves[saveName!].romName]
-                )}
-                patchPath={
-                  patchVersion != null
-                    ? path.join(
-                        getPatchesPath(),
-                        patchName!,
-                        `v${patchVersion}.${
-                          patchInfo!.versions[patchVersion].format
-                        }`
-                      )
-                    : undefined
-                }
-                matchSettings={
-                  linkCode != ""
-                    ? {
-                        sessionID,
-                        replaysPath: path.join(getReplaysPath()),
-                        replayInfo: {
-                          rom: saves[saveName!].romName!,
-                          patch: { name: patchName!, version: patchVersion! },
-                        },
-                      }
-                    : undefined
-                }
-                savePath={path.join(getSavesPath(), saveName!)}
-                windowTitle={`${
-                  KNOWN_ROMS[saves[saveName!].romName].title[
-                    i18n.resolvedLanguage
-                  ]
-                }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
-                onExit={(_exitStatus) => {
-                  setStarted(false);
-                  setIncarnation((incarnation) => incarnation + 1);
-                }}
-              />
-            ) : null}
-          </Button>
-        </Stack>
-        <Collapse in={extraOptionsOpen}>
+        <Stack>
           <Stack
             flexGrow={0}
             flexShrink={0}
-            justifyContent="flex-end"
             direction="row"
+            justifyContent="flex-end"
             spacing={1}
             sx={{ px: 1 }}
           >
-            <Box flexGrow={5} flexShrink={0}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="game-label">
-                  <Trans i18nKey="play:patch-name" />
-                </InputLabel>
-                <Select
-                  labelId="game-label"
-                  disabled={saveName == null}
-                  size="small"
-                  value={JSON.stringify(patchName)}
-                  label={<Trans i18nKey={"play:patch-name"} />}
-                  onChange={(e) => {
-                    setPatchName(JSON.parse(e.target.value));
-                    setPatchVersion(null);
-                  }}
-                  fullWidth
-                >
-                  <MenuItem value="null">
-                    <Trans i18nKey="play:unpatched" />
-                  </MenuItem>
-                  {eligiblePatchNames.map((patchName) => {
-                    const v = JSON.stringify(patchName);
-                    return (
-                      <MenuItem key={v} value={v}>
-                        {patches[patchName].title}
-                      </MenuItem>
-                    );
-                  })}
-                </Select>
-              </FormControl>
-            </Box>
+            <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
+              <IconButton
+                onClick={() => {
+                  setExtraOptionsOpen((o) => !o);
+                }}
+              >
+                {extraOptionsOpen ? (
+                  <KeyboardArrowDownIcon />
+                ) : (
+                  <KeyboardArrowUpIcon />
+                )}
+              </IconButton>
+            </Tooltip>
             <Box flexGrow={1} flexShrink={0}>
-              <FormControl fullWidth size="small">
-                <InputLabel id="patch-version-label">
-                  <Trans i18nKey="play:patch-version" />
-                </InputLabel>
-                <Select
-                  labelId="patch-version-label"
-                  disabled={saveName == null || patchName == null}
-                  size="small"
-                  value={patchVersion || ""}
-                  label={<Trans i18nKey={"play:patch-version"} />}
-                  onChange={(e) => {
-                    setPatchVersion(e.target.value);
-                  }}
-                  fullWidth
-                >
-                  {patchVersions != null
-                    ? patchVersions.map((version) => {
-                        return (
-                          <MenuItem key={version} value={version}>
-                            {version}
-                          </MenuItem>
-                        );
-                      })
-                    : []}
-                </Select>
-              </FormControl>
+              <TextField
+                disabled={saveName == null}
+                size="small"
+                label={<Trans i18nKey={"play:link-code"} />}
+                value={linkCode}
+                onChange={(e) => {
+                  setLinkCode(e.target.value.replace(/\s/g, "").toLowerCase());
+                }}
+                fullWidth
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start" sx={{ mr: 0 }}>
+                      {romInfo != null ? (
+                        <>
+                          {netplayCompatibility}-
+                          <Select
+                            variant="standard"
+                            value={matchType}
+                            onChange={(e) => {
+                              setMatchType(e.target.value as number);
+                            }}
+                            renderValue={(v) => MATCH_TYPES[v]}
+                            disabled={saveName == null}
+                          >
+                            {MATCH_TYPES.map((v, k) => (
+                              <MenuItem key={k} value={k}>
+                                <ListItemText
+                                  primary={v}
+                                  secondary={
+                                    k == 0 ? (
+                                      <Trans i18nKey="play:match-type.single" />
+                                    ) : k == 1 ? (
+                                      <Trans i18nKey="play:match-type.triple" />
+                                    ) : null
+                                  }
+                                />
+                              </MenuItem>
+                            ))}
+                          </Select>
+                          -
+                        </>
+                      ) : null}
+                    </InputAdornment>
+                  ),
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <CopyButton
+                        disabled={saveName == null}
+                        value={sessionID}
+                      />
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Box>
+            <Button
+              variant="contained"
+              startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
+              disabled={saveName == null}
+              onClick={() => {
+                setStarted(true);
+              }}
+            >
+              {linkCode != "" ? (
+                <Trans i18nKey="play:fight" />
+              ) : (
+                <Trans i18nKey="play:play" />
+              )}
+              {started ? (
+                <CoreSupervisor
+                  incarnation={incarnation}
+                  romPath={path.join(
+                    getROMsPath(),
+                    roms[saves[saveName!].romName]
+                  )}
+                  patchPath={
+                    patchVersion != null
+                      ? path.join(
+                          getPatchesPath(),
+                          patchName!,
+                          `v${patchVersion}.${
+                            patchInfo!.versions[patchVersion].format
+                          }`
+                        )
+                      : undefined
+                  }
+                  matchSettings={
+                    linkCode != ""
+                      ? {
+                          sessionID,
+                          replaysPath: path.join(getReplaysPath()),
+                          replayInfo: {
+                            rom: saves[saveName!].romName!,
+                            patch: { name: patchName!, version: patchVersion! },
+                          },
+                        }
+                      : undefined
+                  }
+                  savePath={path.join(getSavesPath(), saveName!)}
+                  windowTitle={`${
+                    KNOWN_ROMS[saves[saveName!].romName].title[
+                      i18n.resolvedLanguage
+                    ]
+                  }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
+                  onExit={(_exitStatus) => {
+                    setStarted(false);
+                    setIncarnation((incarnation) => incarnation + 1);
+                  }}
+                />
+              ) : null}
+            </Button>
           </Stack>
-        </Collapse>
+          <Collapse in={extraOptionsOpen}>
+            <Stack
+              flexGrow={0}
+              flexShrink={0}
+              justifyContent="flex-end"
+              direction="row"
+              spacing={1}
+              sx={{ px: 1, mt: 1 }}
+            >
+              <Box flexGrow={5} flexShrink={0}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="game-label">
+                    <Trans i18nKey="play:patch-name" />
+                  </InputLabel>
+                  <Select
+                    labelId="game-label"
+                    disabled={saveName == null}
+                    size="small"
+                    value={JSON.stringify(patchName)}
+                    label={<Trans i18nKey={"play:patch-name"} />}
+                    onChange={(e) => {
+                      setPatchName(JSON.parse(e.target.value));
+                      setPatchVersion(null);
+                    }}
+                    fullWidth
+                  >
+                    <MenuItem value="null">
+                      <Trans i18nKey="play:unpatched" />
+                    </MenuItem>
+                    {eligiblePatchNames.map((patchName) => {
+                      const v = JSON.stringify(patchName);
+                      return (
+                        <MenuItem key={v} value={v}>
+                          {patches[patchName].title}
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box flexGrow={1} flexShrink={0}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="patch-version-label">
+                    <Trans i18nKey="play:patch-version" />
+                  </InputLabel>
+                  <Select
+                    labelId="patch-version-label"
+                    disabled={saveName == null || patchName == null}
+                    size="small"
+                    value={patchVersion || ""}
+                    label={<Trans i18nKey={"play:patch-version"} />}
+                    onChange={(e) => {
+                      setPatchVersion(e.target.value);
+                    }}
+                    fullWidth
+                  >
+                    {patchVersions != null
+                      ? patchVersions.map((version) => {
+                          return (
+                            <MenuItem key={version} value={version}>
+                              {version}
+                            </MenuItem>
+                          );
+                        })
+                      : []}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Stack>
+          </Collapse>
+        </Stack>
       </Stack>
     </Box>
   );
