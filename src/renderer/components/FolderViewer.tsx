@@ -1,6 +1,7 @@
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
+import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -99,7 +100,13 @@ function FolderChipRow({
   );
 }
 
-export default function FolderViewer({ editor }: { editor: bn6.Editor }) {
+export default function FolderViewer({
+  editor,
+  active,
+}: {
+  editor: bn6.Editor;
+  active: boolean;
+}) {
   const chips: {
     id: number;
     code: string;
@@ -162,12 +169,19 @@ export default function FolderViewer({ editor }: { editor: bn6.Editor }) {
   }
 
   return (
-    <Table size="small">
-      <TableBody>
-        {chips.map((chip, i) => (
-          <FolderChipRow key={i} chip={chip} />
-        ))}
-      </TableBody>
-    </Table>
+    <Box
+      flexGrow={1}
+      display={active ? "block" : "none"}
+      overflow="auto"
+      sx={{ px: 1, height: 0, minWidth: 0 }}
+    >
+      <Table size="small">
+        <TableBody>
+          {chips.map((chip, i) => (
+            <FolderChipRow key={i} chip={chip} />
+          ))}
+        </TableBody>
+      </Table>
+    </Box>
   );
 }

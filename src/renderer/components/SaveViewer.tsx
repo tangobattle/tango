@@ -59,29 +59,10 @@ export default function SaveViewer({
           />
         </Tabs>
       </Box>
-      <Box
-        flexGrow={1}
-        display={tab == "navicust" ? undefined : "none"}
-        sx={{ px: 1, height: 0, minWidth: 0 }}
-      >
-        <NavicustViewer editor={editor} />
-      </Box>
-      <Box
-        flexGrow={1}
-        display={tab == "folder" ? undefined : "none"}
-        sx={{ px: 1, height: 0, minWidth: 0 }}
-        overflow="auto"
-      >
-        <FolderViewer editor={editor} />
-      </Box>
+      <NavicustViewer editor={editor} active={tab == "navicust"} />
+      <FolderViewer editor={editor} active={tab == "folder"} />
       {editor.supportsModcards() ? (
-        <Box
-          flexGrow={1}
-          display={tab == "modcards" ? undefined : "none"}
-          sx={{ px: 1, height: 0, minWidth: 0 }}
-        >
-          <ModcardsViewer editor={editor} />
-        </Box>
+        <ModcardsViewer editor={editor} active={tab == "modcards"} />
       ) : null}
     </Stack>
   );

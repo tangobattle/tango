@@ -1,6 +1,14 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 import Box from "@mui/material/Box";
+import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell, { tableCellClasses } from "@mui/material/TableCell";
+import TableRow from "@mui/material/TableRow";
+import { lighten } from "@mui/system/colorManipulator";
 
 import array2d from "../../array2d";
 import * as bn6 from "../../saveedit/bn6";
@@ -76,19 +84,20 @@ const borderWidth = 4;
 const borderColor = "#29314a";
 const emptyColor = "#105284";
 
-export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
-  const placements = React.useMemo(() => {
-    const placements = [];
-    for (let i = 0; i < 30; i++) {
-      const ncp = editor.getNavicustBlock(i);
-      if (ncp == null) {
-        continue;
-      }
-      placements.push(ncp);
-    }
-    return placements;
-  }, [editor]);
-
+function NavicustGrid({
+  placements,
+  gameVersion,
+}: {
+  placements: {
+    id: number;
+    variant: number;
+    rot: number;
+    row: number;
+    col: number;
+    compressed: boolean;
+  }[];
+  gameVersion: string;
+}) {
   const grid = React.useMemo(() => {
     const grid = [];
     const arr2d = placementsToArray2D(placements);
@@ -111,223 +120,325 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
   }, [placements]);
 
   return (
-    <Box>
-      <div>
-        <div
+    <div
+      style={{
+        padding: "20px",
+        background: {
+          falzar: "#E78C39",
+          gregar: "#08BD73",
+        }[gameVersion],
+        display: "inline-block",
+        borderRadius: "4px",
+      }}
+    >
+      <div style={{ marginBottom: `${borderWidth * 2}px` }}>
+        <table
           style={{
-            padding: "20px",
-            background: {
-              falzar: "#E78C39",
-              gregar: "#08BD73",
-            }[editor.getGameInfo().version],
             display: "inline-block",
-            borderRadius: "4px",
+            background: borderColor,
+            borderStyle: "solid",
+            borderColor,
+            borderWidth: `${borderWidth / 4}px`,
+            borderSpacing: 0,
+            borderCollapse: "separate",
           }}
         >
-          <div style={{ marginBottom: `${borderWidth * 2}px` }}>
-            <table
-              style={{
-                display: "inline-block",
-                background: borderColor,
-                borderStyle: "solid",
-                borderColor,
-                borderWidth: `${borderWidth / 4}px`,
-                borderSpacing: 0,
-                borderCollapse: "separate",
-              }}
-            >
-              <tbody>
-                <tr>
-                  {[...colors.slice(0, 4), null, null, null, null]
-                    .slice(0, 4)
-                    .map((color, i) => (
+          <tbody>
+            <tr>
+              {[...colors.slice(0, 4), null, null, null, null]
+                .slice(0, 4)
+                .map((color, i) => (
+                  <td
+                    key={i}
+                    style={{
+                      borderStyle: "solid",
+                      borderColor,
+                      borderWidth: `${borderWidth / 2}px`,
+                      width: `${borderWidth * 8}px`,
+                      height: `${borderWidth * 5}px`,
+                      padding: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        background:
+                          color != null
+                            ? NAVICUST_COLORS[
+                                color as keyof typeof NAVICUST_COLORS
+                              ].plusColor
+                            : emptyColor,
+                      }}
+                    />
+                  </td>
+                ))}
+            </tr>
+          </tbody>
+        </table>
+        <table
+          style={{
+            display: "inline-block",
+            borderStyle: "solid",
+            borderColor: "transparent",
+            borderWidth: `${borderWidth / 4}px`,
+            borderSpacing: 0,
+            borderCollapse: "separate",
+          }}
+        >
+          <tbody>
+            <tr>
+              {colors.slice(4).map((color, i) => (
+                <td
+                  key={i}
+                  style={{
+                    borderStyle: "solid",
+                    borderColor: "transparent",
+                    borderWidth: `${borderWidth / 2}px`,
+                    width: `${borderWidth * 8}px`,
+                    height: `${borderWidth * 5}px`,
+                    padding: 0,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      background:
+                        color != null
+                          ? NAVICUST_COLORS[
+                              color as keyof typeof NAVICUST_COLORS
+                            ].plusColor
+                          : emptyColor,
+                    }}
+                  />
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <table
+            style={{
+              background: borderColor,
+              borderStyle: "solid",
+              borderColor,
+              borderWidth: `${borderWidth / 2}px`,
+              borderSpacing: 0,
+              borderCollapse: "separate",
+              borderRadius: "4px",
+            }}
+          >
+            <tbody>
+              {grid.map((row, i) => (
+                <tr key={i}>
+                  {row.map((placementIdx, j) => {
+                    const placement =
+                      placementIdx != -1 ? placements[placementIdx] : null;
+
+                    const ncp =
+                      placement != null ? bn6.NCPS[placement.id] : null;
+                    const ncpColor =
+                      ncp != null
+                        ? NAVICUST_COLORS[
+                            ncp.colors[
+                              placement!.variant
+                            ] as keyof typeof NAVICUST_COLORS
+                          ]
+                        : null;
+
+                    const background =
+                      (i == 0 && j == 0) ||
+                      (i == 0 && j == row.length - 1) ||
+                      (i == grid.length - 1 && j == 0) ||
+                      (i == grid.length - 1 && j == row.length - 1)
+                        ? "transparent"
+                        : ncpColor != null
+                        ? ncp!.isSolid
+                          ? ncpColor.color
+                          : `conic-gradient(
+                                        from 90deg at ${borderWidth}px ${borderWidth}px,
+                                        ${ncpColor.color} 90deg,
+                                        ${ncpColor.plusColor} 0
+                                    )
+                                    calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
+                                    calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
+                        : emptyColor;
+                    return (
                       <td
-                        key={i}
                         style={{
-                          borderStyle: "solid",
-                          borderColor,
+                          borderColor: borderColor,
                           borderWidth: `${borderWidth / 2}px`,
-                          width: `${borderWidth * 8}px`,
-                          height: `${borderWidth * 5}px`,
+                          borderStyle: "solid",
+                          width: `${borderWidth * 9}px`,
+                          height: `${borderWidth * 9}px`,
                           padding: 0,
+                          opacity:
+                            i == 0 ||
+                            i == grid.length - 1 ||
+                            j == 0 ||
+                            j == row.length - 1
+                              ? 0.25
+                              : 1.0,
                         }}
+                        key={j}
                       >
                         <div
                           style={{
                             width: "100%",
                             height: "100%",
-                            background:
-                              color != null
-                                ? NAVICUST_COLORS[
-                                    color as keyof typeof NAVICUST_COLORS
-                                  ].plusColor
-                                : emptyColor,
+                            background,
                           }}
                         />
                       </td>
-                    ))}
+                    );
+                  })}
                 </tr>
-              </tbody>
-            </table>
-            <table
-              style={{
-                display: "inline-block",
-                borderStyle: "solid",
-                borderColor: "transparent",
-                borderWidth: `${borderWidth / 4}px`,
-                borderSpacing: 0,
-                borderCollapse: "separate",
-              }}
-            >
-              <tbody>
-                <tr>
-                  {colors.slice(4).map((color, i) => (
-                    <td
-                      key={i}
-                      style={{
-                        borderStyle: "solid",
-                        borderColor: "transparent",
-                        borderWidth: `${borderWidth / 2}px`,
-                        width: `${borderWidth * 8}px`,
-                        height: `${borderWidth * 5}px`,
-                        padding: 0,
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          background:
-                            color != null
-                              ? NAVICUST_COLORS[
-                                  color as keyof typeof NAVICUST_COLORS
-                                ].plusColor
-                              : emptyColor,
-                        }}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div>
-            <div style={{ position: "relative", display: "inline-block" }}>
-              <table
-                style={{
-                  background: borderColor,
-                  borderStyle: "solid",
-                  borderColor,
-                  borderWidth: `${borderWidth / 2}px`,
-                  borderSpacing: 0,
-                  borderCollapse: "separate",
-                  borderRadius: "4px",
-                }}
-              >
-                <tbody>
-                  {grid.map((row, i) => (
-                    <tr key={i}>
-                      {row.map((placementIdx, j) => {
-                        const placement =
-                          placementIdx != -1 ? placements[placementIdx] : null;
-
-                        const ncp =
-                          placement != null ? bn6.NCPS[placement.id] : null;
-                        const ncpColor =
-                          ncp != null
-                            ? NAVICUST_COLORS[
-                                ncp.colors[
-                                  placement!.variant
-                                ] as keyof typeof NAVICUST_COLORS
-                              ]
-                            : null;
-
-                        const background =
-                          (i == 0 && j == 0) ||
-                          (i == 0 && j == row.length - 1) ||
-                          (i == grid.length - 1 && j == 0) ||
-                          (i == grid.length - 1 && j == row.length - 1)
-                            ? "transparent"
-                            : ncpColor != null
-                            ? ncp!.isSolid
-                              ? ncpColor.color
-                              : `conic-gradient(
-                                    from 90deg at ${borderWidth}px ${borderWidth}px,
-                                    ${ncpColor.color} 90deg,
-                                    ${ncpColor.plusColor} 0
-                                )
-                                calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
-                                calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
-                            : emptyColor;
-                        return (
-                          <td
-                            style={{
-                              borderColor: borderColor,
-                              borderWidth: `${borderWidth / 2}px`,
-                              borderStyle: "solid",
-                              width: `${borderWidth * 9}px`,
-                              height: `${borderWidth * 9}px`,
-                              padding: 0,
-                              opacity:
-                                i == 0 ||
-                                i == grid.length - 1 ||
-                                j == 0 ||
-                                j == row.length - 1
-                                  ? 0.25
-                                  : 1.0,
-                            }}
-                            key={j}
-                          >
-                            <div
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                background,
-                              }}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <hr
-                style={{
-                  top: `${borderWidth * 33}px`,
-                  margin: 0,
-                  padding: 0,
-                  position: "absolute",
-                  width: "100%",
-                  borderColor,
-                  borderLeftStyle: "none",
-                  borderRightStyle: "none",
-                  borderTopStyle: "none",
-                  borderBottomStyle: "solid",
-                  borderWidth: `${borderWidth}px`,
-                  pointerEvents: "none",
-                }}
-              />
-              <hr
-                style={{
-                  bottom: `${borderWidth * 33}px`,
-                  margin: 0,
-                  padding: 0,
-                  position: "absolute",
-                  width: "100%",
-                  borderColor,
-                  borderLeftStyle: "none",
-                  borderRightStyle: "none",
-                  borderTopStyle: "solid",
-                  borderBottomStyle: "none",
-                  borderWidth: `${borderWidth}px`,
-                  pointerEvents: "none",
-                }}
-              />
-            </div>
-          </div>
+              ))}
+            </tbody>
+          </table>
+          <hr
+            style={{
+              top: `${borderWidth * 33}px`,
+              margin: 0,
+              padding: 0,
+              position: "absolute",
+              width: "100%",
+              borderColor,
+              borderLeftStyle: "none",
+              borderRightStyle: "none",
+              borderTopStyle: "none",
+              borderBottomStyle: "solid",
+              borderWidth: `${borderWidth}px`,
+              pointerEvents: "none",
+            }}
+          />
+          <hr
+            style={{
+              bottom: `${borderWidth * 33}px`,
+              margin: 0,
+              padding: 0,
+              position: "absolute",
+              width: "100%",
+              borderColor,
+              borderLeftStyle: "none",
+              borderRightStyle: "none",
+              borderTopStyle: "solid",
+              borderBottomStyle: "none",
+              borderWidth: `${borderWidth}px`,
+              pointerEvents: "none",
+            }}
+          />
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function NavicustViewer({
+  editor,
+  active,
+}: {
+  editor: bn6.Editor;
+  active: boolean;
+}) {
+  const { i18n } = useTranslation();
+  const placements = React.useMemo(() => {
+    const placements = [];
+    for (let i = 0; i < 30; i++) {
+      const placement = editor.getNavicustBlock(i);
+      if (placement == null) {
+        continue;
+      }
+      placements.push(placement);
+    }
+    return placements;
+  }, [editor]);
+
+  return (
+    <Box display={active ? "flex" : "none"} flexGrow={1}>
+      <Table
+        size="small"
+        sx={{
+          [`& .${tableCellClasses.root}`]: { borderBottom: "none" },
+          alignSelf: "center",
+        }}
+      >
+        <TableBody>
+          <TableRow>
+            <TableCell sx={{ verticalAlign: "top", textAlign: "center" }}>
+              <NavicustGrid
+                placements={placements}
+                gameVersion={editor.getGameInfo().version}
+              />
+            </TableCell>
+            <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
+              <Stack spacing={0.5} flexGrow={1}>
+                {placements.flatMap((placement, i) => {
+                  const ncp = bn6.NCPS[placement.id]!;
+                  if (!ncp.isSolid) {
+                    return [];
+                  }
+                  return [
+                    <Chip
+                      key={i}
+                      size="small"
+                      sx={{
+                        fontSize: "0.9rem",
+                        justifyContent: "flex-start",
+                        backgroundColor: lighten(
+                          NAVICUST_COLORS[
+                            ncp.colors[
+                              placement.variant
+                            ] as keyof typeof NAVICUST_COLORS
+                          ].color,
+                          0.25
+                        ),
+                      }}
+                      label={
+                        ncp.name[i18n.resolvedLanguage as keyof typeof ncp.name]
+                      }
+                    />,
+                  ];
+                })}
+              </Stack>
+            </TableCell>
+            <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
+              <Stack spacing={0.5} flexGrow={1}>
+                {placements.flatMap((placement, i) => {
+                  const ncp = bn6.NCPS[placement.id]!;
+                  if (ncp.isSolid) {
+                    return [];
+                  }
+                  return [
+                    <Chip
+                      key={i}
+                      size="small"
+                      sx={{
+                        fontSize: "0.9rem",
+                        justifyContent: "flex-start",
+                        backgroundColor: lighten(
+                          NAVICUST_COLORS[
+                            ncp.colors[
+                              placement.variant
+                            ] as keyof typeof NAVICUST_COLORS
+                          ].color,
+                          0.25
+                        ),
+                      }}
+                      label={
+                        ncp.name[i18n.resolvedLanguage as keyof typeof ncp.name]
+                      }
+                    />,
+                  ];
+                })}
+              </Stack>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
     </Box>
   );
 }
