@@ -268,7 +268,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                 disabled={saveName == null}
                 size="small"
                 label={<Trans i18nKey={"play:link-code"} />}
-                value={linkCode}
+                value={startedState == null ? linkCode : startedState.linkCode}
                 onChange={(e) => {
                   setLinkCode(
                     e.target.value
@@ -369,10 +369,13 @@ export default function PlayPane({ active }: { active: boolean }) {
                           replayInfo: {
                             ts: now.valueOf(),
                             rom: saves[saveName!].romName!,
-                            patch: {
-                              name: patchName!,
-                              version: patchVersion!,
-                            },
+                            patch:
+                              patchInfo != null
+                                ? {
+                                    name: patchName!,
+                                    version: patchVersion!,
+                                  }
+                                : null,
                           },
                           inputDelay,
                           matchType,
