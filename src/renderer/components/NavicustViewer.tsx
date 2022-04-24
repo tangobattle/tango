@@ -137,6 +137,7 @@ function NavicustGrid({
           style={{
             display: "inline-block",
             background: borderColor,
+            boxSizing: "border-box",
             borderStyle: "solid",
             borderColor,
             borderWidth: `${borderWidth / 4}px`,
@@ -154,6 +155,7 @@ function NavicustGrid({
                     style={{
                       borderStyle: "solid",
                       borderColor,
+                      boxSizing: "border-box",
                       borderWidth: `${borderWidth / 2}px`,
                       width: `${borderWidth * 8}px`,
                       height: `${borderWidth * 5}px`,
@@ -182,6 +184,7 @@ function NavicustGrid({
             display: "inline-block",
             borderStyle: "solid",
             borderColor: "transparent",
+            boxSizing: "border-box",
             borderWidth: `${borderWidth / 4}px`,
             borderSpacing: 0,
             borderCollapse: "separate",
@@ -195,6 +198,7 @@ function NavicustGrid({
                   style={{
                     borderStyle: "solid",
                     borderColor: "transparent",
+                    boxSizing: "border-box",
                     borderWidth: `${borderWidth / 2}px`,
                     width: `${borderWidth * 8}px`,
                     height: `${borderWidth * 5}px`,
@@ -227,6 +231,7 @@ function NavicustGrid({
               borderStyle: "solid",
               borderColor,
               borderWidth: `${borderWidth / 2}px`,
+              boxSizing: "border-box",
               borderSpacing: 0,
               borderCollapse: "separate",
               borderRadius: "4px",
@@ -312,6 +317,7 @@ function NavicustGrid({
               borderRightStyle: "none",
               borderTopStyle: "none",
               borderBottomStyle: "solid",
+              boxSizing: "border-box",
               borderWidth: `${borderWidth}px`,
               pointerEvents: "none",
             }}
@@ -328,6 +334,7 @@ function NavicustGrid({
               borderRightStyle: "none",
               borderTopStyle: "solid",
               borderBottomStyle: "none",
+              boxSizing: "border-box",
               borderWidth: `${borderWidth}px`,
               pointerEvents: "none",
             }}
