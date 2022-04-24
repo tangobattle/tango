@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use clap::Parser;
 use cpal::traits::{HostTrait, StreamTrait};
 

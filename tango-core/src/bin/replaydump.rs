@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
 use std::io::Write;

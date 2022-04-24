@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use std::io::Write;
 
 pub fn init_wgpu(
