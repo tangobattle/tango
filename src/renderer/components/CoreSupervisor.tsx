@@ -35,6 +35,7 @@ export function CoreSupervisor({
   const { config } = useConfig();
 
   const configRef = React.useRef(config);
+  const romTmpFileRef = React.useRef<tmp.FileResult | null>(null);
 
   const onExitRef = React.useRef(onExit);
   React.useEffect(() => {
@@ -53,15 +54,13 @@ export function CoreSupervisor({
   }
 
   React.useEffect(() => {
-    let romTmpFile: tmp.FileResult | null = null;
-
     (async () => {
-      romTmpFile = await makeROM(romPath, patchPath || null);
+      romTmpFileRef.current = await makeROM(romPath, patchPath || null);
 
       const core = new ipc.Core(
         {
           window_title: windowTitle,
-          rom_path: romTmpFile!.path,
+          rom_path: romTmpFileRef.current!.path,
           save_path: savePath,
           keymapping: configRef.current.keymapping,
           match_settings:
@@ -98,15 +97,22 @@ export function CoreSupervisor({
     })();
 
     return () => {
-      if (romTmpFile != null) {
-        romTmpFile.cleanup();
+      if (romTmpFileRef.current != null) {
+        romTmpFileRef.current.cleanup();
       }
       abortControllerRef.current.abort();
     };
   }, [romPath, savePath, patchPath, windowTitle, matchSettings, incarnation]);
 
   return (
-    <Modal open={true}>
+    <Modal
+      open={true}
+      onClose={(e, reason) => {
+        if (reason == "backdropClick" || reason == "escapeKeyDown") {
+          return;
+        }
+      }}
+    >
       <Box
         sx={{
           position: "absolute",
@@ -126,16 +132,20 @@ export function CoreSupervisor({
           alignItems="center"
           spacing={2}
         >
-          <CircularProgress disableShrink size="2rem" />
+          <CircularProgress
+            sx={{ flexGrow: 0, flexShrink: 0 }}
+            disableShrink
+            size="2rem"
+          />
           <Typography>
             {state == null ? (
-              <Trans i18nKey="supervisor:status.starting"></Trans>
+              <Trans i18nKey="supervisor:status.starting" />
             ) : state == "Running" ? (
-              <Trans i18nKey="supervisor:status.running"></Trans>
+              <Trans i18nKey="supervisor:status.running" />
             ) : state == "Waiting" ? (
-              <Trans i18nKey="supervisor:status.waiting"></Trans>
+              <Trans i18nKey="supervisor:status.waiting" />
             ) : state == "Connecting" ? (
-              <Trans i18nKey="supervisor:status.connecting"></Trans>
+              <Trans i18nKey="supervisor:status.connecting" />
             ) : null}
           </Typography>
         </Stack>

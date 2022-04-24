@@ -144,10 +144,6 @@ function FolderChipRow({
   const { id, code, isRegular, isTag1, isTag2, count } = chip;
 
   const { i18n } = useTranslation();
-  const [open, setOpen] = React.useState(false);
-  React.useEffect(() => {
-    setOpen(false);
-  }, [chip]);
 
   const MEGA_BG = "#adefef";
   const GIGA_BG = "#f7cee7";
@@ -376,7 +372,9 @@ export default function PlayPane({ active }: { active: boolean }) {
   const [extraOptionsOpen, setExtraOptionsOpen] = React.useState(false);
 
   const [saveName_, setSaveName] = React.useState<string | null>(null);
-  const [started, setStarted] = React.useState(false);
+  const [startedState, setStartedState] = React.useState<{
+    linkCode: string | null;
+  } | null>(null);
   const [incarnation, setIncarnation] = React.useState(0);
 
   const saveName =
@@ -439,8 +437,6 @@ export default function PlayPane({ active }: { active: boolean }) {
         ? patchInfo.versions[patchVersion].netplayCompatibility
         : romInfo.netplayCompatibility
       : "";
-
-  const sessionID = `${netplayCompatibility}-${MATCH_TYPES[matchType]}-${linkCode}`;
 
   return (
     <Box
@@ -556,7 +552,14 @@ export default function PlayPane({ active }: { active: boolean }) {
             </Stack>
           </Box>
         )}
-        <Stack>
+        <Stack
+          component="form"
+          onSubmit={(e: any) => {
+            e.preventDefault();
+            setStartedState({ linkCode: linkCode != "" ? linkCode : null });
+            setLinkCode("");
+          }}
+        >
           <Stack
             flexGrow={0}
             flexShrink={0}
@@ -632,7 +635,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                     <InputAdornment position="end">
                       <CopyButton
                         disabled={saveName == null}
-                        value={sessionID}
+                        value={`${netplayCompatibility}-${MATCH_TYPES[matchType]}-${linkCode}`}
                       />
                     </InputAdornment>
                   ),
@@ -640,19 +643,17 @@ export default function PlayPane({ active }: { active: boolean }) {
               />
             </Box>
             <Button
+              type="submit"
               variant="contained"
               startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
               disabled={saveName == null}
-              onClick={() => {
-                setStarted(true);
-              }}
             >
               {linkCode != "" ? (
                 <Trans i18nKey="play:fight" />
               ) : (
                 <Trans i18nKey="play:play" />
               )}
-              {started ? (
+              {startedState != null ? (
                 <CoreSupervisor
                   incarnation={incarnation}
                   romPath={path.join(
@@ -671,19 +672,22 @@ export default function PlayPane({ active }: { active: boolean }) {
                       : undefined
                   }
                   matchSettings={
-                    linkCode != ""
+                    startedState.linkCode != null
                       ? {
-                          sessionID,
+                          sessionID: `${netplayCompatibility}-${MATCH_TYPES[matchType]}-${startedState.linkCode}`,
                           replaysPath: path.join(
                             getReplaysPath(),
                             `${datefns.format(
                               new Date(),
                               "yyyyMMddHHmmmmss"
-                            )}-${linkCode}`
+                            )}-${startedState.linkCode}`
                           ),
                           replayInfo: {
                             rom: saves[saveName!].romName!,
-                            patch: { name: patchName!, version: patchVersion! },
+                            patch: {
+                              name: patchName!,
+                              version: patchVersion!,
+                            },
                           },
                         }
                       : undefined
@@ -695,7 +699,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                     ]
                   }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
                   onExit={(_exitStatus) => {
-                    setStarted(false);
+                    setStartedState(null);
                     setIncarnation((incarnation) => incarnation + 1);
                   }}
                 />
