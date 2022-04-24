@@ -378,7 +378,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                 }
                 matchSettings={{
                   sessionID,
-                  replayPath: path.join(getReplaysPath()),
+                  replaysPath: path.join(getReplaysPath()),
                   replayInfo: {
                     rom: romName!,
                     patch: { name: patchName!, version: selectedPatchVersion! },
