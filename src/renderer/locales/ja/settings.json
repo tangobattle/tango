@@ -1,1 +1,15 @@
-{}
+{
+    "tab.keymapping": "キーバインド",
+    "keymapping.up": "上",
+    "keymapping.down": "下",
+    "keymapping.left": "左",
+    "keymapping.right": "右",
+    "keymapping.a": "A",
+    "keymapping.b": "B",
+    "keymapping.l": "L",
+    "keymapping.r": "R",
+    "keymapping.select": "SELECT",
+    "keymapping.start": "START",
+    "remap": "リマップ",
+    "request-keymapping": "「{{key}}」のキーを押してください。"
+}

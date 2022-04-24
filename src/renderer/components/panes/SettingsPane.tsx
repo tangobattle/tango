@@ -29,7 +29,7 @@ const KEYS = [
 ] as (keyof Config["keymapping"])[];
 
 function KeymappingTab({ active }: { active: boolean }) {
-  const { config } = useConfig();
+  const { config, save: saveConfig } = useConfig();
   const { t } = useTranslation();
   return (
     <Box
@@ -67,6 +67,10 @@ function KeymappingTab({ active }: { active: boolean }) {
                 if (mapped == null) {
                   break;
                 }
+                await saveConfig((config) => ({
+                  ...config,
+                  keymapping: { ...config.keymapping, [key]: mapped },
+                }));
               }
               keymaptool.close();
             })();
