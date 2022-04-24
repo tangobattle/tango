@@ -55,7 +55,7 @@ function ModcardsViewer({ editor }: { editor: bn6.Editor }) {
             <TableRow key={i}>
               <TableCell>
                 {modcard.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
-                {modcard.mb}MB
+                <small>{modcard.mb}MB</small>
               </TableCell>
               <TableCell style={{ verticalAlign: "top" }}>
                 <Stack spacing={0.5}>
