@@ -6,7 +6,7 @@ struct Cli {
     #[clap(long)]
     dump: bool,
 
-    #[clap(long, parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
 
     #[clap(parse(from_os_str))]

@@ -7,13 +7,13 @@ struct Cli {
     #[clap(long)]
     dump: bool,
 
-    #[clap(long, parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
 
     #[clap(parse(from_os_str))]
     path: std::path::PathBuf,
 
-    #[clap(long, parse(from_os_str))]
+    #[clap(parse(from_os_str))]
     output_path: std::path::PathBuf,
 
     #[clap(short('a'), long, default_value = "-c:a aac -ar 48000 -b:a 384k -ac 2")]
@@ -39,7 +39,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let mut f = std::fs::File::open(&args.output_path)?;
+    let mut f = std::fs::File::open(&args.path)?;
 
     let replay = tango_core::replay::Replay::decode(&mut f)?;
     log::info!(
@@ -121,9 +121,8 @@ fn main() -> Result<(), anyhow::Error> {
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    let bar = indicatif::ProgressBar::new(ff_state.inputs_pairs_left() as u64);
+    write!(std::io::stdout(), "{}\n", ff_state.inputs_pairs_left())?;
     while !*done.lock() {
-        bar.inc(1);
         core.as_mut().run_frame();
         let clock_rate = core.as_ref().frequency();
         let n = {
@@ -159,8 +158,8 @@ fn main() -> Result<(), anyhow::Error> {
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
+        write!(std::io::stdout(), "{}\n", ff_state.inputs_pairs_left())?;
     }
-    bar.finish();
 
     video_child.stdin = None;
     video_child.wait()?;
