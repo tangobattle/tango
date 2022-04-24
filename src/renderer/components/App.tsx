@@ -19,15 +19,27 @@ function AppBody() {
 
   return (
     <Box display="flex" height="100%">
-      <Navbar
-        selected={selected}
-        onSelect={(v) => {
-          setSelected(v);
-        }}
-      />
-      <PlayPane active={selected == "play"} />
-      <ReplaysPane active={selected == "replays"} />
-      <SettingsPane active={selected == "settings"} />
+      <Suspense fallback={null}>
+        <Navbar
+          selected={selected}
+          onSelect={(v) => {
+            setSelected(v);
+          }}
+        />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ConfigProvider>
+          <ROMsProvider>
+            <PatchesProvider>
+              <SavesProvider>
+                <PlayPane active={selected == "play"} />
+                <ReplaysPane active={selected == "replays"} />
+                <SettingsPane active={selected == "settings"} />
+              </SavesProvider>
+            </PatchesProvider>
+          </ROMsProvider>
+        </ConfigProvider>
+      </Suspense>
     </Box>
   );
 }
@@ -36,17 +48,7 @@ export default function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Suspense fallback={null}>
-        <ConfigProvider>
-          <ROMsProvider>
-            <PatchesProvider>
-              <SavesProvider>
-                <AppBody />
-              </SavesProvider>
-            </PatchesProvider>
-          </ROMsProvider>
-        </ConfigProvider>
-      </Suspense>
+      <AppBody />
     </ThemeProvider>
   );
 }
