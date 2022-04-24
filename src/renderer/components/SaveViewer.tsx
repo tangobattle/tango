@@ -12,6 +12,7 @@ import { getSavesPath } from "../../paths";
 import * as bn6 from "../../saveedit/bn6";
 import FolderViewer from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
+import NavicustViewer from "./NavicustViewer";
 
 export default function SaveViewer({
   filename,
@@ -63,7 +64,7 @@ export default function SaveViewer({
         display={tab == "navicust" ? undefined : "none"}
         sx={{ px: 1, height: 0, minWidth: 0 }}
       >
-        Not supported yet :(
+        <NavicustViewer editor={editor} />
       </Box>
       <Box
         flexGrow={1}
