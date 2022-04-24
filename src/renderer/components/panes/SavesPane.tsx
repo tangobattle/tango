@@ -481,8 +481,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                 ]
               }${selectedPatchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
               onExit={(_exitStatus) => {
-                setIncarnation((incarnation) => incarnation + 1);
                 setStarted(false);
+                setIncarnation((incarnation) => incarnation + 1);
               }}
             />
           ) : null}

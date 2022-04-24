@@ -6,7 +6,6 @@ import { usePatches } from "../PatchesContext";
 import { KNOWN_ROMS } from "../../../rom";
 import { ParsedMailbox, parseOneAddress } from "email-addresses";
 import { CoreSupervisor } from "../CoreSupervisor";
-import { findPatchVersion } from "../../../patchinfo";
 import Select from "@mui/material/Select";
 import ListSubheader from "@mui/material/ListSubheader";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -27,6 +26,13 @@ import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { CopyButton } from "../CopyButton";
 import { useSaves } from "../SavesContext";
+import {
+  getPatchesPath,
+  getReplaysPath,
+  getROMsPath,
+  getSavesPath,
+} from "../../../paths";
+import path from "path";
 
 const MATCH_TYPES = ["single", "triple"];
 
@@ -39,6 +45,8 @@ export default function PlayPane({ active }: { active: boolean }) {
   const [selection_, setSelection] = React.useState<[string, string] | null>(
     null
   );
+  const [incarnation, setIncarnation] = React.useState(0);
+
   const [matchType, setMatchType] = React.useState(0);
   const [linkCode, setLinkCode] = React.useState("");
   const [selectedSaveName, setSelectedSaveName] = React.useState<string | null>(
@@ -95,6 +103,8 @@ export default function PlayPane({ active }: { active: boolean }) {
         ? patchInfo.versions[selectedPatchVersion].netplayCompatibility
         : romInfo.netplayCompatibility
       : "";
+
+  const sessionID = `${netplayCompatibility}-${MATCH_TYPES[matchType]}-${linkCode}`;
 
   return (
     <Box
@@ -304,7 +314,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                   <InputAdornment position="end">
                     <CopyButton
                       disabled={selection == null}
-                      value={`${netplayCompatibility}-${MATCH_TYPES[matchType]}-${linkCode}`}
+                      value={sessionID}
                     />
                   </InputAdornment>
                 ),
@@ -343,8 +353,51 @@ export default function PlayPane({ active }: { active: boolean }) {
             disabled={
               selection == null || linkCode == "" || selectedSaveName == null
             }
+            onClick={() => {
+              setStarted(true);
+            }}
           >
             <Trans i18nKey="play:fight" />
+            {started ? (
+              <CoreSupervisor
+                incarnation={incarnation}
+                romPath={path.join(
+                  getROMsPath(),
+                  roms[saves[selectedSaveName!].romName]
+                )}
+                patchPath={
+                  selectedPatchVersion != null
+                    ? path.join(
+                        getPatchesPath(),
+                        patchName!,
+                        `v${selectedPatchVersion}.${
+                          patchInfo!.versions[selectedPatchVersion].format
+                        }`
+                      )
+                    : undefined
+                }
+                matchSettings={{
+                  sessionID,
+                  replayPrefix: path.join(getReplaysPath()),
+                  replayInfo: {
+                    rom: romName!,
+                    patch: { name: patchName!, version: selectedPatchVersion! },
+                  },
+                }}
+                savePath={path.join(getSavesPath(), selectedSaveName!)}
+                windowTitle={`${
+                  KNOWN_ROMS[saves[selectedSaveName!].romName].title[
+                    i18n.resolvedLanguage
+                  ]
+                }${
+                  selectedPatchVersion != null ? ` + ${patchInfo!.title}` : ""
+                }`}
+                onExit={(_exitStatus) => {
+                  setStarted(false);
+                  setIncarnation((incarnation) => incarnation + 1);
+                }}
+              />
+            ) : null}
           </Button>
         </Stack>
       </Stack>
