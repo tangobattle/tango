@@ -26,12 +26,14 @@ import SportsMmaIcon from "@mui/icons-material/SportsMma";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import { CopyButton } from "../CopyButton";
+import { useSaves } from "../SavesContext";
 
 const MATCH_TYPES = ["single", "triple"];
 
 export default function PlayPane({ active }: { active: boolean }) {
   const { roms, rescan: rescanROMs } = useROMs();
   const { patches } = usePatches();
+  const { saves } = useSaves();
   const { t, i18n } = useTranslation();
 
   const [selection, setSelection] = React.useState<[string, string] | null>(
@@ -39,6 +41,7 @@ export default function PlayPane({ active }: { active: boolean }) {
   );
   const [matchType, setMatchType] = React.useState(0);
   const [linkCode, setLinkCode] = React.useState("");
+  const [saveName, setSaveFile] = React.useState<string | null>(null);
   const [started, setStarted] = React.useState(false);
 
   const [romName, patchName] = selection ?? [null, null];
@@ -77,6 +80,11 @@ export default function PlayPane({ active }: { active: boolean }) {
   React.useEffect(() => {
     setSelectedPatchVersion(patchVersions != null ? patchVersions[0] : null);
   }, [patchVersions]);
+
+  const eligibleSaveNames = Object.keys(saves).filter(
+    (saveName) => saves[saveName].romName == romName
+  );
+  eligibleSaveNames.sort();
 
   const netplayCompatibility =
     romInfo != null
@@ -307,16 +315,27 @@ export default function PlayPane({ active }: { active: boolean }) {
                 labelId="save-file-label"
                 disabled={selection == null}
                 size="small"
-                value={""}
+                value={saveName || ""}
                 label={<Trans i18nKey={"play:save-file"} />}
+                onChange={(e) => {
+                  setSaveFile(e.target.value);
+                }}
                 fullWidth
-              ></Select>
+              >
+                {eligibleSaveNames.map((saveName) => {
+                  return (
+                    <MenuItem key={saveName} value={saveName}>
+                      {saveName}
+                    </MenuItem>
+                  );
+                })}
+              </Select>
             </FormControl>
           </Box>
           <Button
             variant="contained"
             startIcon={<SportsMmaIcon />}
-            disabled={selection == null || linkCode == ""}
+            disabled={selection == null || linkCode == "" || saveName == null}
           >
             <Trans i18nKey="play:fight" />
           </Button>
