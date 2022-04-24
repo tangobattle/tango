@@ -29,37 +29,92 @@ import { getPatchesPath, getROMsPath, getSavesPath } from "../../../paths";
 import { readFile } from "fs/promises";
 import path from "path";
 import * as bn6 from "../../../saveedit/bn6";
-import i18n from "../../i18n";
 import { CoreSupervisor } from "../CoreSupervisor";
 import { useROMs } from "../ROMsContext";
 import { shell } from "@electron/remote";
 import { usePatches } from "../PatchesContext";
 
-function SaveViewer({
-  filename,
-  incarnation,
-}: {
-  filename: string;
-  incarnation: number;
-}) {
-  const [tab, setTab] = React.useState("navicust");
-  const [editor, setEditor] = React.useState<bn6.Editor | null>(null);
+function ModcardsViewer({ editor }: { editor: bn6.Editor }) {
+  const { i18n } = useTranslation();
 
-  React.useEffect(() => {
-    (async () => {
-      setEditor(
-        new bn6.Editor(
-          bn6.Editor.sramDumpToRaw(
-            (await readFile(path.join(getSavesPath(), filename))).buffer
-          )
-        )
-      );
-    })();
-  }, [filename, incarnation]);
-
-  if (editor == null) {
-    return null;
+  const modcards: { id: number; enabled: boolean }[] = [];
+  for (let i = 0; i < editor.getModcardCount(); i++) {
+    modcards.push(editor.getModcard(i));
   }
+
+  const DEBUFF_COLOR = "#b55ade";
+  const BUFF_COLOR = "#ffbd18";
+  const OFF_COLOR = "#bdbdbd";
+
+  return (
+    <Table size="small">
+      <TableBody>
+        {modcards.map(({ id, enabled }, i) => {
+          const modcard = bn6.MODCARDS[id]!;
+          return (
+            <TableRow key={i}>
+              <TableCell>
+                {modcard.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+                {modcard.mb}MB
+              </TableCell>
+              <TableCell style={{ verticalAlign: "top" }}>
+                <Stack spacing={0.5}>
+                  {modcard.parameters.flatMap((l, i) =>
+                    l.version == null ||
+                    l.version == editor.getGameInfo().version
+                      ? [
+                          <Chip
+                            key={i}
+                            label={l.name[i18n.resolvedLanguage as "en" | "ja"]}
+                            size="small"
+                            sx={{
+                              justifyContent: "flex-start",
+                              backgroundColor: enabled
+                                ? l.debuff
+                                  ? DEBUFF_COLOR
+                                  : BUFF_COLOR
+                                : OFF_COLOR,
+                            }}
+                          />,
+                        ]
+                      : []
+                  )}
+                </Stack>
+              </TableCell>
+              <TableCell style={{ verticalAlign: "top" }}>
+                <Stack spacing={0.5}>
+                  {modcard.abilities.flatMap((l, i) =>
+                    l.version == null ||
+                    l.version == editor.getGameInfo().version
+                      ? [
+                          <Chip
+                            key={i}
+                            label={l.name[i18n.resolvedLanguage as "en" | "ja"]}
+                            size="small"
+                            sx={{
+                              justifyContent: "flex-start",
+                              backgroundColor: enabled
+                                ? l.debuff
+                                  ? DEBUFF_COLOR
+                                  : BUFF_COLOR
+                                : OFF_COLOR,
+                            }}
+                          />,
+                        ]
+                      : []
+                  )}
+                </Stack>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+function FolderViewer({ editor }: { editor: bn6.Editor }) {
+  const { i18n } = useTranslation();
 
   const chips: {
     id: number;
@@ -123,6 +178,74 @@ function SaveViewer({
   }
 
   return (
+    <Table size="small">
+      <TableBody>
+        {chips.map(({ id, code, count, isRegular, isTag1, isTag2 }, i) => {
+          return (
+            <TableRow key={i}>
+              <TableCell sx={{ width: 0 }}>{count}x</TableCell>
+              <TableCell>
+                {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+                {isRegular ? (
+                  <Chip
+                    label={<Trans i18nKey="saves:folder.regular-chip" />}
+                    sx={{ backgroundColor: "#FF42A5", color: "white" }}
+                    size="small"
+                  />
+                ) : null}{" "}
+                {isTag1 ? (
+                  <Chip
+                    label={<Trans i18nKey="saves:folder.tag-chip" />}
+                    sx={{ backgroundColor: "#29F721", color: "white" }}
+                    size="small"
+                  />
+                ) : null}{" "}
+                {isTag2 ? (
+                  <Chip
+                    label={<Trans i18nKey="saves:folder.tag-chip" />}
+                    sx={{ backgroundColor: "#29F721", color: "white" }}
+                    size="small"
+                  />
+                ) : null}
+              </TableCell>
+              <TableCell sx={{ fontFamily: "monospace", width: 0 }}>
+                {code}
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
+  );
+}
+
+function SaveViewer({
+  filename,
+  incarnation,
+}: {
+  filename: string;
+  incarnation: number;
+}) {
+  const [tab, setTab] = React.useState("navicust");
+  const [editor, setEditor] = React.useState<bn6.Editor | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      setEditor(
+        new bn6.Editor(
+          bn6.Editor.sramDumpToRaw(
+            (await readFile(path.join(getSavesPath(), filename))).buffer
+          )
+        )
+      );
+    })();
+  }, [filename, incarnation]);
+
+  if (editor == null) {
+    return null;
+  }
+
+  return (
     <Stack flexGrow={1} flexShrink={0}>
       <Box flexGrow={0}>
         <Tabs
@@ -157,52 +280,17 @@ function SaveViewer({
         sx={{ px: 1, height: 0, minWidth: 0 }}
         overflow="auto"
       >
-        <Table size="small">
-          <TableBody>
-            {chips.map(({ id, code, count, isRegular, isTag1, isTag2 }, i) => {
-              return (
-                <TableRow key={i}>
-                  <TableCell sx={{ width: 0 }}>{count}x</TableCell>
-                  <TableCell>
-                    {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
-                    {isRegular ? (
-                      <Chip
-                        label={<Trans i18nKey="saves:folder.regular-chip" />}
-                        sx={{ backgroundColor: "#FF42A5", color: "white" }}
-                        size="small"
-                      />
-                    ) : null}{" "}
-                    {isTag1 ? (
-                      <Chip
-                        label={<Trans i18nKey="saves:folder.tag-chip" />}
-                        sx={{ backgroundColor: "#29F721", color: "white" }}
-                        size="small"
-                      />
-                    ) : null}{" "}
-                    {isTag2 ? (
-                      <Chip
-                        label={<Trans i18nKey="saves:folder.tag-chip" />}
-                        sx={{ backgroundColor: "#29F721", color: "white" }}
-                        size="small"
-                      />
-                    ) : null}
-                  </TableCell>
-                  <TableCell sx={{ fontFamily: "monospace", width: 0 }}>
-                    {code}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <FolderViewer editor={editor} />
       </Box>
-      <Box
-        flexGrow={1}
-        display={tab == "modcards" ? undefined : "none"}
-        sx={{ px: 1, height: 0, minWidth: 0 }}
-      >
-        Not supported yet :(
-      </Box>
+      {editor.supportsModcards() ? (
+        <Box
+          flexGrow={1}
+          display={tab == "modcards" ? undefined : "none"}
+          sx={{ px: 1, height: 0, minWidth: 0 }}
+        >
+          <ModcardsViewer editor={editor} />
+        </Box>
+      ) : null}
     </Stack>
   );
 }
