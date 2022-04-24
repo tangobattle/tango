@@ -29,6 +29,8 @@ export function CoreSupervisor({
     sessionID: string;
     replaysPath: string;
     replayInfo: ReplayInfo;
+    inputDelay: number;
+    matchType: number;
   };
   incarnation: number;
   windowTitle: string;
@@ -70,8 +72,8 @@ export function CoreSupervisor({
               ? null
               : {
                   session_id: matchSettings.sessionID,
-                  input_delay: 0,
-                  match_type: 0,
+                  input_delay: matchSettings.inputDelay,
+                  match_type: matchSettings.matchType,
                   matchmaking_connect_addr:
                     configRef.current.matchmakingConnectAddr,
                   ice_servers: configRef.current.iceServers,
