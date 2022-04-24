@@ -48,7 +48,9 @@ function KeymappingTab({ active }: { active: boolean }) {
                     <Trans i18nKey={`settings:keymapping.${key}`} />
                   </strong>
                 </TableCell>
-                <TableCell>{config.keymapping[key]}</TableCell>
+                <TableCell sx={{ textAlign: "right" }}>
+                  {config.keymapping[key]}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
