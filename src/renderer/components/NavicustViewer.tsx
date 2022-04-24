@@ -170,7 +170,8 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                         style={{
                           borderStyle: "solid",
                           borderColor,
-                          borderWidth: `${borderWidth / 4}px`,
+                          borderWidth: `${borderWidth / 2}px`,
+                          padding: 0,
                         }}
                       >
                         <div
@@ -208,7 +209,8 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                       style={{
                         borderStyle: "solid",
                         borderColor: "transparent",
-                        borderWidth: `${borderWidth / 4}px`,
+                        borderWidth: `${borderWidth / 2}px`,
+                        padding: 0,
                       }}
                     >
                       <div
@@ -270,12 +272,12 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                             ? ncp!.isSolid
                               ? ncpColor.color
                               : `conic-gradient(
-                        from 90deg at ${borderWidth}px ${borderWidth}px,
-                        ${ncpColor.color} 90deg,
-                        ${ncpColor.plusColor} 0
-                    )
-                    calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
-                    calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
+                                    from 90deg at ${borderWidth}px ${borderWidth}px,
+                                    ${ncpColor.color} 90deg,
+                                    ${ncpColor.plusColor} 0
+                                )
+                                calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
+                                calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
                             : emptyColor;
                         return (
                           <td
@@ -283,10 +285,7 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                               borderColor: borderColor,
                               borderWidth: `${borderWidth / 2}px`,
                               borderStyle: "solid",
-                              boxSizing: "border-box",
-                              width: `${borderWidth * 9}px`,
-                              height: `${borderWidth * 9}px`,
-                              background,
+                              padding: 0,
                               opacity:
                                 i == 0 ||
                                 i == grid.length - 1 ||
@@ -296,7 +295,15 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                                   : 1.0,
                             }}
                             key={j}
-                          ></td>
+                          >
+                            <div
+                              style={{
+                                width: `${borderWidth * 8}px`,
+                                height: `${borderWidth * 8}px`,
+                                background,
+                              }}
+                            />
+                          </td>
                         );
                       })}
                     </tr>
@@ -316,6 +323,7 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                   borderTopStyle: "none",
                   borderBottomStyle: "solid",
                   borderWidth: `${borderWidth}px`,
+                  pointerEvents: "none",
                 }}
               />
               <hr
@@ -331,6 +339,7 @@ export default function NavicustViewer({ editor }: { editor: bn6.Editor }) {
                   borderTopStyle: "solid",
                   borderBottomStyle: "none",
                   borderWidth: `${borderWidth}px`,
+                  pointerEvents: "none",
                 }}
               />
             </div>
