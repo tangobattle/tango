@@ -129,6 +129,7 @@ function NavicustGrid({
         }[gameVersion],
         display: "inline-block",
         borderRadius: "4px",
+        textAlign: "left",
       }}
     >
       <div style={{ marginBottom: `${borderWidth * 2}px` }}>

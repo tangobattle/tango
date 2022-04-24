@@ -9,6 +9,7 @@ import { ConfigProvider } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
 import PlayPane from "./panes/PlayPane";
 import ReplaysPane from "./panes/ReplaysPane";
+import SettingsPane from "./panes/SettingsPane";
 import { PatchesProvider } from "./PatchesContext";
 import { ROMsProvider } from "./ROMsContext";
 import { SavesProvider } from "./SavesContext";
@@ -26,6 +27,7 @@ function AppBody() {
       />
       <PlayPane active={selected == "play"} />
       <ReplaysPane active={selected == "replays"} />
+      <SettingsPane active={selected == "settings"} />
     </Box>
   );
 }
