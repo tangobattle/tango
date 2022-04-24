@@ -394,7 +394,7 @@ export default function PlayPane({ active }: { active: boolean }) {
             <Stack spacing={1}>
               <Box sx={{ px: 1 }}>
                 <Typography sx={{ userSelect: "none" }} variant="body2">
-                  Input delay
+                  <Trans i18nKey="play:input-delay" />
                 </Typography>
                 <Slider
                   value={inputDelay}

@@ -1,6 +1,7 @@
 {
   "select-game": "Select a game",
   "unpatched": "Base game",
+  "input-delay": "Input delay",
   "fight": "Fight!",
   "no-game-selected": "No game selected",
   "link-code": "Link code",
