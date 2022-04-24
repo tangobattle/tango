@@ -36,30 +36,31 @@ export default function PlayPane({ active }: { active: boolean }) {
   const { saves } = useSaves();
   const { t, i18n } = useTranslation();
 
-  const [selection, setSelection] = React.useState<[string, string] | null>(
+  const [selection_, setSelection] = React.useState<[string, string] | null>(
     null
   );
   const [matchType, setMatchType] = React.useState(0);
   const [linkCode, setLinkCode] = React.useState("");
-  const [saveName, setSaveFile] = React.useState<string | null>(null);
+  const [selectedSaveName, setSelectedSaveName] = React.useState<string | null>(
+    null
+  );
   const [started, setStarted] = React.useState(false);
+
+  const selection =
+    selection_ != null
+      ? (() => {
+          const [romName, patchName] = selection_;
+          return Object.prototype.hasOwnProperty.call(roms, romName) &&
+            (patchName == null ||
+              Object.prototype.hasOwnProperty.call(patches, patchName))
+            ? selection_
+            : null;
+        })()
+      : null;
 
   const [romName, patchName] = selection ?? [null, null];
   const romInfo = romName != null ? KNOWN_ROMS[romName] : null;
   const patchInfo = patchName != null ? patches[patchName] : null;
-
-  React.useEffect(() => {
-    if (selection != null) {
-      const [romName, patchName] = selection;
-      if (
-        !Object.prototype.hasOwnProperty.call(roms, romName) ||
-        (patchName != null &&
-          !Object.prototype.hasOwnProperty.call(patches, patchName))
-      ) {
-        setSelection(null);
-      }
-    }
-  }, [roms, patches, selection]);
 
   const romNames = Object.keys(roms);
   romNames.sort((k1, k2) => {
@@ -82,7 +83,7 @@ export default function PlayPane({ active }: { active: boolean }) {
   }, [patchVersions]);
 
   const eligibleSaveNames = Object.keys(saves).filter(
-    (saveName) => saves[saveName].romName == romName
+    (selectedSaveName) => saves[selectedSaveName].romName == romName
   );
   eligibleSaveNames.sort();
 
@@ -132,9 +133,13 @@ export default function PlayPane({ active }: { active: boolean }) {
                   );
                 }}
                 onChange={(e) => {
-                  setSelection(
-                    JSON.parse(e.target.value as string) as [string, string]
+                  const [newROMName, newPatchName] = JSON.parse(
+                    e.target.value as string
                   );
+                  if (newROMName != romName) {
+                    setSelectedSaveName(null);
+                  }
+                  setSelection([newROMName, newPatchName]);
                   setSelectedPatchVersion(null);
                 }}
               >
@@ -315,17 +320,17 @@ export default function PlayPane({ active }: { active: boolean }) {
                 labelId="save-file-label"
                 disabled={selection == null}
                 size="small"
-                value={saveName || ""}
+                value={selectedSaveName || ""}
                 label={<Trans i18nKey={"play:save-file"} />}
                 onChange={(e) => {
-                  setSaveFile(e.target.value);
+                  setSelectedSaveName(e.target.value);
                 }}
                 fullWidth
               >
-                {eligibleSaveNames.map((saveName) => {
+                {eligibleSaveNames.map((selectedSaveName) => {
                   return (
-                    <MenuItem key={saveName} value={saveName}>
-                      {saveName}
+                    <MenuItem key={selectedSaveName} value={selectedSaveName}>
+                      {selectedSaveName}
                     </MenuItem>
                   );
                 })}
@@ -335,7 +340,9 @@ export default function PlayPane({ active }: { active: boolean }) {
           <Button
             variant="contained"
             startIcon={<SportsMmaIcon />}
-            disabled={selection == null || linkCode == "" || saveName == null}
+            disabled={
+              selection == null || linkCode == "" || selectedSaveName == null
+            }
           >
             <Trans i18nKey="play:fight" />
           </Button>

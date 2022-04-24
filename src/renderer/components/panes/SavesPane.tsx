@@ -213,18 +213,15 @@ export default function SavesPane({ active }: { active: boolean }) {
   const { roms } = useROMs();
   const { i18n } = useTranslation();
 
-  const [selection, setSelection] = React.useState<string | null>(null);
+  const [selection_, setSelection] = React.useState<string | null>(null);
   const [started, setStarted] = React.useState(false);
   const [incarnation, setIncarnation] = React.useState(0);
 
-  React.useEffect(() => {
-    if (
-      selection != null &&
-      !Object.prototype.hasOwnProperty.call(saves, selection)
-    ) {
-      setSelection(null);
-    }
-  }, [saves, selection]);
+  const selection =
+    selection_ != null &&
+    Object.prototype.hasOwnProperty.call(saves, selection_)
+      ? selection_
+      : null;
 
   const groupedSaves: { [key: string]: string[] } = {};
   for (const k of Object.keys(saves)) {
@@ -240,17 +237,16 @@ export default function SavesPane({ active }: { active: boolean }) {
   });
 
   const [selectedPatch, setSelectedPatch] = React.useState<string | null>(null);
+  const save = selection != null ? saves[selection] : null;
 
   const eligiblePatchNames = React.useMemo(() => {
     const eligiblePatchNames =
-      selection != null
-        ? Object.keys(patches).filter(
-            (p) => patches[p].forROM == saves[selection].romName
-          )
+      save != null
+        ? Object.keys(patches).filter((p) => patches[p].forROM == save.romName)
         : [];
     eligiblePatchNames.sort();
     return eligiblePatchNames;
-  }, [patches, saves, selection]);
+  }, [patches, save]);
 
   const patchInfo = selectedPatch != null ? patches[selectedPatch] : null;
 
