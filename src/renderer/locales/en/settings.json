@@ -10,5 +10,6 @@
     "keymapping.r": "R",
     "keymapping.select": "SELECT",
     "keymapping.start": "START",
-    "remap": "Remap"
+    "remap": "Remap",
+    "request-keymapping": "Press key for {{key}}."
 }

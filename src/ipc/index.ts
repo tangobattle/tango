@@ -2,8 +2,6 @@ import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import path from "path";
 import { EventEmitter } from "stream";
 
-import { app } from "@electron/remote";
-
 import { getCorePath } from "../paths";
 import * as types from "./types";
 

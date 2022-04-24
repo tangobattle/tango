@@ -1,17 +1,44 @@
-import { spawn } from "child_process";
+import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import path from "path";
 
-import { app } from "@electron/remote";
+import { getCorePath } from "./paths";
 
-export async function getKeyName() {
-  const proc = spawn(path.join(app.getAppPath(), "core", "keymaptool"), {
-    stdio: [null, "pipe", null],
-  });
-  let buf = "";
-  for await (const data of proc.stdout) {
-    buf += data;
+export class Keymaptool {
+  private proc: ChildProcessWithoutNullStreams;
+
+  constructor() {
+    this.proc = spawn(path.join(getCorePath(), "keymaptool"));
   }
-  proc.kill();
-  buf = buf.trimEnd();
-  return buf != "" ? buf : null;
+
+  async request(message: string) {
+    if (this.proc.signalCode != null || this.proc.exitCode != null) {
+      return null;
+    }
+
+    this.proc.stdin.write(message + "\n");
+    const it = this.proc.stdout[Symbol.asyncIterator]();
+
+    let buf = "";
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const { value, done } = await it.next();
+      if (done) {
+        this.close();
+        return null;
+      }
+
+      buf += value;
+      if (buf[buf.length - 1] == "\n") {
+        break;
+      }
+    }
+
+    return buf.trimEnd();
+  }
+
+  close() {
+    this.proc.stdin.end();
+    this.proc.kill();
+  }
 }

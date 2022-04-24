@@ -1,5 +1,5 @@
 import React from "react";
-import { Trans } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -11,10 +11,26 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
 
+import { Config } from "../../../config";
+import { Keymaptool } from "../../../input";
 import { useConfig } from "../ConfigContext";
+
+const KEYS = [
+  "up",
+  "down",
+  "left",
+  "right",
+  "a",
+  "b",
+  "l",
+  "r",
+  "select",
+  "start",
+] as (keyof Config["keymapping"])[];
 
 function KeymappingTab({ active }: { active: boolean }) {
   const { config } = useConfig();
+  const { t } = useTranslation();
   return (
     <Box
       flexGrow={1}
@@ -25,20 +41,7 @@ function KeymappingTab({ active }: { active: boolean }) {
       <Stack spacing={1}>
         <Table size="small">
           <TableBody>
-            {(
-              [
-                "up",
-                "down",
-                "left",
-                "right",
-                "a",
-                "b",
-                "l",
-                "r",
-                "select",
-                "start",
-              ] as (keyof typeof config.keymapping)[]
-            ).map((key) => (
+            {KEYS.map((key) => (
               <TableRow key={key}>
                 <TableCell component="th">
                   <strong>
@@ -50,7 +53,25 @@ function KeymappingTab({ active }: { active: boolean }) {
             ))}
           </TableBody>
         </Table>
-        <Button variant="contained">
+        <Button
+          variant="contained"
+          onClick={() => {
+            (async () => {
+              const keymaptool = new Keymaptool();
+              for (const key of KEYS) {
+                const mapped = await keymaptool.request(
+                  t("settings:request-keymapping", {
+                    key: t(`settings:keymapping.${key}`),
+                  })
+                );
+                if (mapped == null) {
+                  break;
+                }
+              }
+              keymaptool.close();
+            })();
+          }}
+        >
           <Trans i18nKey="settings:remap" />
         </Button>
       </Stack>
