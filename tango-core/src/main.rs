@@ -26,7 +26,7 @@ fn main() -> Result<(), anyhow::Error> {
                 matchmaking_connect_addr: s.matchmaking_connect_addr,
                 session_id: s.session_id,
                 replay_metadata: s.replay_metadata.into(),
-                replay_prefix: s.replay_prefix.into(),
+                replay_path: s.replay_path.into(),
                 match_type: s.match_type,
                 input_delay: s.input_delay,
                 ice_servers: s

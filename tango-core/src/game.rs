@@ -149,6 +149,7 @@ impl Game {
             ));
 
         if let Some(match_settings) = match_settings {
+            let _ = std::fs::create_dir_all(&match_settings.replay_path);
             let negotiation = handle.block_on(async {
                 negotiation::negotiate(
                     &mut ipc_client,
