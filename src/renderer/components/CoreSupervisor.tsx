@@ -25,7 +25,7 @@ export function CoreSupervisor({
   patchPath?: string;
   matchSettings?: {
     sessionID: string;
-    replayPrefix: string;
+    replayPath: string;
     replayInfo: ReplayInfo;
   };
   incarnation: number;
@@ -74,7 +74,7 @@ export function CoreSupervisor({
                   matchmaking_connect_addr:
                     configRef.current.matchmakingConnectAddr,
                   ice_servers: configRef.current.iceServers,
-                  replay_prefix: matchSettings.replayPrefix,
+                  replay_path: matchSettings.replayPath,
                   replay_metadata: JSON.stringify(matchSettings.replayInfo),
                 },
         },
