@@ -16,10 +16,13 @@ import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import IconButton from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import ListSubheader from "@mui/material/ListSubheader";
+import Collapse from "@mui/material/Collapse";
 import GridViewIcon from "@mui/icons-material/GridView";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import MenuItem from "@mui/material/MenuItem";
@@ -113,9 +116,99 @@ function ModcardsViewer({ editor }: { editor: bn6.Editor }) {
   );
 }
 
-function FolderViewer({ editor }: { editor: bn6.Editor }) {
-  const { i18n } = useTranslation();
+function FolderChipRow({
+  chip,
+}: {
+  chip: {
+    id: number;
+    code: string;
+    isRegular: boolean;
+    isTag1: boolean;
+    isTag2: boolean;
+    count: number;
+  };
+}) {
+  const { id, code, isRegular, isTag1, isTag2, count } = chip;
 
+  const { i18n } = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    setOpen(false);
+  }, [chip]);
+
+  const MEGA_BG = "#adefef";
+  const GIGA_BG = "#f7cee7";
+  const backgroundColor =
+    bn6.CHIPS[id]!.class == "giga"
+      ? GIGA_BG
+      : bn6.CHIPS[id]!.class == "mega"
+      ? MEGA_BG
+      : null;
+
+  return (
+    <TableRow>
+      <TableCell sx={{ width: 0 }}>
+        <strong>{count}x</strong>
+      </TableCell>
+      <TableCell sx={{ width: 0 }}>
+        <img
+          height="32"
+          width="32"
+          src={(() => {
+            try {
+              return require(`../../../../static/images/games/bn6/chipicons/${id}.png`);
+            } catch (e) {
+              return "";
+            }
+          })()}
+          style={{ imageRendering: "pixelated" }}
+        />
+      </TableCell>
+      <TableCell component="th">
+        {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+        {code.replace(/\*/g, "﹡")}{" "}
+        {isRegular ? (
+          <Chip
+            label={<Trans i18nKey="saves:folder.regular-chip" />}
+            sx={{ backgroundColor: "#FF42A5", color: "white" }}
+            size="small"
+          />
+        ) : null}{" "}
+        {isTag1 ? (
+          <Chip
+            label={<Trans i18nKey="saves:folder.tag-chip" />}
+            sx={{ backgroundColor: "#29F721", color: "white" }}
+            size="small"
+          />
+        ) : null}{" "}
+        {isTag2 ? (
+          <Chip
+            label={<Trans i18nKey="saves:folder.tag-chip" />}
+            sx={{ backgroundColor: "#29F721", color: "white" }}
+            size="small"
+          />
+        ) : null}
+      </TableCell>
+      <TableCell sx={{ width: 0, textAlign: "right" }}>
+        {bn6.CHIPS[id]!.damage!}
+      </TableCell>
+      <TableCell sx={{ width: 0 }}>
+        <img
+          height="28"
+          width="28"
+          src={require(`../../../../static/images/games/bn6/elements/${bn6
+            .CHIPS[id]!.element!}.png`)}
+          style={{ imageRendering: "pixelated" }}
+        />
+      </TableCell>
+      <TableCell sx={{ width: 0, textAlign: "right" }}>
+        {bn6.CHIPS[id]!.mb!}MB
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function FolderViewer({ editor }: { editor: bn6.Editor }) {
   const chips: {
     id: number;
     code: string;
@@ -180,40 +273,9 @@ function FolderViewer({ editor }: { editor: bn6.Editor }) {
   return (
     <Table size="small">
       <TableBody>
-        {chips.map(({ id, code, count, isRegular, isTag1, isTag2 }, i) => {
-          return (
-            <TableRow key={i}>
-              <TableCell sx={{ width: 0 }}>{count}x</TableCell>
-              <TableCell>
-                {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
-                {isRegular ? (
-                  <Chip
-                    label={<Trans i18nKey="saves:folder.regular-chip" />}
-                    sx={{ backgroundColor: "#FF42A5", color: "white" }}
-                    size="small"
-                  />
-                ) : null}{" "}
-                {isTag1 ? (
-                  <Chip
-                    label={<Trans i18nKey="saves:folder.tag-chip" />}
-                    sx={{ backgroundColor: "#29F721", color: "white" }}
-                    size="small"
-                  />
-                ) : null}{" "}
-                {isTag2 ? (
-                  <Chip
-                    label={<Trans i18nKey="saves:folder.tag-chip" />}
-                    sx={{ backgroundColor: "#29F721", color: "white" }}
-                    size="small"
-                  />
-                ) : null}
-              </TableCell>
-              <TableCell sx={{ fontFamily: "monospace", width: 0 }}>
-                {code}
-              </TableCell>
-            </TableRow>
-          );
-        })}
+        {chips.map((chip, i) => (
+          <FolderChipRow key={i} chip={chip} />
+        ))}
       </TableBody>
     </Table>
   );
@@ -472,7 +534,7 @@ export default function SavesPane({ active }: { active: boolean }) {
           flexShrink={0}
           justifyContent="flex-end"
           direction="row"
-          spacing={2}
+          spacing={1}
           sx={{ px: 1 }}
         >
           <Box flexGrow={5} flexShrink={0}>
