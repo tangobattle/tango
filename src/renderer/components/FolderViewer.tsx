@@ -7,6 +7,7 @@ import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
+import Tooltip from "@mui/material/Tooltip";
 
 import * as bn6 from "../../saveedit/bn6";
 
@@ -56,8 +57,17 @@ function FolderChipRow({
         />
       </TableCell>
       <TableCell component="th">
-        {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
-        {code.replace(/\*/g, "﹡")}{" "}
+        <Tooltip
+          title={
+            bn6.CHIPS[id]!.description![i18n.resolvedLanguage as "en" | "ja"]
+          }
+          placement="right"
+        >
+          <span>
+            {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+            {code.replace(/\*/g, "﹡")}
+          </span>
+        </Tooltip>{" "}
         {isRegular ? (
           <Chip
             label={<Trans i18nKey="play:folder.regular-chip" />}
