@@ -31,6 +31,7 @@ const KEYS = [
 function KeymappingTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { t } = useTranslation();
+  const keymaptoolRef = React.useRef<Keymaptool | null>(null);
   return (
     <Box
       flexGrow={1}
@@ -59,9 +60,12 @@ function KeymappingTab({ active }: { active: boolean }) {
           variant="contained"
           onClick={() => {
             (async () => {
-              const keymaptool = new Keymaptool();
+              if (keymaptoolRef.current != null) {
+                return;
+              }
+              keymaptoolRef.current = new Keymaptool();
               for (const key of KEYS) {
-                const mapped = await keymaptool.request(
+                const mapped = await keymaptoolRef.current.request(
                   t("settings:request-keymapping", {
                     key: t(`settings:keymapping.${key}`),
                   })
@@ -74,7 +78,8 @@ function KeymappingTab({ active }: { active: boolean }) {
                   keymapping: { ...config.keymapping, [key]: mapped },
                 }));
               }
-              keymaptool.close();
+              keymaptoolRef.current.close();
+              keymaptoolRef.current = null;
             })();
           }}
         >
