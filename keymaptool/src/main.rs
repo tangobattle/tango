@@ -1,5 +1,4 @@
 #![windows_subsystem = "windows"]
-
 use std::io::Write;
 
 pub fn init_wgpu(
@@ -173,6 +172,7 @@ fn main() -> anyhow::Result<()> {
                                         )
                                         .unwrap();
                                     std::io::stdout().write_all(b"\n").unwrap();
+                                    text.clear();
                                     match std::io::stdin().read_line(&mut text) {
                                         Ok(n) => {
                                             if n == 0 {
