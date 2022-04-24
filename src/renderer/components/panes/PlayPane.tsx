@@ -159,7 +159,7 @@ function FolderChipRow({
 
   return (
     <TableRow sx={{ backgroundColor }}>
-      <TableCell sx={{ width: 0 }}>
+      <TableCell sx={{ width: "32px", textAlign: "right" }}>
         <strong>{count}x</strong>
       </TableCell>
       <TableCell sx={{ width: 0 }}>
