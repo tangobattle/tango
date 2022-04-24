@@ -4,6 +4,7 @@ import { EventEmitter } from "stream";
 
 import { app } from "@electron/remote";
 
+import { getCorePath } from "../paths";
 import * as types from "./types";
 
 export interface ExitStatus {
@@ -19,7 +20,7 @@ export class Core extends EventEmitter {
     super();
 
     this._proc = spawn(
-      path.join(app.getAppPath(), "core", "tango-core"),
+      path.join(getCorePath(), "tango-core"),
       [JSON.stringify(args)],
       {
         signal,

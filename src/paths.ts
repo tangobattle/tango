@@ -1,3 +1,7 @@
+import path from "path";
+
+import { app } from "@electron/remote";
+
 export function getConfigPath() {
   return "config.json";
 }
@@ -16,4 +20,8 @@ export function getReplaysPath() {
 
 export function getSavesPath() {
   return "saves";
+}
+
+export function getCorePath() {
+  return path.join(app.getAppPath(), "core");
 }
