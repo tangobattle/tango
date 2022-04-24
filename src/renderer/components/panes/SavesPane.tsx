@@ -189,9 +189,6 @@ function FolderChipRow({
           />
         ) : null}
       </TableCell>
-      <TableCell sx={{ width: 0, textAlign: "right" }}>
-        {bn6.CHIPS[id]!.damage!}
-      </TableCell>
       <TableCell sx={{ width: 0 }}>
         <img
           height="28"
@@ -201,7 +198,10 @@ function FolderChipRow({
           style={{ imageRendering: "pixelated" }}
         />
       </TableCell>
-      <TableCell sx={{ width: 0, textAlign: "right" }}>
+      <TableCell sx={{ width: "56px", textAlign: "right" }}>
+        <strong>{bn6.CHIPS[id]!.damage!}</strong>
+      </TableCell>
+      <TableCell sx={{ width: "64px", textAlign: "right" }}>
         {bn6.CHIPS[id]!.mb!}MB
       </TableCell>
     </TableRow>
