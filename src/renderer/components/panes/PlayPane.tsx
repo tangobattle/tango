@@ -197,9 +197,11 @@ export default function PlayPane({ active }: { active: boolean }) {
               <IconButton
                 onClick={() => {
                   (async () => {
-                    await rescanROMs();
-                    await rescanPatches();
-                    await rescanSaves();
+                    await Promise.allSettled([
+                      rescanROMs(),
+                      rescanPatches(),
+                      rescanSaves(),
+                    ]);
                   })();
                 }}
               >
