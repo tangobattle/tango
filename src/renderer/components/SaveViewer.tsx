@@ -3,7 +3,6 @@ import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
 
-import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
@@ -42,23 +41,21 @@ export default function SaveViewer({
 
   return (
     <Stack flexGrow={1} flexShrink={0}>
-      <Box flexGrow={0}>
-        <Tabs
-          sx={{ px: 1 }}
-          value={tab}
-          onChange={(e, value) => {
-            setTab(value);
-          }}
-        >
-          <Tab label={<Trans i18nKey="play:tab.navicust" />} value="navicust" />
-          <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
-          <Tab
-            label={<Trans i18nKey="play:tab.modcards" />}
-            value="modcards"
-            disabled={!editor.supportsModcards()}
-          />
-        </Tabs>
-      </Box>
+      <Tabs
+        sx={{ px: 1 }}
+        value={tab}
+        onChange={(e, value) => {
+          setTab(value);
+        }}
+      >
+        <Tab label={<Trans i18nKey="play:tab.navicust" />} value="navicust" />
+        <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
+        <Tab
+          label={<Trans i18nKey="play:tab.modcards" />}
+          value="modcards"
+          disabled={!editor.supportsModcards()}
+        />
+      </Tabs>
       <NavicustViewer editor={editor} active={tab == "navicust"} />
       <FolderViewer editor={editor} active={tab == "folder"} />
       {editor.supportsModcards() ? (

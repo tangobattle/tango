@@ -1,0 +1,14 @@
+{
+    "tab.keymapping": "Keymapping",
+    "keymapping.up": "Up",
+    "keymapping.down": "Down",
+    "keymapping.left": "Left",
+    "keymapping.right": "Right",
+    "keymapping.a": "A",
+    "keymapping.b": "B",
+    "keymapping.l": "L",
+    "keymapping.r": "R",
+    "keymapping.select": "SELECT",
+    "keymapping.start": "START",
+    "remap": "Remap"
+}
