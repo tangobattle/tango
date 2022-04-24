@@ -1,81 +1,414 @@
 import { Trans, useTranslation } from "react-i18next";
-import React from "react";
 import semver from "semver";
-import { useROMs } from "../ROMsContext";
-import { usePatches } from "../PatchesContext";
-import { KNOWN_ROMS } from "../../../rom";
-import { ParsedMailbox, parseOneAddress } from "email-addresses";
-import { CoreSupervisor } from "../CoreSupervisor";
-import Select from "@mui/material/Select";
-import ListSubheader from "@mui/material/ListSubheader";
-import InputAdornment from "@mui/material/InputAdornment";
-import IconButton from "@mui/material/IconButton";
-import MenuItem from "@mui/material/MenuItem";
-import ListItemText from "@mui/material/ListItemText";
-import Box from "@mui/material/Box";
+import React from "react";
 import Stack from "@mui/material/Stack";
-import FormControl from "@mui/material/FormControl";
-import TextField from "@mui/material/TextField";
-import InputLabel from "@mui/material/InputLabel";
-import Link from "@mui/material/Link";
+import Tabs from "@mui/material/Tabs";
+import Tab from "@mui/material/Tab";
+import Chip from "@mui/material/Chip";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableRow from "@mui/material/TableRow";
+import TableCell from "@mui/material/TableCell";
+import Select from "@mui/material/Select";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import Typography from "@mui/material/Typography";
-import Tooltip from "@mui/material/Tooltip";
-import SportsMmaIcon from "@mui/icons-material/SportsMma";
-import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import { CopyButton } from "../CopyButton";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import SportsMmaIcon from "@mui/icons-material/SportsMma";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
+import ListSubheader from "@mui/material/ListSubheader";
+import Collapse from "@mui/material/Collapse";
+import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import MenuItem from "@mui/material/MenuItem";
 import { useSaves } from "../SavesContext";
+import { KNOWN_ROMS } from "../../../rom";
 import {
   getPatchesPath,
   getReplaysPath,
   getROMsPath,
   getSavesPath,
 } from "../../../paths";
+import { readFile } from "fs/promises";
 import path from "path";
+import * as bn6 from "../../../saveedit/bn6";
+import { CoreSupervisor } from "../CoreSupervisor";
+import { useROMs } from "../ROMsContext";
+import { shell } from "@electron/remote";
+import { usePatches } from "../PatchesContext";
+import TextField from "@mui/material/TextField";
+import InputAdornment from "@mui/material/InputAdornment";
+import ListItemText from "@mui/material/ListItemText";
+import { CopyButton } from "../CopyButton";
 
 const MATCH_TYPES = ["single", "triple"];
 
-export default function PlayPane({ active }: { active: boolean }) {
-  const { roms, rescan: rescanROMs } = useROMs();
-  const { patches } = usePatches();
-  const { saves } = useSaves();
-  const { t, i18n } = useTranslation();
+function ModcardsViewer({ editor }: { editor: bn6.Editor }) {
+  const { i18n } = useTranslation();
 
-  const [selection_, setSelection] = React.useState<[string, string] | null>(
-    null
+  const modcards: { id: number; enabled: boolean }[] = [];
+  for (let i = 0; i < editor.getModcardCount(); i++) {
+    modcards.push(editor.getModcard(i));
+  }
+
+  const DEBUFF_COLOR = "#b55ade";
+  const BUFF_COLOR = "#ffbd18";
+  const OFF_COLOR = "#bdbdbd";
+
+  return (
+    <Table size="small">
+      <TableBody>
+        {modcards.map(({ id, enabled }, i) => {
+          const modcard = bn6.MODCARDS[id]!;
+          return (
+            <TableRow key={i}>
+              <TableCell>
+                {modcard.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+                <small>{modcard.mb}MB</small>
+              </TableCell>
+              <TableCell style={{ verticalAlign: "top" }}>
+                <Stack spacing={0.5}>
+                  {modcard.parameters.flatMap((l, i) =>
+                    l.version == null ||
+                    l.version == editor.getGameInfo().version
+                      ? [
+                          <Chip
+                            key={i}
+                            label={l.name[i18n.resolvedLanguage as "en" | "ja"]}
+                            size="small"
+                            sx={{
+                              justifyContent: "flex-start",
+                              backgroundColor: enabled
+                                ? l.debuff
+                                  ? DEBUFF_COLOR
+                                  : BUFF_COLOR
+                                : OFF_COLOR,
+                            }}
+                          />,
+                        ]
+                      : []
+                  )}
+                </Stack>
+              </TableCell>
+              <TableCell style={{ verticalAlign: "top" }}>
+                <Stack spacing={0.5}>
+                  {modcard.abilities.flatMap((l, i) =>
+                    l.version == null ||
+                    l.version == editor.getGameInfo().version
+                      ? [
+                          <Chip
+                            key={i}
+                            label={l.name[i18n.resolvedLanguage as "en" | "ja"]}
+                            size="small"
+                            sx={{
+                              justifyContent: "flex-start",
+                              backgroundColor: enabled
+                                ? l.debuff
+                                  ? DEBUFF_COLOR
+                                  : BUFF_COLOR
+                                : OFF_COLOR,
+                            }}
+                          />,
+                        ]
+                      : []
+                  )}
+                </Stack>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
-  const [incarnation, setIncarnation] = React.useState(0);
+}
 
-  const [matchType, setMatchType] = React.useState(0);
-  const [linkCode, setLinkCode] = React.useState("");
-  const [selectedSaveName, setSelectedSaveName] = React.useState<string | null>(
-    null
-  );
-  const [started, setStarted] = React.useState(false);
+function FolderChipRow({
+  chip,
+}: {
+  chip: {
+    id: number;
+    code: string;
+    isRegular: boolean;
+    isTag1: boolean;
+    isTag2: boolean;
+    count: number;
+  };
+}) {
+  const { id, code, isRegular, isTag1, isTag2, count } = chip;
 
-  const selection =
-    selection_ != null
-      ? (() => {
-          const [romName, patchName] = selection_;
-          return Object.prototype.hasOwnProperty.call(roms, romName) &&
-            (patchName == null ||
-              Object.prototype.hasOwnProperty.call(patches, patchName))
-            ? selection_
-            : null;
-        })()
+  const { i18n } = useTranslation();
+  const [open, setOpen] = React.useState(false);
+  React.useEffect(() => {
+    setOpen(false);
+  }, [chip]);
+
+  const MEGA_BG = "#adefef";
+  const GIGA_BG = "#f7cee7";
+  const backgroundColor =
+    bn6.CHIPS[id]!.class == "giga"
+      ? GIGA_BG
+      : bn6.CHIPS[id]!.class == "mega"
+      ? MEGA_BG
       : null;
 
-  const [romName, patchName] = selection ?? [null, null];
-  const romInfo = romName != null ? KNOWN_ROMS[romName] : null;
-  const patchInfo = patchName != null ? patches[patchName] : null;
+  return (
+    <TableRow sx={{ backgroundColor }}>
+      <TableCell sx={{ width: 0 }}>
+        <strong>{count}x</strong>
+      </TableCell>
+      <TableCell sx={{ width: 0 }}>
+        <img
+          height="32"
+          width="32"
+          src={(() => {
+            try {
+              return require(`../../../../static/images/games/bn6/chipicons/${id}.png`);
+            } catch (e) {
+              return "";
+            }
+          })()}
+          style={{ imageRendering: "pixelated" }}
+        />
+      </TableCell>
+      <TableCell component="th">
+        {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+        {code.replace(/\*/g, "﹡")}{" "}
+        {isRegular ? (
+          <Chip
+            label={<Trans i18nKey="play:folder.regular-chip" />}
+            sx={{ backgroundColor: "#FF42A5", color: "white" }}
+            size="small"
+          />
+        ) : null}{" "}
+        {isTag1 ? (
+          <Chip
+            label={<Trans i18nKey="play:folder.tag-chip" />}
+            sx={{ backgroundColor: "#29F721", color: "white" }}
+            size="small"
+          />
+        ) : null}{" "}
+        {isTag2 ? (
+          <Chip
+            label={<Trans i18nKey="play:folder.tag-chip" />}
+            sx={{ backgroundColor: "#29F721", color: "white" }}
+            size="small"
+          />
+        ) : null}
+      </TableCell>
+      <TableCell sx={{ width: 0 }}>
+        <img
+          height="28"
+          width="28"
+          src={require(`../../../../static/images/games/bn6/elements/${bn6
+            .CHIPS[id]!.element!}.png`)}
+          style={{ imageRendering: "pixelated" }}
+        />
+      </TableCell>
+      <TableCell sx={{ width: "56px", textAlign: "right" }}>
+        <strong>{bn6.CHIPS[id]!.damage!}</strong>
+      </TableCell>
+      <TableCell sx={{ width: "64px", textAlign: "right" }}>
+        {bn6.CHIPS[id]!.mb!}MB
+      </TableCell>
+    </TableRow>
+  );
+}
 
-  const romNames = Object.keys(roms);
+function FolderViewer({ editor }: { editor: bn6.Editor }) {
+  const chips: {
+    id: number;
+    code: string;
+    isRegular: boolean;
+    isTag1: boolean;
+    isTag2: boolean;
+    count: number;
+  }[] = [];
+  const chipCounter: { [key: string]: number } = {};
+  for (let i = 0; i < 30; i++) {
+    const chip = editor.getChip(editor.getEquippedFolder(), i);
+    if (chip == null) {
+      continue;
+    }
+    const chipKey = `${chip.id}:${chip.code}`;
+    if (!Object.prototype.hasOwnProperty.call(chipCounter, chipKey)) {
+      chipCounter[chipKey] = 0;
+      chips.push({
+        ...chip,
+        isRegular: false,
+        isTag1: false,
+        isTag2: false,
+        count: 0,
+      });
+    }
+    chipCounter[chipKey]++;
+  }
+
+  for (const chip of chips) {
+    chip.count = chipCounter[`${chip.id}:${chip.code}`];
+
+    const regularChipIdx = editor.getRegularChipIndex(
+      editor.getEquippedFolder()
+    );
+    if (regularChipIdx != null) {
+      const regularChip = editor.getChip(
+        editor.getEquippedFolder(),
+        regularChipIdx
+      )!;
+      if (chip.id == regularChip.id && chip.code == regularChip.code) {
+        chip.isRegular = true;
+      }
+    }
+
+    const tagChip1Idx = editor.getTagChip1Index(editor.getEquippedFolder());
+    if (tagChip1Idx != null) {
+      const tagChip1 = editor.getChip(editor.getEquippedFolder(), tagChip1Idx)!;
+      if (chip.id == tagChip1.id && chip.code == tagChip1.code) {
+        chip.isTag1 = true;
+      }
+    }
+
+    const tagChip2Idx = editor.getTagChip2Index(editor.getEquippedFolder());
+    if (tagChip2Idx != null) {
+      const tagChip2 = editor.getChip(editor.getEquippedFolder(), tagChip2Idx)!;
+      if (chip.id == tagChip2.id && chip.code == tagChip2.code) {
+        chip.isTag2 = true;
+      }
+    }
+  }
+
+  return (
+    <Table size="small">
+      <TableBody>
+        {chips.map((chip, i) => (
+          <FolderChipRow key={i} chip={chip} />
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+function SaveViewer({
+  filename,
+  incarnation,
+}: {
+  filename: string;
+  incarnation: number;
+}) {
+  const [tab, setTab] = React.useState("navicust");
+  const [editor, setEditor] = React.useState<bn6.Editor | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      setEditor(
+        new bn6.Editor(
+          bn6.Editor.sramDumpToRaw(
+            (await readFile(path.join(getSavesPath(), filename))).buffer
+          )
+        )
+      );
+    })();
+  }, [filename, incarnation]);
+
+  if (editor == null) {
+    return null;
+  }
+
+  return (
+    <Stack flexGrow={1} flexShrink={0}>
+      <Box flexGrow={0}>
+        <Tabs
+          sx={{ px: 1 }}
+          value={tab}
+          onChange={(e, value) => {
+            setTab(value);
+          }}
+        >
+          <Tab label={<Trans i18nKey="play:tab.navicust" />} value="navicust" />
+          <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
+          <Tab
+            label={<Trans i18nKey="play:tab.modcards" />}
+            value="modcards"
+            disabled={!editor.supportsModcards()}
+          />
+        </Tabs>
+      </Box>
+      <Box
+        flexGrow={1}
+        display={tab == "navicust" ? undefined : "none"}
+        sx={{ px: 1, height: 0, minWidth: 0 }}
+      >
+        Not supported yet :(
+      </Box>
+      <Box
+        flexGrow={1}
+        display={tab == "folder" ? undefined : "none"}
+        sx={{ px: 1, height: 0, minWidth: 0 }}
+        overflow="auto"
+      >
+        <FolderViewer editor={editor} />
+      </Box>
+      {editor.supportsModcards() ? (
+        <Box
+          flexGrow={1}
+          display={tab == "modcards" ? undefined : "none"}
+          sx={{ px: 1, height: 0, minWidth: 0 }}
+        >
+          <ModcardsViewer editor={editor} />
+        </Box>
+      ) : null}
+    </Stack>
+  );
+}
+
+export default function PlayPane({ active }: { active: boolean }) {
+  const { saves, rescan: rescanSaves } = useSaves();
+  const { patches, rescan: rescanPatches } = usePatches();
+  const { roms, rescan: rescanROMs } = useROMs();
+  const { i18n } = useTranslation();
+
+  const [extraOptionsOpen, setExtraOptionsOpen] = React.useState(false);
+
+  const [saveName_, setSaveName] = React.useState<string | null>(null);
+  const [started, setStarted] = React.useState(false);
+  const [incarnation, setIncarnation] = React.useState(0);
+
+  const saveName =
+    saveName_ != null && Object.prototype.hasOwnProperty.call(saves, saveName_)
+      ? saveName_
+      : null;
+
+  const groupedSaves: { [key: string]: string[] } = {};
+  for (const k of Object.keys(saves)) {
+    groupedSaves[saves[k].romName] = groupedSaves[saves[k].romName] || [];
+    groupedSaves[saves[k].romName].push(k);
+  }
+
+  const romNames = Object.keys(groupedSaves);
   romNames.sort((k1, k2) => {
     const title1 = KNOWN_ROMS[k1].title[i18n.resolvedLanguage];
     const title2 = KNOWN_ROMS[k2].title[i18n.resolvedLanguage];
     return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
   });
+
+  const [patchName, setPatchName] = React.useState<string | null>(null);
+  const save = saveName != null ? saves[saveName] : null;
+
+  const eligiblePatchNames = React.useMemo(() => {
+    const eligiblePatchNames =
+      save != null
+        ? Object.keys(patches).filter((p) => patches[p].forROM == save.romName)
+        : [];
+    eligiblePatchNames.sort();
+    return eligiblePatchNames;
+  }, [patches, save]);
+
+  const patchInfo = patchName != null ? patches[patchName] : null;
 
   const patchVersions = React.useMemo(
     () =>
@@ -83,24 +416,26 @@ export default function PlayPane({ active }: { active: boolean }) {
     [patchInfo]
   );
 
-  const [selectedPatchVersion, setSelectedPatchVersion] = React.useState<
-    string | null
-  >(null);
+  const [patchVersion, setPatchVersion] = React.useState<string | null>(null);
   React.useEffect(() => {
-    setSelectedPatchVersion(patchVersions != null ? patchVersions[0] : null);
+    if (patchVersions == null) {
+      setPatchVersion(null);
+      return;
+    }
+    setPatchVersion(patchVersions[0]);
   }, [patchVersions]);
 
-  const eligibleSaveNames = Object.keys(saves).filter(
-    (selectedSaveName) => saves[selectedSaveName].romName == romName
-  );
-  eligibleSaveNames.sort();
+  const [matchType, setMatchType] = React.useState(0);
+  const [linkCode, setLinkCode] = React.useState("");
+
+  const romInfo = save != null ? KNOWN_ROMS[save.romName] : null;
 
   const netplayCompatibility =
     romInfo != null
       ? patchInfo != null &&
-        selectedPatchVersion != null &&
-        patchInfo.versions[selectedPatchVersion] != null
-        ? patchInfo.versions[selectedPatchVersion].netplayCompatibility
+        patchVersion != null &&
+        patchInfo.versions[patchVersion] != null
+        ? patchInfo.versions[patchVersion].netplayCompatibility
         : romInfo.netplayCompatibility
       : "";
 
@@ -109,71 +444,62 @@ export default function PlayPane({ active }: { active: boolean }) {
   return (
     <Box
       sx={{
-        minWidth: 0,
+        my: 1,
         flexGrow: 1,
         display: active ? "flex" : "none",
       }}
     >
-      <Stack sx={{ flexGrow: 1, my: 1 }} spacing={1}>
+      <Stack sx={{ flexGrow: 1 }} spacing={1}>
         <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
           <Stack spacing={1} direction="row">
             <FormControl fullWidth size="small">
-              <InputLabel id="select-game-label">
-                <Trans i18nKey="play:select-game" />
+              <InputLabel id="select-save-label">
+                <Trans i18nKey="play:select-save" />
               </InputLabel>
               <Select
-                labelId="select-game-label"
-                value={selection != null ? JSON.stringify(selection) : ""}
-                label={<Trans i18nKey="play:select-game" />}
+                labelId="select-save-label"
+                label={<Trans i18nKey="play:select-save" />}
+                value={saveName ?? ""}
                 renderValue={(v) => {
                   if (v == "") {
                     return null;
                   }
-
-                  const [romName, patchName] = JSON.parse(v);
-                  return patchName != null ? (
+                  return (
                     <>
-                      {patches[patchName].title}{" "}
+                      {v}{" "}
                       <small>
-                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
+                        {
+                          KNOWN_ROMS[saves[v].romName].title[
+                            i18n.resolvedLanguage
+                          ]
+                        }
                       </small>
                     </>
-                  ) : (
-                    KNOWN_ROMS[romName].title[i18n.resolvedLanguage]
                   );
                 }}
                 onChange={(e) => {
-                  const [newROMName, newPatchName] = JSON.parse(
-                    e.target.value as string
-                  );
-                  if (newROMName != romName) {
-                    setSelectedSaveName(null);
+                  if (
+                    saveName == null ||
+                    saves[e.target.value].romName != saves[saveName].romName
+                  ) {
+                    setPatchName(null);
+                    setPatchVersion(null);
                   }
-                  setSelection([newROMName, newPatchName]);
-                  setSelectedPatchVersion(null);
+                  setSaveName(e.target.value);
                 }}
               >
                 {romNames.map((romName) => {
-                  const eligiblePatchNames = Object.keys(patches).filter(
-                    (p) => patches[p].forROM == romName
-                  );
-                  eligiblePatchNames.sort();
+                  const saveNames = groupedSaves[romName];
+                  saveNames.sort();
 
                   return [
                     <ListSubheader key="title" sx={{ userSelect: "none" }}>
                       {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
                     </ListSubheader>,
-                    <MenuItem
-                      key={romName}
-                      value={JSON.stringify([romName, null])}
-                    >
-                      <Trans i18nKey="play:unpatched"></Trans>
-                    </MenuItem>,
-                    ...eligiblePatchNames.map((patchName) => {
-                      const v = JSON.stringify([romName, patchName]);
+                    ...saveNames.map((v) => {
                       return (
                         <MenuItem key={v} value={v}>
-                          {patches[patchName].title}
+                          {v}
                         </MenuItem>
                       );
                     }),
@@ -181,10 +507,27 @@ export default function PlayPane({ active }: { active: boolean }) {
                 })}
               </Select>
             </FormControl>
-            <Tooltip title={<Trans i18nKey="play:reload-roms" />}>
+            <Tooltip title={<Trans i18nKey="play:open-dir" />}>
               <IconButton
                 onClick={() => {
-                  rescanROMs();
+                  if (saveName == null) {
+                    shell.openPath(getSavesPath());
+                  } else {
+                    shell.showItemInFolder(path.join(getSavesPath(), saveName));
+                  }
+                }}
+              >
+                <FolderOpenIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={<Trans i18nKey="play:reload-saves" />}>
+              <IconButton
+                onClick={() => {
+                  (async () => {
+                    await rescanROMs();
+                    await rescanPatches();
+                    await rescanSaves();
+                  })();
                 }}
               >
                 <RefreshIcon />
@@ -192,53 +535,9 @@ export default function PlayPane({ active }: { active: boolean }) {
             </Tooltip>
           </Stack>
         </Box>
-        {romInfo != null ? (
-          <Box flexGrow={1} overflow="auto" sx={{ px: 1 }}>
-            {patchInfo != null ? (
-              <>
-                <Typography variant="h6" sx={{ userSelect: "none" }}>
-                  <Trans i18nKey="play:patch.authors" />
-                </Typography>
-                <Typography>
-                  {patchInfo
-                    .authors!.flatMap<React.ReactNode>((author, i) => {
-                      const addr = parseOneAddress(
-                        author
-                      ) as ParsedMailbox | null;
-                      if (addr == null) {
-                        return [];
-                      }
-                      return (
-                        <Tooltip title={addr.address}>
-                          <Link href={`mailto:${addr.address}`} key={i}>
-                            {addr.name}
-                          </Link>
-                        </Tooltip>
-                      );
-                    })
-                    .reduce((prev, curr) => [prev, ", ", curr])}
-                </Typography>
-                <Typography variant="h6" sx={{ userSelect: "none" }}>
-                  <Trans i18nKey="play:patch.version" />
-                </Typography>
-                <Select
-                  size="small"
-                  variant="standard"
-                  value={selectedPatchVersion ?? ""}
-                  onChange={(e) => {
-                    setSelectedPatchVersion(e.target.value);
-                  }}
-                >
-                  {patchVersions!.map((version) => {
-                    return (
-                      <MenuItem key={version} value={version}>
-                        {version}
-                      </MenuItem>
-                    );
-                  })}
-                </Select>
-              </>
-            ) : null}
+        {saveName != null ? (
+          <Box flexGrow={1} display="flex">
+            <SaveViewer filename={saveName} incarnation={incarnation} />
           </Box>
         ) : (
           <Box
@@ -251,12 +550,11 @@ export default function PlayPane({ active }: { active: boolean }) {
             <Stack alignItems="center" spacing={1}>
               <SportsEsportsOutlinedIcon sx={{ fontSize: "4rem" }} />
               <Typography variant="h6">
-                <Trans i18nKey="play:no-game-selected" />
+                <Trans i18nKey="play:no-save-selected" />
               </Typography>
             </Stack>
           </Box>
         )}
-
         <Stack
           flexGrow={0}
           flexShrink={0}
@@ -265,9 +563,22 @@ export default function PlayPane({ active }: { active: boolean }) {
           spacing={1}
           sx={{ px: 1 }}
         >
+          <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
+            <IconButton
+              onClick={() => {
+                setExtraOptionsOpen((o) => !o);
+              }}
+            >
+              {extraOptionsOpen ? (
+                <KeyboardArrowDownIcon />
+              ) : (
+                <KeyboardArrowUpIcon />
+              )}
+            </IconButton>
+          </Tooltip>
           <Box flexGrow={1} flexShrink={0}>
             <TextField
-              disabled={selection == null}
+              disabled={saveName == null}
               size="small"
               label={<Trans i18nKey={"play:link-code"} />}
               value={linkCode}
@@ -288,18 +599,18 @@ export default function PlayPane({ active }: { active: boolean }) {
                             setMatchType(e.target.value as number);
                           }}
                           renderValue={(v) => MATCH_TYPES[v]}
-                          disabled={selection == null}
+                          disabled={saveName == null}
                         >
                           {MATCH_TYPES.map((v, k) => (
                             <MenuItem key={k} value={k}>
                               <ListItemText
                                 primary={v}
                                 secondary={
-                                  k == 0
-                                    ? t("play:match-type.single")
-                                    : k == 1
-                                    ? t("play:match-type.triple")
-                                    : null
+                                  k == 0 ? (
+                                    <Trans i18nKey="play:match-type.single" />
+                                  ) : k == 1 ? (
+                                    <Trans i18nKey="play:match-type.triple" />
+                                  ) : null
                                 }
                               />
                             </MenuItem>
@@ -312,86 +623,61 @@ export default function PlayPane({ active }: { active: boolean }) {
                 ),
                 endAdornment: (
                   <InputAdornment position="end">
-                    <CopyButton
-                      disabled={selection == null}
-                      value={sessionID}
-                    />
+                    <CopyButton disabled={saveName == null} value={sessionID} />
                   </InputAdornment>
                 ),
               }}
             />
           </Box>
-          <Box flexGrow={1} flexShrink={0}>
-            <FormControl fullWidth size="small">
-              <InputLabel id="save-file-label">
-                <Trans i18nKey="play:save-file"></Trans>
-              </InputLabel>
-              <Select
-                labelId="save-file-label"
-                disabled={selection == null}
-                size="small"
-                value={selectedSaveName || ""}
-                label={<Trans i18nKey={"play:save-file"} />}
-                onChange={(e) => {
-                  setSelectedSaveName(e.target.value);
-                }}
-                fullWidth
-              >
-                {eligibleSaveNames.map((selectedSaveName) => {
-                  return (
-                    <MenuItem key={selectedSaveName} value={selectedSaveName}>
-                      {selectedSaveName}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-          </Box>
           <Button
             variant="contained"
-            startIcon={<SportsMmaIcon />}
-            disabled={
-              selection == null || linkCode == "" || selectedSaveName == null
-            }
+            startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
+            disabled={saveName == null}
             onClick={() => {
               setStarted(true);
             }}
           >
-            <Trans i18nKey="play:fight" />
+            {linkCode != "" ? (
+              <Trans i18nKey="play:fight" />
+            ) : (
+              <Trans i18nKey="play:play" />
+            )}
             {started ? (
               <CoreSupervisor
                 incarnation={incarnation}
                 romPath={path.join(
                   getROMsPath(),
-                  roms[saves[selectedSaveName!].romName]
+                  roms[saves[saveName!].romName]
                 )}
                 patchPath={
-                  selectedPatchVersion != null
+                  patchVersion != null
                     ? path.join(
                         getPatchesPath(),
                         patchName!,
-                        `v${selectedPatchVersion}.${
-                          patchInfo!.versions[selectedPatchVersion].format
+                        `v${patchVersion}.${
+                          patchInfo!.versions[patchVersion].format
                         }`
                       )
                     : undefined
                 }
-                matchSettings={{
-                  sessionID,
-                  replaysPath: path.join(getReplaysPath()),
-                  replayInfo: {
-                    rom: romName!,
-                    patch: { name: patchName!, version: selectedPatchVersion! },
-                  },
-                }}
-                savePath={path.join(getSavesPath(), selectedSaveName!)}
+                matchSettings={
+                  linkCode != ""
+                    ? {
+                        sessionID,
+                        replaysPath: path.join(getReplaysPath()),
+                        replayInfo: {
+                          rom: saves[saveName!].romName!,
+                          patch: { name: patchName!, version: patchVersion! },
+                        },
+                      }
+                    : undefined
+                }
+                savePath={path.join(getSavesPath(), saveName!)}
                 windowTitle={`${
-                  KNOWN_ROMS[saves[selectedSaveName!].romName].title[
+                  KNOWN_ROMS[saves[saveName!].romName].title[
                     i18n.resolvedLanguage
                   ]
-                }${
-                  selectedPatchVersion != null ? ` + ${patchInfo!.title}` : ""
-                }`}
+                }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
                 onExit={(_exitStatus) => {
                   setStarted(false);
                   setIncarnation((incarnation) => incarnation + 1);
@@ -400,6 +686,76 @@ export default function PlayPane({ active }: { active: boolean }) {
             ) : null}
           </Button>
         </Stack>
+        <Collapse in={extraOptionsOpen}>
+          <Stack
+            flexGrow={0}
+            flexShrink={0}
+            justifyContent="flex-end"
+            direction="row"
+            spacing={1}
+            sx={{ px: 1 }}
+          >
+            <Box flexGrow={5} flexShrink={0}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="game-label">
+                  <Trans i18nKey="play:patch-name" />
+                </InputLabel>
+                <Select
+                  labelId="game-label"
+                  disabled={saveName == null}
+                  size="small"
+                  value={JSON.stringify(patchName)}
+                  label={<Trans i18nKey={"play:patch-name"} />}
+                  onChange={(e) => {
+                    setPatchName(JSON.parse(e.target.value));
+                    setPatchVersion(null);
+                  }}
+                  fullWidth
+                >
+                  <MenuItem value="null">
+                    <Trans i18nKey="play:unpatched" />
+                  </MenuItem>
+                  {eligiblePatchNames.map((patchName) => {
+                    const v = JSON.stringify(patchName);
+                    return (
+                      <MenuItem key={v} value={v}>
+                        {patches[patchName].title}
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
+            </Box>
+            <Box flexGrow={1} flexShrink={0}>
+              <FormControl fullWidth size="small">
+                <InputLabel id="patch-version-label">
+                  <Trans i18nKey="play:patch-version" />
+                </InputLabel>
+                <Select
+                  labelId="patch-version-label"
+                  disabled={saveName == null || patchName == null}
+                  size="small"
+                  value={patchVersion || ""}
+                  label={<Trans i18nKey={"saves:patch-version"} />}
+                  onChange={(e) => {
+                    setPatchVersion(e.target.value);
+                  }}
+                  fullWidth
+                >
+                  {patchVersions != null
+                    ? patchVersions.map((version) => {
+                        return (
+                          <MenuItem key={version} value={version}>
+                            {version}
+                          </MenuItem>
+                        );
+                      })
+                    : []}
+                </Select>
+              </FormControl>
+            </Box>
+          </Stack>
+        </Collapse>
       </Stack>
     </Box>
   );

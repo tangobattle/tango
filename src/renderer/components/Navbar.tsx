@@ -7,12 +7,12 @@ import { styled } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
 import { useTranslation } from "react-i18next";
 
-import SportsMmaOutlinedIcon from "@mui/icons-material/SportsMmaOutlined";
+import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import GridViewOutlinedIcon from "@mui/icons-material/GridViewOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 
-import SportsMmaIcon from "@mui/icons-material/SportsMma";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
 import GridViewIcon from "@mui/icons-material/GridView";
 import SettingsIcon from "@mui/icons-material/Settings";
@@ -85,17 +85,8 @@ export default function Navbar({
             onSelect("play");
           }}
           title={t("navbar:play")}
-          unselectedIcon={<SportsMmaOutlinedIcon />}
-          selectedIcon={<SportsMmaIcon />}
-        />
-        <NavbarButton
-          selected={selected == "saves"}
-          onClick={() => {
-            onSelect("saves");
-          }}
-          title={t("navbar:saves")}
-          unselectedIcon={<GridViewOutlinedIcon />}
-          selectedIcon={<GridViewIcon />}
+          unselectedIcon={<SportsEsportsOutlinedIcon />}
+          selectedIcon={<SportsEsportsIcon />}
         />
         <NavbarButton
           selected={selected == "replays"}

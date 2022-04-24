@@ -6,5 +6,8 @@
   "save-file": "セーブファイル",
   "link-code": "リンクコード",
   "match-type.single": "シングルバトル",
-  "match-type.triple": "トリプルバトル"
+  "match-type.triple": "トリプルバトル",
+  "tab.navicust": "ナビカス",
+  "tab.folder": "フォルダー",
+  "tab.modcards": "改造カード"
 }

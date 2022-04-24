@@ -9,5 +9,16 @@
   "patch.version": "Version",
   "match-type.single": "Single battle",
   "match-type.triple": "Triple battle",
-  "reload-roms": "Refresh games"
+  "rescan": "Rescan",
+  "select-save": "Select a save file",
+  "no-save-selected": "No save file selected",
+  "tab.navicust": "NaviCust",
+  "tab.folder": "Folder",
+  "tab.modcards": "Modcards",
+  "play": "Play",
+  "folder.regular-chip": "REG",
+  "folder.tag-chip": "TAG",
+  "patch-name": "Patch",
+  "patch-version": "Version",
+  "show-hide-extra-options": "Show/hide extra options"
 }
