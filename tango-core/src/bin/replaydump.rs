@@ -16,6 +16,9 @@ struct Cli {
     #[clap(parse(from_os_str))]
     output_path: std::path::PathBuf,
 
+    #[clap(long, parse(from_os_str), default_value = "ffmpeg")]
+    ffmpeg: std::path::PathBuf,
+
     #[clap(short('a'), long, default_value = "-c:a aac -ar 48000 -b:a 384k -ac 2")]
     ffmpeg_audio_flags: String,
 
@@ -81,10 +84,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     core.as_mut().load_state(&replay.state)?;
 
-    let ffmpeg_path = "ffmpeg";
-
     let video_output = tempfile::NamedTempFile::new()?;
-    let mut video_child = std::process::Command::new(&ffmpeg_path)
+    let mut video_child = std::process::Command::new(&args.ffmpeg)
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
         // Input args.
@@ -107,7 +108,7 @@ fn main() -> Result<(), anyhow::Error> {
         .spawn()?;
 
     let audio_output = tempfile::NamedTempFile::new()?;
-    let mut audio_child = std::process::Command::new(&ffmpeg_path)
+    let mut audio_child = std::process::Command::new(&args.ffmpeg)
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
         // Input args.
@@ -166,7 +167,7 @@ fn main() -> Result<(), anyhow::Error> {
     audio_child.stdin = None;
     audio_child.wait()?;
 
-    let mut mux_child = std::process::Command::new(&ffmpeg_path)
+    let mut mux_child = std::process::Command::new(&args.ffmpeg)
         .args(&["-y"])
         .args(&["-i"])
         .arg(video_output.path())
