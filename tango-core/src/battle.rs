@@ -16,7 +16,7 @@ pub struct Settings {
     pub ice_servers: Vec<webrtc::ice_transport::ice_server::RTCIceServer>,
     pub matchmaking_connect_addr: String,
     pub session_id: String,
-    pub replay_path: std::path::PathBuf,
+    pub replays_path: std::path::PathBuf,
     pub replay_metadata: Vec<u8>,
     pub match_type: u16,
     pub input_delay: u32,
@@ -238,7 +238,7 @@ impl Match {
             "starting battle: local_player_index = {}",
             local_player_index
         );
-        let mut replay_filename = self.settings.replay_path.clone();
+        let mut replay_filename = self.settings.replays_path.clone();
         replay_filename.push(format!("battle{}.tangoreplay", battle_state.number));
         let replay_filename = std::path::Path::new(&replay_filename);
         let replay_file = std::fs::File::create(&replay_filename)?;
