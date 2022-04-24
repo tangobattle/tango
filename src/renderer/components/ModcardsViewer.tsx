@@ -1,11 +1,13 @@
-import { useTranslation } from "react-i18next";
 import React from "react";
-import Stack from "@mui/material/Stack";
+import { useTranslation } from "react-i18next";
+
 import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
-import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
+import TableRow from "@mui/material/TableRow";
+
 import * as bn6 from "../../saveedit/bn6";
 
 const DEBUFF_COLOR = "#b55ade";

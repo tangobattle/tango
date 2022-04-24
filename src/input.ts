@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
-import { app } from "@electron/remote";
 import path from "path";
+
+import { app } from "@electron/remote";
 
 export async function getKeyName() {
   const proc = spawn(path.join(app.getAppPath(), "core", "keymaptool"), {

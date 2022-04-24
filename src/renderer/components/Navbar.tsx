@@ -1,21 +1,18 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
+
+import SettingsIcon from "@mui/icons-material/Settings";
+import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
+import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
+import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
+import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import MuiDrawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import { styled } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
-import { useTranslation } from "react-i18next";
-
-import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
-import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
-import GridViewOutlinedIcon from "@mui/icons-material/GridViewOutlined";
-import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
-
-import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
-import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
-import GridViewIcon from "@mui/icons-material/GridView";
-import SettingsIcon from "@mui/icons-material/Settings";
 
 const Drawer = styled(MuiDrawer, {
   shouldForwardProp: (prop) => prop !== "open",
@@ -65,7 +62,7 @@ function NavbarButton({
   );
 }
 
-export type NavbarSelection = "play" | "replays" | "saves" | "settings" | null;
+export type NavbarSelection = "play" | "replays" | "settings" | null;
 
 export default function Navbar({
   selected,

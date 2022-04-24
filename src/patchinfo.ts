@@ -1,8 +1,8 @@
+import { constants } from "fs";
 import { access, readdir, readFile, stat } from "fs/promises";
 import path from "path";
-import toml from "toml";
 import semver from "semver";
-import { constants } from "fs";
+import toml from "toml";
 
 const decoder = new TextDecoder("utf-8");
 

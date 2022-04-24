@@ -1,11 +1,11 @@
 import common from "./common.json";
-import supervisor from "./supervisor.json";
-import play from "./play.json";
 import navbar from "./navbar.json";
+import play from "./play.json";
+import supervisor from "./supervisor.json";
 
 export default {
   common,
-  supervisor,
-  play,
   navbar,
+  play,
+  supervisor,
 } as { [namespace: string]: { [key: string]: string } };

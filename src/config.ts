@@ -1,6 +1,8 @@
-import { app } from "@electron/remote";
 import { readFile, writeFile } from "fs/promises";
 import path from "path";
+
+import { app } from "@electron/remote";
+
 import * as ipc from "./ipc";
 
 export interface Config {

@@ -1,13 +1,16 @@
-import ThemeProvider from "@mui/system/ThemeProvider";
 import React, { Suspense } from "react";
-import theme from "../theme";
-import { ConfigProvider } from "./ConfigContext";
-import { ROMsProvider } from "./ROMsContext";
-import { PatchesProvider } from "./PatchesContext";
+
 import Box from "@mui/material/Box";
 import CssBaseline from "@mui/material/CssBaseline";
+import ThemeProvider from "@mui/system/ThemeProvider";
+
+import theme from "../theme";
+import { ConfigProvider } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
 import PlayPane from "./panes/PlayPane";
+import ReplaysPane from "./panes/ReplaysPane";
+import { PatchesProvider } from "./PatchesContext";
+import { ROMsProvider } from "./ROMsContext";
 import { SavesProvider } from "./SavesContext";
 
 function AppBody() {
@@ -22,6 +25,7 @@ function AppBody() {
         }}
       />
       <PlayPane active={selected == "play"} />
+      <ReplaysPane active={selected == "replays"} />
     </Box>
   );
 }

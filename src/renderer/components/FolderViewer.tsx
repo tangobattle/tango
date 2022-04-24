@@ -1,10 +1,12 @@
-import { Trans, useTranslation } from "react-i18next";
 import React from "react";
+import { Trans, useTranslation } from "react-i18next";
+
 import Chip from "@mui/material/Chip";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
-import TableRow from "@mui/material/TableRow";
 import TableCell from "@mui/material/TableCell";
+import TableRow from "@mui/material/TableRow";
+
 import * as bn6 from "../../saveedit/bn6";
 
 const MEGA_BG = "#adefef";

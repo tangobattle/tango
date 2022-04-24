@@ -1,6 +1,7 @@
 import React, { useContext } from "react";
-import { getPatchesPath } from "../../paths";
+
 import { PatchInfos, scan } from "../../patchinfo";
+import { getPatchesPath } from "../../paths";
 
 export interface PatchesValue {
   rescan(): Promise<void>;

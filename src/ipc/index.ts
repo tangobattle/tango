@@ -1,8 +1,10 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
-import * as types from "./types";
-import { app } from "@electron/remote";
 import path from "path";
 import { EventEmitter } from "stream";
+
+import { app } from "@electron/remote";
+
+import * as types from "./types";
 
 export interface ExitStatus {
   exitCode: number | null;

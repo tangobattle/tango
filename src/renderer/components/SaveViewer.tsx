@@ -1,12 +1,14 @@
-import { Trans } from "react-i18next";
-import React from "react";
-import Stack from "@mui/material/Stack";
-import Tabs from "@mui/material/Tabs";
-import Tab from "@mui/material/Tab";
-import Box from "@mui/material/Box";
-import { getSavesPath } from "../../paths";
 import { readFile } from "fs/promises";
 import path from "path";
+import React from "react";
+import { Trans } from "react-i18next";
+
+import Box from "@mui/material/Box";
+import Stack from "@mui/material/Stack";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
+
+import { getSavesPath } from "../../paths";
 import * as bn6 from "../../saveedit/bn6";
 import FolderViewer from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";

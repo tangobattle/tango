@@ -1,10 +1,9 @@
+import array2d from "../../array2d";
 import CHIPS from "./data/chips.json";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
 
 export { CHIPS, MODCARDS, NCPS };
-
-import array2d from "../../array2d";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 

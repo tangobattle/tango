@@ -1,7 +1,9 @@
 import { app, BrowserWindow } from "electron";
 import * as path from "path";
 import * as url from "url";
+
 import * as remoteMain from "@electron/remote/main";
+
 remoteMain.initialize();
 
 let mainWindow: Electron.BrowserWindow | null;

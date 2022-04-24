@@ -1,15 +1,17 @@
-import * as ipc from "../../ipc";
 import React from "react";
-import tmp from "tmp-promise";
-import { useConfig } from "./ConfigContext";
-import { makeROM } from "../../game";
 import { Trans } from "react-i18next";
-import Modal from "@mui/material/Modal";
+import tmp from "tmp-promise";
+
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
+import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
+
+import { makeROM } from "../../game";
+import * as ipc from "../../ipc";
 import { ReplayInfo } from "../../replay";
+import { useConfig } from "./ConfigContext";
 
 export function CoreSupervisor({
   romPath,

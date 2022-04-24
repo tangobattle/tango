@@ -1,6 +1,7 @@
 import * as crc32 from "crc-32";
-import path from "path";
 import { readdir, readFile } from "fs/promises";
+import path from "path";
+
 import _roms from "./roms.json";
 
 export const KNOWN_ROMS = _roms as { [name: string]: KnownROM };

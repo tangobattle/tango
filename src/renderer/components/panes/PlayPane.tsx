@@ -1,43 +1,40 @@
+import * as datefns from "date-fns";
+import path from "path";
+import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import semver from "semver";
-import * as datefns from "date-fns";
-import React from "react";
-import Stack from "@mui/material/Stack";
-import Select from "@mui/material/Select";
-import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
-import FormControl from "@mui/material/FormControl";
-import InputLabel from "@mui/material/InputLabel";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import RefreshIcon from "@mui/icons-material/Refresh";
+
+import { shell } from "@electron/remote";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import SportsMmaIcon from "@mui/icons-material/SportsMma";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Collapse from "@mui/material/Collapse";
+import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
+import InputLabel from "@mui/material/InputLabel";
+import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
-import ListSubheader from "@mui/material/ListSubheader";
-import Collapse from "@mui/material/Collapse";
-import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import MenuItem from "@mui/material/MenuItem";
-import { useSaves } from "../SavesContext";
+
+import { getPatchesPath, getReplaysPath, getROMsPath, getSavesPath } from "../../../paths";
 import { KNOWN_ROMS } from "../../../rom";
-import {
-  getPatchesPath,
-  getReplaysPath,
-  getROMsPath,
-  getSavesPath,
-} from "../../../paths";
-import path from "path";
-import { CoreSupervisor } from "../CoreSupervisor";
-import { useROMs } from "../ROMsContext";
-import { shell } from "@electron/remote";
-import { usePatches } from "../PatchesContext";
-import TextField from "@mui/material/TextField";
-import InputAdornment from "@mui/material/InputAdornment";
-import ListItemText from "@mui/material/ListItemText";
 import { CopyButton } from "../CopyButton";
+import { CoreSupervisor } from "../CoreSupervisor";
+import { usePatches } from "../PatchesContext";
+import { useROMs } from "../ROMsContext";
+import { useSaves } from "../SavesContext";
 import SaveViewer from "../SaveViewer";
 
 const MATCH_TYPES = ["single", "triple"];

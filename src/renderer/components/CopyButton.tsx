@@ -1,9 +1,10 @@
 import React from "react";
-import IconButton from "@mui/material/IconButton";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import { clipboard } from "@electron/remote";
-import Tooltip from "@mui/material/Tooltip";
 import { Trans } from "react-i18next";
+
+import { clipboard } from "@electron/remote";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import IconButton from "@mui/material/IconButton";
+import Tooltip from "@mui/material/Tooltip";
 
 export function CopyButton({
   value,
