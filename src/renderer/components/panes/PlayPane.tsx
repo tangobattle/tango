@@ -1,5 +1,6 @@
 import { Trans, useTranslation } from "react-i18next";
 import semver from "semver";
+import * as datefns from "date-fns";
 import React from "react";
 import Stack from "@mui/material/Stack";
 import Tabs from "@mui/material/Tabs";
@@ -584,7 +585,12 @@ export default function PlayPane({ active }: { active: boolean }) {
                 label={<Trans i18nKey={"play:link-code"} />}
                 value={linkCode}
                 onChange={(e) => {
-                  setLinkCode(e.target.value.replace(/\s/g, "").toLowerCase());
+                  setLinkCode(
+                    e.target.value
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]/g, "")
+                      .slice(0, 40)
+                  );
                 }}
                 fullWidth
                 InputProps={{
@@ -668,7 +674,13 @@ export default function PlayPane({ active }: { active: boolean }) {
                     linkCode != ""
                       ? {
                           sessionID,
-                          replaysPath: path.join(getReplaysPath()),
+                          replaysPath: path.join(
+                            getReplaysPath(),
+                            `${datefns.format(
+                              new Date(),
+                              "yyyyMMddHHmmmmss"
+                            )}-${linkCode}`
+                          ),
                           replayInfo: {
                             rom: saves[saveName!].romName!,
                             patch: { name: patchName!, version: patchVersion! },
