@@ -40,7 +40,7 @@ export default function SaveViewer({
   }
 
   return (
-    <Stack flexGrow={1} flexShrink={0}>
+    <Stack flexGrow={1} flexShrink={0} sx={{ width: 0 }}>
       <Tabs
         sx={{ px: 1 }}
         value={tab}

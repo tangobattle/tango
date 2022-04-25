@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import * as path from "path";
 import * as url from "url";
 
@@ -36,6 +36,11 @@ function createWindow() {
 
   mainWindow.on("closed", () => {
     mainWindow = null;
+  });
+
+  mainWindow.webContents.addListener("new-window", function (e, url) {
+    e.preventDefault();
+    shell.openExternal(url);
   });
 
   remoteMain.enable(mainWindow.webContents);

@@ -34,7 +34,7 @@ export default function ModcardsViewer({
       flexGrow={1}
       display={active ? "block" : "none"}
       overflow="auto"
-      sx={{ px: 1, height: 0, minWidth: 0 }}
+      sx={{ px: 1, height: 0 }}
     >
       <Table size="small">
         <TableBody>

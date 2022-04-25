@@ -11,5 +11,6 @@
     "keymapping.select": "SELECT",
     "keymapping.start": "START",
     "remap": "Remap",
-    "request-keymapping": "Press key for {{key}}."
+    "request-keymapping": "Press key for {{key}}.",
+    "tab.about": "About"
 }
