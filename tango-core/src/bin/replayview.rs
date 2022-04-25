@@ -8,6 +8,9 @@ struct Cli {
     #[clap(long)]
     dump: bool,
 
+    #[clap(long)]
+    remote: bool,
+
     #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
 
@@ -27,10 +30,18 @@ fn main() -> Result<(), anyhow::Error> {
     let mut f = std::fs::File::open(args.path)?;
 
     let replay = tango_core::replay::Replay::decode(&mut f)?;
+
+    let state = if !args.remote {
+        &replay.local_state
+    } else {
+        &replay.remote_state
+    }
+    .clone();
+
     log::info!(
         "replay is for {} (crc32 = {:08x})",
-        replay.local_state.rom_title(),
-        replay.local_state.rom_crc32()
+        state.rom_title(),
+        state.rom_crc32()
     );
 
     if args.dump {
@@ -89,12 +100,25 @@ fn main() -> Result<(), anyhow::Error> {
         .unwrap();
     hooks.prepare_for_fastforward(core.as_mut());
 
+    let local_player_index = if !args.remote {
+        replay.local_player_index
+    } else {
+        1 - replay.local_player_index
+    };
+
+    let mut input_pairs = replay.input_pairs.clone();
+    if args.remote {
+        for pair in input_pairs.iter_mut() {
+            std::mem::swap(&mut pair.local, &mut pair.remote);
+        }
+    }
+
     {
         let done = done.clone();
         core.set_traps(
             hooks.fastforwarder_traps(tango_core::fastforwarder::State::new(
-                replay.local_player_index,
-                replay.input_pairs,
+                local_player_index,
+                input_pairs,
                 0,
                 0,
                 Box::new(move || {
@@ -137,7 +161,7 @@ fn main() -> Result<(), anyhow::Error> {
     stream.play()?;
 
     thread.handle().run_on_core(move |mut core| {
-        core.load_state(&replay.local_state).expect("load state");
+        core.load_state(&state).expect("load state");
     });
     thread.handle().unpause();
 
