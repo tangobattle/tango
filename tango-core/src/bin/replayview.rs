@@ -29,8 +29,8 @@ fn main() -> Result<(), anyhow::Error> {
     let replay = tango_core::replay::Replay::decode(&mut f)?;
     log::info!(
         "replay is for {} (crc32 = {:08x})",
-        replay.state.rom_title(),
-        replay.state.rom_crc32()
+        replay.local_state.rom_title(),
+        replay.local_state.rom_crc32()
     );
 
     if args.dump {
@@ -137,7 +137,7 @@ fn main() -> Result<(), anyhow::Error> {
     stream.play()?;
 
     thread.handle().run_on_core(move |mut core| {
-        core.load_state(&replay.state).expect("load state");
+        core.load_state(&replay.local_state).expect("load state");
     });
     thread.handle().unpause();
 

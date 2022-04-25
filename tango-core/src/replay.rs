@@ -9,12 +9,13 @@ pub struct Writer {
 }
 
 const HEADER: &[u8] = b"TOOT";
-const VERSION: u8 = 0x0b;
+const VERSION: u8 = 0x0c;
 
 pub struct Replay {
     pub metadata: Vec<u8>,
     pub local_player_index: u8,
-    pub state: mgba::state::State,
+    pub local_state: mgba::state::State,
+    pub remote_state: mgba::state::State,
     pub input_pairs: Vec<input::Pair<input::Input>>,
 }
 
@@ -44,9 +45,13 @@ impl Replay {
 
         let local_player_index = zr.read_u8()?;
 
-        let mut state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
-        zr.read_exact(&mut state)?;
-        let state = mgba::state::State::from_slice(&state);
+        let mut local_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
+        zr.read_exact(&mut local_state)?;
+        let local_state = mgba::state::State::from_slice(&local_state);
+
+        let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
+        zr.read_exact(&mut remote_state)?;
+        let remote_state = mgba::state::State::from_slice(&remote_state);
 
         let mut input_pairs = vec![];
 
@@ -102,7 +107,8 @@ impl Replay {
         Ok(Self {
             metadata,
             local_player_index,
-            state,
+            local_state,
+            remote_state,
             input_pairs,
         })
     }

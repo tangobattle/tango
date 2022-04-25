@@ -49,8 +49,8 @@ fn main() -> Result<(), anyhow::Error> {
     let replay = tango_core::replay::Replay::decode(&mut f)?;
     log::info!(
         "replay is for {} (crc32 = {:08x})",
-        replay.state.rom_title(),
-        replay.state.rom_crc32()
+        replay.local_state.rom_title(),
+        replay.local_state.rom_crc32()
     );
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
@@ -84,7 +84,7 @@ fn main() -> Result<(), anyhow::Error> {
         core.set_traps(hooks.fastforwarder_traps(ff_state));
     }
 
-    core.as_mut().load_state(&replay.state)?;
+    core.as_mut().load_state(&replay.local_state)?;
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = std::process::Command::new(&args.ffmpeg)

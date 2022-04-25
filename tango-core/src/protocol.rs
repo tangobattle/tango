@@ -19,6 +19,7 @@ pub enum Packet {
     Hello(Hello),
     Hola(Hola),
     Init(Init),
+    StateChunk(StateChunk),
     Input(Input),
 }
 
@@ -48,6 +49,11 @@ pub struct Init {
     pub battle_number: u8,
     pub input_delay: u32,
     pub marshaled: Vec<u8>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct StateChunk {
+    pub chunk: Vec<u8>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

@@ -235,9 +235,9 @@ impl hooks::Hooks for BN6 {
 
                                 let current_tick = munger.current_tick(core);
                                 if !battle_state.has_committed_state() {
-                                    battle_state.set_committed_state(
-                                        core.save_state().expect("save state"),
-                                    );
+                                    battle_state
+                                        .set_committed_state(core.save_state().expect("save state"))
+                                        .await;
                                     battle_state.fill_input_delay(current_tick).await;
                                     log::info!("battle state committed");
                                 }
