@@ -364,7 +364,6 @@ export default function PlayPane({ active }: { active: boolean }) {
           onSubmit={(e: any) => {
             e.preventDefault();
             setStartedState({ linkCode: linkCode != "" ? linkCode : null });
-            setLinkCode("");
           }}
         >
           <Stack
@@ -393,7 +392,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                 disabled={saveName == null}
                 size="small"
                 label={<Trans i18nKey={"play:link-code"} />}
-                value={startedState == null ? linkCode : startedState.linkCode}
+                value={linkCode}
                 onChange={(e) => {
                   setLinkCode(
                     e.target.value
