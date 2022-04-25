@@ -25,15 +25,17 @@ export default function SaveViewer({
 
   React.useEffect(() => {
     (async () => {
-      setEditor(
-        new bn6.Editor(
-          bn6.Editor.sramDumpToRaw(
-            (await readFile(path.join(getSavesPath(), filename))).buffer
-          )
+      const e = new bn6.Editor(
+        bn6.Editor.sramDumpToRaw(
+          (await readFile(path.join(getSavesPath(), filename))).buffer
         )
       );
+      setEditor(e);
+      if (!e.supportsModcards() && tab == "modcards") {
+        setTab("navicust");
+      }
     })();
-  }, [filename, incarnation]);
+  }, [filename, incarnation, tab]);
 
   if (editor == null) {
     return null;
