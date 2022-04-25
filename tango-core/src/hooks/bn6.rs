@@ -506,7 +506,7 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |_core| {
                         handle.block_on(async {
                             log::info!("match ended");
-                            facade.end_match();
+                            facade.end_match().await;
                         });
                     }),
                 )

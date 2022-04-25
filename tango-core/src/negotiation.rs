@@ -78,7 +78,9 @@ pub async fn negotiate(
     ice_servers: &[webrtc::ice_transport::ice_server::RTCIceServer],
 ) -> Result<Negotiation, Error> {
     log::info!("negotiating match, session_id = {}", session_id);
-    ipc_client.send_notification(ipc::Notification::State(ipc::State::Waiting))?;
+    ipc_client
+        .send_notification(ipc::Notification::State(ipc::State::Waiting))
+        .await?;
 
     let api = webrtc::api::APIBuilder::new().build();
     let (peer_conn, dc, side) = tango_matchmaking::client::connect(
@@ -123,7 +125,9 @@ pub async fn negotiate(
             .sdp
     );
 
-    ipc_client.send_notification(ipc::Notification::State(ipc::State::Connecting))?;
+    ipc_client
+        .send_notification(ipc::Notification::State(ipc::State::Connecting))
+        .await?;
     let mut nonce = [0u8; 16];
     rand::rngs::OsRng {}.fill(&mut nonce);
     let commitment = make_rng_commitment(&nonce)?;

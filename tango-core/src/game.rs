@@ -20,7 +20,7 @@ pub struct Keymapping {
 }
 
 pub struct Game {
-    _rt: tokio::runtime::Runtime,
+    rt: tokio::runtime::Runtime,
     ipc_client: ipc::Client,
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: Option<winit::event_loop::EventLoop<()>>,
@@ -221,7 +221,7 @@ impl Game {
         stream.play()?;
 
         Ok(Game {
-            _rt: rt,
+            rt,
             ipc_client,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
@@ -240,8 +240,12 @@ impl Game {
     }
 
     pub fn run(mut self) -> anyhow::Result<()> {
-        self.ipc_client
-            .send_notification(ipc::Notification::State(ipc::State::Running))?;
+        self.rt.block_on(async {
+            self.ipc_client
+                .send_notification(ipc::Notification::State(ipc::State::Running))
+                .await?;
+            anyhow::Result::<()>::Ok(())
+        })?;
 
         let current_input = self.current_input.clone();
 

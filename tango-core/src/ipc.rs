@@ -1,3 +1,5 @@
+use tokio::io::AsyncWriteExt;
+
 use crate::game;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
@@ -73,24 +75,23 @@ pub enum State {
 }
 
 #[derive(Clone)]
-pub struct Client(std::sync::Arc<parking_lot::Mutex<Inner>>);
-
-struct Inner {
-    writer: Box<dyn std::io::Write>,
+pub struct Client {
+    writer:
+        std::sync::Arc<tokio::sync::Mutex<std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send>>>>,
 }
 
 impl Client {
     pub fn new_from_stdout() -> Self {
-        Client(std::sync::Arc::new(parking_lot::Mutex::new(Inner {
-            writer: Box::new(std::io::stdout()),
-        })))
+        Client {
+            writer: std::sync::Arc::new(tokio::sync::Mutex::new(Box::pin(tokio::io::stdout()))),
+        }
     }
 
-    pub fn send_notification(&self, n: Notification) -> std::io::Result<()> {
-        let mut inner = self.0.lock();
-        serde_json::to_writer(&mut inner.writer, &n)?;
-        inner.writer.write_all(b"\n")?;
-        inner.writer.flush()?;
+    pub async fn send_notification(&self, n: Notification) -> std::io::Result<()> {
+        let mut writer = self.writer.lock().await;
+        writer.write_all(&serde_json::to_vec(&n)?).await?;
+        writer.write_all(b"\n").await?;
+        writer.flush().await?;
         Ok(())
     }
 }
