@@ -3,16 +3,17 @@ import { Trans } from "react-i18next";
 
 import { clipboard } from "@electron/remote";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
-import IconButton from "@mui/material/IconButton";
+import IconButton, { IconButtonProps } from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 
 export function CopyButton({
   value,
   disabled,
+  ...props
 }: {
   value: string;
   disabled?: boolean;
-}) {
+} & IconButtonProps) {
   const [clicked, setClicked] = React.useState(false);
   return (
     <Tooltip
@@ -34,6 +35,7 @@ export function CopyButton({
         }}
         edge="end"
         disabled={disabled}
+        {...props}
       >
         <ContentCopyIcon fontSize="small" />
       </IconButton>

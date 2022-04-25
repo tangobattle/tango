@@ -14,6 +14,7 @@ import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
 import { ReplayInfo } from "../../replay";
 import { useConfig } from "./ConfigContext";
+import { CopyButton } from "./CopyButton";
 
 export function CoreSupervisor({
   romPath,
@@ -192,20 +193,38 @@ export function CoreSupervisor({
               <Box sx={{ flexGrow: 0, flexShrink: 0 }}>
                 <Trans i18nKey="supervisor:crash" />
               </Box>
-              <TextField
-                multiline
-                InputProps={{
-                  sx: {
-                    fontSize: "0.8rem",
-                    fontFamily: "monospace",
-                  },
-                }}
-                maxRows={20}
+              <Box
                 sx={{
-                  flexGrow: 1,
+                  flexGrow: 0,
+                  flexShrink: 0,
+                  display: "flex",
+                  position: "relative",
                 }}
-                value={stderr.join("").trimEnd()}
-              />
+              >
+                <CopyButton
+                  value={stderr.join("").trimEnd()}
+                  sx={{
+                    position: "absolute",
+                    right: "16px",
+                    top: "8px",
+                    zIndex: 999,
+                  }}
+                />
+                <TextField
+                  multiline
+                  InputProps={{
+                    sx: {
+                      fontSize: "0.8rem",
+                      fontFamily: "monospace",
+                    },
+                  }}
+                  maxRows={20}
+                  sx={{
+                    flexGrow: 1,
+                  }}
+                  value={stderr.join("").trimEnd()}
+                />
+              </Box>
               <Stack direction="row" justifyContent="flex-end">
                 <Button
                   variant="contained"
