@@ -2,6 +2,7 @@
   "select-game": "Select a game",
   "unpatched": "Base game",
   "input-delay": "Input delay",
+  "patch-byline": "by {{authors}}",
   "fight": "Fight!",
   "no-game-selected": "No game selected",
   "link-code": "Link code",

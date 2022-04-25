@@ -264,11 +264,16 @@ export default function PlayPane({ active }: { active: boolean }) {
                         <>
                           {patches[patchName].title}{" "}
                           <small>
-                            {listFormatter.format(
-                              patches[patchName].authors.flatMap(({ name }) =>
-                                name != null ? [name] : []
-                              )
-                            )}
+                            <Trans
+                              i18nKey="play:patch-byline"
+                              values={{
+                                authors: listFormatter.format(
+                                  patches[patchName].authors.flatMap(
+                                    ({ name }) => (name != null ? [name] : [])
+                                  )
+                                ),
+                              }}
+                            />
                           </small>
                         </>
                       );
@@ -284,11 +289,18 @@ export default function PlayPane({ active }: { active: boolean }) {
                         <MenuItem key={v} value={v}>
                           <ListItemText
                             primary={patches[patchName].title}
-                            secondary={listFormatter.format(
-                              patches[patchName].authors.flatMap(({ name }) =>
-                                name != null ? [name] : []
-                              )
-                            )}
+                            secondary={
+                              <Trans
+                                i18nKey="play:patch-byline"
+                                values={{
+                                  authors: listFormatter.format(
+                                    patches[patchName].authors.flatMap(
+                                      ({ name }) => (name != null ? [name] : [])
+                                    )
+                                  ),
+                                }}
+                              />
+                            }
                           />
                         </MenuItem>
                       );
