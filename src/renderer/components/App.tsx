@@ -18,7 +18,7 @@ function AppBody() {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
 
   return (
-    <Box display="flex" height="100%">
+    <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
       <Suspense fallback={null}>
         <Navbar
           selected={selected}

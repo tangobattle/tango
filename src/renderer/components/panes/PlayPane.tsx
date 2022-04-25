@@ -131,7 +131,7 @@ export default function PlayPane({ active }: { active: boolean }) {
         display: active ? "flex" : "none",
       }}
     >
-      <Stack sx={{ flexGrow: 1 }} spacing={1}>
+      <Stack sx={{ flexGrow: 1, width: 0 }} spacing={1}>
         <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
           <Stack spacing={1} flexGrow={0} flexShrink={0} direction="row">
             <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
