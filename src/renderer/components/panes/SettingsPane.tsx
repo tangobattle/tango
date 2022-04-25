@@ -85,6 +85,10 @@ function AboutTab({ active }: { active: boolean }) {
               <Link href="https://twitter.com/pnw_ssbmars" target="_blank">
                 pnw_ssbmars
               </Link>{" "}
+              and{" "}
+              <Link href="https://github.com/XKirby" target="_blank">
+                XKirby
+              </Link>{" "}
               for their work on{" "}
               <Link href="https://www.n1gp.dev/bbn3" target="_blank">
                 BBN3
