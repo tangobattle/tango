@@ -24,6 +24,9 @@ export class Core extends EventEmitter {
         signal,
       }
     );
+    this._proc.addListener("error", (err) => {
+      this.emit("error", err);
+    });
     this._exitPromise = new Promise((resolve) => {
       this._proc.addListener("exit", () => {
         this._proc.kill();
@@ -68,6 +71,7 @@ export declare interface Core {
   on(event: "state", listener: (state: types.State) => void): this;
   on(event: "stderr", listener: (stderr: string) => void): this;
   on(event: "exit", listener: (exitStatus: ExitStatus) => void): this;
+  on(event: "error", listener: (err: Error) => void): this;
 }
 
 export type Args = types.Args;

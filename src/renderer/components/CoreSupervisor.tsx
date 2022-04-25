@@ -102,6 +102,13 @@ export function CoreSupervisor({
           return stderr;
         });
       });
+      core.on("error", (err) => {
+        setStderr((stderr) => {
+          stderr.push(err.toString());
+          return stderr;
+        });
+        setExitLingering(true);
+      });
     })();
 
     return () => {

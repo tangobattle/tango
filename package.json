@@ -64,10 +64,10 @@
     "webpack-dev-server": "^4.7.4"
   },
   "build": {
-    "appId": "com.company.app",
-    "productName": "App Name",
+    "appId": "com.tangobattle.tango",
+    "productName": "Tango",
     "mac": {
-      "category": "public.app-category.video"
+      "category": "public.app-category.games"
     },
     "directories": {
       "output": "packages"
@@ -75,6 +75,9 @@
     "files": [
       "package.json",
       "dist/**"
+    ],
+    "extraResources": [
+      "core/**"
     ]
   },
   "engines": {
