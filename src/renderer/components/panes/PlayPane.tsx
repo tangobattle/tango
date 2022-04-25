@@ -118,6 +118,10 @@ export default function PlayPane({ active }: { active: boolean }) {
       : "";
 
   const now = new Date();
+  const listFormatter = new Intl.ListFormat(i18n.resolvedLanguage, {
+    style: "long",
+    type: "conjunction",
+  });
 
   return (
     <Box
@@ -251,6 +255,24 @@ export default function PlayPane({ active }: { active: boolean }) {
                       setPatchName(JSON.parse(e.target.value));
                       setPatchVersion(null);
                     }}
+                    renderValue={(v) => {
+                      const patchName = JSON.parse(v);
+                      if (patchName == null) {
+                        return <Trans i18nKey="play:unpatched" />;
+                      }
+                      return (
+                        <>
+                          {patches[patchName].title}{" "}
+                          <small>
+                            {listFormatter.format(
+                              patches[patchName].authors.flatMap(({ name }) =>
+                                name != null ? [name] : []
+                              )
+                            )}
+                          </small>
+                        </>
+                      );
+                    }}
                     fullWidth
                   >
                     <MenuItem value="null">
@@ -260,7 +282,14 @@ export default function PlayPane({ active }: { active: boolean }) {
                       const v = JSON.stringify(patchName);
                       return (
                         <MenuItem key={v} value={v}>
-                          {patches[patchName].title}
+                          <ListItemText
+                            primary={patches[patchName].title}
+                            secondary={listFormatter.format(
+                              patches[patchName].authors.flatMap(({ name }) =>
+                                name != null ? [name] : []
+                              )
+                            )}
+                          />
                         </MenuItem>
                       );
                     })}

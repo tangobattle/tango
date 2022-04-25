@@ -1,3 +1,4 @@
+import { parseOneAddress } from "email-addresses";
 import { constants } from "fs";
 import { access, readdir, readFile, stat } from "fs/promises";
 import path from "path";
@@ -17,7 +18,7 @@ export interface PatchVersionInfo {
 
 export interface PatchInfo {
   title?: string;
-  authors?: string[];
+  authors: { name: string | null; email: string }[];
   source?: string;
   license?: string;
   forROM: string;
@@ -137,7 +138,16 @@ export async function scan(dir: string) {
 
     patches[patchName] = {
       title: info.patch.title || patchName,
-      authors: info.patch.authors || [],
+      authors:
+        info.patch.authors != null
+          ? info.patch.authors.flatMap((a) => {
+              const addr = parseOneAddress(a);
+              if (addr == null || addr.type != "mailbox") {
+                return [];
+              }
+              return [{ name: addr.name, email: addr.address }];
+            })
+          : [],
       source: info.patch.source,
       license: info.patch.license,
       forROM: info.patch.for_rom,
