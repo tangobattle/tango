@@ -3,9 +3,11 @@ import { Trans } from "react-i18next";
 import tmp from "tmp-promise";
 
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
@@ -34,7 +36,7 @@ export function CoreSupervisor({
   };
   incarnation: number;
   windowTitle: string;
-  onExit: (exitStatus: ipc.ExitStatus) => void;
+  onExit: () => void;
 }) {
   const { config } = useConfig();
 
@@ -48,9 +50,7 @@ export function CoreSupervisor({
 
   const [state, setState] = React.useState<ipc.State | null>(null);
   const [stderr, setStderr] = React.useState<string[]>([]);
-  const [exitStatus, setExitStatus] = React.useState<ipc.ExitStatus | null>(
-    null
-  );
+  const [exitLingering, setExitLingering] = React.useState(false);
 
   const abortControllerRef = React.useRef<AbortController>(null!);
   if (abortControllerRef.current == null) {
@@ -86,16 +86,19 @@ export function CoreSupervisor({
         }
       );
       core.on("exit", (exitStatus) => {
-        setExitStatus(exitStatus);
-        onExitRef.current(exitStatus);
+        if (exitStatus.exitCode == 0 || exitStatus.signalCode == "SIGTERM") {
+          onExitRef.current();
+        } else {
+          setExitLingering(true);
+        }
       });
       core.on("state", (state) => {
         setState(state);
       });
-      core.on("stderr", (stderr) => {
-        setStderr((lines) => {
-          lines.push(stderr);
-          return lines;
+      core.on("stderr", (buf) => {
+        setStderr((stderr) => {
+          stderr.push(buf.toString());
+          return stderr;
         });
       });
     })();
@@ -123,36 +126,100 @@ export function CoreSupervisor({
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
-          width: 300,
-          bgcolor: "background.paper",
-          boxShadow: 24,
-          px: 3,
-          py: 2,
         }}
       >
-        <Stack
-          direction="row"
-          justifyContent="flex-start"
-          alignItems="center"
-          spacing={2}
-        >
-          <CircularProgress
-            sx={{ flexGrow: 0, flexShrink: 0 }}
-            disableShrink
-            size="2rem"
-          />
-          <Typography>
-            {state == null ? (
-              <Trans i18nKey="supervisor:status.starting" />
-            ) : state == "Running" ? (
-              <Trans i18nKey="supervisor:status.running" />
-            ) : state == "Waiting" ? (
-              <Trans i18nKey="supervisor:status.waiting" />
-            ) : state == "Connecting" ? (
-              <Trans i18nKey="supervisor:status.connecting" />
-            ) : null}
-          </Typography>
-        </Stack>
+        {!exitLingering ? (
+          <Box
+            sx={{
+              width: 300,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              px: 3,
+              py: 2,
+            }}
+          >
+            <Stack spacing={1}>
+              <Stack
+                direction="row"
+                justifyContent="flex-start"
+                alignItems="center"
+                spacing={2}
+              >
+                <CircularProgress
+                  sx={{ flexGrow: 0, flexShrink: 0 }}
+                  disableShrink
+                  size="2rem"
+                />
+                <Typography>
+                  {state == null ? (
+                    <Trans i18nKey="supervisor:status.starting" />
+                  ) : state == "Running" ? (
+                    <Trans i18nKey="supervisor:status.running" />
+                  ) : state == "Waiting" ? (
+                    <Trans i18nKey="supervisor:status.waiting" />
+                  ) : state == "Connecting" ? (
+                    <Trans i18nKey="supervisor:status.connecting" />
+                  ) : null}
+                </Typography>
+              </Stack>
+              <Stack direction="row" justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={(_e) => {
+                    if (abortControllerRef.current != null) {
+                      abortControllerRef.current.abort();
+                    }
+                  }}
+                >
+                  <Trans i18nKey="supervisor:cancel" />
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              width: 600,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              px: 3,
+              py: 2,
+              display: "flex",
+            }}
+          >
+            <Stack spacing={1} flexGrow={1}>
+              <Box sx={{ flexGrow: 0, flexShrink: 0 }}>
+                <Trans i18nKey="supervisor:crash" />
+              </Box>
+              <TextField
+                multiline
+                InputProps={{
+                  sx: {
+                    fontSize: "0.8rem",
+                    fontFamily: "monospace",
+                  },
+                }}
+                maxRows={20}
+                sx={{
+                  flexGrow: 1,
+                }}
+                value={stderr.join("").trimEnd()}
+              />
+              <Stack direction="row" justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  color="error"
+                  onClick={(_e) => {
+                    onExitRef.current();
+                  }}
+                >
+                  <Trans i18nKey="supervisor:dismiss" />
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        )}
       </Box>
     </Modal>
   );

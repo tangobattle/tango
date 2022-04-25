@@ -47,7 +47,7 @@ export async function load(filename: string) {
   }
   const str = data.toString();
   try {
-    return JSON.parse(str) as Config;
+    return { ...DEFAULT, ...JSON.parse(str) } as Config;
   } catch {
     return DEFAULT;
   }

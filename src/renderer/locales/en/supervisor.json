@@ -2,5 +2,8 @@
   "status.starting": "Starting emulator...",
   "status.running": "Running...",
   "status.waiting": "Waiting for opponent...",
-  "status.connecting": "Connecting to opponent..."
+  "status.connecting": "Connecting to opponent...",
+  "crash": "Oops, it looks like Tango crashed! Please provide this log when reporting a bug!",
+  "cancel": "Cancel",
+  "dismiss": "Damn!"
 }

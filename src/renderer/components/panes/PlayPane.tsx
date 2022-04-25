@@ -388,7 +388,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                       i18n.resolvedLanguage
                     ]
                   }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
-                  onExit={(_exitStatus) => {
+                  onExit={() => {
                     setStartedState(null);
                     setIncarnation((incarnation) => incarnation + 1);
                   }}
