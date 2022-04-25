@@ -1,6 +1,0 @@
-[submodule "tango-core"]
-	path = tango-core
-	url = https://github.com/tangobattle/tango-core
-[submodule "patches"]
-	path = patches
-	url = https://github.com/tangobattle/patches
