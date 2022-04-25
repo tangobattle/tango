@@ -1,6 +1,6 @@
 {
   "status.starting": "エミュレータ起動中...",
   "status.running": "エミュレータ動作中...",
-  "status.waiting": "対戦相手の加入を待つ...",
-  "status.connecting": "対戦相手と接続中..."
+  "status.waiting": "相手方の接続待機中...",
+  "status.connecting": "通信待機中..."
 }
