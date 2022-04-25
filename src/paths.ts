@@ -1,5 +1,7 @@
 import path from "path";
 
+import { app } from "@electron/remote";
+
 export function getConfigPath() {
   return "config.json";
 }
@@ -21,5 +23,5 @@ export function getSavesPath() {
 }
 
 export function getCorePath() {
-  return path.join(process.resourcesPath, "core");
+  return app.isPackaged ? path.join(process.resourcesPath, "core") : "core";
 }
