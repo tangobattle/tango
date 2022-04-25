@@ -46,6 +46,7 @@ export default function PlayPane({ active }: { active: boolean }) {
   const { roms, rescan: rescanROMs } = useROMs();
   const { i18n } = useTranslation();
 
+  const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
   const [extraOptionsOpen, setExtraOptionsOpen] = React.useState(false);
 
   const [saveName_, setSaveName] = React.useState<string | null>(null);
@@ -128,7 +129,20 @@ export default function PlayPane({ active }: { active: boolean }) {
     >
       <Stack sx={{ flexGrow: 1 }} spacing={1}>
         <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
-          <Stack spacing={1} direction="row">
+          <Stack spacing={1} flexGrow={0} flexShrink={0} direction="row">
+            <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
+              <IconButton
+                onClick={() => {
+                  setPatchOptionsOpen((o) => !o);
+                }}
+              >
+                {patchOptionsOpen ? (
+                  <KeyboardArrowUpIcon />
+                ) : (
+                  <KeyboardArrowDownIcon />
+                )}
+              </IconButton>
+            </Tooltip>
             <FormControl fullWidth size="small">
               <InputLabel id="select-save-label">
                 <Trans i18nKey="play:select-save" />
@@ -213,6 +227,76 @@ export default function PlayPane({ active }: { active: boolean }) {
               </IconButton>
             </Tooltip>
           </Stack>
+          <Collapse in={patchOptionsOpen}>
+            <Stack
+              flexGrow={0}
+              flexShrink={0}
+              justifyContent="flex-end"
+              direction="row"
+              spacing={1}
+              sx={{ px: 1, mt: 1 }}
+            >
+              <Box flexGrow={5} flexShrink={0}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="game-label">
+                    <Trans i18nKey="play:patch-name" />
+                  </InputLabel>
+                  <Select
+                    labelId="game-label"
+                    disabled={saveName == null}
+                    size="small"
+                    value={JSON.stringify(patchName)}
+                    label={<Trans i18nKey={"play:patch-name"} />}
+                    onChange={(e) => {
+                      setPatchName(JSON.parse(e.target.value));
+                      setPatchVersion(null);
+                    }}
+                    fullWidth
+                  >
+                    <MenuItem value="null">
+                      <Trans i18nKey="play:unpatched" />
+                    </MenuItem>
+                    {eligiblePatchNames.map((patchName) => {
+                      const v = JSON.stringify(patchName);
+                      return (
+                        <MenuItem key={v} value={v}>
+                          {patches[patchName].title}
+                        </MenuItem>
+                      );
+                    })}
+                  </Select>
+                </FormControl>
+              </Box>
+              <Box flexGrow={1} flexShrink={0}>
+                <FormControl fullWidth size="small">
+                  <InputLabel id="patch-version-label">
+                    <Trans i18nKey="play:patch-version" />
+                  </InputLabel>
+                  <Select
+                    labelId="patch-version-label"
+                    disabled={saveName == null || patchName == null}
+                    size="small"
+                    value={patchVersion || ""}
+                    label={<Trans i18nKey={"play:patch-version"} />}
+                    onChange={(e) => {
+                      setPatchVersion(e.target.value);
+                    }}
+                    fullWidth
+                  >
+                    {patchVersions != null
+                      ? patchVersions.map((version) => {
+                          return (
+                            <MenuItem key={version} value={version}>
+                              {version}
+                            </MenuItem>
+                          );
+                        })
+                      : []}
+                  </Select>
+                </FormControl>
+              </Box>
+            </Stack>
+          </Collapse>
         </Box>
         {saveName != null ? (
           <Box flexGrow={1} display="flex">
@@ -414,74 +498,6 @@ export default function PlayPane({ active }: { active: boolean }) {
                   }}
                 />
               </Box>
-              <Stack
-                flexGrow={0}
-                flexShrink={0}
-                justifyContent="flex-end"
-                direction="row"
-                spacing={1}
-                sx={{ px: 1, mt: 1 }}
-              >
-                <Box flexGrow={5} flexShrink={0}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="game-label">
-                      <Trans i18nKey="play:patch-name" />
-                    </InputLabel>
-                    <Select
-                      labelId="game-label"
-                      disabled={saveName == null}
-                      size="small"
-                      value={JSON.stringify(patchName)}
-                      label={<Trans i18nKey={"play:patch-name"} />}
-                      onChange={(e) => {
-                        setPatchName(JSON.parse(e.target.value));
-                        setPatchVersion(null);
-                      }}
-                      fullWidth
-                    >
-                      <MenuItem value="null">
-                        <Trans i18nKey="play:unpatched" />
-                      </MenuItem>
-                      {eligiblePatchNames.map((patchName) => {
-                        const v = JSON.stringify(patchName);
-                        return (
-                          <MenuItem key={v} value={v}>
-                            {patches[patchName].title}
-                          </MenuItem>
-                        );
-                      })}
-                    </Select>
-                  </FormControl>
-                </Box>
-                <Box flexGrow={1} flexShrink={0}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel id="patch-version-label">
-                      <Trans i18nKey="play:patch-version" />
-                    </InputLabel>
-                    <Select
-                      labelId="patch-version-label"
-                      disabled={saveName == null || patchName == null}
-                      size="small"
-                      value={patchVersion || ""}
-                      label={<Trans i18nKey={"play:patch-version"} />}
-                      onChange={(e) => {
-                        setPatchVersion(e.target.value);
-                      }}
-                      fullWidth
-                    >
-                      {patchVersions != null
-                        ? patchVersions.map((version) => {
-                            return (
-                              <MenuItem key={version} value={version}>
-                                {version}
-                              </MenuItem>
-                            );
-                          })
-                        : []}
-                    </Select>
-                  </FormControl>
-                </Box>
-              </Stack>
             </Stack>
           </Collapse>
         </Stack>
