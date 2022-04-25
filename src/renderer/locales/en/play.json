@@ -1,5 +1,4 @@
 {
-  "select-game": "Select a game",
   "unpatched": "Base game",
   "input-delay": "Input delay",
   "patch-byline": "by {{authors}}",
@@ -12,7 +11,7 @@
   "match-type.single": "Single battle",
   "match-type.triple": "Triple battle",
   "rescan": "Rescan",
-  "select-save": "Select a save file",
+  "select-save": "Save file",
   "no-save-selected": "No save file selected",
   "tab.navicust": "NaviCust",
   "tab.folder": "Folder",

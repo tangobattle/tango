@@ -215,7 +215,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                 <FolderOpenIcon />
               </IconButton>
             </Tooltip>
-            <Tooltip title={<Trans i18nKey="play:reload-saves" />}>
+            <Tooltip title={<Trans i18nKey="play:rescan" />}>
               <IconButton
                 onClick={() => {
                   (async () => {
