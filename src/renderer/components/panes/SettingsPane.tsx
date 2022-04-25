@@ -120,6 +120,12 @@ function AboutTab({ active }: { active: boolean }) {
               </Link>{" "}
               for their bug testing and support!
             </li>
+            <li>
+              <Link href="https://github.com/bigfarts" target="_blank">
+                bigfarts
+              </Link>{" "}
+              thats me lol
+            </li>
           </ul>
           <Typography>Thank you!</Typography>
         </Stack>
