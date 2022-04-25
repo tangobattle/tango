@@ -94,7 +94,7 @@ function AboutTab({ active }: { active: boolean }) {
                 BBN3
               </Link>
               , the original Battle Network rollback netplay, and indispensable
-              assistance on Tango (and the name!).
+              assistance on Tango (and the name and logo!).
             </li>
             <li>
               <Link href="https://github.com/luckytyphlosion" target="_blank">
