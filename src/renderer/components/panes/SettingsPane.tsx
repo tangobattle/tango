@@ -4,7 +4,11 @@ import { Trans, useTranslation } from "react-i18next";
 import { app } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
@@ -168,6 +172,71 @@ function AboutTab({ active }: { active: boolean }) {
   );
 }
 
+function AdvancedTab({ active }: { active: boolean }) {
+  const { config, save: saveConfig } = useConfig();
+  return (
+    <Box
+      flexGrow={1}
+      display={active ? "block" : "none"}
+      overflow="auto"
+      sx={{ px: 1, height: 0 }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          py: 4,
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        <Stack
+          spacing={2}
+          sx={{
+            width: "500px",
+          }}
+        >
+          <FormControl fullWidth size="small">
+            <InputLabel id="wgpu-backend-label">
+              <Trans i18nKey="settings:wgpu-backend" />
+            </InputLabel>
+
+            <Select
+              labelId="wgpu-backend-label"
+              value={config.wgpuBackend ?? "default"}
+              onChange={(e) => {
+                (async () => {
+                  saveConfig((config) => ({
+                    ...config,
+                    wgpuBackend:
+                      e.target.value != "default" ? e.target.value : null,
+                  }));
+                })();
+              }}
+              label={<Trans i18nKey="settings:wgpu-backend" />}
+            >
+              <MenuItem value="default">
+                <Trans i18nKey="settings:wgpu-backend.default" />
+              </MenuItem>
+              <MenuItem value="vulkan">
+                <Trans i18nKey="settings:wgpu-backend.vulkan" />
+              </MenuItem>
+              <MenuItem value="dx12">
+                <Trans i18nKey="settings:wgpu-backend.dx12" />
+              </MenuItem>
+              <MenuItem value="gl">
+                <Trans i18nKey="settings:wgpu-backend.gl" />
+              </MenuItem>
+              <MenuItem value="metal">
+                <Trans i18nKey="settings:wgpu-backend.metal" />
+              </MenuItem>
+            </Select>
+          </FormControl>
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
 function KeymappingTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { t } = useTranslation();
@@ -229,7 +298,7 @@ function KeymappingTab({ active }: { active: boolean }) {
                   if (mapped == null) {
                     break;
                   }
-                  await saveConfig((config) => ({
+                  saveConfig((config) => ({
                     ...config,
                     keymapping: { ...config.keymapping, [key]: mapped },
                   }));
@@ -269,9 +338,14 @@ export default function SettingsPane({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:tab.keymapping" />}
             value="keymapping"
           />
+          <Tab
+            label={<Trans i18nKey="settings:tab.advanced" />}
+            value="advanced"
+          />
           <Tab label={<Trans i18nKey="settings:tab.about" />} value="about" />
         </Tabs>
         <KeymappingTab active={tab == "keymapping"} />
+        <AdvancedTab active={tab == "advanced"} />
         <AboutTab active={tab == "about"} />
       </Stack>
     </Box>

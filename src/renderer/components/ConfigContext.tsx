@@ -5,7 +5,7 @@ import { getConfigPath } from "../../paths";
 
 export interface ConfigContextValue {
   config: config.Config;
-  save(f: (old: config.Config) => config.Config): Promise<void>;
+  save(f: (old: config.Config) => config.Config): void;
 }
 
 const Context = React.createContext(null! as ConfigContextValue);
@@ -49,7 +49,7 @@ export const ConfigProvider = ({
     <Context.Provider
       value={{
         config: currentConfig,
-        async save(f) {
+        save(f) {
           setCurrentConfig((cfg) => {
             const newCfg = f(cfg);
             config.save(newCfg, getConfigPath());

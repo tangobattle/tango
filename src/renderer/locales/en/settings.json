@@ -12,5 +12,12 @@
     "keymapping.start": "START",
     "remap": "Remap",
     "request-keymapping": "Press key for {{key}}.",
-    "tab.about": "About"
+    "tab.about": "About",
+    "tab.advanced": "Advanced",
+    "wgpu-backend": "Renderer",
+    "wgpu-backend.default": "Default",
+    "wgpu-backend.vulkan": "Vulkan",
+    "wgpu-backend.dx12": "DirectX 12",
+    "wgpu-backend.gl": "OpenGL (must have ANGLE libraries)",
+    "wgpu-backend.metal": "Metal (macOS only)"
 }
