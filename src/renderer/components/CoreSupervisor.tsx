@@ -128,7 +128,7 @@ export function CoreSupervisor({
   return (
     <Modal
       open={true}
-      onClose={(e, reason) => {
+      onClose={(_e, reason) => {
         if (reason == "backdropClick" || reason == "escapeKeyDown") {
           return;
         }

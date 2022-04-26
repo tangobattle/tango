@@ -1,13 +1,13 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import path from "path";
 
-import { getCorePath } from "./paths";
+import { getBinPath } from "./paths";
 
 export class Keymaptool {
   private proc: ChildProcessWithoutNullStreams;
 
   constructor({ env }: { env?: NodeJS.ProcessEnv } = {}) {
-    this.proc = spawn(path.join(getCorePath(), "keymaptool"), { env });
+    this.proc = spawn(path.join(getBinPath(), "keymaptool"), { env });
   }
 
   async request(message: string) {

@@ -2,7 +2,7 @@ import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import path from "path";
 import { EventEmitter } from "stream";
 
-import { getCorePath } from "../paths";
+import { getBinPath } from "../paths";
 import * as types from "./types";
 
 export interface ExitStatus {
@@ -21,7 +21,7 @@ export class Core extends EventEmitter {
     super();
 
     this._proc = spawn(
-      path.join(getCorePath(), "tango-core"),
+      path.join(getBinPath(), "tango-core"),
       [JSON.stringify(args)],
       {
         env,

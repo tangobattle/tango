@@ -41,9 +41,13 @@ async function* walk(dir: string, root?: string): AsyncIterable<string> {
 
 function ReplayItem({
   ListChildProps: { index, style },
+  onDumpClick,
+  onPlayClick,
   replay,
 }: {
   ListChildProps: ListChildComponentProps;
+  onDumpClick: () => void;
+  onPlayClick: () => void;
   replay: {
     name: string;
     info: ReplayInfo;
@@ -56,18 +60,11 @@ function ReplayItem({
     timeStyle: "medium",
   });
 
-  const { patches } = usePatches();
   const { roms } = useROMs();
 
   const unavailable =
     roms[replay.info.rom] == null ||
     (replay.resolvedPatchVersion == null && replay.info.patch != null);
-
-  const [dumpingReplay, setDumpingReplay] = React.useState<{
-    filename: string;
-    done: boolean;
-  } | null>(null);
-  const [viewingReplay, setViewingReplay] = React.useState(false);
 
   return (
     <ListItem
@@ -91,80 +88,20 @@ function ReplayItem({
             <IconButton
               disabled={unavailable}
               onClick={() => {
-                const fn = dialog.showSaveDialogSync(
-                  BrowserWindow.getFocusedWindow()!,
-                  {
-                    defaultPath: path.join(
-                      getReplaysPath(),
-                      replay.name.replace(/\.[^/.]+$/, "")
-                    ),
-                    filters: [{ name: "MP4", extensions: ["mp4"] }],
-                  }
-                );
-                setDumpingReplay(
-                  fn != null ? { filename: fn, done: false } : null
-                );
+                onDumpClick();
               }}
             >
               <VideoFileOutlinedIcon />
-              {dumpingReplay != null ? (
-                <ReplaydumpSupervisor
-                  romPath={path.join(getROMsPath(), roms[replay.info.rom])}
-                  patchPath={
-                    replay.resolvedPatchVersion != null
-                      ? path.join(
-                          getPatchesPath(),
-                          replay.info.patch!.name,
-                          `v${replay.resolvedPatchVersion}.${
-                            patches[replay.info.patch!.name]!.versions[
-                              replay.resolvedPatchVersion
-                            ]!.format
-                          }`
-                        )
-                      : undefined
-                  }
-                  replayPath={path.join(getReplaysPath(), replay.name)}
-                  outPath={dumpingReplay.filename}
-                  onExit={() => {
-                    setDumpingReplay((dumpingReplay) => ({
-                      ...dumpingReplay!,
-                      done: true,
-                    }));
-                  }}
-                />
-              ) : null}
             </IconButton>
           </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:play" />}>
             <IconButton
               disabled={unavailable}
               onClick={() => {
-                setViewingReplay(true);
+                onPlayClick();
               }}
             >
               <PlayArrowIcon />
-              {viewingReplay != null ? (
-                <ReplayviewSupervisor
-                  romPath={path.join(getROMsPath(), roms[replay.info.rom])}
-                  patchPath={
-                    replay.resolvedPatchVersion != null
-                      ? path.join(
-                          getPatchesPath(),
-                          replay.info.patch!.name,
-                          `v${replay.resolvedPatchVersion}.${
-                            patches[replay.info.patch!.name]!.versions[
-                              replay.resolvedPatchVersion
-                            ]!.format
-                          }`
-                        )
-                      : undefined
-                  }
-                  replayPath={path.join(getReplaysPath(), replay.name)}
-                  onExit={() => {
-                    setViewingReplay(false);
-                  }}
-                />
-              ) : null}
             </IconButton>
           </Tooltip>
         </Stack>
@@ -178,13 +115,30 @@ function ReplayItem({
   );
 }
 
+interface LoadedReplay {
+  name: string;
+  info: ReplayInfo;
+  resolvedPatchVersion: string | null;
+}
+
 export default function ReplaysPane({ active }: { active: boolean }) {
   const { patches } = usePatches();
+  const { roms } = useROMs();
 
   const [replays, setReplays] = React.useState<
     | { name: string; info: ReplayInfo; resolvedPatchVersion: string | null }[]
     | null
   >(null);
+
+  const [dumpingReplay, setDumpingReplay] = React.useState<{
+    replay: LoadedReplay;
+    outFilename: string;
+    done: boolean;
+  } | null>(null);
+
+  const [viewingReplay, setViewingReplay] = React.useState<LoadedReplay | null>(
+    null
+  );
 
   React.useEffect(() => {
     if (!active) {
@@ -251,6 +205,31 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 <ReplayItem
                   ListChildProps={props}
                   replay={replays[props.index]}
+                  onDumpClick={() => {
+                    const replay = replays[props.index];
+                    const fn = dialog.showSaveDialogSync(
+                      BrowserWindow.getFocusedWindow()!,
+                      {
+                        defaultPath: path.join(
+                          getReplaysPath(),
+                          replay.name.replace(/\.[^/.]+$/, "")
+                        ),
+                        filters: [{ name: "MP4", extensions: ["mp4"] }],
+                      }
+                    );
+                    setDumpingReplay(
+                      fn != null
+                        ? {
+                            replay: replay,
+                            outFilename: fn,
+                            done: false,
+                          }
+                        : null
+                    );
+                  }}
+                  onPlayClick={() => {
+                    setViewingReplay(replays[props.index]);
+                  }}
                 />
               )}
             </FixedSizeList>
@@ -269,6 +248,28 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           <CircularProgress />
         </Box>
       )}
+      {viewingReplay != null ? (
+        <ReplayviewSupervisor
+          romPath={path.join(getROMsPath(), roms[viewingReplay.info.rom])}
+          patchPath={
+            viewingReplay.resolvedPatchVersion != null
+              ? path.join(
+                  getPatchesPath(),
+                  viewingReplay.info.patch!.name,
+                  `v${viewingReplay.resolvedPatchVersion}.${
+                    patches[viewingReplay.info.patch!.name]!.versions[
+                      viewingReplay.resolvedPatchVersion
+                    ]!.format
+                  }`
+                )
+              : undefined
+          }
+          replayPath={path.join(getReplaysPath(), viewingReplay.name)}
+          onExit={() => {
+            setViewingReplay(null);
+          }}
+        />
+      ) : null}
     </Box>
   );
 }

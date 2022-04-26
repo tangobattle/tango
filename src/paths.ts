@@ -26,6 +26,6 @@ export function getSavesPath() {
   return path.join(getBasePath(), "saves");
 }
 
-export function getCorePath() {
-  return app.isPackaged ? path.join(process.resourcesPath, "core") : "core";
+export function getBinPath() {
+  return app.isPackaged ? path.join(process.resourcesPath, "bin") : "bin";
 }

@@ -83,7 +83,7 @@
       "dist/**"
     ],
     "extraResources": [
-      "core/**"
+      "bin/**"
     ]
   },
   "engines": {
