@@ -1,17 +1,19 @@
 import { opendir } from "fs/promises";
 import path from "path";
 import React from "react";
+import { Trans } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
-import FolderIcon from "@mui/icons-material/Folder";
+import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import VideoFileIcon from "@mui/icons-material/VideoFile";
+import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
 
 import { getReplaysPath } from "../../../paths";
 
@@ -43,15 +45,21 @@ function ReplayItem({
       sx={{ userSelect: "none" }}
       secondaryAction={
         <Stack direction="row">
-          <IconButton>
-            <FolderIcon />
-          </IconButton>
-          <IconButton>
-            <VideoFileIcon />
-          </IconButton>
-          <IconButton>
-            <PlayArrowIcon />
-          </IconButton>
+          <Tooltip title={<Trans i18nKey="replays:show-file" />}>
+            <IconButton>
+              <FolderOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={<Trans i18nKey="replays:export-video" />}>
+            <IconButton>
+              <VideoFileOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={<Trans i18nKey="replays:play" />}>
+            <IconButton>
+              <PlayArrowIcon />
+            </IconButton>
+          </Tooltip>
         </Stack>
       }
     >
