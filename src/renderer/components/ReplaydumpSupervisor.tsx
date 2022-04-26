@@ -56,7 +56,13 @@ export default function ReplaydumpSupervisor({
 
       const proc = spawn(
         getBinPath("replaydump"),
-        [romTmpFileRef.current.path, replayPath, outPath],
+        [
+          romTmpFileRef.current.path,
+          "--ffmpeg",
+          getBinPath("ffmpeg"),
+          replayPath,
+          outPath,
+        ],
         {
           signal: abortControllerRef.current.signal,
         }
