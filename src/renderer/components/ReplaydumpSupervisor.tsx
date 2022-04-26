@@ -93,6 +93,14 @@ export default function ReplaydumpSupervisor({
         }
       })();
 
+      proc.on("error", (err: any) => {
+        setStderr((stderr) => {
+          stderr.push(err.toString());
+          return stderr;
+        });
+        setDone({ exitCode: -1, signalCode: null });
+      });
+
       proc.on("exit", (exitCode, signalCode) => {
         if (signalCode == "SIGTERM") {
           onExitRef.current();

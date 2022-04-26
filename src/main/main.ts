@@ -5,6 +5,8 @@ import * as url from "url";
 
 import * as remoteMain from "@electron/remote/main";
 
+app.commandLine.appendSwitch("in-process-gpu");
+
 remoteMain.initialize();
 
 autoUpdater.logger = console;
@@ -27,6 +29,7 @@ function createWindow() {
         { role: "hideOthers" },
         { role: "unhide" },
         { type: "separator" },
+        { role: "reload" },
         { role: "toggleDevTools" },
         { type: "separator" },
         { role: "quit" },

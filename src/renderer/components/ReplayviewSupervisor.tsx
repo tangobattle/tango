@@ -78,6 +78,14 @@ export default function ReplayviewSupervisor({
         }
       })();
 
+      proc.on("error", (err: any) => {
+        setStderr((stderr) => {
+          stderr.push(err.toString());
+          return stderr;
+        });
+        setExitLingering(true);
+      });
+
       proc.on("exit", (code, signal) => {
         if (code == 0 || signal == "SIGTERM") {
           onExitRef.current();
