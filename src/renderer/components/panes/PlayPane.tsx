@@ -66,7 +66,7 @@ export default function PlayPane({ active }: { active: boolean }) {
     groupedSaves[saves[k].romName].push(k);
   }
 
-  const romNames = Object.keys(groupedSaves);
+  const romNames = Object.keys(roms);
   romNames.sort((k1, k2) => {
     const title1 = KNOWN_ROMS[k1].title[i18n.resolvedLanguage];
     const title2 = KNOWN_ROMS[k2].title[i18n.resolvedLanguage];
@@ -184,7 +184,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                 }}
               >
                 {romNames.map((romName) => {
-                  const saveNames = groupedSaves[romName];
+                  const saveNames = groupedSaves[romName] || [];
                   saveNames.sort();
 
                   return [
