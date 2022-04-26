@@ -41,6 +41,13 @@ export class Core extends EventEmitter {
 
     (async () => {
       for await (const data of this!._proc.stderr) {
+        for (const line of data.toString().split(/\n/g)) {
+          if (line == "") {
+            continue;
+          }
+          // eslint-disable-next-line no-console
+          console.info("core: %s", line);
+        }
         this!.emit("stderr", data);
       }
     })();
