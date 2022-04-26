@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: 18
 
-      - run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y wine wine32
+      - run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y wine-stable wine64 wine32:i386 wine64
 
       - run: npm install && npm run build
 
