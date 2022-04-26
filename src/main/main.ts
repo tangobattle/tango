@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Menu, shell } from "electron";
+import * as log from "electron-log";
 import { autoUpdater } from "electron-updater";
 import * as path from "path";
 import * as url from "url";
@@ -8,6 +9,8 @@ import * as remoteMain from "@electron/remote/main";
 app.commandLine.appendSwitch("in-process-gpu");
 
 remoteMain.initialize();
+
+Object.assign(console, log.functions);
 
 autoUpdater.logger = console;
 
