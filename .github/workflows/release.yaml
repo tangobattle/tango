@@ -21,7 +21,15 @@ jobs:
         with:
           node-version: 18
 
-      - run: sudo dpkg --add-architecture i386 && sudo apt-get update && sudo apt-get install -y lib32z1 wine-stable wine64 wine32:i386 wine64
+      - run: >
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
+          sudo apt-get update &&
+          sudo apt-get install -y --allow-downgrades libpcre2-8-0/focal libpcre2-16-0/focal libpcre2-32-0/focal libpcre2-posix2/focal
+
+      - run: >
+          sudo dpkg --add-architecture i386 &&
+          sudo apt-get update &&
+          sudo apt-get install -y wine-stable wine64 wine32:i386 wine64
 
       - run: npm install && npm run build
 
