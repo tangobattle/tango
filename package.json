@@ -1,5 +1,6 @@
 {
   "name": "tango",
+  "productName": "Tango",
   "version": "3.0.0-alpha.1",
   "private": true,
   "description": "Lightweight, modern boilerplate built with electron, typescript, and react.",
@@ -30,6 +31,7 @@
     "@types/react-window": "^1.8.5",
     "crc-32": "^1.2.2",
     "date-fns": "^2.28.0",
+    "electron-updater": "^5.0.1",
     "email-addresses": "^5.0.0",
     "i18next-browser-languagedetector": "^6.1.4",
     "mkdirp": "^1.0.4",
@@ -71,7 +73,12 @@
   },
   "build": {
     "appId": "com.tangobattle.tango",
-    "productName": "Tango",
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false
+    },
     "mac": {
       "category": "public.app-category.games"
     },

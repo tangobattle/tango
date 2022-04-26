@@ -1,4 +1,5 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, Menu, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import * as path from "path";
 import * as url from "url";
 
@@ -6,9 +7,34 @@ import * as remoteMain from "@electron/remote/main";
 
 remoteMain.initialize();
 
+autoUpdater.logger = console;
+
 let mainWindow: Electron.BrowserWindow | null;
 
 function createWindow() {
+  const template: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] =
+    [];
+  if (process.platform === "darwin") {
+    const name = app.getName();
+    template.unshift({
+      label: name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    });
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+
   mainWindow = new BrowserWindow({
     width: 800,
     height: 800,
@@ -44,6 +70,7 @@ function createWindow() {
   });
 
   remoteMain.enable(mainWindow.webContents);
+  autoUpdater.checkForUpdatesAndNotify();
 }
 
 // This method will be called when Electron has finished
