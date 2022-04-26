@@ -29,7 +29,13 @@ async function* walk(dir: string, root?: string): AsyncIterable<string> {
   }
 }
 
-function ReplayItem({ index, style }: ListChildComponentProps) {
+function ReplayItem({
+  ListChildProps: { index, style },
+  replayName,
+}: {
+  ListChildProps: ListChildComponentProps;
+  replayName: string;
+}) {
   return (
     <ListItem
       style={style}
@@ -49,17 +55,28 @@ function ReplayItem({ index, style }: ListChildComponentProps) {
         </Stack>
       }
     >
-      <ListItemText primary="Single-line item" secondary="bottom text" />
+      <ListItemText primary={replayName} secondary="bottom text" />
     </ListItem>
   );
 }
 
 export default function ReplaysPane({ active }: { active: boolean }) {
+  const [replayNames, setReplayNames] = React.useState<string[] | null>(null);
+
   React.useEffect(() => {
+    if (!active) {
+      setReplayNames(null);
+      return;
+    }
+
     (async () => {
+      const names = [];
       for await (const entry of walk(getReplaysPath())) {
-        console.log(entry);
+        names.push(entry);
       }
+      names.sort();
+      names.reverse();
+      setReplayNames(names);
     })();
   }, [active]);
 
@@ -71,18 +88,25 @@ export default function ReplaysPane({ active }: { active: boolean }) {
         display: active ? "block" : "none",
       }}
     >
-      <AutoSizer>
-        {({ height, width }) => (
-          <FixedSizeList
-            height={height}
-            width={width}
-            itemCount={200}
-            itemSize={60}
-          >
-            {ReplayItem}
-          </FixedSizeList>
-        )}
-      </AutoSizer>
+      {replayNames != null ? (
+        <AutoSizer>
+          {({ height, width }) => (
+            <FixedSizeList
+              height={height}
+              width={width}
+              itemCount={replayNames.length}
+              itemSize={60}
+            >
+              {(props) => (
+                <ReplayItem
+                  ListChildProps={props}
+                  replayName={replayNames[props.index]}
+                />
+              )}
+            </FixedSizeList>
+          )}
+        </AutoSizer>
+      ) : null}
     </Box>
   );
 }
