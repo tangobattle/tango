@@ -5,12 +5,14 @@ import * as ipc from "./ipc";
 import { getBasePath } from "./paths";
 
 export interface Config {
+  wgpuBackend: string | null;
   keymapping: ipc.Args["keymapping"];
   matchmakingConnectAddr: string;
   iceServers: string[];
 }
 
 export const DEFAULT: Config = {
+  wgpuBackend: null,
   keymapping: {
     up: "Up",
     down: "Down",

@@ -83,6 +83,10 @@ export function CoreSupervisor({
                 },
         },
         {
+          env: {
+            WGPU_BACKEND:
+              config.wgpuBackend != null ? config.wgpuBackend : undefined,
+          },
           signal: abortControllerRef.current.signal,
         }
       );

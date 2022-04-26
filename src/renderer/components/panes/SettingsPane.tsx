@@ -212,7 +212,14 @@ function KeymappingTab({ active }: { active: boolean }) {
                 if (keymaptoolRef.current != null) {
                   return;
                 }
-                keymaptoolRef.current = new Keymaptool();
+                keymaptoolRef.current = new Keymaptool({
+                  env: {
+                    WGPU_BACKEND:
+                      config.wgpuBackend != null
+                        ? config.wgpuBackend
+                        : undefined,
+                  },
+                });
                 for (const key of KEYS) {
                   const mapped = await keymaptoolRef.current.request(
                     t("settings:request-keymapping", {

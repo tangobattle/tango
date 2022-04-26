@@ -6,8 +6,8 @@ import { getCorePath } from "./paths";
 export class Keymaptool {
   private proc: ChildProcessWithoutNullStreams;
 
-  constructor() {
-    this.proc = spawn(path.join(getCorePath(), "keymaptool"));
+  constructor({ env }: { env?: NodeJS.ProcessEnv } = {}) {
+    this.proc = spawn(path.join(getCorePath(), "keymaptool"), { env });
   }
 
   async request(message: string) {

@@ -14,13 +14,17 @@ export class Core extends EventEmitter {
   private _proc: ChildProcessWithoutNullStreams;
   private _exitPromise: Promise<void>;
 
-  constructor(args: types.Args, { signal }: { signal?: AbortSignal } = {}) {
+  constructor(
+    args: types.Args,
+    { env, signal }: { env?: NodeJS.ProcessEnv; signal?: AbortSignal } = {}
+  ) {
     super();
 
     this._proc = spawn(
       path.join(getCorePath(), "tango-core"),
       [JSON.stringify(args)],
       {
+        env,
         signal,
       }
     );
