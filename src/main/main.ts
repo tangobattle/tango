@@ -14,6 +14,18 @@ Object.assign(console, log.functions);
 
 autoUpdater.logger = console;
 
+autoUpdater.addListener("update-available", () => {
+  if (mainWindow != null) {
+    mainWindow.webContents.send("update-available", true);
+  }
+});
+
+autoUpdater.addListener("update-not-available", () => {
+  if (mainWindow != null) {
+    mainWindow.webContents.send("update-available", false);
+  }
+});
+
 let mainWindow: Electron.BrowserWindow | null;
 
 function createWindow() {

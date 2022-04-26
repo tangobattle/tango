@@ -1,3 +1,4 @@
+import { ipcRenderer } from "electron";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,6 +8,7 @@ import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import Badge from "@mui/material/Badge";
 import MuiDrawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -73,6 +75,26 @@ export default function Navbar({
 }) {
   const { t } = useTranslation();
 
+  const [updateAvailable, setUpdateAvailable] = React.useState(false);
+  const updateAvailableListenerCallback = React.useCallback((v) => {
+    setUpdateAvailable(v);
+  }, []);
+  React.useEffect(() => {
+    ipcRenderer.on("update-available", updateAvailableListenerCallback);
+    return () => {
+      ipcRenderer.off("update-available", updateAvailableListenerCallback);
+    };
+  }, [updateAvailableListenerCallback]);
+
+  const SettingsIconWrapper = ({ children }: { children: React.ReactNode }) =>
+    updateAvailable ? (
+      <Badge color="secondary" variant="dot">
+        {children}
+      </Badge>
+    ) : (
+      <>{children}</>
+    );
+
   return (
     <Drawer variant="permanent" open={true}>
       <List>
@@ -102,8 +124,16 @@ export default function Navbar({
             onSelect("settings");
           }}
           title={t("navbar:settings")}
-          unselectedIcon={<SettingsOutlinedIcon />}
-          selectedIcon={<SettingsIcon />}
+          unselectedIcon={
+            <SettingsIconWrapper>
+              <SettingsOutlinedIcon />
+            </SettingsIconWrapper>
+          }
+          selectedIcon={
+            <SettingsIconWrapper>
+              <SettingsIcon />
+            </SettingsIconWrapper>
+          }
         />
       </List>
     </Drawer>

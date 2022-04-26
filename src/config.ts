@@ -5,6 +5,7 @@ import * as ipc from "./ipc";
 import { getBasePath } from "./paths";
 
 export interface Config {
+  allowPreleaseUpdates: boolean;
   wgpuBackend: string | null;
   keymapping: ipc.Args["keymapping"];
   matchmakingConnectAddr: string;
@@ -12,6 +13,7 @@ export interface Config {
 }
 
 export const DEFAULT: Config = {
+  allowPreleaseUpdates: true,
   wgpuBackend: null,
   keymapping: {
     up: "Up",
