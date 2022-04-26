@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 18
 
-      - run: sudo apt-get update && sudo apt-get install -y p7zip-full
+      - run: sudo apt-get update && sudo apt-get install -y wine
 
       - uses: samuelmeuli/action-electron-builder@v1
         with:
