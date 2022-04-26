@@ -63,9 +63,10 @@ function ReplayItem({
     roms[replay.info.rom] == null ||
     (replay.resolvedPatchVersion == null && replay.info.patch != null);
 
-  const [replayVideoFilename, setVideoReplayFilename] = React.useState<
-    string | null
-  >(null);
+  const [dumpingReplay, setDumpingReplay] = React.useState<{
+    filename: string;
+    done: boolean;
+  } | null>(null);
   const [viewingReplay, setViewingReplay] = React.useState(false);
 
   return (
@@ -100,11 +101,13 @@ function ReplayItem({
                     filters: [{ name: "MP4", extensions: ["mp4"] }],
                   }
                 );
-                setVideoReplayFilename(fn ?? null);
+                setDumpingReplay(
+                  fn != null ? { filename: fn, done: false } : null
+                );
               }}
             >
               <VideoFileOutlinedIcon />
-              {replayVideoFilename != null ? (
+              {dumpingReplay != null ? (
                 <ReplaydumpSupervisor
                   romPath={path.join(getROMsPath(), roms[replay.info.rom])}
                   patchPath={
@@ -121,8 +124,13 @@ function ReplayItem({
                       : undefined
                   }
                   replayPath={path.join(getReplaysPath(), replay.name)}
-                  outPath={replayVideoFilename}
-                  onExit={() => {}}
+                  outPath={dumpingReplay.filename}
+                  onExit={() => {
+                    setDumpingReplay((dumpingReplay) => ({
+                      ...dumpingReplay!,
+                      done: true,
+                    }));
+                  }}
                 />
               ) : null}
             </IconButton>
@@ -220,7 +228,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       replays.reverse();
       setReplays(replays);
     })();
-  }, [active]);
+  }, [active, patches]);
 
   return (
     <Box
