@@ -4,5 +4,5 @@ export type U32=number;
 export type U16=number;
 export type MatchSettings={"session_id":string;"input_delay":U32;"match_type":U16;"replays_path":string;"replay_metadata":string;"matchmaking_connect_addr":string;"ice_servers":(string)[];};
 export type Args={"window_title":string;"rom_path":string;"save_path":string;"keymapping":Keymapping;"match_settings":(MatchSettings|null);};
-export type State=("Running"|"Waiting"|"Connecting"|"Done");
+export type State=("Running"|"Waiting"|"Connecting");
 export type Notification={"State":State;};
