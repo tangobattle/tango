@@ -1,5 +1,4 @@
 import { spawn } from "child_process";
-import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
 import tmp from "tmp-promise";
@@ -56,7 +55,7 @@ export default function ReplaydumpSupervisor({
       romTmpFileRef.current = await makeROM(romPath, patchPath || null);
 
       const proc = spawn(
-        path.join(getBinPath(), "replaydump"),
+        getBinPath("replaydump"),
         [romTmpFileRef.current.path, replayPath, outPath],
         {
           signal: abortControllerRef.current.signal,

@@ -1,5 +1,4 @@
 import { spawn } from "child_process";
-import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
 import tmp from "tmp-promise";
@@ -51,7 +50,7 @@ export default function ReplayviewSupervisor({
       romTmpFileRef.current = await makeROM(romPath, patchPath || null);
 
       const proc = spawn(
-        path.join(getBinPath(), "replayview"),
+        getBinPath("replayview"),
         [romTmpFileRef.current.path, replayPath],
         {
           env: {

@@ -26,6 +26,9 @@ export function getSavesPath() {
   return path.join(getBasePath(), "saves");
 }
 
-export function getBinPath() {
-  return app.isPackaged ? path.join(process.resourcesPath, "bin") : "bin";
+export function getBinPath(exe: string) {
+  return path.join(
+    app.isPackaged ? path.join(process.resourcesPath, "bin") : "bin",
+    exe + (process.platform === "win32" ? ".exe" : "")
+  );
 }

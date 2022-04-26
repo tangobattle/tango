@@ -15,8 +15,10 @@
     "build:run": "npm-run-all build start:electron",
     "build:electron": "webpack --config webpack/electron.webpack.ts --mode=production",
     "build:react": "webpack --config webpack/react.webpack.ts --mode=production",
-    "package": "npm-run-all build package:dist",
-    "package:dist": "electron-builder --dir"
+    "package": "npm-run-all build dist",
+    "package:win32-x64": "npm-run-all build dist:win32-x64",
+    "dist": "electron-builder --dir",
+    "dist:win32-x64": "electron-builder --dir --win --x64"
   },
   "keywords": [],
   "license": "AGPL-3.0",

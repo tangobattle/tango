@@ -1,5 +1,4 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
-import path from "path";
 import { EventEmitter } from "stream";
 
 import { getBinPath } from "../paths";
@@ -20,14 +19,10 @@ export class Core extends EventEmitter {
   ) {
     super();
 
-    this._proc = spawn(
-      path.join(getBinPath(), "tango-core"),
-      [JSON.stringify(args)],
-      {
-        env,
-        signal,
-      }
-    );
+    this._proc = spawn(getBinPath("tango-core"), [JSON.stringify(args)], {
+      env,
+      signal,
+    });
     this._proc.addListener("error", (err) => {
       this.emit("error", err);
     });
