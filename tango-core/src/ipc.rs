@@ -71,7 +71,6 @@ pub enum State {
     Running,
     Waiting,
     Connecting,
-    Done,
 }
 
 #[derive(Clone)]

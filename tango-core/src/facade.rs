@@ -372,12 +372,6 @@ impl Facade {
     }
 
     pub async fn end_match(&self) {
-        self.0
-            .borrow()
-            .ipc_client
-            .send_notification(ipc::Notification::State(ipc::State::Done))
-            .await
-            .expect("send notification");
         std::process::exit(0);
     }
 }
