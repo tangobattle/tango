@@ -64,6 +64,12 @@ export default function ReplayviewSupervisor({
         }
       );
 
+      const beforeunload = () => {
+        proc.kill();
+        window.removeEventListener("beforeunload", beforeunload);
+      };
+      window.addEventListener("beforeunload", beforeunload);
+
       (async () => {
         for await (const buf of proc.stderr) {
           setStderr((stderr) => {

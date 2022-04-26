@@ -37,9 +37,12 @@ export class Core extends EventEmitter {
         resolve();
       });
     });
-    window.addEventListener("beforeunload", () => {
+
+    const beforeunload = () => {
       this._proc.kill();
-    });
+      window.removeEventListener("beforeunload", beforeunload);
+    };
+    window.addEventListener("beforeunload", beforeunload);
 
     (async () => {
       for await (const data of this!._proc.stderr) {
