@@ -102,7 +102,7 @@ export default function PlayPane({ active }: { active: boolean }) {
     setPatchVersion(patchVersions[0]);
   }, [patchVersions]);
 
-  const [matchType, setMatchType] = React.useState(0);
+  const [matchType, setMatchType] = React.useState(1);
   const [inputDelay, setInputDelay] = React.useState(3);
   const [linkCode, setLinkCode] = React.useState("");
 
