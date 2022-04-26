@@ -51,7 +51,7 @@ function AboutTab({ active }: { active: boolean }) {
         <Stack
           spacing={2}
           sx={{
-            width: "600px",
+            width: "500px",
           }}
         >
           <img
@@ -99,10 +99,28 @@ function AboutTab({ active }: { active: boolean }) {
             <li>
               <Link href="https://github.com/luckytyphlosion" target="_blank">
                 luckytyphlosion
+              </Link>
+              ,{" "}
+              <Link href="https://github.com/LanHikari22" target="_blank">
+                LanHikari22
               </Link>{" "}
               for their work on{" "}
               <Link href="https://github.com/dism-exe/bn6f" target="_blank">
                 disassembling and documenting the Battle Network 6 code
+              </Link>
+              .
+            </li>
+            <li>
+              <Link href="https://twitter.com/aldelaro5" target="_blank">
+                aldelaro5
+              </Link>{" "}
+              and the{" "}
+              <Link href="https://www.nsa.gov" target="_blank">
+                National Security Agency
+              </Link>{" "}
+              for the help with and development of{" "}
+              <Link href="https://ghidra-sre.org/" target="_blank">
+                Ghidra
               </Link>
               .
             </li>
