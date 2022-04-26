@@ -66,6 +66,20 @@ impl Game {
 
         let handle = rt.handle().clone();
 
+        let negotiation = if let Some(match_settings) = match_settings.as_ref() {
+            Some(handle.block_on(async {
+                negotiation::negotiate(
+                    &mut ipc_client,
+                    &match_settings.session_id,
+                    &match_settings.matchmaking_connect_addr,
+                    &match_settings.ice_servers,
+                )
+                .await
+            })?)
+        } else {
+            None
+        };
+
         let event_loop = Some(winit::event_loop::EventLoop::new());
 
         let current_input =
@@ -144,16 +158,9 @@ impl Game {
             ));
 
         if let Some(match_settings) = match_settings {
+            let negotiation = negotiation.unwrap();
+
             let _ = std::fs::create_dir_all(&match_settings.replays_path);
-            let negotiation = handle.block_on(async {
-                negotiation::negotiate(
-                    &mut ipc_client,
-                    &match_settings.session_id,
-                    &match_settings.matchmaking_connect_addr,
-                    &match_settings.ice_servers,
-                )
-                .await
-            })?;
 
             let match_ = match_.clone();
             handle.block_on(async {
