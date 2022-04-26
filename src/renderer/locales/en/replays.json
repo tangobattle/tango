@@ -1,4 +1,9 @@
 {
   "viewing": "Viewing in progress...",
+  "exporting": "Export in progress...",
+  "export-complete": "Your replay was successfully exported.",
+  "play": "Play",
+  "show-file": "Show in folder",
+  "export-video": "Export to video",
   "crash": "Oops, it looks like the replay viewer crashed! Please provide this log when reporting a bug!"
 }

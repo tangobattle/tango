@@ -4,9 +4,10 @@ import React from "react";
 import { Trans } from "react-i18next";
 import tmp from "tmp-promise";
 
+import { shell } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
+import LinearProgress from "@mui/material/LinearProgress";
 import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -37,9 +38,12 @@ export default function ReplaydumpSupervisor({
   }, [onExit]);
 
   const [stderr, setStderr] = React.useState<string[]>([]);
-  const [exitLingering, setExitLingering] = React.useState(false);
+  const [done, setDone] = React.useState<{
+    exitCode: number | null;
+    signalCode: NodeJS.Signals | null;
+  }>({ exitCode: null, signalCode: null });
 
-  const [maxProgress, setMaxProgress] = React.useState(0);
+  const maxProgressRef = React.useRef(0);
   const [progress, setProgress] = React.useState(0);
 
   const abortControllerRef = React.useRef<AbortController>(null!);
@@ -75,17 +79,30 @@ export default function ReplaydumpSupervisor({
       })();
 
       (async () => {
-        for await (const buf of proc.stdout) {
-          console.log(buf.toString());
+        let buf = "";
+        for await (const data of proc.stdout) {
+          buf += data;
+          const lines = buf.split(/\n/g);
+          buf = lines[lines.length - 1];
+
+          const ready = lines.slice(0, -1);
+          const progress = parseInt(ready[ready.length - 1]);
+          if (maxProgressRef.current == 0) {
+            maxProgressRef.current = progress;
+          }
+          setProgress(progress);
         }
       })();
 
-      proc.on("exit", (code, signal) => {
-        if (code == 0 || signal == "SIGTERM") {
+      proc.on("exit", (exitCode, signalCode) => {
+        if (signalCode == "SIGTERM") {
           onExitRef.current();
-        } else {
-          setExitLingering(true);
+          return;
         }
+        if (exitCode == 0 && signalCode == null) {
+          shell.showItemInFolder(outPath);
+        }
+        setDone({ exitCode, signalCode });
       });
     })();
 
@@ -114,10 +131,10 @@ export default function ReplaydumpSupervisor({
           transform: "translate(-50%, -50%)",
         }}
       >
-        {!exitLingering ? (
+        {done.exitCode == null && done.signalCode == null ? (
           <Box
             sx={{
-              width: 300,
+              width: 400,
               bgcolor: "background.paper",
               boxShadow: 24,
               px: 3,
@@ -131,14 +148,19 @@ export default function ReplaydumpSupervisor({
                 alignItems="center"
                 spacing={2}
               >
-                <CircularProgress
-                  sx={{ flexGrow: 0, flexShrink: 0 }}
-                  size="2rem"
-                />
                 <Typography>
-                  <Trans i18nKey="replays:dumping" />
+                  <Trans i18nKey="replays:exporting" />
                 </Typography>
               </Stack>
+              <LinearProgress
+                variant="determinate"
+                value={
+                  maxProgressRef.current > 0
+                    ? ((maxProgressRef.current - progress) * 100) /
+                      maxProgressRef.current
+                    : 0
+                }
+              />
               <Stack direction="row" justifyContent="flex-end">
                 <Button
                   variant="contained"
@@ -150,6 +172,41 @@ export default function ReplaydumpSupervisor({
                   }}
                 >
                   <Trans i18nKey="supervisor:cancel" />
+                </Button>
+              </Stack>
+            </Stack>
+          </Box>
+        ) : done.exitCode == 0 ? (
+          <Box
+            sx={{
+              width: 400,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              px: 3,
+              py: 2,
+              display: "flex",
+            }}
+          >
+            <Stack spacing={1} flexGrow={1}>
+              <Box sx={{ flexGrow: 0, flexShrink: 0 }}>
+                <Trans i18nKey="replays:export-complete" />
+              </Box>
+              <Box
+                sx={{
+                  flexGrow: 0,
+                  flexShrink: 0,
+                  display: "flex",
+                  position: "relative",
+                }}
+              ></Box>
+              <Stack direction="row" justifyContent="flex-end">
+                <Button
+                  variant="contained"
+                  onClick={(_e) => {
+                    onExitRef.current();
+                  }}
+                >
+                  <Trans i18nKey="supervisor:ok" />
                 </Button>
               </Stack>
             </Stack>

@@ -5,5 +5,6 @@
   "status.connecting": "Connecting to opponent...",
   "crash": "Oops, it looks like Tango crashed! Please provide this log when reporting a bug!",
   "cancel": "Stop",
-  "dismiss": "Damn!"
+  "dismiss": "Damn!",
+  "ok": "Yay!"
 }
