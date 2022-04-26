@@ -18,10 +18,12 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 
 import { findPatchVersion } from "../../../patchinfo";
-import { getReplaysPath } from "../../../paths";
+import { getPatchesPath, getReplaysPath, getROMsPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
 import { usePatches } from "../PatchesContext";
 import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
+import ReplayviewSupervisor from "../ReplayviewSupervisor";
+import { useROMs } from "../ROMsContext";
 
 async function* walk(dir: string, root?: string): AsyncIterable<string> {
   if (root == null) {
@@ -54,12 +56,17 @@ function ReplayItem({
     timeStyle: "medium",
   });
 
-  const patchUnavailable =
-    replay.resolvedPatchVersion == null && replay.info.patch != null;
+  const { patches } = usePatches();
+  const { roms } = useROMs();
+
+  const unavailable =
+    roms[replay.info.rom] == null ||
+    (replay.resolvedPatchVersion == null && replay.info.patch != null);
 
   const [replayVideoFilename, setVideoReplayFilename] = React.useState<
     string | null
   >(null);
+  const [viewingReplay, setViewingReplay] = React.useState(false);
 
   return (
     <ListItem
@@ -81,11 +88,15 @@ function ReplayItem({
           </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:export-video" />}>
             <IconButton
-              disabled={patchUnavailable}
+              disabled={unavailable}
               onClick={() => {
                 const fn = dialog.showSaveDialogSync(
                   BrowserWindow.getFocusedWindow()!,
                   {
+                    defaultPath: path.join(
+                      getReplaysPath(),
+                      replay.name.replace(/\.[^/.]+$/, "")
+                    ),
                     filters: [{ name: "MP4", extensions: ["mp4"] }],
                   }
                 );
@@ -93,12 +104,59 @@ function ReplayItem({
               }}
             >
               <VideoFileOutlinedIcon />
-              {replayVideoFilename != null ? <ReplaydumpSupervisor /> : null}
+              {replayVideoFilename != null ? (
+                <ReplaydumpSupervisor
+                  romPath={path.join(getROMsPath(), roms[replay.info.rom])}
+                  patchPath={
+                    replay.resolvedPatchVersion != null
+                      ? path.join(
+                          getPatchesPath(),
+                          replay.info.patch!.name,
+                          `v${replay.resolvedPatchVersion}.${
+                            patches[replay.info.patch!.name]!.versions[
+                              replay.resolvedPatchVersion
+                            ]!.format
+                          }`
+                        )
+                      : undefined
+                  }
+                  replayPath={path.join(getReplaysPath(), replay.name)}
+                  outPath={replayVideoFilename}
+                  onExit={() => {}}
+                />
+              ) : null}
             </IconButton>
           </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:play" />}>
-            <IconButton disabled={patchUnavailable}>
+            <IconButton
+              disabled={unavailable}
+              onClick={() => {
+                setViewingReplay(true);
+              }}
+            >
               <PlayArrowIcon />
+              {viewingReplay != null ? (
+                <ReplayviewSupervisor
+                  romPath={path.join(getROMsPath(), roms[replay.info.rom])}
+                  patchPath={
+                    replay.resolvedPatchVersion != null
+                      ? path.join(
+                          getPatchesPath(),
+                          replay.info.patch!.name,
+                          `v${replay.resolvedPatchVersion}.${
+                            patches[replay.info.patch!.name]!.versions[
+                              replay.resolvedPatchVersion
+                            ]!.format
+                          }`
+                        )
+                      : undefined
+                  }
+                  replayPath={path.join(getReplaysPath(), replay.name)}
+                  onExit={() => {
+                    setViewingReplay(false);
+                  }}
+                />
+              ) : null}
             </IconButton>
           </Tooltip>
         </Stack>
