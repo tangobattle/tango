@@ -1,9 +1,8 @@
 import { readFile, writeFile } from "fs/promises";
-import path from "path";
-
-import { app } from "@electron/remote";
+import mkdirp from "mkdirp";
 
 import * as ipc from "./ipc";
+import { getBasePath } from "./paths";
 
 export interface Config {
   keymapping: ipc.Args["keymapping"];
@@ -34,13 +33,14 @@ export const DEFAULT: Config = {
   ],
 };
 
-export async function load(filename: string) {
+export async function load(path: string) {
   let data;
-  const p = path.join(app.getAppPath(), filename);
+  const p = path;
   try {
     data = await readFile(p);
   } catch (e) {
     if ((e as any).code == "ENOENT") {
+      await mkdirp(getBasePath());
       return DEFAULT;
     }
     throw e;
@@ -53,9 +53,6 @@ export async function load(filename: string) {
   }
 }
 
-export async function save(config: Config, filename: string) {
-  await writeFile(
-    path.join(app.getAppPath(), filename),
-    JSON.stringify(config, null, 4) + "\n"
-  );
+export async function save(config: Config, path: string) {
+  await writeFile(path, JSON.stringify(config, null, 4) + "\n");
 }

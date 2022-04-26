@@ -1,4 +1,5 @@
 import { readdir, readFile } from "fs/promises";
+import mkdirp from "mkdirp";
 import path from "path";
 
 import * as bn6 from "./saveedit/bn6";
@@ -10,25 +11,36 @@ export interface SaveInfo {
 
 export async function scan(dir: string) {
   const saves = {} as { [fn: string]: SaveInfo };
-  const promises = [];
-  for (const f of await readdir(dir)) {
-    promises.push(
-      (async (f) => {
-        try {
-          const editor = new bn6.Editor(
-            bn6.Editor.sramDumpToRaw((await readFile(path.join(dir, f))).buffer)
-          );
-          saves[f] = {
-            loader: "bn6",
-            romName: editor.getGameInfo().romName,
-          };
-        } catch (e) {
-          throw `failed to scan ${f}: ${e}`;
-        }
-      })(f)
-    );
+
+  let saveNames: string[];
+  try {
+    saveNames = await readdir(dir);
+  } catch (e) {
+    if ((e as any).code == "ENOENT") {
+      await mkdirp(dir);
+      saveNames = [];
+    } else {
+      throw e;
+    }
   }
-  for (const result of await Promise.allSettled(promises)) {
+
+  for (const result of await Promise.allSettled(
+    saveNames.map(async (saveName) => {
+      try {
+        const editor = new bn6.Editor(
+          bn6.Editor.sramDumpToRaw(
+            (await readFile(path.join(dir, saveName))).buffer
+          )
+        );
+        saves[saveName] = {
+          loader: "bn6",
+          romName: editor.getGameInfo().romName,
+        };
+      } catch (e) {
+        throw `failed to scan save ${saveName}: ${e}`;
+      }
+    })
+  )) {
     if (result.status == "rejected") {
       console.warn("save skipped:", result.reason);
     }

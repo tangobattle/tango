@@ -1,6 +1,7 @@
 import { parseOneAddress } from "email-addresses";
 import { constants } from "fs";
 import { access, readdir, readFile, stat } from "fs/promises";
+import mkdirp from "mkdirp";
 import path from "path";
 import semver from "semver";
 import toml from "toml";
@@ -57,102 +58,113 @@ export async function scan(dir: string) {
     [name: string]: PatchInfo;
   };
 
-  for (const patchName of await readdir(dir)) {
-    const versions: { [version: string]: PatchInfo["versions"][""] } = {};
-
-    const patchPath = path.join(dir, patchName);
-    const statRes = await stat(patchPath);
-    if (!statRes.isDirectory()) {
-      continue;
+  let patchNames: string[];
+  try {
+    patchNames = await readdir(dir);
+  } catch (e) {
+    if ((e as any).code == "ENOENT") {
+      await mkdirp(dir);
+      patchNames = [];
+    } else {
+      throw e;
     }
+  }
 
-    let rawInfo;
-    try {
-      rawInfo = (await readFile(path.join(patchPath, "info.toml"))).buffer;
-    } catch (e) {
-      if ((e as any).code == "ENOENT") {
-        continue;
-      }
-      console.warn(`could not scan patch info for ${patchName}: ${e}`);
-    }
+  for (const result of await Promise.allSettled(
+    patchNames.map(async (patchName) => {
+      try {
+        const versions: { [version: string]: PatchInfo["versions"][""] } = {};
 
-    let info;
-    try {
-      info = toml.parse(decoder.decode(rawInfo)) as RawPatchInfo;
-    } catch (e) {
-      console.warn(`could not parse patch info for ${patchName}: ${e}`);
-      continue;
-    }
-
-    for (const versionName of Object.keys(info.versions)) {
-      const version = info.versions[versionName];
-
-      const parsedVersion = semver.parse(versionName);
-      if (parsedVersion == null) {
-        console.warn(
-          `could not parse patch info for ${patchName}: could not parse version ${versionName}`
-        );
-        continue;
-      }
-
-      if (parsedVersion.format() != versionName) {
-        console.warn(
-          `could not parse patch info for ${patchName}: version ${versionName} did not roundtrip`
-        );
-        continue;
-      }
-
-      if (Object.prototype.hasOwnProperty.call(versions, versionName)) {
-        console.warn(
-          `could not parse patch info for ${patchName}: version already registered: ${JSON.stringify(
-            versions[versionName]
-          )}`
-        );
-        continue;
-      }
-
-      const format = await findAsync(["bps", "ips"], async (format) => {
-        try {
-          await access(
-            path.join(patchPath, `v${versionName}.${format}`),
-            constants.R_OK
-          );
-        } catch (e) {
-          return false;
+        const patchPath = path.join(dir, patchName);
+        const statRes = await stat(patchPath);
+        if (!statRes.isDirectory()) {
+          return;
         }
-        return true;
-      });
 
-      if (format == null) {
-        console.warn(
-          `could not find patch file for ${patchName} at version ${versionName}`
-        );
-        continue;
+        let rawInfo;
+        try {
+          rawInfo = (await readFile(path.join(patchPath, "info.toml"))).buffer;
+        } catch (e) {
+          if ((e as any).code == "ENOENT") {
+            return;
+          }
+          throw `could not scan patch info for ${patchName}: ${e}`;
+        }
+
+        let info;
+        try {
+          info = toml.parse(decoder.decode(rawInfo)) as RawPatchInfo;
+        } catch (e) {
+          throw `could not parse patch info for ${patchName}: ${e}`;
+          return;
+        }
+
+        for (const versionName of Object.keys(info.versions)) {
+          const version = info.versions[versionName];
+
+          const parsedVersion = semver.parse(versionName);
+          if (parsedVersion == null) {
+            throw `could not parse patch info for ${patchName}: could not parse version ${versionName}`;
+          }
+
+          if (parsedVersion.format() != versionName) {
+            throw `could not parse patch info for ${patchName}: version ${versionName} did not roundtrip`;
+          }
+
+          if (Object.prototype.hasOwnProperty.call(versions, versionName)) {
+            throw `could not parse patch info for ${patchName}: version already registered: ${JSON.stringify(
+              versions[versionName]
+            )}`;
+          }
+
+          const format = await findAsync(["bps", "ips"], async (format) => {
+            try {
+              await access(
+                path.join(patchPath, `v${versionName}.${format}`),
+                constants.R_OK
+              );
+            } catch (e) {
+              return false;
+            }
+            return true;
+          });
+
+          if (format == null) {
+            throw `could not find patch file for ${patchName} at version ${versionName}`;
+            return;
+          }
+
+          versions[versionName] = {
+            format: format as any,
+            netplayCompatibility: version.netplay_compatibility,
+          };
+        }
+
+        patches[patchName] = {
+          title: info.patch.title || patchName,
+          authors:
+            info.patch.authors != null
+              ? info.patch.authors.flatMap((a) => {
+                  const addr = parseOneAddress(a);
+                  if (addr == null || addr.type != "mailbox") {
+                    return [];
+                  }
+                  return [{ name: addr.name, email: addr.address }];
+                })
+              : [],
+          source: info.patch.source,
+          license: info.patch.license,
+          forROM: info.patch.for_rom,
+          versions,
+        };
+      } catch (e) {
+        throw `failed to scan patch ${patchName}: ${e}`;
       }
-
-      versions[versionName] = {
-        format: format as any,
-        netplayCompatibility: version.netplay_compatibility,
-      };
+    })
+  )) {
+    if (result.status == "rejected") {
+      console.warn("patch skipped:", result.reason);
     }
-
-    patches[patchName] = {
-      title: info.patch.title || patchName,
-      authors:
-        info.patch.authors != null
-          ? info.patch.authors.flatMap((a) => {
-              const addr = parseOneAddress(a);
-              if (addr == null || addr.type != "mailbox") {
-                return [];
-              }
-              return [{ name: addr.name, email: addr.address }];
-            })
-          : [],
-      source: info.patch.source,
-      license: info.patch.license,
-      forROM: info.patch.for_rom,
-      versions,
-    };
   }
 
   return patches;

@@ -18,6 +18,7 @@ function makeScanPatches() {
     try {
       result = await scan(getPatchesPath());
     } catch (e) {
+      console.error(e);
       err = e;
       status = "error";
     }
@@ -48,7 +49,11 @@ export const PatchesProvider = ({
     <Context.Provider
       value={{
         async rescan() {
-          setCurrentPatches(await scan(getPatchesPath()));
+          try {
+            setCurrentPatches(await scan(getPatchesPath()));
+          } catch (e) {
+            console.error(e);
+          }
         },
         patches: currentPatches,
       }}

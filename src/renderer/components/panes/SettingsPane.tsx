@@ -137,7 +137,7 @@ function AboutTab({ active }: { active: boolean }) {
               >
                 GNU Affero General Public License v3
               </Link>
-              . That means you're free to modify the{" "}
+              . That means you’re free to modify the{" "}
               <Link href="https://github.com/tangobattle" target="_blank">
                 source code
               </Link>{" "}

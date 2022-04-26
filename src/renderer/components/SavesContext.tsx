@@ -18,6 +18,7 @@ function makeSaveScans() {
     try {
       result = await scan(getSavesPath());
     } catch (e) {
+      console.error(e);
       err = e;
       status = "error";
     }
@@ -48,7 +49,11 @@ export const SavesProvider = ({
     <Context.Provider
       value={{
         async rescan() {
-          setCurrentSaves(await scan(getSavesPath()));
+          try {
+            setCurrentSaves(await scan(getSavesPath()));
+          } catch (e) {
+            console.error(e);
+          }
         },
         saves: currentSaves,
       }}

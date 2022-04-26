@@ -2,24 +2,28 @@ import path from "path";
 
 import { app } from "@electron/remote";
 
+export function getBasePath() {
+  return path.join(app.getPath("documents"), "Tango");
+}
+
 export function getConfigPath() {
-  return "config.json";
+  return path.join(getBasePath(), "config.json");
 }
 
 export function getROMsPath() {
-  return "roms";
+  return path.join(getBasePath(), "roms");
 }
 
 export function getPatchesPath() {
-  return "patches";
+  return path.join(getBasePath(), "patches");
 }
 
 export function getReplaysPath() {
-  return "replays";
+  return path.join(getBasePath(), "replays");
 }
 
 export function getSavesPath() {
-  return "saves";
+  return path.join(getBasePath(), "saves");
 }
 
 export function getCorePath() {

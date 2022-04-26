@@ -18,6 +18,7 @@ function makeScanROMs() {
     try {
       result = await scan(getROMsPath());
     } catch (e) {
+      console.error(e);
       err = e;
       status = "error";
     }
@@ -48,7 +49,11 @@ export const ROMsProvider = ({
     <Context.Provider
       value={{
         async rescan() {
-          setCurrentROMs(await scan(getROMsPath()));
+          try {
+            setCurrentROMs(await scan(getROMsPath()));
+          } catch (e) {
+            console.error(e);
+          }
         },
         roms: currentROMs,
       }}
