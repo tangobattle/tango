@@ -5,6 +5,7 @@
   "private": true,
   "description": "Lightweight, modern boilerplate built with electron, typescript, and react.",
   "main": "./dist/main.js",
+  "repository": "https://github.com/tangobattle/tango",
   "scripts": {
     "dev": "npm-run-all -p dev:react electron:serve",
     "dev:electron": "cross-env NODE_ENV=development webpack --config webpack/electron.webpack.ts --mode=development && npm run start:electron",
