@@ -1,11 +1,12 @@
 import { opendir } from "fs/promises";
 import path from "path";
 import React from "react";
-import { Trans } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
-import FolderOutlinedIcon from "@mui/icons-material/FolderOutlined";
+import { shell } from "@electron/remote";
+import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import Box from "@mui/material/Box";
@@ -16,6 +17,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 
 import { getReplaysPath } from "../../../paths";
+import { readReplayMetadata, ReplayInfo } from "../../../replay";
 
 async function* walk(dir: string, root?: string): AsyncIterable<string> {
   if (root == null) {
@@ -33,11 +35,16 @@ async function* walk(dir: string, root?: string): AsyncIterable<string> {
 
 function ReplayItem({
   ListChildProps: { index, style },
-  replayName,
+  replay,
 }: {
   ListChildProps: ListChildComponentProps;
-  replayName: string;
+  replay: { name: string; info: ReplayInfo };
 }) {
+  const { i18n } = useTranslation();
+  const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  });
   return (
     <ListItem
       style={style}
@@ -46,8 +53,14 @@ function ReplayItem({
       secondaryAction={
         <Stack direction="row">
           <Tooltip title={<Trans i18nKey="replays:show-file" />}>
-            <IconButton>
-              <FolderOutlinedIcon />
+            <IconButton
+              onClick={() => {
+                shell.showItemInFolder(
+                  path.join(getReplaysPath(), replay.name)
+                );
+              }}
+            >
+              <FolderOpenIcon />
             </IconButton>
           </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:export-video" />}>
@@ -63,28 +76,50 @@ function ReplayItem({
         </Stack>
       }
     >
-      <ListItemText primary={replayName} secondary="bottom text" />
+      <ListItemText
+        primary={dateFormat.format(new Date(replay.info.ts))}
+        secondary={replay.name}
+      />
     </ListItem>
   );
 }
 
 export default function ReplaysPane({ active }: { active: boolean }) {
-  const [replayNames, setReplayNames] = React.useState<string[] | null>(null);
+  const [replays, setReplays] = React.useState<
+    { name: string; info: ReplayInfo }[] | null
+  >(null);
 
   React.useEffect(() => {
     if (!active) {
-      setReplayNames(null);
+      setReplays(null);
       return;
     }
 
     (async () => {
-      const names = [];
-      for await (const entry of walk(getReplaysPath())) {
-        names.push(entry);
+      const replays = [];
+      try {
+        for await (const filename of walk(getReplaysPath())) {
+          let replayInfo = null;
+          try {
+            replayInfo = await readReplayMetadata(
+              path.join(getReplaysPath(), filename)
+            );
+          } catch (e) {
+            console.error("failed to get replay data for %s:", filename, e);
+          }
+          if (replayInfo == null) {
+            continue;
+          }
+          replays.push({ name: filename, info: replayInfo });
+        }
+      } catch (e) {
+        console.error("failed to get replays:", e);
       }
-      names.sort();
-      names.reverse();
-      setReplayNames(names);
+      replays.sort(({ name: name1 }, { name: name2 }) => {
+        return name1 < name2 ? -1 : name1 > name2 ? 1 : 0;
+      });
+      replays.reverse();
+      setReplays(replays);
     })();
   }, [active]);
 
@@ -96,19 +131,19 @@ export default function ReplaysPane({ active }: { active: boolean }) {
         display: active ? "block" : "none",
       }}
     >
-      {replayNames != null ? (
+      {replays != null ? (
         <AutoSizer>
           {({ height, width }) => (
             <FixedSizeList
               height={height}
               width={width}
-              itemCount={replayNames.length}
+              itemCount={replays.length}
               itemSize={60}
             >
               {(props) => (
                 <ReplayItem
                   ListChildProps={props}
-                  replayName={replayNames[props.index]}
+                  replay={replays[props.index]}
                 />
               )}
             </FixedSizeList>
