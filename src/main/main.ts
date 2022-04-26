@@ -20,6 +20,7 @@ remoteMain.initialize();
 Object.assign(console, log.functions);
 
 autoUpdater.channel = cfg.updateChannel;
+autoUpdater.allowPrerelease = cfg.updateChannel != "latest";
 autoUpdater.logger = console;
 
 autoUpdater.addListener("update-available", () => {
