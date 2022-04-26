@@ -30,6 +30,7 @@ pub struct BattleState {
 
 impl BattleState {
     pub async fn end_battle(&mut self) -> anyhow::Result<()> {
+        log::info!("battle ended");
         if let Some(battle) = &mut self.battle {
             battle.replay_writer().write_eor()?;
         }
