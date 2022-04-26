@@ -5,7 +5,7 @@ import { Trans, useTranslation } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
-import { shell } from "@electron/remote";
+import { BrowserWindow, dialog, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
@@ -17,8 +17,11 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 
+import { findPatchVersion } from "../../../patchinfo";
 import { getReplaysPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
+import { usePatches } from "../PatchesContext";
+import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
 
 async function* walk(dir: string, root?: string): AsyncIterable<string> {
   if (root == null) {
@@ -39,13 +42,25 @@ function ReplayItem({
   replay,
 }: {
   ListChildProps: ListChildComponentProps;
-  replay: { name: string; info: ReplayInfo };
+  replay: {
+    name: string;
+    info: ReplayInfo;
+    resolvedPatchVersion: string | null;
+  };
 }) {
   const { i18n } = useTranslation();
   const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "medium",
   });
+
+  const patchUnavailable =
+    replay.resolvedPatchVersion == null && replay.info.patch != null;
+
+  const [replayVideoFilename, setVideoReplayFilename] = React.useState<
+    string | null
+  >(null);
+
   return (
     <ListItem
       style={style}
@@ -65,12 +80,24 @@ function ReplayItem({
             </IconButton>
           </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:export-video" />}>
-            <IconButton>
+            <IconButton
+              disabled={patchUnavailable}
+              onClick={() => {
+                const fn = dialog.showSaveDialogSync(
+                  BrowserWindow.getFocusedWindow()!,
+                  {
+                    filters: [{ name: "MP4", extensions: ["mp4"] }],
+                  }
+                );
+                setVideoReplayFilename(fn ?? null);
+              }}
+            >
               <VideoFileOutlinedIcon />
+              {replayVideoFilename != null ? <ReplaydumpSupervisor /> : null}
             </IconButton>
           </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:play" />}>
-            <IconButton>
+            <IconButton disabled={patchUnavailable}>
               <PlayArrowIcon />
             </IconButton>
           </Tooltip>
@@ -79,15 +106,18 @@ function ReplayItem({
     >
       <ListItemText
         primary={dateFormat.format(new Date(replay.info.ts))}
-        secondary={replay.name}
+        secondary={<>{replay.name}</>}
       />
     </ListItem>
   );
 }
 
 export default function ReplaysPane({ active }: { active: boolean }) {
+  const { patches } = usePatches();
+
   const [replays, setReplays] = React.useState<
-    { name: string; info: ReplayInfo }[] | null
+    | { name: string; info: ReplayInfo; resolvedPatchVersion: string | null }[]
+    | null
   >(null);
 
   React.useEffect(() => {
@@ -111,7 +141,17 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           if (replayInfo == null) {
             continue;
           }
-          replays.push({ name: filename, info: replayInfo });
+          replays.push({
+            name: filename,
+            info: replayInfo,
+            resolvedPatchVersion:
+              replayInfo.patch != null && patches[replayInfo.patch.name] != null
+                ? findPatchVersion(
+                    patches[replayInfo.patch.name],
+                    replayInfo.patch.version
+                  )
+                : null,
+          });
         }
       } catch (e) {
         console.error("failed to get replays:", e);

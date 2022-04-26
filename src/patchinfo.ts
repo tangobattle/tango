@@ -96,7 +96,6 @@ export async function scan(dir: string) {
           info = toml.parse(decoder.decode(rawInfo)) as RawPatchInfo;
         } catch (e) {
           throw `could not parse patch info for ${patchName}: ${e}`;
-          return;
         }
 
         for (const versionName of Object.keys(info.versions)) {
@@ -131,7 +130,6 @@ export async function scan(dir: string) {
 
           if (format == null) {
             throw `could not find patch file for ${patchName} at version ${versionName}`;
-            return;
           }
 
           versions[versionName] = {
@@ -171,5 +169,5 @@ export async function scan(dir: string) {
 }
 
 export function findPatchVersion(info: PatchInfo, requirement: string) {
-  return semver.maxSatisfying(Object.keys(info.versions), requirement);
+  return semver.maxSatisfying(Object.keys(info.versions), `~${requirement}`);
 }
