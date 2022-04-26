@@ -21,12 +21,13 @@ pub struct Keymapping {
 
 pub struct Game {
     rt: tokio::runtime::Runtime,
+    window_title_prefix: String,
     ipc_client: ipc::Client,
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: Option<winit::event_loop::EventLoop<()>>,
     _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
-    _window: winit::window::Window,
+    window: winit::window::Window,
     pixels: pixels::Pixels,
     vbuf: Arc<Mutex<Vec<u8>>>,
     current_input: std::rc::Rc<std::cell::RefCell<current_input::CurrentInput>>,
@@ -40,7 +41,7 @@ pub struct Game {
 impl Game {
     pub fn new(
         mut ipc_client: ipc::Client,
-        window_title: String,
+        window_title_prefix: String,
         keymapping: Keymapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
@@ -97,7 +98,7 @@ impl Game {
                 mgba::gba::SCREEN_HEIGHT * 3,
             );
             winit::window::WindowBuilder::new()
-                .with_title(window_title)
+                .with_title(window_title_prefix.clone())
                 .with_inner_size(size)
                 .with_min_inner_size(size)
                 .build(event_loop.as_ref().expect("event loop"))?
@@ -224,6 +225,7 @@ impl Game {
 
         Ok(Game {
             rt,
+            window_title_prefix,
             ipc_client,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
@@ -231,7 +233,7 @@ impl Game {
             fps_counter,
             current_input,
             event_loop,
-            _window: window,
+            window,
             pixels,
             vbuf,
             emu_tps_counter,
@@ -325,6 +327,15 @@ impl Game {
                         self.fps_counter.lock().mark();
 
                         current_input.step();
+
+                        self.window.set_title(&format!(
+                            "{} ({:.0}%)",
+                            self.window_title_prefix,
+                            (1.0 / self.emu_tps_counter.lock().mean_duration().as_secs_f64()
+                                / 60.0
+                                * 100.0)
+                                .round(),
+                        ));
                     }
                     _ => {}
                 }
