@@ -292,7 +292,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           replayPath={path.join(getReplaysPath(), dumpingReplay.replay.name)}
           outPath={dumpingReplay.outPath}
           onExit={() => {
-            setViewingReplay(null);
+            setDumpingReplay(null);
           }}
         />
       ) : null}
