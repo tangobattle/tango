@@ -99,8 +99,8 @@ function AboutTab({ active }: { active: boolean }) {
             <li>
               <Link href="https://github.com/luckytyphlosion" target="_blank">
                 luckytyphlosion
-              </Link>
-              ,{" "}
+              </Link>{" "}
+              and{" "}
               <Link href="https://github.com/LanHikari22" target="_blank">
                 LanHikari22
               </Link>{" "}
