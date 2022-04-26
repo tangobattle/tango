@@ -39,7 +39,11 @@ export default function ModcardsViewer({
       <Table size="small">
         <TableBody>
           {modcards.map(({ id, enabled }, i) => {
-            const modcard = bn6.MODCARDS[id]!;
+            const modcard = bn6.MODCARDS[id];
+            if (modcard == null) {
+              return null;
+            }
+
             return (
               <TableRow key={i}>
                 <TableCell>

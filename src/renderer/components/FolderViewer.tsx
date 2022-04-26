@@ -37,6 +37,11 @@ function FolderChipRow({
       ? MEGA_BG
       : null;
 
+  const chipInfo = bn6.CHIPS[id];
+  if (chipInfo == null || chipInfo.description == null) {
+    return null;
+  }
+
   return (
     <TableRow sx={{ backgroundColor }}>
       <TableCell sx={{ width: "32px", textAlign: "right" }}>
@@ -58,13 +63,11 @@ function FolderChipRow({
       </TableCell>
       <TableCell component="th">
         <Tooltip
-          title={
-            bn6.CHIPS[id]!.description![i18n.resolvedLanguage as "en" | "ja"]
-          }
+          title={chipInfo.description[i18n.resolvedLanguage as "en" | "ja"]}
           placement="right"
         >
           <span>
-            {bn6.CHIPS[id]!.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
+            {chipInfo.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
             {code.replace(/\*/g, "﹡")}
           </span>
         </Tooltip>{" "}
@@ -101,10 +104,10 @@ function FolderChipRow({
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
-        <strong>{bn6.CHIPS[id]!.damage!}</strong>
+        <strong>{chipInfo.damage}</strong>
       </TableCell>
       <TableCell sx={{ width: "64px", textAlign: "right" }}>
-        {bn6.CHIPS[id]!.mb!}MB
+        {chipInfo.mb!}MB
       </TableCell>
     </TableRow>
   );

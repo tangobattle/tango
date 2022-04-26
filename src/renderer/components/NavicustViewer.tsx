@@ -110,7 +110,12 @@ function NavicustGrid({
   const colors = React.useMemo(() => {
     const colors = [];
     for (const placement of placements) {
-      const color = bn6.NCPS[placement.id]!.colors[placement.variant];
+      const ncp = bn6.NCPS[placement.id];
+      if (ncp == null) {
+        console.error("unrecognized ncp: %d", placement.id);
+        continue;
+      }
+      const color = ncp.colors[placement.variant];
       if (colors.indexOf(color) != -1) {
         continue;
       }
