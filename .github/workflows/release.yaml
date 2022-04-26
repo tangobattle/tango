@@ -33,4 +33,4 @@ jobs:
 
       - run: npm install
 
-      - run: GITHUB_TOKEN="${{ secrets.github_token }}" npm run "dist:${{ matrix.target }}" --publish always
+      - run: GITHUB_TOKEN="${{ secrets.github_token }}" npm run "dist:${{ matrix.target }}" -- --publish always
