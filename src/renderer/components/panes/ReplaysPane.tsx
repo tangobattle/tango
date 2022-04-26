@@ -10,6 +10,7 @@ import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import Box from "@mui/material/Box";
+import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
@@ -149,7 +150,19 @@ export default function ReplaysPane({ active }: { active: boolean }) {
             </FixedSizeList>
           )}
         </AutoSizer>
-      ) : null}
+      ) : (
+        <Box
+          sx={{
+            display: "flex",
+            width: "100%",
+            height: "100%",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      )}
     </Box>
   );
 }

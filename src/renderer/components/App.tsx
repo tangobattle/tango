@@ -1,6 +1,7 @@
 import React, { Suspense } from "react";
 
 import Box from "@mui/material/Box";
+import CircularProgress from "@mui/material/CircularProgress";
 import CssBaseline from "@mui/material/CssBaseline";
 import ThemeProvider from "@mui/system/ThemeProvider";
 
@@ -27,7 +28,21 @@ function AppBody() {
           }}
         />
       </Suspense>
-      <Suspense fallback={null}>
+      <Suspense
+        fallback={
+          <Box
+            sx={{
+              display: "flex",
+              width: "100%",
+              height: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        }
+      >
         <ConfigProvider>
           <ROMsProvider>
             <PatchesProvider>

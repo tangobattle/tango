@@ -155,7 +155,6 @@ export function CoreSupervisor({
               >
                 <CircularProgress
                   sx={{ flexGrow: 0, flexShrink: 0 }}
-                  disableShrink
                   size="2rem"
                 />
                 <Typography>
