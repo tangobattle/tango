@@ -181,6 +181,20 @@ fn main() -> Result<(), anyhow::Error> {
                     pixels.get_frame().copy_from_slice(&vbuf);
                     pixels.render().expect("render pixels");
                 }
+                winit::event::Event::WindowEvent {
+                    event: ref window_event,
+                    ..
+                } => {
+                    match window_event {
+                        winit::event::WindowEvent::CloseRequested => {
+                            *control_flow = winit::event_loop::ControlFlow::Exit;
+                        }
+                        winit::event::WindowEvent::Resized(size) => {
+                            pixels.resize_surface(size.width, size.height);
+                        }
+                        _ => {}
+                    };
+                }
                 _ => {}
             }
         });
