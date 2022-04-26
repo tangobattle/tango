@@ -52,7 +52,7 @@ export default function ReplayviewSupervisor({
 
       const proc = spawn(
         path.join(getBinPath(), "replayview"),
-        [romPath, replayPath],
+        [romTmpFileRef.current.path, replayPath],
         {
           env: {
             WGPU_BACKEND:
@@ -195,7 +195,7 @@ export default function ReplayviewSupervisor({
                     onExitRef.current();
                   }}
                 >
-                  <Trans i18nKey="replays:dismiss" />
+                  <Trans i18nKey="supervisor:dismiss" />
                 </Button>
               </Stack>
             </Stack>

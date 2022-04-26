@@ -132,7 +132,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
 
   const [dumpingReplay, setDumpingReplay] = React.useState<{
     replay: LoadedReplay;
-    outFilename: string;
+    outPath: string;
     done: boolean;
   } | null>(null);
 
@@ -221,7 +221,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                       fn != null
                         ? {
                             replay: replay,
-                            outFilename: fn,
+                            outPath: fn,
                             done: false,
                           }
                         : null
@@ -265,6 +265,32 @@ export default function ReplaysPane({ active }: { active: boolean }) {
               : undefined
           }
           replayPath={path.join(getReplaysPath(), viewingReplay.name)}
+          onExit={() => {
+            setViewingReplay(null);
+          }}
+        />
+      ) : null}
+      {dumpingReplay != null ? (
+        <ReplaydumpSupervisor
+          romPath={path.join(
+            getROMsPath(),
+            roms[dumpingReplay.replay.info.rom]
+          )}
+          patchPath={
+            dumpingReplay.replay.resolvedPatchVersion != null
+              ? path.join(
+                  getPatchesPath(),
+                  dumpingReplay.replay.info.patch!.name,
+                  `v${dumpingReplay.replay.resolvedPatchVersion}.${
+                    patches[dumpingReplay.replay.info.patch!.name]!.versions[
+                      dumpingReplay.replay.resolvedPatchVersion
+                    ]!.format
+                  }`
+                )
+              : undefined
+          }
+          replayPath={path.join(getReplaysPath(), dumpingReplay.replay.name)}
+          outPath={dumpingReplay.outPath}
           onExit={() => {
             setViewingReplay(null);
           }}
