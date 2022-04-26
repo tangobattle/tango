@@ -1,6 +1,8 @@
 import { ChildProcessWithoutNullStreams, spawn } from "child_process";
 import { EventEmitter } from "stream";
 
+import { app } from "@electron/remote";
+
 import { getBinPath } from "../paths";
 import * as types from "./types";
 
@@ -19,7 +21,7 @@ export class Core extends EventEmitter {
   ) {
     super();
 
-    this._proc = spawn(getBinPath("tango-core"), [JSON.stringify(args)], {
+    this._proc = spawn(getBinPath(app, "tango-core"), [JSON.stringify(args)], {
       env,
       signal,
     });

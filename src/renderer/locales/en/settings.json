@@ -19,5 +19,9 @@
     "wgpu-backend.vulkan": "Vulkan",
     "wgpu-backend.dx12": "DirectX 12",
     "wgpu-backend.gl": "OpenGL (must have ANGLE libraries)",
-    "wgpu-backend.metal": "Metal (macOS only)"
+    "wgpu-backend.metal": "Metal (macOS only)",
+    "update-channel": "Update channel (requires restart)",
+    "update-channel.latest": "Latest",
+    "update-channel.beta": "Beta",
+    "update-channel.alpha": "Alpha"
 }

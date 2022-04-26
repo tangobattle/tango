@@ -5,7 +5,7 @@ import { Trans, useTranslation } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
-import { BrowserWindow, dialog, shell } from "@electron/remote";
+import { app, BrowserWindow, dialog, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
@@ -77,7 +77,7 @@ function ReplayItem({
             <IconButton
               onClick={() => {
                 shell.showItemInFolder(
-                  path.join(getReplaysPath(), replay.name)
+                  path.join(getReplaysPath(app), replay.name)
                 );
               }}
             >
@@ -149,11 +149,11 @@ export default function ReplaysPane({ active }: { active: boolean }) {
     (async () => {
       const replays = [];
       try {
-        for await (const filename of walk(getReplaysPath())) {
+        for await (const filename of walk(getReplaysPath(app))) {
           let replayInfo = null;
           try {
             replayInfo = await readReplayMetadata(
-              path.join(getReplaysPath(), filename)
+              path.join(getReplaysPath(app), filename)
             );
           } catch (e) {
             console.error("failed to get replay data for %s:", filename, e);
@@ -211,7 +211,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                       BrowserWindow.getFocusedWindow()!,
                       {
                         defaultPath: path.join(
-                          getReplaysPath(),
+                          getReplaysPath(app),
                           replay.name.replace(/\.[^/.]+$/, "")
                         ),
                         filters: [{ name: "MP4", extensions: ["mp4"] }],
@@ -250,11 +250,11 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       )}
       {viewingReplay != null ? (
         <ReplayviewSupervisor
-          romPath={path.join(getROMsPath(), roms[viewingReplay.info.rom])}
+          romPath={path.join(getROMsPath(app), roms[viewingReplay.info.rom])}
           patchPath={
             viewingReplay.resolvedPatchVersion != null
               ? path.join(
-                  getPatchesPath(),
+                  getPatchesPath(app),
                   viewingReplay.info.patch!.name,
                   `v${viewingReplay.resolvedPatchVersion}.${
                     patches[viewingReplay.info.patch!.name]!.versions[
@@ -264,7 +264,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 )
               : undefined
           }
-          replayPath={path.join(getReplaysPath(), viewingReplay.name)}
+          replayPath={path.join(getReplaysPath(app), viewingReplay.name)}
           onExit={() => {
             setViewingReplay(null);
           }}
@@ -273,13 +273,13 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       {dumpingReplay != null ? (
         <ReplaydumpSupervisor
           romPath={path.join(
-            getROMsPath(),
+            getROMsPath(app),
             roms[dumpingReplay.replay.info.rom]
           )}
           patchPath={
             dumpingReplay.replay.resolvedPatchVersion != null
               ? path.join(
-                  getPatchesPath(),
+                  getPatchesPath(app),
                   dumpingReplay.replay.info.patch!.name,
                   `v${dumpingReplay.replay.resolvedPatchVersion}.${
                     patches[dumpingReplay.replay.info.patch!.name]!.versions[
@@ -289,7 +289,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 )
               : undefined
           }
-          replayPath={path.join(getReplaysPath(), dumpingReplay.replay.name)}
+          replayPath={path.join(getReplaysPath(app), dumpingReplay.replay.name)}
           outPath={dumpingReplay.outPath}
           onExit={() => {
             setDumpingReplay(null);

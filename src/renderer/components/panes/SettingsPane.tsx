@@ -5,11 +5,13 @@ import { app } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -228,6 +230,35 @@ function AdvancedTab({ active }: { active: boolean }) {
               </MenuItem>
               <MenuItem value="metal">
                 <Trans i18nKey="settings:wgpu-backend.metal" />
+              </MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
+            <InputLabel id="update-channel-label">
+              <Trans i18nKey="settings:update-channel" />
+            </InputLabel>
+
+            <Select
+              labelId="update-channel-label"
+              value={config.updateChannel}
+              onChange={(e) => {
+                (async () => {
+                  saveConfig((config) => ({
+                    ...config,
+                    updateChannel: e.target.value,
+                  }));
+                })();
+              }}
+              label={<Trans i18nKey="settings:update-channel" />}
+            >
+              <MenuItem value="latest">
+                <Trans i18nKey="settings:update-channel.latest" />
+              </MenuItem>
+              <MenuItem value="beta">
+                <Trans i18nKey="settings:update-channel.beta" />
+              </MenuItem>
+              <MenuItem value="alpha">
+                <Trans i18nKey="settings:update-channel.alpha" />
               </MenuItem>
             </Select>
           </FormControl>

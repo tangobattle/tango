@@ -1,5 +1,7 @@
 import React, { useContext } from "react";
 
+import { app } from "@electron/remote";
+
 import * as config from "../../config";
 import { getConfigPath } from "../../paths";
 
@@ -16,8 +18,8 @@ function makeLoadConfig() {
   let err: any;
   const promise = (async () => {
     try {
-      result = await config.load(getConfigPath());
-      await config.save(result, getConfigPath());
+      result = await config.load(getConfigPath(app));
+      await config.save(result, getConfigPath(app));
     } catch (e) {
       err = e;
       status = "error";
@@ -52,7 +54,7 @@ export const ConfigProvider = ({
         save(f) {
           setCurrentConfig((cfg) => {
             const newCfg = f(cfg);
-            config.save(newCfg, getConfigPath());
+            config.save(newCfg, getConfigPath(app));
             return newCfg;
           });
         },

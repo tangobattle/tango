@@ -1,5 +1,7 @@
 import React, { useContext } from "react";
 
+import { app } from "@electron/remote";
+
 import { getSavesPath } from "../../paths";
 import { SaveInfo, scan } from "../../saves";
 
@@ -16,7 +18,7 @@ function makeSaveScans() {
   let err: any;
   const promise = (async () => {
     try {
-      result = await scan(getSavesPath());
+      result = await scan(getSavesPath(app));
     } catch (e) {
       console.error(e);
       err = e;
@@ -50,7 +52,7 @@ export const SavesProvider = ({
       value={{
         async rescan() {
           try {
-            setCurrentSaves(await scan(getSavesPath()));
+            setCurrentSaves(await scan(getSavesPath(app)));
           } catch (e) {
             console.error(e);
           }

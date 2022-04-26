@@ -1,11 +1,10 @@
+import { readFileSync, writeFileSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
-import mkdirp from "mkdirp";
 
 import * as ipc from "./ipc";
-import { getBasePath } from "./paths";
 
 export interface Config {
-  allowPreleaseUpdates: boolean;
+  updateChannel: string;
   wgpuBackend: string | null;
   keymapping: ipc.Args["keymapping"];
   matchmakingConnectAddr: string;
@@ -13,7 +12,7 @@ export interface Config {
 }
 
 export const DEFAULT: Config = {
-  allowPreleaseUpdates: true,
+  updateChannel: "alpha",
   wgpuBackend: null,
   keymapping: {
     up: "Up",
@@ -37,24 +36,27 @@ export const DEFAULT: Config = {
   ],
 };
 
-export async function load(path: string) {
+export function ensureSync(path: string) {
   let data;
-  const p = path;
   try {
-    data = await readFile(p);
+    data = readFileSync(path);
   } catch (e) {
     if ((e as any).code == "ENOENT") {
-      await mkdirp(getBasePath());
+      writeFileSync(path, JSON.stringify(DEFAULT, null, 4) + "\n");
       return DEFAULT;
     }
     throw e;
   }
-  const str = data.toString();
   try {
-    return { ...DEFAULT, ...JSON.parse(str) } as Config;
+    return { ...DEFAULT, ...JSON.parse(data.toString()) } as Config;
   } catch {
     return DEFAULT;
   }
+}
+
+export async function load(path: string) {
+  const data = await readFile(path);
+  return JSON.parse(data.toString()) as Config;
 }
 
 export async function save(config: Config, path: string) {

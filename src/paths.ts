@@ -1,32 +1,30 @@
 import path from "path";
 
-import { app } from "@electron/remote";
-
-export function getBasePath() {
+export function getBasePath(app: Electron.App) {
   return path.join(app.getPath("documents"), "Tango");
 }
 
-export function getConfigPath() {
-  return path.join(getBasePath(), "config.json");
+export function getConfigPath(app: Electron.App) {
+  return path.join(getBasePath(app), "config.json");
 }
 
-export function getROMsPath() {
-  return path.join(getBasePath(), "roms");
+export function getROMsPath(app: Electron.App) {
+  return path.join(getBasePath(app), "roms");
 }
 
-export function getPatchesPath() {
-  return path.join(getBasePath(), "patches");
+export function getPatchesPath(app: Electron.App) {
+  return path.join(getBasePath(app), "patches");
 }
 
-export function getReplaysPath() {
-  return path.join(getBasePath(), "replays");
+export function getReplaysPath(app: Electron.App) {
+  return path.join(getBasePath(app), "replays");
 }
 
-export function getSavesPath() {
-  return path.join(getBasePath(), "saves");
+export function getSavesPath(app: Electron.App) {
+  return path.join(getBasePath(app), "saves");
 }
 
-export function getBinPath(exe: string) {
+export function getBinPath(app: Electron.App, exe: string) {
   return path.join(
     app.isPackaged ? path.join(process.resourcesPath, "bin") : "dev-bin",
     exe + (process.platform === "win32" ? ".exe" : "")

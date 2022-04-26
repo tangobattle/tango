@@ -3,6 +3,7 @@ import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
 
+import { app } from "@electron/remote";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
@@ -27,7 +28,7 @@ export default function SaveViewer({
     (async () => {
       const e = new bn6.Editor(
         bn6.Editor.sramDumpToRaw(
-          (await readFile(path.join(getSavesPath(), filename))).buffer
+          (await readFile(path.join(getSavesPath(app), filename))).buffer
         )
       );
       setEditor(e);

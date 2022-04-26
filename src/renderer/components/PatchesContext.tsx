@@ -1,5 +1,7 @@
 import React, { useContext } from "react";
 
+import { app } from "@electron/remote";
+
 import { PatchInfos, scan } from "../../patchinfo";
 import { getPatchesPath } from "../../paths";
 
@@ -16,7 +18,7 @@ function makeScanPatches() {
   let err: any;
   const promise = (async () => {
     try {
-      result = await scan(getPatchesPath());
+      result = await scan(getPatchesPath(app));
     } catch (e) {
       console.error(e);
       err = e;
@@ -50,7 +52,7 @@ export const PatchesProvider = ({
       value={{
         async rescan() {
           try {
-            setCurrentPatches(await scan(getPatchesPath()));
+            setCurrentPatches(await scan(getPatchesPath(app)));
           } catch (e) {
             console.error(e);
           }

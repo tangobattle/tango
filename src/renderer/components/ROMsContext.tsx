@@ -1,5 +1,7 @@
 import React, { useContext } from "react";
 
+import { app } from "@electron/remote";
+
 import { getROMsPath } from "../../paths";
 import { scan } from "../../rom";
 
@@ -16,7 +18,7 @@ function makeScanROMs() {
   let err: any;
   const promise = (async () => {
     try {
-      result = await scan(getROMsPath());
+      result = await scan(getROMsPath(app));
     } catch (e) {
       console.error(e);
       err = e;
@@ -50,7 +52,7 @@ export const ROMsProvider = ({
       value={{
         async rescan() {
           try {
-            setCurrentROMs(await scan(getROMsPath()));
+            setCurrentROMs(await scan(getROMsPath(app)));
           } catch (e) {
             console.error(e);
           }

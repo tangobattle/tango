@@ -3,6 +3,7 @@ import React from "react";
 import { Trans } from "react-i18next";
 import tmp from "tmp-promise";
 
+import { app } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -50,7 +51,7 @@ export default function ReplayviewSupervisor({
       romTmpFileRef.current = await makeROM(romPath, patchPath || null);
 
       const proc = spawn(
-        getBinPath("replayview"),
+        getBinPath(app, "replayview"),
         [romTmpFileRef.current.path, replayPath],
         {
           env: {

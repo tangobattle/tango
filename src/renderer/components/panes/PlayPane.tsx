@@ -4,7 +4,7 @@ import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import semver from "semver";
 
-import { shell } from "@electron/remote";
+import { app, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -206,9 +206,11 @@ export default function PlayPane({ active }: { active: boolean }) {
               <IconButton
                 onClick={() => {
                   if (saveName == null) {
-                    shell.openPath(getSavesPath());
+                    shell.openPath(getSavesPath(app));
                   } else {
-                    shell.showItemInFolder(path.join(getSavesPath(), saveName));
+                    shell.showItemInFolder(
+                      path.join(getSavesPath(app), saveName)
+                    );
                   }
                 }}
               >
@@ -463,13 +465,13 @@ export default function PlayPane({ active }: { active: boolean }) {
                 <CoreSupervisor
                   incarnation={incarnation}
                   romPath={path.join(
-                    getROMsPath(),
+                    getROMsPath(app),
                     roms[saves[saveName!].romName]
                   )}
                   patchPath={
                     patchVersion != null
                       ? path.join(
-                          getPatchesPath(),
+                          getPatchesPath(app),
                           patchName!,
                           `v${patchVersion}.${
                             patchInfo!.versions[patchVersion].format
@@ -482,7 +484,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                       ? {
                           sessionID: `${netplayCompatibility}-${MATCH_TYPES[matchType]}-${startedState.linkCode}`,
                           replaysPath: path.join(
-                            getReplaysPath(),
+                            getReplaysPath(app),
                             `${datefns.format(
                               now,
                               "yyyyMMddHHmmmmss"
@@ -506,7 +508,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                         }
                       : undefined
                   }
-                  savePath={path.join(getSavesPath(), saveName!)}
+                  savePath={path.join(getSavesPath(app), saveName!)}
                   windowTitle={`${
                     KNOWN_ROMS[saves[saveName!].romName].title[
                       i18n.resolvedLanguage

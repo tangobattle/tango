@@ -1,17 +1,25 @@
 import { app, BrowserWindow, Menu, shell } from "electron";
 import * as log from "electron-log";
 import { autoUpdater } from "electron-updater";
+import mkdirp from "mkdirp";
 import * as path from "path";
 import * as url from "url";
 
 import * as remoteMain from "@electron/remote/main";
 
+import * as config from "../config";
+import { getBasePath, getConfigPath } from "../paths";
+
 app.commandLine.appendSwitch("in-process-gpu");
+
+mkdirp.sync(getBasePath(app));
+const cfg = config.ensureSync(getConfigPath(app));
 
 remoteMain.initialize();
 
 Object.assign(console, log.functions);
 
+autoUpdater.channel = cfg.updateChannel;
 autoUpdater.logger = console;
 
 autoUpdater.addListener("update-available", () => {

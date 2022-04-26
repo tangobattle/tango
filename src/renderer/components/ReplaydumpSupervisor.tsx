@@ -3,7 +3,7 @@ import React from "react";
 import { Trans } from "react-i18next";
 import tmp from "tmp-promise";
 
-import { shell } from "@electron/remote";
+import { app, shell } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import LinearProgress from "@mui/material/LinearProgress";
@@ -55,11 +55,11 @@ export default function ReplaydumpSupervisor({
       romTmpFileRef.current = await makeROM(romPath, patchPath || null);
 
       const proc = spawn(
-        getBinPath("replaydump"),
+        getBinPath(app, "replaydump"),
         [
           romTmpFileRef.current.path,
           "--ffmpeg",
-          getBinPath("ffmpeg"),
+          getBinPath(app, "ffmpeg"),
           replayPath,
           outPath,
         ],
