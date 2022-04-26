@@ -28,7 +28,7 @@ export function getSavesPath() {
 
 export function getBinPath(exe: string) {
   return path.join(
-    app.isPackaged ? path.join(process.resourcesPath, "bin") : "bin",
+    app.isPackaged ? path.join(process.resourcesPath, "bin") : "dev-bin",
     exe + (process.platform === "win32" ? ".exe" : "")
   );
 }
