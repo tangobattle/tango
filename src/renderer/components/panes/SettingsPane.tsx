@@ -179,53 +179,63 @@ function KeymappingTab({ active }: { active: boolean }) {
       overflow="auto"
       sx={{ px: 1, height: 0 }}
     >
-      <Stack spacing={1}>
-        <Table size="small">
-          <TableBody>
-            {KEYS.map((key) => (
-              <TableRow key={key}>
-                <TableCell component="th">
-                  <strong>
-                    <Trans i18nKey={`settings:keymapping.${key}`} />
-                  </strong>
-                </TableCell>
-                <TableCell sx={{ textAlign: "right" }}>
-                  {config.keymapping[key]}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        <Button
-          variant="contained"
-          onClick={() => {
-            (async () => {
-              if (keymaptoolRef.current != null) {
-                return;
-              }
-              keymaptoolRef.current = new Keymaptool();
-              for (const key of KEYS) {
-                const mapped = await keymaptoolRef.current.request(
-                  t("settings:request-keymapping", {
-                    key: t(`settings:keymapping.${key}`),
-                  })
-                );
-                if (mapped == null) {
-                  break;
+      <Box
+        sx={{
+          display: "flex",
+          width: "100%",
+          height: "100%",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Stack spacing={1} sx={{ width: "300px" }}>
+          <Table size="small">
+            <TableBody>
+              {KEYS.map((key) => (
+                <TableRow key={key}>
+                  <TableCell component="th">
+                    <strong>
+                      <Trans i18nKey={`settings:keymapping.${key}`} />
+                    </strong>
+                  </TableCell>
+                  <TableCell sx={{ textAlign: "right" }}>
+                    {config.keymapping[key]}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <Button
+            variant="contained"
+            onClick={() => {
+              (async () => {
+                if (keymaptoolRef.current != null) {
+                  return;
                 }
-                await saveConfig((config) => ({
-                  ...config,
-                  keymapping: { ...config.keymapping, [key]: mapped },
-                }));
-              }
-              keymaptoolRef.current.close();
-              keymaptoolRef.current = null;
-            })();
-          }}
-        >
-          <Trans i18nKey="settings:remap" />
-        </Button>
-      </Stack>
+                keymaptoolRef.current = new Keymaptool();
+                for (const key of KEYS) {
+                  const mapped = await keymaptoolRef.current.request(
+                    t("settings:request-keymapping", {
+                      key: t(`settings:keymapping.${key}`),
+                    })
+                  );
+                  if (mapped == null) {
+                    break;
+                  }
+                  await saveConfig((config) => ({
+                    ...config,
+                    keymapping: { ...config.keymapping, [key]: mapped },
+                  }));
+                }
+                keymaptoolRef.current.close();
+                keymaptoolRef.current = null;
+              })();
+            }}
+          >
+            <Trans i18nKey="settings:remap" />
+          </Button>
+        </Stack>
+      </Box>
     </Box>
   );
 }
