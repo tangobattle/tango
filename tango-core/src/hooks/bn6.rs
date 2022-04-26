@@ -344,14 +344,18 @@ impl hooks::Hooks for BN6 {
                                 return;
                             }
 
-                            match core.as_ref().gba().cpu().gpr(0) {
+                            if match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
                                     battle_state.set_won_last_battle(true);
+                                    true
                                 }
                                 2 => {
                                     battle_state.set_won_last_battle(false);
+                                    true
                                 }
-                                _ => {}
+                                _ => false,
+                            } {
+                                battle_state.end_battle().await;
                             }
                         });
                     }),
@@ -372,25 +376,6 @@ impl hooks::Hooks for BN6 {
                             };
 
                             match_.start_battle(core).await;
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.battle_ending_ret,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            match_.end_battle().await;
                         });
                     }),
                 )

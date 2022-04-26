@@ -56,15 +56,10 @@ impl Replay {
         let mut input_pairs = vec![];
 
         loop {
-            let local_tick = match zr.read_u32::<byteorder::LittleEndian>() {
-                Ok(local_tick) => local_tick,
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                        break;
-                    }
-                    return Err(e);
-                }
-            };
+            let local_tick = zr.read_u32::<byteorder::LittleEndian>()?;
+            if local_tick == 0 {
+                break;
+            }
             let remote_tick = zr.read_u32::<byteorder::LittleEndian>()?;
 
             let p1_joyflags = zr.read_u16::<byteorder::LittleEndian>()?;
@@ -168,6 +163,11 @@ impl Writer {
             .write_u32::<byteorder::LittleEndian>(p2.turn.len() as u32)?;
         self.encoder.write_all(&p2.turn)?;
 
+        Ok(())
+    }
+
+    pub fn write_eor(&mut self) -> std::io::Result<()> {
+        self.encoder.write_u32::<byteorder::LittleEndian>(0)?;
         Ok(())
     }
 }

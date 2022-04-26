@@ -28,6 +28,16 @@ pub struct BattleState {
     pub won_last_battle: bool,
 }
 
+impl BattleState {
+    pub async fn end_battle(&mut self) -> anyhow::Result<()> {
+        if let Some(battle) = &mut self.battle {
+            battle.replay_writer().write_eor()?;
+        }
+        self.battle = None;
+        Ok(())
+    }
+}
+
 pub struct Match {
     audio_supported_config: cpal::SupportedStreamConfig,
     rom_path: std::path::PathBuf,
@@ -335,10 +345,6 @@ impl Match {
         });
         log::info!("battle has started");
         Ok(())
-    }
-
-    pub async fn end_battle(&self) {
-        self.battle_state.lock().await.battle = None;
     }
 }
 

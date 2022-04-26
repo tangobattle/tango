@@ -129,12 +129,7 @@ impl Game {
         if let Some(_) = match_settings {
             core.set_traps(hooks.primary_traps(
                 handle.clone(),
-                facade::Facade::new(
-                    match_.clone(),
-                    joyflags.clone(),
-                    ipc_client.clone(),
-                    cancellation_token.clone(),
-                ),
+                facade::Facade::new(match_.clone(), joyflags.clone(), cancellation_token.clone()),
             ));
         }
 

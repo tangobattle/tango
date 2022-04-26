@@ -1,4 +1,4 @@
-use crate::{battle, game, input, ipc};
+use crate::{battle, game, input};
 
 pub struct BattleStateFacadeGuard<'a> {
     guard: tokio::sync::MutexGuard<'a, battle::BattleState>,
@@ -12,6 +12,10 @@ impl<'a> BattleStateFacadeGuard<'a> {
             .as_mut()
             .expect("attempted to get battle information while no battle was active!")
             .add_local_pending_turn(local_turn);
+    }
+
+    pub async fn end_battle(&mut self) {
+        self.guard.end_battle().await.expect("end battle");
     }
 
     pub fn has_committed_state(&self) -> bool {
@@ -307,10 +311,6 @@ impl MatchFacade {
         self.arc.start_battle(core).await.expect("start battle");
     }
 
-    pub async fn end_battle(&self) {
-        self.arc.end_battle().await;
-    }
-
     pub async fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {
         self.arc.lock_rng().await
     }
@@ -328,7 +328,6 @@ pub struct MatchFacade {
 struct InnerFacade {
     match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-    ipc_client: ipc::Client,
     cancellation_token: tokio_util::sync::CancellationToken,
 }
 
@@ -339,13 +338,11 @@ impl Facade {
     pub fn new(
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        ipc_client: ipc::Client,
         cancellation_token: tokio_util::sync::CancellationToken,
     ) -> Self {
         Self(std::rc::Rc::new(std::cell::RefCell::new(InnerFacade {
             match_,
             joyflags,
-            ipc_client,
             cancellation_token,
         })))
     }
