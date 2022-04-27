@@ -83,7 +83,8 @@
       "target": "nsis"
     },
     "nsis": {
-      "oneClick": false
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     },
     "mac": {
       "category": "public.app-category.games"
