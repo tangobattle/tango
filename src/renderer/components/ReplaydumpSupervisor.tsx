@@ -60,7 +60,7 @@ export default function ReplaydumpSupervisor({
           return stderr;
         });
         setDone({ exitCode: -1, signalCode: null });
-        return;
+        throw e;
       }
 
       const proc = spawn(

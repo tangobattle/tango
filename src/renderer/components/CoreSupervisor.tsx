@@ -68,7 +68,7 @@ export function CoreSupervisor({
           return stderr;
         });
         setExitLingering(true);
-        return;
+        throw e;
       }
 
       const core = new ipc.Core(

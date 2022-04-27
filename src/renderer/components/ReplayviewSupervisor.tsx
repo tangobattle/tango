@@ -56,7 +56,7 @@ export default function ReplayviewSupervisor({
           return stderr;
         });
         setExitLingering(true);
-        return;
+        throw e;
       }
 
       const proc = spawn(
