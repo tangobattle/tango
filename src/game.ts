@@ -10,6 +10,13 @@ export async function makeROM(romPath: string, patchPath: string | null) {
   }
 
   const romFile = await tmp.file();
-  await writeFile(romFile.path, rom);
-  return romFile;
+  // eslint-disable-next-line no-console
+  console.info("writing temporary ROM to %s", romFile.path);
+  try {
+    await writeFile(romFile.path, rom);
+    return romFile;
+  } catch (e) {
+    await romFile.cleanup();
+    throw e;
+  }
 }
