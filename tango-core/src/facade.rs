@@ -15,10 +15,10 @@ impl<'a> BattleStateFacadeGuard<'a> {
     }
 
     pub async fn end_battle(&mut self) {
-        self.guard.end_battle().await.expect("end battle");
         if let Some(battle) = &mut self.guard.battle {
             battle.replay_writer().write_eor().expect("write eor");
         }
+        self.guard.end_battle().await.expect("end battle");
     }
 
     pub fn has_committed_state(&self) -> bool {
