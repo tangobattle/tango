@@ -20,7 +20,6 @@ import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
 import { Keymaptool } from "../../../input";
-import i18n from "../../i18n";
 import { useConfig } from "../ConfigContext";
 
 const KEYS = [

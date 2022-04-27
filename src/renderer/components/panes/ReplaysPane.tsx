@@ -17,7 +17,7 @@ import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 
-import { findPatchVersion } from "../../../patchinfo";
+import { findPatchVersion } from "../../../patch";
 import { getPatchesPath, getReplaysPath, getROMsPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
 import { usePatches } from "../PatchesContext";
@@ -256,11 +256,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
               ? path.join(
                   getPatchesPath(app),
                   viewingReplay.info.patch!.name,
-                  `v${viewingReplay.resolvedPatchVersion}.${
-                    patches[viewingReplay.info.patch!.name]!.versions[
-                      viewingReplay.resolvedPatchVersion
-                    ]!.format
-                  }`
+                  `v${viewingReplay.resolvedPatchVersion}.bps`
                 )
               : undefined
           }
@@ -281,11 +277,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
               ? path.join(
                   getPatchesPath(app),
                   dumpingReplay.replay.info.patch!.name,
-                  `v${dumpingReplay.replay.resolvedPatchVersion}.${
-                    patches[dumpingReplay.replay.info.patch!.name]!.versions[
-                      dumpingReplay.replay.resolvedPatchVersion
-                    ]!.format
-                  }`
+                  `v${dumpingReplay.replay.resolvedPatchVersion}.bps`
                 )
               : undefined
           }

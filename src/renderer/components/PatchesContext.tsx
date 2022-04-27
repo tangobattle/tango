@@ -2,7 +2,7 @@ import React, { useContext } from "react";
 
 import { app } from "@electron/remote";
 
-import { PatchInfos, scan } from "../../patchinfo";
+import { PatchInfos, scan } from "../../patch";
 import { getPatchesPath } from "../../paths";
 
 export interface PatchesValue {

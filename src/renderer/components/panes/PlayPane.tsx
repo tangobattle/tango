@@ -473,9 +473,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                       ? path.join(
                           getPatchesPath(app),
                           patchName!,
-                          `v${patchVersion}.${
-                            patchInfo!.versions[patchVersion].format
-                          }`
+                          `v${patchVersion}.bps`
                         )
                       : undefined
                   }

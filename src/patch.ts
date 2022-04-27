@@ -1,143 +1,154 @@
-export function applyBPS(
-  rom: Uint8Array,
-  patch: Uint8Array,
-  ignoreCRC32 = false
-) {
-  // From https://github.com/SMWCentral/OnlineTools, licensed under the MIT license.
-  function crc32(bytes: Uint8Array) {
-    let c;
-    const crcTable: number[] = [];
-    for (let n = 0; n < 256; n++) {
-      c = n;
-      for (let k = 0; k < 8; k++) {
-        c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-      }
-      crcTable[n] = c;
-    }
+import { parseOneAddress } from "email-addresses";
+import { constants } from "fs";
+import { access, readdir, readFile, stat } from "fs/promises";
+import mkdirp from "mkdirp";
+import path from "path";
+import semver from "semver";
+import toml from "toml";
 
-    let crc = 0 ^ -1;
-    for (let i = 0; i < bytes.length; i++) {
-      crc = (crc >>> 8) ^ crcTable[(crc ^ bytes[i]) & 0xff];
-    }
-    return (crc ^ -1) >>> 0;
-  }
+const decoder = new TextDecoder("utf-8");
 
-  let patchpos = 0;
-  function u8() {
-    return patch[patchpos++];
-  }
-  function u32at(pos: number) {
-    return (
-      ((patch[pos + 0] << 0) |
-        (patch[pos + 1] << 8) |
-        (patch[pos + 2] << 16) |
-        (patch[pos + 3] << 24)) >>>
-      0
-    );
-  }
-
-  function decode() {
-    let ret = 0;
-    let sh = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const next = u8();
-      ret += (next ^ 0x80) << sh;
-      if (next & 0x80) return ret;
-      sh += 7;
-    }
-  }
-
-  function decodes() {
-    const enc = decode();
-    let ret = enc >> 1;
-    if (enc & 1) ret = -ret;
-    return ret;
-  }
-
-  if (u8() != 0x42 || u8() != 0x50 || u8() != 0x53 || u8() != 0x31) {
-    throw new Error("not a BPS patch");
-  }
-  if (decode() != rom.length) throw new Error("wrong input file");
-  if (!ignoreCRC32 && crc32(rom) != u32at(patch.length - 12)) {
-    throw new Error("wrong input file");
-  }
-
-  const out = new Uint8Array(decode());
-  let outpos = 0;
-
-  const metalen = decode();
-  patchpos += metalen; // can't join these two, JS reads patchpos before calling decode
-
-  let inreadpos = 0;
-  let outreadpos = 0;
-
-  while (patchpos < patch.length - 12) {
-    const thisinstr = decode();
-    const len = (thisinstr >> 2) + 1;
-    const action = thisinstr & 3;
-
-    switch (action) {
-      case 0: // source read
-        {
-          for (let i = 0; i < len; i++) {
-            out[outpos] = rom[outpos];
-            outpos++;
-          }
-        }
-        break;
-      case 1: // target read
-        {
-          for (let i = 0; i < len; i++) {
-            out[outpos++] = u8();
-          }
-        }
-        break;
-      case 2: // source copy
-        {
-          inreadpos += decodes();
-          for (let i = 0; i < len; i++) out[outpos++] = rom[inreadpos++];
-        }
-        break;
-      case 3: // target copy
-        {
-          outreadpos += decodes();
-          for (let i = 0; i < len; i++) out[outpos++] = out[outreadpos++];
-        }
-        break;
-    }
-  }
-
-  return out;
+export interface PatchInfos {
+  [name: string]: PatchInfo;
 }
 
-export function applyIPS(rom: Uint8Array, patch: Uint8Array) {
-  // Code is from https://github.com/tewtal/sm_practice_hack, licensed unde the Unlicense.
-  const big = false;
-  let offset = 5;
-  const footer = 3;
-  const view = new DataView(patch.buffer);
-  while (offset + footer < patch.length) {
-    const dest = (patch[offset] << 16) + view.getUint16(offset + 1, big);
-    const length = view.getUint16(offset + 3, big);
-    offset += 5;
-    if (length > 0) {
-      rom.set(patch.slice(offset, offset + length), dest);
-      offset += length;
+export interface PatchVersionInfo {
+  netplayCompatibility: string;
+}
+
+export interface PatchInfo {
+  title?: string;
+  authors: { name: string | null; email: string }[];
+  source?: string;
+  license?: string;
+  forROM: string;
+  versions: {
+    [version: string]: PatchVersionInfo;
+  };
+}
+
+interface RawPatchInfo {
+  patch: {
+    title: string;
+    authors: string[];
+    source?: string;
+    license?: string;
+    for_rom: string;
+  };
+  versions: {
+    [version: string]: {
+      netplay_compatibility: string;
+    };
+  };
+}
+
+export async function scan(dir: string) {
+  const patches = {} as {
+    [name: string]: PatchInfo;
+  };
+
+  let patchNames: string[];
+  try {
+    patchNames = await readdir(dir);
+  } catch (e) {
+    if ((e as any).code == "ENOENT") {
+      await mkdirp(dir);
+      patchNames = [];
     } else {
-      const rleLength = view.getUint16(offset, big);
-      const rleByte = patch[offset + 2];
-      rom.set(
-        Uint8Array.from(new Array(rleLength), () => rleByte),
-        dest
-      );
-      offset += 3;
+      throw e;
     }
   }
-  return rom;
+
+  for (const result of await Promise.allSettled(
+    patchNames.map(async (patchName) => {
+      try {
+        const versions: { [version: string]: PatchInfo["versions"][""] } = {};
+
+        const patchPath = path.join(dir, patchName);
+        const statRes = await stat(patchPath);
+        if (!statRes.isDirectory()) {
+          return;
+        }
+
+        let rawInfo;
+        try {
+          rawInfo = (await readFile(path.join(patchPath, "info.toml"))).buffer;
+        } catch (e) {
+          if ((e as any).code == "ENOENT") {
+            return;
+          }
+          throw `could not scan patch info for ${patchName}: ${e}`;
+        }
+
+        let info;
+        try {
+          info = toml.parse(decoder.decode(rawInfo)) as RawPatchInfo;
+        } catch (e) {
+          throw `could not parse patch info for ${patchName}: ${e}`;
+        }
+
+        for (const versionName of Object.keys(info.versions)) {
+          const version = info.versions[versionName];
+
+          const parsedVersion = semver.parse(versionName);
+          if (parsedVersion == null) {
+            throw `could not parse patch info for ${patchName}: could not parse version ${versionName}`;
+          }
+
+          if (parsedVersion.format() != versionName) {
+            throw `could not parse patch info for ${patchName}: version ${versionName} did not roundtrip`;
+          }
+
+          if (Object.prototype.hasOwnProperty.call(versions, versionName)) {
+            throw `could not parse patch info for ${patchName}: version already registered: ${JSON.stringify(
+              versions[versionName]
+            )}`;
+          }
+
+          try {
+            await access(
+              path.join(patchPath, `v${versionName}.bps`),
+              constants.R_OK
+            );
+          } catch (e) {
+            throw `could not find patch file for ${patchName} at version ${versionName}`;
+          }
+
+          versions[versionName] = {
+            netplayCompatibility: version.netplay_compatibility,
+          };
+        }
+
+        patches[patchName] = {
+          title: info.patch.title || patchName,
+          authors:
+            info.patch.authors != null
+              ? info.patch.authors.flatMap((a) => {
+                  const addr = parseOneAddress(a);
+                  if (addr == null || addr.type != "mailbox") {
+                    return [];
+                  }
+                  return [{ name: addr.name, email: addr.address }];
+                })
+              : [],
+          source: info.patch.source,
+          license: info.patch.license,
+          forROM: info.patch.for_rom,
+          versions,
+        };
+      } catch (e) {
+        throw `failed to scan patch ${patchName}: ${e}`;
+      }
+    })
+  )) {
+    if (result.status == "rejected") {
+      console.warn("patch skipped:", result.reason);
+    }
+  }
+
+  return patches;
 }
 
-export default {
-  ips: applyIPS,
-  bps: applyBPS,
-};
+export function findPatchVersion(info: PatchInfo, requirement: string) {
+  return semver.maxSatisfying(Object.keys(info.versions), `~${requirement}`);
+}
