@@ -507,9 +507,10 @@ impl Battle {
                 return 0;
             }
         };
-        ((last_local_input.lag() - self.local_delay() as i32)
-            - (self.last_committed_remote_input.lag() - self.remote_delay() as i32))
-            / (MAX_QUEUE_LENGTH / 60) as i32
+        let local_tps_adjustment = last_local_input.lag() - self.local_delay() as i32;
+        let remote_tps_adjustment =
+            self.last_committed_remote_input.lag() - self.remote_delay() as i32;
+        local_tps_adjustment - remote_tps_adjustment
     }
 }
 
