@@ -120,12 +120,12 @@ impl<'a> BattleStateFacadeGuard<'a> {
 
         battle.set_audio_save_state(dirty_state);
 
-        const RENDEZVOUS_AUDIO_EVERY: u32 = 10;
-        if current_tick % RENDEZVOUS_AUDIO_EVERY == 0 {
-            battle
-                .wait_for_audio_rendezvous()
-                .expect("wait for audio rendezvous");
-        }
+        // const RENDEZVOUS_AUDIO_EVERY: u32 = 10;
+        // if current_tick % RENDEZVOUS_AUDIO_EVERY == 0 {
+        //     battle
+        //         .wait_for_audio_rendezvous()
+        //         .expect("wait for audio rendezvous");
+        // }
 
         battle.set_committed_state(committed_state);
         battle.set_last_input(last_input);
@@ -397,7 +397,7 @@ impl AudioFacade {
     }
 
     pub fn take_audio_save_state(&mut self) -> Option<mgba::state::State> {
-        let _ = self.audio_rendezvous_rx.try_recv();
+        //let _ = self.audio_rendezvous_rx.try_recv();
         self.audio_save_state_holder.lock().take()
     }
 
