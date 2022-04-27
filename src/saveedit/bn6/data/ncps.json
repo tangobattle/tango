@@ -3,7 +3,8 @@
   {
     "name": {
       "en": "SuprArmr",
-      "ja": "スーパーアーマー"
+      "ja": "スーパーアーマー",
+      "zh-Hans": "超级装甲"
     },
     "colors": ["red"],
     "isSolid": true,
@@ -14,7 +15,8 @@
   {
     "name": {
       "en": "Custom1",
-      "ja": "カスタム1"
+      "ja": "カスタム1",
+      "zh-Hans": "选卡上限+1"
     },
     "colors": ["blue"],
     "isSolid": true,
@@ -25,7 +27,8 @@
   {
     "name": {
       "en": "Custom2",
-      "ja": "カスタム2"
+      "ja": "カスタム2",
+      "zh-Hans": "选卡上限+2"
     },
     "colors": ["white"],
     "isSolid": true,
@@ -36,7 +39,8 @@
   {
     "name": {
       "en": "MegFldr1",
-      "ja": "メガフォルダ1"
+      "ja": "メガフォルダ1",
+      "zh-Hans": "高级芯片夹+1"
     },
     "colors": ["green"],
     "isSolid": true,
@@ -47,7 +51,8 @@
   {
     "name": {
       "en": "MegFldr2",
-      "ja": "メガフォルダ2"
+      "ja": "メガフォルダ2",
+      "zh-Hans": "高级芯片夹+2"
     },
     "colors": ["white"],
     "isSolid": true,
@@ -58,7 +63,8 @@
   {
     "name": {
       "en": "GigFldr1",
-      "ja": "ギガフォルダ1"
+      "ja": "ギガフォルダ1",
+      "zh-Hans": "究极芯片夹+1"
     },
     "colors": ["red"],
     "isSolid": true,
@@ -69,7 +75,8 @@
   {
     "name": {
       "en": "FstBarr",
-      "ja": "ファーストバリア"
+      "ja": "ファーストバリア",
+      "zh-Hans": "初始防护罩"
     },
     "colors": ["blue"],
     "isSolid": true,
@@ -80,7 +87,8 @@
   {
     "name": {
       "en": "Shield",
-      "ja": "シールド"
+      "ja": "シールド",
+      "zh-Hans": "盾牌"
     },
     "colors": ["blue"],
     "isSolid": true,
@@ -91,7 +99,8 @@
   {
     "name": {
       "en": "Reflect",
-      "ja": "リフレクト"
+      "ja": "リフレクト",
+      "zh-Hans": "反射盾"
     },
     "colors": ["green"],
     "isSolid": true,
@@ -102,7 +111,8 @@
   {
     "name": {
       "en": "AntiDmg",
-      "ja": "カワリミマジック"
+      "ja": "カワリミマジック",
+      "zh-Hans": "替身魔术"
     },
     "colors": ["green"],
     "isSolid": true,
@@ -113,7 +123,8 @@
   {
     "name": {
       "en": "FlotShoe",
-      "ja": "フロートシューズ"
+      "ja": "フロートシューズ",
+      "zh-Hans": "浮游鞋"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -124,7 +135,8 @@
   {
     "name": {
       "en": "AirShoes",
-      "ja": "エアシューズ"
+      "ja": "エアシューズ",
+      "zh-Hans": "空气鞋"
     },
     "colors": ["white"],
     "isSolid": true,
@@ -135,7 +147,8 @@
   {
     "name": {
       "en": "UnderSht",
-      "ja": "アンダーシャツ"
+      "ja": "アンダーシャツ",
+      "zh-Hans": "紧身衣"
     },
     "colors": ["white"],
     "isSolid": true,
@@ -146,7 +159,8 @@
   {
     "name": {
       "en": "ChpShufl",
-      "ja": "サーチシャッフル"
+      "ja": "サーチシャッフル",
+      "zh-Hans": "检索洗牌"
     },
     "colors": ["green"],
     "isSolid": true,
@@ -157,7 +171,8 @@
   {
     "name": {
       "en": "NumbrOpn",
-      "ja": "ナンバーオープン"
+      "ja": "ナンバーオープン",
+      "zh-Hans": "数字展开"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -168,7 +183,8 @@
   {
     "name": {
       "en": "SneakRun",
-      "ja": "シノビダッシュ"
+      "ja": "シノビダッシュ",
+      "zh-Hans": "潜行"
     },
     "colors": ["white"],
     "isSolid": true,
@@ -179,7 +195,8 @@
   {
     "name": {
       "en": "OilBody",
-      "ja": "オイルボディ"
+      "ja": "オイルボディ",
+      "zh-Hans": "油性身体"
     },
     "colors": ["red"],
     "isSolid": true,
@@ -190,7 +207,8 @@
   {
     "name": {
       "en": "Fish",
-      "ja": "アイムフィッシュ"
+      "ja": "アイムフィッシュ",
+      "zh-Hans": "我是鱼"
     },
     "colors": ["blue"],
     "isSolid": true,
@@ -201,7 +219,8 @@
   {
     "name": {
       "en": "Battery",
-      "ja": "バッテリーモード"
+      "ja": "バッテリーモード",
+      "zh-Hans": "电池模式"
     },
     "colors": ["yellow"],
     "isSolid": true,
@@ -212,7 +231,8 @@
   {
     "name": {
       "en": "Jungle",
-      "ja": "ジャングルランド"
+      "ja": "ジャングルランド",
+      "zh-Hans": "丛林地带"
     },
     "colors": ["green"],
     "isSolid": true,
@@ -223,7 +243,8 @@
   {
     "name": {
       "en": "Collect",
-      "ja": "コレクターズアイ"
+      "ja": "コレクターズアイ",
+      "zh-Hans": "收藏夹之眼"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -234,7 +255,8 @@
   {
     "name": {
       "en": "Millions",
-      "ja": "ミリオネア"
+      "ja": "ミリオネア",
+      "zh-Hans": "百万富翁"
     },
     "colors": ["red"],
     "isSolid": true,
@@ -245,7 +267,8 @@
   {
     "name": {
       "en": "Humor",
-      "ja": "ユーモアセンス"
+      "ja": "ユーモアセンス",
+      "zh-Hans": "幽默感"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -256,7 +279,8 @@
   {
     "name": {
       "en": "Poem",
-      "ja": "リズミカルポエム"
+      "ja": "リズミカルポエム",
+      "zh-Hans": "韵律诗歌"
     },
     "colors": ["yellow"],
     "isSolid": true,
@@ -267,7 +291,8 @@
   {
     "name": {
       "en": "SlipRunr",
-      "ja": "スリップランナー"
+      "ja": "スリップランナー",
+      "zh-Hans": "滑冰鞋"
     },
     "colors": ["yellow"],
     "isSolid": true,
@@ -278,7 +303,8 @@
   {
     "name": {
       "en": "AutoHeal",
-      "ja": "セルフリカバリー"
+      "ja": "セルフリカバリー",
+      "zh-Hans": "自我回复"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -289,7 +315,8 @@
   {
     "name": {
       "en": "BustPack",
-      "ja": "バスターパック"
+      "ja": "バスターパック",
+      "zh-Hans": "火力套装"
     },
     "colors": ["red"],
     "isSolid": true,
@@ -300,7 +327,8 @@
   {
     "name": {
       "en": "BodyPack",
-      "ja": "ボディパック"
+      "ja": "ボディパック",
+      "zh-Hans": "身体套装"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -311,7 +339,8 @@
   {
     "name": {
       "en": "FldrPck1",
-      "ja": "フォルダパック1"
+      "ja": "フォルダパック1",
+      "zh-Hans": "芯片夹套装1"
     },
     "colors": ["yellow"],
     "isSolid": true,
@@ -322,7 +351,8 @@
   {
     "name": {
       "en": "FldrPck2",
-      "ja": "フォルダパック2"
+      "ja": "フォルダパック2",
+      "zh-Hans": "芯片夹套装2"
     },
     "colors": ["pink"],
     "isSolid": true,
@@ -333,7 +363,8 @@
   {
     "name": {
       "en": "BugStop",
-      "ja": "バグストッパー"
+      "ja": "バグストッパー",
+      "zh-Hans": "漏洞终止器"
     },
     "colors": ["yellow"],
     "isSolid": true,
@@ -344,7 +375,8 @@
   {
     "name": {
       "en": "Rush",
-      "ja": "ラッシュサポート"
+      "ja": "ラッシュサポート",
+      "zh-Hans": "莱西支援"
     },
     "colors": ["yellow"],
     "isSolid": true,
@@ -355,7 +387,8 @@
   {
     "name": {
       "en": "Beat",
-      "ja": "ビートサポート"
+      "ja": "ビートサポート",
+      "zh-Hans": "比特支援"
     },
     "colors": ["blue"],
     "isSolid": true,
@@ -366,7 +399,8 @@
   {
     "name": {
       "en": "Tango",
-      "ja": "タンゴサポート"
+      "ja": "タンゴサポート",
+      "zh-Hans": "探戈支援"
     },
     "colors": ["green"],
     "isSolid": true,
@@ -377,7 +411,8 @@
   {
     "name": {
       "en": "Attack+1",
-      "ja": "アタック+1"
+      "ja": "アタック+1",
+      "zh-Hans": "攻击+1"
     },
     "colors": ["pink", "red", "blue"],
     "isSolid": false,
@@ -388,7 +423,8 @@
   {
     "name": {
       "en": "Speed+1",
-      "ja": "ラピッド+1"
+      "ja": "ラピッド+1",
+      "zh-Hans": "连射+1"
     },
     "colors": ["white", "pink", "green"],
     "isSolid": false,
@@ -399,7 +435,8 @@
   {
     "name": {
       "en": "Charge+1",
-      "ja": "チャージ+1"
+      "ja": "チャージ+1",
+      "zh-Hans": "储气+1"
     },
     "colors": ["white", "blue", "pink"],
     "isSolid": false,
@@ -410,7 +447,8 @@
   {
     "name": {
       "en": "AttckMAX",
-      "ja": "アタックMAX"
+      "ja": "アタックMAX",
+      "zh-Hans": "攻击MAX"
     },
     "colors": ["red"],
     "isSolid": false,
@@ -421,7 +459,8 @@
   {
     "name": {
       "en": "SpeedMAX",
-      "ja": "ラピッドMAX"
+      "ja": "ラピッドMAX",
+      "zh-Hans": "连射MAX"
     },
     "colors": ["green"],
     "isSolid": false,
@@ -432,7 +471,8 @@
   {
     "name": {
       "en": "ChargMAX",
-      "ja": "チャージMAX"
+      "ja": "チャージMAX",
+      "zh-Hans": "储气MAX"
     },
     "colors": ["blue"],
     "isSolid": false,
@@ -443,7 +483,8 @@
   {
     "name": {
       "en": "HP+50",
-      "ja": "HP+50"
+      "ja": "HP+50",
+      "zh-Hans": "HP+50"
     },
     "colors": ["white", "pink", "blue"],
     "isSolid": false,
@@ -454,7 +495,8 @@
   {
     "name": {
       "en": "HP+100",
-      "ja": "HP+100"
+      "ja": "HP+100",
+      "zh-Hans": "HP+100"
     },
     "colors": ["white", "pink", "blue"],
     "isSolid": false,
@@ -465,7 +507,8 @@
   {
     "name": {
       "en": "HP+200",
-      "ja": "HP+200"
+      "ja": "HP+200",
+      "zh-Hans": "HP+200"
     },
     "colors": ["white", "yellow", "blue"],
     "isSolid": false,
@@ -476,7 +519,8 @@
   {
     "name": {
       "en": "HP+300",
-      "ja": "HP+300"
+      "ja": "HP+300",
+      "zh-Hans": "HP+300"
     },
     "colors": ["white", "pink", "green"],
     "isSolid": false,
@@ -487,7 +531,8 @@
   {
     "name": {
       "en": "HP+400",
-      "ja": "HP+400"
+      "ja": "HP+400",
+      "zh-Hans": "HP+400"
     },
     "colors": ["white", "yellow", "green"],
     "isSolid": false,
@@ -498,7 +543,8 @@
   {
     "name": {
       "en": "HP+500",
-      "ja": "HP+500"
+      "ja": "HP+500",
+      "zh-Hans": "HP+500"
     },
     "colors": ["white", "pink", "green"],
     "isSolid": false,

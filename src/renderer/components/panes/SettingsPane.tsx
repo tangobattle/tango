@@ -155,6 +155,12 @@ function AboutTab({ active }: { active: boolean }) {
               for their bug testing and support!
             </li>
             <li>
+              <Link href="https://twitter.com/Hikari_Calyx" target="_blank">
+                Hikari Calyx
+              </Link>{" "}
+              for various pieces of the Chinese translation!
+            </li>
+            <li>
               <Link href="https://github.com/bigfarts" target="_blank">
                 bigfarts
               </Link>{" "}
