@@ -112,7 +112,7 @@ function NavicustGrid({
     for (const placement of placements) {
       const ncp = bn6.NCPS[placement.id];
       if (ncp == null) {
-        console.error("unrecognized ncp: %d", placement.id);
+        console.error("unrecognized ncp:", placement.id);
         continue;
       }
       const color = ncp.colors[placement.variant];

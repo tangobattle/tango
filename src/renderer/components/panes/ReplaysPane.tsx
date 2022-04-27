@@ -18,7 +18,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 
 import { findPatchVersion } from "../../../patch";
-import { getPatchesPath, getReplaysPath, getROMsPath } from "../../../paths";
+import { getReplaysPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
 import { usePatches } from "../PatchesContext";
 import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
@@ -123,7 +123,6 @@ interface LoadedReplay {
 
 export default function ReplaysPane({ active }: { active: boolean }) {
   const { patches } = usePatches();
-  const { roms } = useROMs();
 
   const [replays, setReplays] = React.useState<
     | { name: string; info: ReplayInfo; resolvedPatchVersion: string | null }[]
@@ -156,7 +155,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
               path.join(getReplaysPath(app), filename)
             );
           } catch (e) {
-            console.error("failed to get replay data for %s:", filename, e);
+            console.error("failed to get replay data", filename, e);
           }
           if (replayInfo == null) {
             continue;
@@ -250,14 +249,13 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       )}
       {viewingReplay != null ? (
         <ReplayviewSupervisor
-          romPath={path.join(getROMsPath(app), roms[viewingReplay.info.rom])}
-          patchPath={
+          romName={path.join(viewingReplay.info.rom)}
+          patch={
             viewingReplay.resolvedPatchVersion != null
-              ? path.join(
-                  getPatchesPath(app),
-                  viewingReplay.info.patch!.name,
-                  `v${viewingReplay.resolvedPatchVersion}.bps`
-                )
+              ? {
+                  name: viewingReplay.info.patch!.name,
+                  version: viewingReplay.resolvedPatchVersion,
+                }
               : undefined
           }
           replayPath={path.join(getReplaysPath(app), viewingReplay.name)}
@@ -268,17 +266,13 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       ) : null}
       {dumpingReplay != null ? (
         <ReplaydumpSupervisor
-          romPath={path.join(
-            getROMsPath(app),
-            roms[dumpingReplay.replay.info.rom]
-          )}
-          patchPath={
+          romName={path.join(dumpingReplay.replay.info.rom)}
+          patch={
             dumpingReplay.replay.resolvedPatchVersion != null
-              ? path.join(
-                  getPatchesPath(app),
-                  dumpingReplay.replay.info.patch!.name,
-                  `v${dumpingReplay.replay.resolvedPatchVersion}.bps`
-                )
+              ? {
+                  name: dumpingReplay.replay.info.patch!.name,
+                  version: dumpingReplay.replay.resolvedPatchVersion,
+                }
               : undefined
           }
           replayPath={path.join(getReplaysPath(app), dumpingReplay.replay.name)}

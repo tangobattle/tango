@@ -14,6 +14,7 @@ import SettingsPane from "./panes/SettingsPane";
 import { PatchesProvider } from "./PatchesContext";
 import { ROMsProvider } from "./ROMsContext";
 import { SavesProvider } from "./SavesContext";
+import { TempDirProvider } from "./TempDirContext";
 
 function AppBody() {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
@@ -79,9 +80,11 @@ export default function App() {
         </Box>
       }
     >
-      <ConfigProvider>
-        <AppBody />
-      </ConfigProvider>
+      <TempDirProvider>
+        <ConfigProvider>
+          <AppBody />
+        </ConfigProvider>
+      </TempDirProvider>
     </Suspense>
   );
 }

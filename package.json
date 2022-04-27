@@ -1,7 +1,7 @@
 {
   "name": "tango",
   "productName": "Tango",
-  "version": "3.0.0-alpha.5",
+  "version": "3.0.0-alpha.6",
   "author": {
     "name": "The Tango Authors",
     "email": "lets@tangobattle.com"
@@ -47,7 +47,6 @@
     "react-virtualized-auto-sizer": "^1.0.6",
     "react-window": "^1.8.7",
     "semver": "^7.3.7",
-    "tmp-promise": "^3.0.3",
     "toml": "^3.0.0"
   },
   "devDependencies": {

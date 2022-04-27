@@ -48,7 +48,7 @@ export class Core extends EventEmitter {
             continue;
           }
           // eslint-disable-next-line no-console
-          console.info("core: %s", line);
+          console.info("core:", line);
         }
         this!.emit("stderr", data);
       }

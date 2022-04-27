@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
+import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
-import tmp from "tmp-promise";
 
 import { app, shell } from "@electron/remote";
 import Box from "@mui/material/Box";
@@ -14,22 +14,32 @@ import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
 import { getBinPath } from "../../paths";
+import { usePatchPath, useROMPath } from "../hooks";
 import { CopyButton } from "./CopyButton";
+import { useTempDir } from "./TempDirContext";
 
 export default function ReplaydumpSupervisor({
-  romPath,
+  romName,
+  patch,
   replayPath,
-  patchPath,
   outPath,
   onExit,
 }: {
-  romPath: string;
+  romName: string;
+  patch?: { name: string; version: string };
   replayPath: string;
-  patchPath?: string;
   outPath: string;
   onExit: () => void;
 }) {
-  const romTmpFileRef = React.useRef<tmp.FileResult | null>(null);
+  const { tempDir } = useTempDir();
+
+  const romPath = useROMPath(romName);
+  const patchPath = usePatchPath(patch ?? null);
+
+  const outROMPath = path.join(
+    tempDir,
+    `${romName}${patch != null ? `+${patch.name}-v${patch.version}` : ""}.gba`
+  );
 
   const onExitRef = React.useRef(onExit);
   React.useEffect(() => {
@@ -53,7 +63,7 @@ export default function ReplaydumpSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+        await makeROM(romPath, patchPath || null, outROMPath);
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());
@@ -66,7 +76,7 @@ export default function ReplaydumpSupervisor({
       const proc = spawn(
         getBinPath(app, "replaydump"),
         [
-          romTmpFileRef.current.path,
+          outROMPath,
           "--ffmpeg",
           getBinPath(app, "ffmpeg"),
           replayPath,
@@ -127,14 +137,7 @@ export default function ReplaydumpSupervisor({
         setDone({ exitCode, signalCode });
       });
     })();
-
-    return () => {
-      if (romTmpFileRef.current != null) {
-        romTmpFileRef.current.cleanup();
-      }
-      abortControllerRef.current.abort();
-    };
-  }, [romPath, patchPath, replayPath, outPath]);
+  }, [romPath, patchPath, outROMPath, replayPath, outPath]);
 
   return (
     <Modal

@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
+import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
-import tmp from "tmp-promise";
 
 import { app } from "@electron/remote";
 import Box from "@mui/material/Box";
@@ -14,24 +14,34 @@ import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
 import { getBinPath } from "../../paths";
+import { usePatchPath, useROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { CopyButton } from "./CopyButton";
+import { useTempDir } from "./TempDirContext";
 
 export default function ReplayviewSupervisor({
-  romPath,
+  romName,
+  patch,
   replayPath,
-  patchPath,
   onExit,
 }: {
-  romPath: string;
+  romName: string;
+  patch?: { name: string; version: string };
   replayPath: string;
-  patchPath?: string;
   onExit: () => void;
 }) {
   const { config } = useConfig();
+  const { tempDir } = useTempDir();
 
   const configRef = React.useRef(config);
-  const romTmpFileRef = React.useRef<tmp.FileResult | null>(null);
+
+  const romPath = useROMPath(romName);
+  const patchPath = usePatchPath(patch ?? null);
+
+  const outROMPath = path.join(
+    tempDir,
+    `${romName}${patch != null ? `+${patch.name}-v${patch.version}` : ""}.gba`
+  );
 
   const onExitRef = React.useRef(onExit);
   React.useEffect(() => {
@@ -49,7 +59,7 @@ export default function ReplayviewSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+        await makeROM(romPath, patchPath, outROMPath);
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());
@@ -61,7 +71,7 @@ export default function ReplayviewSupervisor({
 
       const proc = spawn(
         getBinPath(app, "replayview"),
-        [romTmpFileRef.current.path, replayPath],
+        [outROMPath, replayPath],
         {
           env: {
             WGPU_BACKEND:
@@ -104,14 +114,7 @@ export default function ReplayviewSupervisor({
         }
       });
     })();
-
-    return () => {
-      if (romTmpFileRef.current != null) {
-        romTmpFileRef.current.cleanup();
-      }
-      abortControllerRef.current.abort();
-    };
-  }, [romPath, patchPath, replayPath]);
+  }, [romPath, patchPath, outROMPath, replayPath]);
 
   return (
     <Modal

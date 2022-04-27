@@ -1,6 +1,6 @@
+import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
-import tmp from "tmp-promise";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -13,21 +13,23 @@ import Typography from "@mui/material/Typography";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
 import { ReplayInfo } from "../../replay";
+import { usePatchPath, useROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { CopyButton } from "./CopyButton";
+import { useTempDir } from "./TempDirContext";
 
 export function CoreSupervisor({
-  romPath,
+  romName,
+  patch,
   savePath,
-  patchPath,
   matchSettings,
   windowTitle,
   incarnation,
   onExit,
 }: {
-  romPath: string;
+  romName: string;
+  patch?: { name: string; version: string };
   savePath: string;
-  patchPath?: string;
   matchSettings?: {
     sessionID: string;
     replaysPath: string;
@@ -40,9 +42,17 @@ export function CoreSupervisor({
   onExit: () => void;
 }) {
   const { config } = useConfig();
+  const { tempDir } = useTempDir();
 
   const configRef = React.useRef(config);
-  const romTmpFileRef = React.useRef<tmp.FileResult | null>(null);
+
+  const romPath = useROMPath(romName);
+  const patchPath = usePatchPath(patch ?? null);
+
+  const outROMPath = path.join(
+    tempDir,
+    `${romName}${patch != null ? `+${patch.name}-v${patch.version}` : ""}.gba`
+  );
 
   const onExitRef = React.useRef(onExit);
   React.useEffect(() => {
@@ -61,7 +71,7 @@ export function CoreSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+        await makeROM(romPath, patchPath || null, outROMPath);
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());
@@ -74,7 +84,7 @@ export function CoreSupervisor({
       const core = new ipc.Core(
         {
           window_title: windowTitle,
-          rom_path: romTmpFileRef.current!.path,
+          rom_path: outROMPath,
           save_path: savePath,
           keymapping: configRef.current.keymapping,
           match_settings:
@@ -125,14 +135,15 @@ export function CoreSupervisor({
         setExitLingering(true);
       });
     })();
-
-    return () => {
-      if (romTmpFileRef.current != null) {
-        romTmpFileRef.current.cleanup();
-      }
-      abortControllerRef.current.abort();
-    };
-  }, [romPath, savePath, patchPath, windowTitle, matchSettings, incarnation]);
+  }, [
+    romPath,
+    savePath,
+    patchPath,
+    outROMPath,
+    windowTitle,
+    matchSettings,
+    incarnation,
+  ]);
 
   return (
     <Modal

@@ -29,7 +29,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { getPatchesPath, getReplaysPath, getROMsPath, getSavesPath } from "../../../paths";
+import { getReplaysPath, getSavesPath } from "../../../paths";
 import { KNOWN_ROMS } from "../../../rom";
 import { CopyButton } from "../CopyButton";
 import { CoreSupervisor } from "../CoreSupervisor";
@@ -464,17 +464,10 @@ export default function PlayPane({ active }: { active: boolean }) {
               {startedState != null ? (
                 <CoreSupervisor
                   incarnation={incarnation}
-                  romPath={path.join(
-                    getROMsPath(app),
-                    roms[saves[saveName!].romName]
-                  )}
-                  patchPath={
+                  romName={saves[saveName!].romName}
+                  patch={
                     patchVersion != null
-                      ? path.join(
-                          getPatchesPath(app),
-                          patchName!,
-                          `v${patchVersion}.bps`
-                        )
+                      ? { name: patchName!, version: patchVersion }
                       : undefined
                   }
                   matchSettings={
