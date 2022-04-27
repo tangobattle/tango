@@ -59,6 +59,18 @@ impl super::Stream for TimewarpStream {
             right.read_samples(&mut buf[1..], available, stereo);
         }
 
+        if self.channels > 2 {
+            // On layouts with >2 channels, we need to align the samples onto the first two channels.
+            for i in (1..frame_count as usize).rev() {
+                let src = i * 2;
+                let dest = i * self.channels as usize;
+                let mut tmp = [0i16; 2];
+                tmp.copy_from_slice(&buf[src..src + 2]);
+                buf[src..src + 2].copy_from_slice(&[0, 0]);
+                buf[dest..dest + 2].copy_from_slice(&tmp);
+            }
+        }
+
         available as usize * self.channels as usize
     }
 }
