@@ -72,12 +72,16 @@ function FolderChipRow({
       </TableCell>
       <TableCell component="th">
         <Tooltip
-          title={chipInfo.description[i18n.resolvedLanguage as "en" | "ja"]}
+          title={
+            chipInfo.description[
+              i18n.resolvedLanguage as keyof typeof chipInfo.description
+            ]
+          }
           placement="right"
         >
           <span>
-            {chipInfo.name[i18n.resolvedLanguage as "en" | "ja"]}{" "}
-            {code.replace(/\*/g, "﹡")}
+            {chipInfo.name[i18n.resolvedLanguage as keyof typeof chipInfo.name]}{" "}
+            {code}
           </span>
         </Tooltip>{" "}
         {isRegular ? (
