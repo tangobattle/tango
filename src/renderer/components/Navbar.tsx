@@ -75,20 +75,26 @@ export default function Navbar({
 }) {
   const { t } = useTranslation();
 
-  const [updateAvailable, setUpdateAvailable] = React.useState(false);
-  const updateAvailableListenerCallback = React.useCallback((v) => {
-    setUpdateAvailable(v);
+  const [updateStatus, setUpdateStatus] = React.useState(
+    "not-available" as "not-available" | "available" | "downloaded"
+  );
+  const updateStatusListenerCallback = React.useCallback((v) => {
+    setUpdateStatus(v);
   }, []);
   React.useEffect(() => {
-    ipcRenderer.on("update-available", updateAvailableListenerCallback);
+    ipcRenderer.on("update-status", updateStatusListenerCallback);
     return () => {
-      ipcRenderer.off("update-available", updateAvailableListenerCallback);
+      ipcRenderer.off("update-status", updateStatusListenerCallback);
     };
-  }, [updateAvailableListenerCallback]);
+  }, [updateStatusListenerCallback]);
 
   const SettingsIconWrapper = ({ children }: { children: React.ReactNode }) =>
-    updateAvailable ? (
+    updateStatus == "available" ? (
       <Badge color="secondary" variant="dot">
+        {children}
+      </Badge>
+    ) : updateStatus == "downloaded" ? (
+      <Badge color="primary" variant="dot">
         {children}
       </Badge>
     ) : (

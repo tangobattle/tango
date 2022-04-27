@@ -25,13 +25,19 @@ autoUpdater.logger = console;
 
 autoUpdater.addListener("update-available", () => {
   if (mainWindow != null) {
-    mainWindow.webContents.send("update-available", true);
+    mainWindow.webContents.send("update-status", "available");
+  }
+});
+
+autoUpdater.addListener("update-downloaded", () => {
+  if (mainWindow != null) {
+    mainWindow.webContents.send("update-status", "downloaded");
   }
 });
 
 autoUpdater.addListener("update-not-available", () => {
   if (mainWindow != null) {
-    mainWindow.webContents.send("update-available", false);
+    mainWindow.webContents.send("update-status", "not-available");
   }
 });
 
