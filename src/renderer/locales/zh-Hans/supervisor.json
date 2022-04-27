@@ -1,0 +1,10 @@
+{
+  "status.starting": "启动仿真器……",
+  "status.running": "正在运行……",
+  "status.waiting": "等待对方连接……",
+  "status.connecting": "与对手连接……",
+  "crash": "抱歉，仿真器遇到崩溃。在报告错误时，请提供此日志！",
+  "cancel": "停止",
+  "dismiss": "哎呀！",
+  "ok": "耶！"
+}

@@ -2,7 +2,8 @@
   "MEGAMAN6_FXXBR6E": {
     "title": {
       "en": "Mega Man Battle Network 6: Cybeast Falzar",
-      "ja": "ロックマンエグゼ6 電脳獣ファルザー（英語版）"
+      "ja": "ロックマンエグゼ6 電脳獣ファルザー（英語版）",
+      "zh-Hans": "洛克人EXE6 电脑兽凤凰（英文版）"
     },
     "crc32": 3739677353,
     "netplayCompatibility": "bn6"
@@ -10,7 +11,8 @@
   "MEGAMAN6_GXXBR5E": {
     "title": {
       "en": "Mega Man Battle Network 6: Cybeast Gregar",
-      "ja": "ロックマンエグゼ6 電脳獣グレイガ（英語版）"
+      "ja": "ロックマンエグゼ6 電脳獣グレイガ（英語版）",
+      "zh-Hans": "洛克人EXE6 电脑兽麒麟（英文版）"
     },
     "crc32": 2034573698,
     "netplayCompatibility": "bn6"
@@ -18,7 +20,8 @@
   "ROCKEXE6_RXXBR6J": {
     "title": {
       "en": "Rockman EXE 6: Dennoujuu Falzer",
-      "ja": "ロックマンエグゼ6 電脳獣ファルザー"
+      "ja": "ロックマンエグゼ6 電脳獣ファルザー",
+      "zh-Hans": "洛克人EXE6 电脑兽凤凰（日文版）"
     },
     "crc32": 771448894,
     "netplayCompatibility": "exe6"
@@ -26,7 +29,8 @@
   "ROCKEXE6_GXXBR5J": {
     "title": {
       "en": "Rockman EXE 6: Dennoujuu Glaga",
-      "ja": "ロックマンエグゼ6 電脳獣グレイガ"
+      "ja": "ロックマンエグゼ6 電脳獣グレイガ",
+      "zh-Hans": "洛克人EXE6 电脑兽麒麟（日文版）"
     },
     "crc32": 1652920714,
     "netplayCompatibility": "exe6"
