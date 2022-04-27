@@ -119,7 +119,7 @@ pub enum NegotiationProgress {
     Handshaking,
 }
 
-const MAX_QUEUE_LENGTH: usize = 60;
+const MAX_QUEUE_LENGTH: usize = 120;
 
 impl Match {
     pub fn new(
@@ -507,12 +507,9 @@ impl Battle {
                 return 0;
             }
         };
-        (last_local_input.remote_tick as i32
-            - last_local_input.local_tick as i32
-            - self.local_delay() as i32)
-            - (self.last_committed_remote_input.remote_tick as i32
-                - self.last_committed_remote_input.local_tick as i32
-                - self.remote_delay() as i32)
+        ((last_local_input.lag() - self.local_delay() as i32)
+            - (self.last_committed_remote_input.lag() - self.remote_delay() as i32))
+            / (MAX_QUEUE_LENGTH / 60) as i32
     }
 }
 

@@ -7,6 +7,12 @@ pub struct Input {
     pub turn: Vec<u8>,
 }
 
+impl Input {
+    pub fn lag(&self) -> i32 {
+        self.remote_tick as i32 - self.local_tick as i32
+    }
+}
+
 pub struct PairQueue<T>
 where
     T: Clone,
