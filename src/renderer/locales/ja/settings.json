@@ -11,5 +11,20 @@
     "keymapping.select": "SELECT",
     "keymapping.start": "START",
     "remap": "リマップ",
-    "request-keymapping": "「{{key}}」のキーを押してください。"
+    "request-keymapping": "「{{key}}」のキーを押してください。",
+    "tab.about": "Tango について",
+    "tab.advanced": "高度",
+    "wgpu-backend": "レンダラー",
+    "wgpu-backend.default": "デフォルト",
+    "wgpu-backend.vulkan": "Vulkan",
+    "wgpu-backend.dx12": "DirectX 12",
+    "wgpu-backend.gl": "OpenGL（ANGLEライブラリが必要）",
+    "wgpu-backend.metal": "Metal（macOSのみ）",
+    "theme": "テーマ",
+    "theme.light": "ライト",
+    "theme.dark": "ダーク",
+    "update-channel": "更新チャンネル（再起動が必要）",
+    "update-channel.latest": "Latest",
+    "update-channel.beta": "Beta",
+    "update-channel.alpha": "Alpha"
 }
