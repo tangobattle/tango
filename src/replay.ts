@@ -1,6 +1,6 @@
 import { open } from "fs/promises";
 
-const REPLAY_VERSION = 0x0c;
+const REPLAY_VERSION = 0x0d;
 
 export interface ReplayInfo {
   ts: number;
