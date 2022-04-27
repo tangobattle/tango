@@ -5,7 +5,7 @@ export function getBasePath(app: Electron.App) {
 }
 
 export function getConfigPath(app: Electron.App) {
-  return path.join(getBasePath(app), "config.json");
+  return path.join(app.getPath("userData"), "config.json");
 }
 
 export function getROMsPath(app: Electron.App) {
