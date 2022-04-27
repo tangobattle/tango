@@ -2,7 +2,7 @@
 set -euo pipefail
 set -x
 
-TANGO_CORE_VERSION="3.0.0-alpha.1"
+TANGO_CORE_VERSION="3.0.0-alpha.2"
 TANGO_CORE_PLATFORM="x86_64-pc-windows-gnu"
 FFMPEG_VERSION="2022-04-21-git-83e1a1de88"
 

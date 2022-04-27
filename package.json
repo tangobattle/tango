@@ -1,7 +1,11 @@
 {
   "name": "tango",
   "productName": "Tango",
-  "version": "3.0.0-alpha.1",
+  "version": "3.0.0-alpha.2",
+  "author": {
+    "name": "The Tango Authors",
+    "email": "lets@tangobattle.com"
+  },
   "private": true,
   "description": "rollback netplay for mega man battle network",
   "main": "./dist/main.js",
