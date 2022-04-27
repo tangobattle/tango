@@ -149,7 +149,7 @@ impl<'a> BattleStateFacadeGuard<'a> {
                 .replay_writer()
                 .write_state(&state)
                 .expect("write state");
-            const STATE_CHUNK_SIZE: usize = 8196;
+            const STATE_CHUNK_SIZE: usize = 48 * 1024;
             let mut remote_state = vec![];
             for chunk in state.as_slice().chunks(STATE_CHUNK_SIZE) {
                 self.match_
