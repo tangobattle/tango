@@ -71,6 +71,7 @@ export default function ModcardsViewer({
                               sx={{
                                 fontSize: "0.9rem",
                                 justifyContent: "flex-start",
+                                color: "black",
                                 backgroundColor: enabled
                                   ? l.debuff
                                     ? DEBUFF_COLOR
@@ -100,6 +101,7 @@ export default function ModcardsViewer({
                               sx={{
                                 fontSize: "0.9rem",
                                 justifyContent: "flex-start",
+                                color: "black",
                                 backgroundColor: enabled
                                   ? l.debuff
                                     ? DEBUFF_COLOR

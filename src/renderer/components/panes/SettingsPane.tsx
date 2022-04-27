@@ -207,6 +207,32 @@ function AdvancedTab({ active }: { active: boolean }) {
           }}
         >
           <FormControl fullWidth size="small">
+            <InputLabel id="theme-label">
+              <Trans i18nKey="settings:theme" />
+            </InputLabel>
+
+            <Select
+              labelId="theme-label"
+              value={config.theme}
+              onChange={(e) => {
+                (async () => {
+                  saveConfig((config) => ({
+                    ...config,
+                    theme: e.target.value as "light" | "dark",
+                  }));
+                })();
+              }}
+              label={<Trans i18nKey="settings:theme" />}
+            >
+              <MenuItem value="light">
+                <Trans i18nKey="settings:theme.light" />
+              </MenuItem>
+              <MenuItem value="dark">
+                <Trans i18nKey="settings:theme.dark" />
+              </MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
             <InputLabel id="wgpu-backend-label">
               <Trans i18nKey="settings:wgpu-backend" />
             </InputLabel>

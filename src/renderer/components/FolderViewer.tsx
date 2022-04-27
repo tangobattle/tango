@@ -8,11 +8,19 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
+import useTheme from "@mui/system/useTheme";
 
 import * as bn6 from "../../saveedit/bn6";
 
-const MEGA_BG = "#adefef";
-const GIGA_BG = "#f7cee7";
+const MEGA_BG = {
+  dark: "#52849c",
+  light: "#adefef",
+};
+
+const GIGA_BG = {
+  dark: "#8c3152",
+  light: "#f7cee7",
+};
 
 function FolderChipRow({
   chip,
@@ -27,14 +35,15 @@ function FolderChipRow({
   };
 }) {
   const { id, code, isRegular, isTag1, isTag2, count } = chip;
+  const theme = useTheme();
 
   const { i18n } = useTranslation();
 
   const backgroundColor =
     bn6.CHIPS[id]!.class == "giga"
-      ? GIGA_BG
+      ? GIGA_BG[theme.palette.mode]
       : bn6.CHIPS[id]!.class == "mega"
-      ? MEGA_BG
+      ? MEGA_BG[theme.palette.mode]
       : null;
 
   const chipInfo = bn6.CHIPS[id];

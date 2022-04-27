@@ -4,6 +4,7 @@ import { readFile, writeFile } from "fs/promises";
 import * as ipc from "./ipc";
 
 export interface Config {
+  theme: "dark" | "light";
   updateChannel: string;
   wgpuBackend: string | null;
   keymapping: ipc.Args["keymapping"];
@@ -12,6 +13,7 @@ export interface Config {
 }
 
 export const DEFAULT: Config = {
+  theme: "light",
   updateChannel: "alpha",
   wgpuBackend: null,
   keymapping: {

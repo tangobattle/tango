@@ -1,50 +1,51 @@
 import green from "@mui/material/colors/green";
-import { createTheme } from "@mui/material/styles";
+import { createTheme as muiCreateTheme } from "@mui/material/styles";
 
-const theme = createTheme({
-  typography: {
-    button: {
-      fontWeight: "bold",
-      textTransform: "none",
-    },
-  },
-  palette: {
-    primary: green,
-  },
-  components: {
-    MuiButton: {
-      defaultProps: {
-        disableElevation: true,
+export default function createTheme(mode: "dark" | "light") {
+  return muiCreateTheme({
+    typography: {
+      button: {
+        fontWeight: "bold",
+        textTransform: "none",
       },
-      styleOverrides: {
-        sizeMedium: {
-          height: "40px",
+    },
+    palette: {
+      mode,
+      primary: green,
+    },
+    components: {
+      MuiButton: {
+        defaultProps: {
+          disableElevation: true,
+        },
+        styleOverrides: {
+          sizeMedium: {
+            height: "40px",
+          },
+        },
+      },
+      MuiTabs: {
+        styleOverrides: {
+          root: {
+            minHeight: "0",
+          },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            minHeight: "0",
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            borderRadius: 4,
+            height: "auto",
+          },
         },
       },
     },
-    MuiTabs: {
-      styleOverrides: {
-        root: {
-          minHeight: "0",
-        },
-      },
-    },
-    MuiTab: {
-      styleOverrides: {
-        root: {
-          minHeight: "0",
-        },
-      },
-    },
-    MuiChip: {
-      styleOverrides: {
-        root: {
-          borderRadius: 4,
-          height: "auto",
-        },
-      },
-    },
-  },
-});
-
-export default theme;
+  });
+}

@@ -5,8 +5,8 @@ import CircularProgress from "@mui/material/CircularProgress";
 import CssBaseline from "@mui/material/CssBaseline";
 import ThemeProvider from "@mui/system/ThemeProvider";
 
-import theme from "../theme";
-import { ConfigProvider } from "./ConfigContext";
+import createTheme from "../theme";
+import { ConfigProvider, useConfig } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
 import PlayPane from "./panes/PlayPane";
 import ReplaysPane from "./panes/ReplaysPane";
@@ -18,32 +18,35 @@ import { SavesProvider } from "./SavesContext";
 function AppBody() {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
 
+  const { config } = useConfig();
+
   return (
-    <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
-      <Suspense fallback={null}>
-        <Navbar
-          selected={selected}
-          onSelect={(v) => {
-            setSelected(v);
-          }}
-        />
-      </Suspense>
-      <Suspense
-        fallback={
-          <Box
-            sx={{
-              display: "flex",
-              width: "100%",
-              height: "100%",
-              justifyContent: "center",
-              alignItems: "center",
+    <ThemeProvider theme={createTheme(config.theme)}>
+      <CssBaseline />
+      <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
+        <Suspense fallback={null}>
+          <Navbar
+            selected={selected}
+            onSelect={(v) => {
+              setSelected(v);
             }}
-          >
-            <CircularProgress />
-          </Box>
-        }
-      >
-        <ConfigProvider>
+          />
+        </Suspense>
+        <Suspense
+          fallback={
+            <Box
+              sx={{
+                display: "flex",
+                width: "100%",
+                height: "100%",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <CircularProgress />
+            </Box>
+          }
+        >
           <ROMsProvider>
             <PatchesProvider>
               <SavesProvider>
@@ -53,17 +56,32 @@ function AppBody() {
               </SavesProvider>
             </PatchesProvider>
           </ROMsProvider>
-        </ConfigProvider>
-      </Suspense>
-    </Box>
+        </Suspense>
+      </Box>
+    </ThemeProvider>
   );
 }
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <AppBody />
-    </ThemeProvider>
+    <Suspense
+      fallback={
+        <Box
+          sx={{
+            display: "flex",
+            width: "100%",
+            height: "100%",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <CircularProgress />
+        </Box>
+      }
+    >
+      <ConfigProvider>
+        <AppBody />
+      </ConfigProvider>
+    </Suspense>
   );
 }

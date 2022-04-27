@@ -401,6 +401,7 @@ export default function NavicustViewer({
                       sx={{
                         fontSize: "0.9rem",
                         justifyContent: "flex-start",
+                        color: "black",
                         backgroundColor: lighten(
                           NAVICUST_COLORS[
                             ncp.colors[
@@ -432,6 +433,7 @@ export default function NavicustViewer({
                       sx={{
                         fontSize: "0.9rem",
                         justifyContent: "flex-start",
+                        color: "black",
                         backgroundColor: lighten(
                           NAVICUST_COLORS[
                             ncp.colors[
