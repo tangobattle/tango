@@ -149,7 +149,8 @@ impl<'a> BattleStateFacadeGuard<'a> {
                 .replay_writer()
                 .write_state(&state)
                 .expect("write state");
-            const STATE_CHUNK_SIZE: usize = 48 * 1024;
+            // 64k is the maximum message size, but we have various header bits so just sent 63k and allow the last 1k to be whatever.
+            const STATE_CHUNK_SIZE: usize = 63 * 1024;
             let mut remote_state = vec![];
             for chunk in state.as_slice().chunks(STATE_CHUNK_SIZE) {
                 self.match_
