@@ -58,7 +58,7 @@ export function ensureSync(path: string) {
 
 export async function load(path: string) {
   const data = await readFile(path);
-  return JSON.parse(data.toString()) as Config;
+  return { ...DEFAULT, ...JSON.parse(data.toString()) } as Config;
 }
 
 export async function save(config: Config, path: string) {
