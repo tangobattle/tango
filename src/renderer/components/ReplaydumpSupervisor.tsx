@@ -52,7 +52,16 @@ export default function ReplaydumpSupervisor({
 
   React.useEffect(() => {
     (async () => {
-      romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+      try {
+        romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+      } catch (e) {
+        setStderr((stderr) => {
+          stderr.push((e as any).toString());
+          return stderr;
+        });
+        setDone({ exitCode: -1, signalCode: null });
+        return;
+      }
 
       const proc = spawn(
         getBinPath(app, "replaydump"),

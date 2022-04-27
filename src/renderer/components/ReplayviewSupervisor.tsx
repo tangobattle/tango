@@ -48,7 +48,16 @@ export default function ReplayviewSupervisor({
 
   React.useEffect(() => {
     (async () => {
-      romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+      try {
+        romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+      } catch (e) {
+        setStderr((stderr) => {
+          stderr.push((e as any).toString());
+          return stderr;
+        });
+        setExitLingering(true);
+        return;
+      }
 
       const proc = spawn(
         getBinPath(app, "replayview"),

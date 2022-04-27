@@ -60,7 +60,16 @@ export function CoreSupervisor({
 
   React.useEffect(() => {
     (async () => {
-      romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+      try {
+        romTmpFileRef.current = await makeROM(romPath, patchPath || null);
+      } catch (e) {
+        setStderr((stderr) => {
+          stderr.push((e as any).toString());
+          return stderr;
+        });
+        setExitLingering(true);
+        return;
+      }
 
       const core = new ipc.Core(
         {
