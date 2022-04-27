@@ -1,4 +1,7 @@
 {
+    "tab.general": "一般設定",
+    "language": "言語",
+    "language.default": "システムのデフォルト",
     "tab.keymapping": "キーバインド",
     "keymapping.up": "上",
     "keymapping.down": "下",
@@ -13,7 +16,7 @@
     "remap": "リマップ",
     "request-keymapping": "「{{key}}」のキーを押してください。",
     "tab.about": "Tango について",
-    "tab.advanced": "高度",
+    "tab.advanced": "高度設定",
     "wgpu-backend": "レンダラー",
     "wgpu-backend.default": "デフォルト",
     "wgpu-backend.vulkan": "Vulkan",

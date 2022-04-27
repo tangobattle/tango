@@ -5,6 +5,7 @@ import * as ipc from "./ipc";
 
 export interface Config {
   theme: "dark" | "light";
+  language: string | null;
   updateChannel: string;
   wgpuBackend: string | null;
   keymapping: ipc.Args["keymapping"];
@@ -14,6 +15,7 @@ export interface Config {
 
 export const DEFAULT: Config = {
   theme: "light",
+  language: null,
   updateChannel: "alpha",
   wgpuBackend: null,
   keymapping: {

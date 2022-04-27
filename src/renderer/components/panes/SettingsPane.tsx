@@ -20,6 +20,7 @@ import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
 import { Keymaptool } from "../../../input";
+import i18n from "../../i18n";
 import { useConfig } from "../ConfigContext";
 
 const KEYS = [
@@ -183,7 +184,7 @@ function AboutTab({ active }: { active: boolean }) {
   );
 }
 
-function AdvancedTab({ active }: { active: boolean }) {
+function GeneralTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   return (
     <Box
@@ -210,7 +211,6 @@ function AdvancedTab({ active }: { active: boolean }) {
             <InputLabel id="theme-label">
               <Trans i18nKey="settings:theme" />
             </InputLabel>
-
             <Select
               labelId="theme-label"
               value={config.theme}
@@ -232,11 +232,39 @@ function AdvancedTab({ active }: { active: boolean }) {
               </MenuItem>
             </Select>
           </FormControl>
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
+function AdvancedTab({ active }: { active: boolean }) {
+  const { config, save: saveConfig } = useConfig();
+  return (
+    <Box
+      flexGrow={1}
+      display={active ? "block" : "none"}
+      overflow="auto"
+      sx={{ px: 1, height: 0 }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          py: 4,
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        <Stack
+          spacing={2}
+          sx={{
+            width: "500px",
+          }}
+        >
           <FormControl fullWidth size="small">
             <InputLabel id="wgpu-backend-label">
               <Trans i18nKey="settings:wgpu-backend" />
             </InputLabel>
-
             <Select
               labelId="wgpu-backend-label"
               value={config.wgpuBackend ?? "default"}
@@ -383,7 +411,7 @@ function KeymappingTab({ active }: { active: boolean }) {
 }
 
 export default function SettingsPane({ active }: { active: boolean }) {
-  const [tab, setTab] = React.useState("keymapping");
+  const [tab, setTab] = React.useState("general");
 
   return (
     <Box
@@ -401,6 +429,10 @@ export default function SettingsPane({ active }: { active: boolean }) {
           }}
         >
           <Tab
+            label={<Trans i18nKey="settings:tab.general" />}
+            value="general"
+          />
+          <Tab
             label={<Trans i18nKey="settings:tab.keymapping" />}
             value="keymapping"
           />
@@ -410,6 +442,7 @@ export default function SettingsPane({ active }: { active: boolean }) {
           />
           <Tab label={<Trans i18nKey="settings:tab.about" />} value="about" />
         </Tabs>
+        <GeneralTab active={tab == "general"} />
         <KeymappingTab active={tab == "keymapping"} />
         <AdvancedTab active={tab == "advanced"} />
         <AboutTab active={tab == "about"} />

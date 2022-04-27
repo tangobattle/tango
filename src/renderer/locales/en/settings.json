@@ -1,4 +1,7 @@
 {
+    "tab.general": "General",
+    "language": "Language",
+    "language.default": "System default",
     "tab.keymapping": "Keymapping",
     "keymapping.up": "Up",
     "keymapping.down": "Down",
