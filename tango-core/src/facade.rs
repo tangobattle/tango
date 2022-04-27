@@ -149,29 +149,6 @@ impl<'a> BattleStateFacadeGuard<'a> {
                 .replay_writer()
                 .write_state(&state)
                 .expect("write state");
-            // 64k is the maximum message size, but we have various header bits so just sent 63k and allow the last 1k to be whatever.
-            const STATE_CHUNK_SIZE: usize = 63 * 1024;
-            let mut remote_state = vec![];
-            for chunk in state.as_slice().chunks(STATE_CHUNK_SIZE) {
-                self.match_
-                    .transport()
-                    .expect("transport")
-                    .send_state_chunk(chunk)
-                    .await
-                    .expect("send state");
-
-                remote_state.extend(
-                    self.match_
-                        .receive_remote_state_chunk()
-                        .await
-                        .expect("state chunk")
-                        .iter(),
-                );
-            }
-            battle
-                .replay_writer()
-                .write_state(&mgba::state::State::from_slice(&remote_state))
-                .expect("write state");
         }
         battle.set_committed_state(state);
     }

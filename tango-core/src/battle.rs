@@ -46,8 +46,6 @@ pub struct Match {
     battle_state: tokio::sync::Mutex<BattleState>,
     remote_init_sender: tokio::sync::mpsc::Sender<protocol::Init>,
     remote_init_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<protocol::Init>>,
-    remote_state_chunk_sender: tokio::sync::mpsc::Sender<Vec<u8>>,
-    remote_state_chunk_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<Vec<u8>>>,
     primary_thread_handle: mgba::thread::Handle,
     audio_mux: audio::mux_stream::MuxStream,
 }
@@ -134,8 +132,6 @@ impl Match {
         settings: Settings,
     ) -> Self {
         let (remote_init_sender, remote_init_receiver) = tokio::sync::mpsc::channel(1);
-        let (remote_state_chunk_sender, remote_state_chunk_receiver) =
-            tokio::sync::mpsc::channel(1);
         let did_polite_win_last_battle = rng.gen::<bool>();
         Self {
             audio_supported_config,
@@ -152,8 +148,6 @@ impl Match {
             }),
             remote_init_sender,
             remote_init_receiver: tokio::sync::Mutex::new(remote_init_receiver),
-            remote_state_chunk_sender,
-            remote_state_chunk_receiver: tokio::sync::Mutex::new(remote_state_chunk_receiver),
             audio_mux,
             primary_thread_handle,
         }
@@ -170,11 +164,6 @@ impl Match {
             )? {
                 protocol::Packet::Init(init) => {
                     self.remote_init_sender.send(init).await?;
-                }
-                protocol::Packet::StateChunk(state_chunk) => {
-                    self.remote_state_chunk_sender
-                        .send(state_chunk.chunk)
-                        .await?;
                 }
                 protocol::Packet::Input(input) => {
                     let state_committed_rx = {
@@ -235,11 +224,6 @@ impl Match {
     pub async fn receive_remote_init(&self) -> Option<protocol::Init> {
         let mut remote_init_receiver = self.remote_init_receiver.lock().await;
         remote_init_receiver.recv().await
-    }
-
-    pub async fn receive_remote_state_chunk(&self) -> Option<Vec<u8>> {
-        let mut remote_state_chunk_receiver = self.remote_state_chunk_receiver.lock().await;
-        remote_state_chunk_receiver.recv().await
     }
 
     pub fn transport(&self) -> anyhow::Result<transport::Transport> {

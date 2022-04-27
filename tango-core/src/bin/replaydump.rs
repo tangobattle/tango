@@ -9,9 +9,6 @@ struct Cli {
     #[clap(long)]
     dump: bool,
 
-    #[clap(long)]
-    remote: bool,
-
     #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
 
@@ -51,16 +48,10 @@ fn main() -> Result<(), anyhow::Error> {
 
     let replay = tango_core::replay::Replay::decode(&mut f)?;
 
-    let state = if !args.remote {
-        &replay.local_state
-    } else {
-        &replay.remote_state
-    };
-
     log::info!(
         "replay is for {} (crc32 = {:08x})",
-        state.rom_title(),
-        state.rom_crc32()
+        replay.local_state.rom_title(),
+        replay.local_state.rom_crc32()
     );
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
@@ -73,23 +64,12 @@ fn main() -> Result<(), anyhow::Error> {
 
     let done = std::sync::Arc::new(parking_lot::Mutex::new(false));
 
-    let local_player_index = if !args.remote {
-        replay.local_player_index
-    } else {
-        1 - replay.local_player_index
-    };
-
-    let mut input_pairs = replay.input_pairs.clone();
-    if args.remote {
-        for pair in input_pairs.iter_mut() {
-            std::mem::swap(&mut pair.local, &mut pair.remote);
-        }
-    }
+    let input_pairs = replay.input_pairs.clone();
 
     let ff_state = {
         let done = done.clone();
         tango_core::fastforwarder::State::new(
-            local_player_index,
+            replay.local_player_index,
             input_pairs,
             0,
             0,
@@ -107,7 +87,7 @@ fn main() -> Result<(), anyhow::Error> {
         core.set_traps(hooks.fastforwarder_traps(ff_state));
     }
 
-    core.as_mut().load_state(state)?;
+    core.as_mut().load_state(&replay.local_state)?;
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = std::process::Command::new(&args.ffmpeg)

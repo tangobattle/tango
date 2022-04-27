@@ -29,19 +29,6 @@ impl Transport {
         Ok(())
     }
 
-    pub async fn send_state_chunk(&self, chunk: &[u8]) -> anyhow::Result<()> {
-        self.dc
-            .send(
-                protocol::Packet::StateChunk(protocol::StateChunk {
-                    chunk: chunk.to_vec(),
-                })
-                .serialize()?
-                .as_slice(),
-            )
-            .await?;
-        Ok(())
-    }
-
     pub async fn send_input(
         &self,
         battle_number: u8,
