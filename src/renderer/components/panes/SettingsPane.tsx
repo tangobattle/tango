@@ -129,6 +129,17 @@ function AboutTab({ active }: { active: boolean }) {
               .
             </li>
             <li>
+              <Link href="https://twitter.com/GreigaMaster" target="_blank">
+                GreigaMaster
+              </Link>{" "}
+              and{" "}
+              <Link href="https://twitter.com/Prof9" target="_blank">
+                Prof. 9
+              </Link>{" "}
+              for all of their original reverse engineering work on Battle
+              Network 6.
+            </li>
+            <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
               </Link>
