@@ -15,6 +15,7 @@ import Typography from "@mui/material/Typography";
 import { makeROM } from "../../game";
 import { getBinPath } from "../../paths";
 import { usePatchPath, useROMPath } from "../hooks";
+import { useConfig } from "./ConfigContext";
 import { CopyButton } from "./CopyButton";
 import { useTempDir } from "./TempDirContext";
 
@@ -31,7 +32,10 @@ export default function ReplaydumpSupervisor({
   outPath: string;
   onExit: () => void;
 }) {
+  const { config } = useConfig();
   const { tempDir } = useTempDir();
+
+  const configRef = React.useRef(config);
 
   const romPath = useROMPath(romName);
   const patchPath = usePatchPath(patch ?? null);
@@ -83,6 +87,9 @@ export default function ReplaydumpSupervisor({
           outPath,
         ],
         {
+          env: {
+            RUST_LOG: configRef.current.rustLogFilter,
+          },
           signal: abortControllerRef.current.signal,
         }
       );

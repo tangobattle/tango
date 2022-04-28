@@ -29,5 +29,6 @@
     "update-channel": "Update channel (requires restart)",
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
-    "update-channel.alpha": "Alpha"
+    "update-channel.alpha": "Alpha",
+    "rust-log-filter": "RUST_LOG filter"
 }

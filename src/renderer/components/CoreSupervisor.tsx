@@ -107,6 +107,7 @@ export function CoreSupervisor({
               configRef.current.wgpuBackend != null
                 ? configRef.current.wgpuBackend
                 : undefined,
+            RUST_LOG: configRef.current.rustLogFilter,
           },
           signal: abortControllerRef.current.signal,
         }

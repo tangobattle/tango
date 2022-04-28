@@ -16,6 +16,7 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
@@ -300,6 +301,20 @@ function AdvancedTab({ active }: { active: boolean }) {
                 <Trans i18nKey="settings:wgpu-backend.metal" />
               </MenuItem>
             </Select>
+          </FormControl>
+          <FormControl fullWidth size="small">
+            <TextField
+              value={config.rustLogFilter}
+              onChange={(e) => {
+                (async () => {
+                  saveConfig((config) => ({
+                    ...config,
+                    rustLogFilter: e.target.value,
+                  }));
+                })();
+              }}
+              label={<Trans i18nKey="settings:rust-log-filter" />}
+            />
           </FormControl>
           <FormControl fullWidth size="small">
             <InputLabel id="update-channel-label">

@@ -29,5 +29,6 @@
     "update-channel": "更新チャンネル（再起動が必要）",
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
-    "update-channel.alpha": "Alpha"
+    "update-channel.alpha": "Alpha",
+    "rust-log-filter": "RUST_LOG フィルター"
 }

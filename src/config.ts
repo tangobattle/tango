@@ -8,6 +8,7 @@ export interface Config {
   language: string | null;
   updateChannel: string;
   wgpuBackend: string | null;
+  rustLogFilter: string;
   keymapping: ipc.Args["keymapping"];
   matchmakingConnectAddr: string;
   iceServers: string[];
@@ -18,6 +19,7 @@ export const DEFAULT: Config = {
   language: null,
   updateChannel: "alpha",
   wgpuBackend: null,
+  rustLogFilter: "",
   keymapping: {
     up: "Up",
     down: "Down",

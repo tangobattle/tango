@@ -29,5 +29,6 @@
     "update-channel": "更新频道（需要重新启动）",
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
-    "update-channel.alpha": "Alpha"
+    "update-channel.alpha": "Alpha",
+    "rust-log-filter": "RUST_LOG 过滤"
 }
