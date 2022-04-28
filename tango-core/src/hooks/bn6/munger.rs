@@ -5,7 +5,7 @@ pub(super) struct Munger {
 
 impl Munger {
     pub(super) fn skip_logo(&self, mut core: mgba::core::CoreMutRef) {
-        core.raw_write_8(self.offsets.ewram.logo_control + 0x00, -1, 0x10);
+        core.raw_write_8(self.offsets.ewram.start_screen_control + 0x00, -1, 0x10);
     }
 
     pub(super) fn continue_from_title_menu(&self, mut core: mgba::core::CoreMutRef) {
@@ -50,8 +50,8 @@ impl Munger {
         core.raw_read_8(self.offsets.ewram.battle_state + 0x11, -1)
     }
 
-    pub(super) fn local_marshaled_battle_state(&self, mut core: mgba::core::CoreMutRef) -> Vec<u8> {
-        core.raw_read_range::<0x100>(self.offsets.ewram.local_marshaled_battle_state, -1)
+    pub(super) fn tx_buf(&self, mut core: mgba::core::CoreMutRef) -> Vec<u8> {
+        core.raw_read_range::<0x100>(self.offsets.ewram.tx_buf, -1)
             .to_vec()
     }
 
@@ -74,17 +74,13 @@ impl Munger {
         )
     }
 
-    pub(super) fn set_player_marshaled_battle_state(
+    pub(super) fn set_rx_buf(
         &self,
         mut core: mgba::core::CoreMutRef,
         index: u32,
         marshaled: &[u8],
     ) {
-        core.raw_write_range(
-            self.offsets.ewram.player_marshaled_state_arr + index * 0x100,
-            -1,
-            marshaled,
-        )
+        core.raw_write_range(self.offsets.ewram.rx_buf_arr + index * 0x100, -1, marshaled)
     }
 
     pub(super) fn set_link_battle_settings_and_background(

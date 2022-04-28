@@ -66,7 +66,7 @@ impl hooks::Hooks for BN6 {
             {
                 let munger = self.munger.clone();
                 (
-                    self.offsets.rom.game_init_entry,
+                    self.offsets.rom.start_screen_jump_table_entry,
                     Box::new(move |core| {
                         munger.skip_logo(core);
                     }),
@@ -145,7 +145,7 @@ impl hooks::Hooks for BN6 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_init_marshal_ret,
+                    self.offsets.rom.battle_init_tx_buf_copy_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
                             'abort: loop {
@@ -158,9 +158,9 @@ impl hooks::Hooks for BN6 {
 
                                 let mut battle_state = match_.lock_battle_state().await;
 
-                                let local_init = munger.local_marshaled_battle_state(core);
+                                let local_init = munger.tx_buf(core);
                                 battle_state.send_init(&local_init).await;
-                                munger.set_player_marshaled_battle_state(
+                                munger.set_rx_buf(
                                     core,
                                     battle_state.local_player_index() as u32,
                                     local_init.as_slice(),
@@ -172,7 +172,7 @@ impl hooks::Hooks for BN6 {
                                         break 'abort;
                                     }
                                 };
-                                munger.set_player_marshaled_battle_state(
+                                munger.set_rx_buf(
                                     core,
                                     battle_state.remote_player_index() as u32,
                                     remote_init.as_slice(),
@@ -189,7 +189,7 @@ impl hooks::Hooks for BN6 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_turn_marshal_ret,
+                    self.offsets.rom.battle_turn_tx_buf_copy_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -202,7 +202,7 @@ impl hooks::Hooks for BN6 {
                             let mut battle_state = match_.lock_battle_state().await;
 
                             log::info!("turn data marshaled on {}", munger.current_tick(core));
-                            let local_turn = munger.local_marshaled_battle_state(core);
+                            let local_turn = munger.tx_buf(core);
                             battle_state.add_local_pending_turn(local_turn);
                         });
                     }),
@@ -302,7 +302,7 @@ impl hooks::Hooks for BN6 {
                                 ip.local.custom_screen_state as u8,
                             );
                             if !ip.local.turn.is_empty() {
-                                munger.set_player_marshaled_battle_state(
+                                munger.set_rx_buf(
                                     core,
                                     battle_state.local_player_index() as u32,
                                     ip.local.turn.as_slice(),
@@ -315,7 +315,7 @@ impl hooks::Hooks for BN6 {
                                 ip.remote.custom_screen_state as u8,
                             );
                             if !ip.remote.turn.is_empty() {
-                                munger.set_player_marshaled_battle_state(
+                                munger.set_rx_buf(
                                     core,
                                     battle_state.remote_player_index() as u32,
                                     ip.remote.turn.as_slice(),
@@ -613,7 +613,7 @@ impl hooks::Hooks for BN6 {
                             ip.local.custom_screen_state,
                         );
                         if !ip.local.turn.is_empty() {
-                            munger.set_player_marshaled_battle_state(
+                            munger.set_rx_buf(
                                 core,
                                 local_player_index as u32,
                                 ip.local.turn.as_slice(),
@@ -627,7 +627,7 @@ impl hooks::Hooks for BN6 {
                             ip.remote.custom_screen_state,
                         );
                         if !ip.remote.turn.is_empty() {
-                            munger.set_player_marshaled_battle_state(
+                            munger.set_rx_buf(
                                 core,
                                 remote_player_index as u32,
                                 ip.remote.turn.as_slice(),
