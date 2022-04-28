@@ -20,10 +20,10 @@ pub(super) struct EWRAMOffsets {
     /// Title menu jump table control.
     pub(super) title_menu_control: u32,
 
-    /// START menu control.
+    /// START menu jump table control.
     pub(super) menu_control: u32,
 
-    /// START menu submenu (e.g. comm menu) control.
+    /// START menu submenu (e.g. comm menu) jump table control.
     pub(super) submenu_control: u32,
 
     /// Local RNG state. Doesn't need to be synced.
@@ -37,7 +37,7 @@ pub(super) struct EWRAMOffsets {
 pub(super) struct ROMOffsets {
     /// This is the entry point for the start screen, i.e. when the CAPCOM logo is displayed.
     ///
-    /// It is expected that at this point, you may write to the title_menu_control EWRAM address to skip to the title screen.
+    /// It is expected that at this point, you may write to the start_screen_control EWRAM address to skip to the title screen.
     pub(super) start_screen_jump_table_entry: u32,
 
     /// This is immediately after SRAM is copied to EWRAM and unmasked.
