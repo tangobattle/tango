@@ -22,16 +22,16 @@ pub struct Settings {
     pub input_delay: u32,
 }
 
-pub struct BattleState {
+pub struct RoundState {
     pub number: u8,
-    pub battle: Option<Battle>,
-    pub won_last_battle: bool,
+    pub round: Option<Round>,
+    pub won_last_round: bool,
 }
 
-impl BattleState {
-    pub async fn end_battle(&mut self) -> anyhow::Result<()> {
-        log::info!("battle ended");
-        self.battle = None;
+impl RoundState {
+    pub async fn end_round(&mut self) -> anyhow::Result<()> {
+        log::info!("round ended");
+        self.round = None;
         Ok(())
     }
 }
@@ -43,7 +43,7 @@ pub struct Match {
     dc: std::sync::Arc<datachannel::DataChannel>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     settings: Settings,
-    battle_state: tokio::sync::Mutex<BattleState>,
+    round_state: tokio::sync::Mutex<RoundState>,
     remote_init_sender: tokio::sync::mpsc::Sender<protocol::Init>,
     remote_init_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<protocol::Init>>,
     primary_thread_handle: mgba::thread::Handle,
@@ -132,7 +132,7 @@ impl Match {
         settings: Settings,
     ) -> Self {
         let (remote_init_sender, remote_init_receiver) = tokio::sync::mpsc::channel(1);
-        let did_polite_win_last_battle = rng.gen::<bool>();
+        let did_polite_win_last_round = rng.gen::<bool>();
         Self {
             audio_supported_config,
             rom_path,
@@ -140,10 +140,10 @@ impl Match {
             dc,
             rng: tokio::sync::Mutex::new(rng),
             settings,
-            battle_state: tokio::sync::Mutex::new(BattleState {
+            round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
-                battle: None,
-                won_last_battle: did_polite_win_last_battle
+                round: None,
+                won_last_round: did_polite_win_last_round
                     == (side == tango_matchmaking::client::ConnectionSide::Polite),
             }),
             remote_init_sender,
@@ -167,42 +167,42 @@ impl Match {
                 }
                 protocol::Packet::Input(input) => {
                     let state_committed_rx = {
-                        let mut battle_state = self.battle_state.lock().await;
+                        let mut round_state = self.round_state.lock().await;
 
-                        if input.battle_number != battle_state.number {
-                            log::info!("battle number mismatch, dropping input");
+                        if input.round_number != round_state.number {
+                            log::info!("round number mismatch, dropping input");
                             continue;
                         }
 
-                        let battle = match &mut battle_state.battle {
+                        let round = match &mut round_state.round {
                             None => {
-                                log::info!("no battle in progress, dropping input");
+                                log::info!("no round in progress, dropping input");
                                 continue;
                             }
                             Some(b) => b,
                         };
-                        battle.state_committed_rx.take()
+                        round.state_committed_rx.take()
                     };
 
                     if let Some(state_committed_rx) = state_committed_rx {
                         state_committed_rx.await.unwrap();
                     }
 
-                    let mut battle_state = self.battle_state.lock().await;
+                    let mut round_state = self.round_state.lock().await;
 
-                    let battle = match &mut battle_state.battle {
+                    let round = match &mut round_state.round {
                         None => {
-                            log::info!("no battle in progress, dropping input");
+                            log::info!("no round in progress, dropping input");
                             continue;
                         }
                         Some(b) => b,
                     };
 
-                    if !battle.can_add_remote_input() {
+                    if !round.can_add_remote_input() {
                         anyhow::bail!("remote overflowed our input buffer");
                     }
 
-                    battle.add_remote_input(input::Input {
+                    round.add_remote_input(input::Input {
                         local_tick: input.local_tick,
                         remote_tick: input.remote_tick,
                         joyflags: input.joyflags as u16,
@@ -217,8 +217,8 @@ impl Match {
         Ok(())
     }
 
-    pub async fn lock_battle_state(&self) -> tokio::sync::MutexGuard<'_, BattleState> {
-        self.battle_state.lock().await
+    pub async fn lock_round_state(&self) -> tokio::sync::MutexGuard<'_, RoundState> {
+        self.round_state.lock().await
     }
 
     pub async fn receive_remote_init(&self) -> Option<protocol::Init> {
@@ -238,16 +238,16 @@ impl Match {
         self.settings.match_type
     }
 
-    pub async fn start_battle(&self, core: mgba::core::CoreMutRef<'_>) -> anyhow::Result<()> {
-        let mut battle_state = self.battle_state.lock().await;
-        battle_state.number += 1;
-        let local_player_index = if battle_state.won_last_battle { 0 } else { 1 };
+    pub async fn start_round(&self, core: mgba::core::CoreMutRef<'_>) -> anyhow::Result<()> {
+        let mut round_state = self.round_state.lock().await;
+        round_state.number += 1;
+        let local_player_index = if round_state.won_last_round { 0 } else { 1 };
         log::info!(
-            "starting battle: local_player_index = {}",
+            "starting round: local_player_index = {}",
             local_player_index
         );
         let mut replay_filename = self.settings.replays_path.clone();
-        replay_filename.push(format!("battle{}.tangoreplay", battle_state.number));
+        replay_filename.push(format!("round{}.tangoreplay", round_state.number));
         let replay_filename = std::path::Path::new(&replay_filename);
         let replay_file = std::fs::File::create(&replay_filename)?;
         log::info!("opened replay: {}", replay_filename.display());
@@ -292,10 +292,10 @@ impl Match {
         }
         audio_core_handle.unpause();
 
-        log::info!("preparing battle state");
+        log::info!("preparing round state");
 
         let (state_committed_tx, state_committed_rx) = tokio::sync::oneshot::channel();
-        battle_state.battle = Some(Battle {
+        round_state.round = Some(Round {
             local_player_index,
             iq: input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay),
             remote_delay: 0,
@@ -327,7 +327,7 @@ impl Match {
             _audio_core_mux_handle: audio_core_mux_handle,
             primary_thread_handle: self.primary_thread_handle.clone(),
         });
-        log::info!("battle has started");
+        log::info!("round has started");
         Ok(())
     }
 }
@@ -337,7 +337,7 @@ struct LocalPendingTurn {
     ticks_left: u8,
 }
 
-pub struct Battle {
+pub struct Round {
     local_player_index: u8,
     iq: input::PairQueue<input::Input>,
     remote_delay: u32,
@@ -356,7 +356,7 @@ pub struct Battle {
     _audio_core_mux_handle: audio::mux_stream::MuxHandle,
 }
 
-impl Battle {
+impl Round {
     pub fn fastforwarder(&mut self) -> &mut fastforwarder::Fastforwarder {
         &mut self.fastforwarder
     }
@@ -492,7 +492,7 @@ impl Battle {
     }
 }
 
-impl Drop for Battle {
+impl Drop for Round {
     fn drop(&mut self) {
         // HACK: This is the only safe way to set the FPS without clogging everything else up.
         self.primary_thread_handle

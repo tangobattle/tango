@@ -130,7 +130,7 @@ impl hooks::Hooks for BN6 {
             {
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_init_call_battle_copy_input_data,
+                    self.offsets.rom.round_init_call_battle_copy_input_data,
                     Box::new(move |mut core| {
                         handle.block_on(async {
                             core.gba_mut().cpu_mut().set_gpr(0, 0);
@@ -145,7 +145,7 @@ impl hooks::Hooks for BN6 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_init_tx_buf_copy_ret,
+                    self.offsets.rom.round_init_tx_buf_copy_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
                             'abort: loop {
@@ -156,17 +156,17 @@ impl hooks::Hooks for BN6 {
                                     }
                                 };
 
-                                let mut battle_state = match_.lock_battle_state().await;
+                                let mut round_state = match_.lock_round_state().await;
 
                                 let local_init = munger.tx_buf(core);
-                                battle_state.send_init(&local_init).await;
+                                round_state.send_init(&local_init).await;
                                 munger.set_rx_buf(
                                     core,
-                                    battle_state.local_player_index() as u32,
+                                    round_state.local_player_index() as u32,
                                     local_init.as_slice(),
                                 );
 
-                                let remote_init = match battle_state.receive_init().await {
+                                let remote_init = match round_state.receive_init().await {
                                     Some(remote_init) => remote_init,
                                     None => {
                                         break 'abort;
@@ -174,7 +174,7 @@ impl hooks::Hooks for BN6 {
                                 };
                                 munger.set_rx_buf(
                                     core,
-                                    battle_state.remote_player_index() as u32,
+                                    round_state.remote_player_index() as u32,
                                     remote_init.as_slice(),
                                 );
                                 return;
@@ -189,7 +189,7 @@ impl hooks::Hooks for BN6 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_turn_tx_buf_copy_ret,
+                    self.offsets.rom.round_turn_tx_buf_copy_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -199,11 +199,11 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            let mut battle_state = match_.lock_battle_state().await;
+                            let mut round_state = match_.lock_round_state().await;
 
                             log::info!("turn data marshaled on {}", munger.current_tick(core));
                             let local_turn = munger.tx_buf(core);
-                            battle_state.add_local_pending_turn(local_turn);
+                            round_state.add_local_pending_turn(local_turn);
                         });
                     }),
                 )
@@ -224,27 +224,27 @@ impl hooks::Hooks for BN6 {
                                     }
                                 };
 
-                                let mut battle_state = match_.lock_battle_state().await;
-                                if !battle_state.is_active() {
+                                let mut round_state = match_.lock_round_state().await;
+                                if !round_state.is_active() {
                                     return;
                                 }
 
-                                if !battle_state.is_accepting_input() {
+                                if !round_state.is_accepting_input() {
                                     return;
                                 }
 
                                 let current_tick = munger.current_tick(core);
-                                if !battle_state.has_committed_state() {
-                                    battle_state
+                                if !round_state.has_committed_state() {
+                                    round_state
                                         .set_committed_state(core.save_state().expect("save state"))
                                         .await;
-                                    battle_state.fill_input_delay(current_tick).await;
+                                    round_state.fill_input_delay(current_tick).await;
                                     log::info!("battle state committed");
                                 }
 
-                                let turn = battle_state.take_local_pending_turn();
+                                let turn = round_state.take_local_pending_turn();
 
-                                if !battle_state
+                                if !round_state
                                     .add_local_input_and_fastforward(
                                         core,
                                         current_tick,
@@ -268,7 +268,7 @@ impl hooks::Hooks for BN6 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_update_call_battle_copy_input_data,
+                    self.offsets.rom.round_update_call_battle_copy_input_data,
                     Box::new(move |mut core| {
                         handle.block_on(async {
                             core.gba_mut().cpu_mut().set_gpr(0, 0);
@@ -282,42 +282,42 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            let mut battle_state = match_.lock_battle_state().await;
-                            if !battle_state.is_active() {
+                            let mut round_state = match_.lock_round_state().await;
+                            if !round_state.is_active() {
                                 return;
                             }
 
-                            if !battle_state.is_accepting_input() {
-                                battle_state.mark_accepting_input();
+                            if !round_state.is_accepting_input() {
+                                round_state.mark_accepting_input();
                                 log::info!("battle is now accepting input");
                                 return;
                             }
 
-                            let ip = battle_state.take_last_input().expect("last input");
+                            let ip = round_state.take_last_input().expect("last input");
 
                             munger.set_player_input_state(
                                 core,
-                                battle_state.local_player_index() as u32,
+                                round_state.local_player_index() as u32,
                                 ip.local.joyflags as u16,
                                 ip.local.custom_screen_state as u8,
                             );
                             if !ip.local.turn.is_empty() {
                                 munger.set_rx_buf(
                                     core,
-                                    battle_state.local_player_index() as u32,
+                                    round_state.local_player_index() as u32,
                                     ip.local.turn.as_slice(),
                                 );
                             }
                             munger.set_player_input_state(
                                 core,
-                                battle_state.remote_player_index() as u32,
+                                round_state.remote_player_index() as u32,
                                 ip.remote.joyflags as u16,
                                 ip.remote.custom_screen_state as u8,
                             );
                             if !ip.remote.turn.is_empty() {
                                 munger.set_rx_buf(
                                     core,
-                                    battle_state.remote_player_index() as u32,
+                                    round_state.remote_player_index() as u32,
                                     ip.remote.turn.as_slice(),
                                 );
                             }
@@ -329,7 +329,7 @@ impl hooks::Hooks for BN6 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_run_unpaused_step_cmp_retval,
+                    self.offsets.rom.round_run_unpaused_step_cmp_retval,
                     Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -339,23 +339,23 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            let mut battle_state = match_.lock_battle_state().await;
-                            if !battle_state.is_active() {
+                            let mut round_state = match_.lock_round_state().await;
+                            if !round_state.is_active() {
                                 return;
                             }
 
                             if match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
-                                    battle_state.set_won_last_battle(true);
+                                    round_state.set_won_last_round(true);
                                     true
                                 }
                                 2 => {
-                                    battle_state.set_won_last_battle(false);
+                                    round_state.set_won_last_round(false);
                                     true
                                 }
                                 _ => false,
                             } {
-                                battle_state.end_battle().await;
+                                round_state.end_round().await;
                             }
                         });
                     }),
@@ -365,7 +365,7 @@ impl hooks::Hooks for BN6 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_start_ret,
+                    self.offsets.rom.round_start_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -375,7 +375,7 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            match_.start_battle(core).await;
+                            match_.start_round(core).await;
                         });
                     }),
                 )
@@ -394,10 +394,10 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            let battle_state = match_.lock_battle_state().await;
+                            let round_state = match_.lock_round_state().await;
                             core.gba_mut()
                                 .cpu_mut()
-                                .set_gpr(0, battle_state.local_player_index() as i32);
+                                .set_gpr(0, round_state.local_player_index() as i32);
                         });
                     }),
                 )
@@ -416,10 +416,10 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            let battle_state = match_.lock_battle_state().await;
+                            let round_state = match_.lock_round_state().await;
                             core.gba_mut()
                                 .cpu_mut()
-                                .set_gpr(0, battle_state.local_player_index() as i32);
+                                .set_gpr(0, round_state.local_player_index() as i32);
                         });
                     }),
                 )
@@ -569,7 +569,7 @@ impl hooks::Hooks for BN6 {
                 let munger = self.munger.clone();
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.battle_update_call_battle_copy_input_data,
+                    self.offsets.rom.round_update_call_battle_copy_input_data,
                     Box::new(move |mut core| {
                         let current_tick = munger.current_tick(core);
 
@@ -680,7 +680,7 @@ impl hooks::Hooks for BN6 {
             {
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.battle_end_entry,
+                    self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
                         ff_state.on_battle_ended();
                     }),
@@ -710,7 +710,7 @@ impl hooks::Hooks for BN6 {
             },
             {
                 (
-                    self.offsets.rom.battle_update_call_battle_copy_input_data,
+                    self.offsets.rom.round_update_call_battle_copy_input_data,
                     Box::new(move |mut core| {
                         core.gba_mut().cpu_mut().set_gpr(0, 0);
                         let r15 = core.as_ref().gba().cpu().gpr(15) as u32;

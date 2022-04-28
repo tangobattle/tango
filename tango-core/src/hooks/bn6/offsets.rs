@@ -63,41 +63,41 @@ pub(super) struct ROMOffsets {
     /// This is the call to the routine to copy input data from what would be received from SIO during battle init.
     ///
     /// We skip this entirely because we inject the init data directly into memory via battle_init_tx_buf_copy_ret instead.
-    pub(super) battle_init_call_battle_copy_input_data: u32,
+    pub(super) round_init_call_battle_copy_input_data: u32,
 
     /// This is the call to the routine to copy input data from what would be received from SIO.
     ///
     /// Here, we take the input we received from the remote and inject it into the player's input state. This would usually be done via SIO, but instead this is just a copy from emulator into game memory.
     ///
     /// If the remote has sent turn data this tick, we also copy it into the receive buffer at this point.
-    pub(super) battle_update_call_battle_copy_input_data: u32,
+    pub(super) round_update_call_battle_copy_input_data: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
-    /// If r0 = 1, the local player won the last battle.
-    /// If r0 = 2, the remote player won the last battle.
+    /// If r0 = 1, the local player won the last round.
+    /// If r0 = 2, the remote player won the last round.
     /// Otherwise, the battle hasn't ended.
-    pub(super) battle_run_unpaused_step_cmp_retval: u32,
+    pub(super) round_run_unpaused_step_cmp_retval: u32,
 
-    /// This hooks the point after the battle initialization data is copied to the trasmit buffer.
+    /// This hooks the point after the round initialization data is copied to the trasmit buffer.
     ///
     /// At this point, we can safely take a snapshot from the transmit buffer to send to the remote player.
-    pub(super) battle_init_tx_buf_copy_ret: u32,
+    pub(super) round_init_tx_buf_copy_ret: u32,
 
     /// This hooks the point after the start turn data is copied to the trasmit buffer.
     ///
     /// At this point, we can safely take a snapshot from the transmit buffer to send to the remote player.
-    pub(super) battle_turn_tx_buf_copy_ret: u32,
+    pub(super) round_turn_tx_buf_copy_ret: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
     /// Tango initializes its own battle tracking state at this point.
-    pub(super) battle_start_ret: u32,
+    pub(super) round_start_ret: u32,
 
     /// This hooks the point after the battle end routine is complete.
     ///
     /// This is only used for the replay viewer to know when to end.
-    pub(super) battle_end_entry: u32,
+    pub(super) round_end_entry: u32,
 
     /// This hooks the point determining if the player is player 2 or not.
     ///
@@ -167,13 +167,13 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         game_load_ret: 0x08004dde,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x0801feec,
-        battle_init_call_battle_copy_input_data: 0x08007902,
-        battle_update_call_battle_copy_input_data: 0x08007a6e,
-        battle_run_unpaused_step_cmp_retval: 0x08008102,
-        battle_init_tx_buf_copy_ret: 0x0800b2b8,
-        battle_turn_tx_buf_copy_ret: 0x0800b3d6,
-        battle_start_ret: 0x08007304,
-        battle_end_entry: 0x08007ca0,
+        round_init_call_battle_copy_input_data: 0x08007902,
+        round_update_call_battle_copy_input_data: 0x08007a6e,
+        round_run_unpaused_step_cmp_retval: 0x08008102,
+        round_init_tx_buf_copy_ret: 0x0800b2b8,
+        round_turn_tx_buf_copy_ret: 0x0800b3d6,
+        round_start_ret: 0x08007304,
+        round_end_entry: 0x08007ca0,
         battle_is_p2_tst: 0x0803dd52,
         link_is_p2_ret: 0x0803dd86,
         comm_menu_init_ret: 0x08129298,
@@ -192,13 +192,13 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         game_load_ret: 0x08004dde,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x0801feec,
-        battle_init_call_battle_copy_input_data: 0x08007902,
-        battle_update_call_battle_copy_input_data: 0x08007a6e,
-        battle_run_unpaused_step_cmp_retval: 0x08008102,
-        battle_init_tx_buf_copy_ret: 0x0800b2b8,
-        battle_turn_tx_buf_copy_ret: 0x0800b3d6,
-        battle_start_ret: 0x08007304,
-        battle_end_entry: 0x08007ca0,
+        round_init_call_battle_copy_input_data: 0x08007902,
+        round_update_call_battle_copy_input_data: 0x08007a6e,
+        round_run_unpaused_step_cmp_retval: 0x08008102,
+        round_init_tx_buf_copy_ret: 0x0800b2b8,
+        round_turn_tx_buf_copy_ret: 0x0800b3d6,
+        round_start_ret: 0x08007304,
+        round_end_entry: 0x08007ca0,
         battle_is_p2_tst: 0x0803dd26,
         link_is_p2_ret: 0x0803dd5a,
         comm_menu_init_ret: 0x0812b074,
@@ -217,13 +217,13 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         game_load_ret: 0x08004dc2,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x08020300,
-        battle_init_call_battle_copy_input_data: 0x080078ee,
-        battle_update_call_battle_copy_input_data: 0x08007a6a,
-        battle_run_unpaused_step_cmp_retval: 0x0800811a,
-        battle_init_tx_buf_copy_ret: 0x0800b8a0,
-        battle_turn_tx_buf_copy_ret: 0x0800b9be,
-        battle_start_ret: 0x080072f8,
-        battle_end_entry: 0x08007c9c,
+        round_init_call_battle_copy_input_data: 0x080078ee,
+        round_update_call_battle_copy_input_data: 0x08007a6a,
+        round_run_unpaused_step_cmp_retval: 0x0800811a,
+        round_init_tx_buf_copy_ret: 0x0800b8a0,
+        round_turn_tx_buf_copy_ret: 0x0800b9be,
+        round_start_ret: 0x080072f8,
+        round_end_entry: 0x08007c9c,
         battle_is_p2_tst: 0x0803ed96,
         link_is_p2_ret: 0x0803edca,
         comm_menu_init_ret: 0x08131cbc,
@@ -242,13 +242,13 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         game_load_ret: 0x08004dc2,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x08020300,
-        battle_init_call_battle_copy_input_data: 0x080078ee,
-        battle_update_call_battle_copy_input_data: 0x08007a6a,
-        battle_run_unpaused_step_cmp_retval: 0x0800811a,
-        battle_init_tx_buf_copy_ret: 0x0800b8a0,
-        battle_turn_tx_buf_copy_ret: 0x0800b9be,
-        battle_start_ret: 0x080072f8,
-        battle_end_entry: 0x08007c9c,
+        round_init_call_battle_copy_input_data: 0x080078ee,
+        round_update_call_battle_copy_input_data: 0x08007a6a,
+        round_run_unpaused_step_cmp_retval: 0x0800811a,
+        round_init_tx_buf_copy_ret: 0x0800b8a0,
+        round_turn_tx_buf_copy_ret: 0x0800b9be,
+        round_start_ret: 0x080072f8,
+        round_end_entry: 0x08007c9c,
         battle_is_p2_tst: 0x0803ed6a,
         link_is_p2_ret: 0x0803ed9e,
         comm_menu_init_ret: 0x08133a84,

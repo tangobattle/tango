@@ -1,31 +1,31 @@
 use crate::{battle, game, input};
 
-pub struct BattleStateFacadeGuard<'a> {
-    guard: tokio::sync::MutexGuard<'a, battle::BattleState>,
+pub struct RoundStateFacadeGuard<'a> {
+    guard: tokio::sync::MutexGuard<'a, battle::RoundState>,
     match_: std::sync::Arc<battle::Match>,
 }
 
-impl<'a> BattleStateFacadeGuard<'a> {
+impl<'a> RoundStateFacadeGuard<'a> {
     pub fn add_local_pending_turn(&mut self, local_turn: Vec<u8>) {
         self.guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .add_local_pending_turn(local_turn);
     }
 
-    pub async fn end_battle(&mut self) {
-        if let Some(battle) = &mut self.guard.battle {
-            battle.replay_writer().write_eor().expect("write eor");
+    pub async fn end_round(&mut self) {
+        if let Some(round) = &mut self.guard.round {
+            round.replay_writer().write_eor().expect("write eor");
         }
-        self.guard.end_battle().await.expect("end battle");
+        self.guard.end_round().await.expect("end round");
     }
 
     pub fn has_committed_state(&self) -> bool {
         self.guard
-            .battle
+            .round
             .as_ref()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .committed_state()
             .is_some()
     }
@@ -38,25 +38,25 @@ impl<'a> BattleStateFacadeGuard<'a> {
         custom_screen_state: u8,
         turn: Vec<u8>,
     ) -> bool {
-        let battle_number = self.guard.number;
+        let round_number = self.guard.number;
 
-        let battle = self
+        let round = self
             .guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!");
+            .expect("attempted to get round information while no round was active!");
 
-        let local_player_index = battle.local_player_index();
-        let local_tick = current_tick + battle.local_delay();
-        let remote_tick = battle.last_committed_remote_input().local_tick;
+        let local_player_index = round.local_player_index();
+        let local_tick = current_tick + round.local_delay();
+        let remote_tick = round.last_committed_remote_input().local_tick;
 
         // We do it in this order such that:
         // 1. We make sure that the input buffer does not overflow if we were to add an input.
         // 2. We try to send it to the peer: if it fails, we don't end up desyncing the opponent as we haven't added the input ourselves yet.
         // 3. We add the input to our buffer: no overflow is guaranteed because we already checked ahead of time.
         //
-        // This is all done while the battle is locked, so there are no TOCTTOU issues.
-        if !battle.can_add_local_input() {
+        // This is all done while the round is locked, so there are no TOCTTOU issues.
+        if !round.can_add_local_input() {
             log::warn!("local input buffer overflow!");
             return false;
         }
@@ -66,7 +66,7 @@ impl<'a> BattleStateFacadeGuard<'a> {
             .transport()
             .expect("transport not available")
             .send_input(
-                battle_number,
+                round_number,
                 local_tick,
                 remote_tick,
                 joyflags,
@@ -79,7 +79,7 @@ impl<'a> BattleStateFacadeGuard<'a> {
             return false;
         }
 
-        battle.add_local_input(input::Input {
+        round.add_local_input(input::Input {
             local_tick,
             remote_tick,
             joyflags,
@@ -87,23 +87,23 @@ impl<'a> BattleStateFacadeGuard<'a> {
             turn,
         });
 
-        let (input_pairs, left) = battle.consume_and_peek_local();
+        let (input_pairs, left) = round.consume_and_peek_local();
 
         for ip in &input_pairs {
-            battle
+            round
                 .replay_writer()
                 .write_input(local_player_index, ip)
                 .expect("write input");
         }
 
-        let committed_state = battle
+        let committed_state = round
             .committed_state()
             .as_ref()
             .expect("committed state")
             .clone();
-        let last_committed_remote_input = battle.last_committed_remote_input();
+        let last_committed_remote_input = round.last_committed_remote_input();
 
-        let (committed_state, dirty_state, last_input) = match battle.fastforwarder().fastforward(
+        let (committed_state, dirty_state, last_input) = match round.fastforwarder().fastforward(
             &committed_state,
             &input_pairs,
             last_committed_remote_input,
@@ -118,49 +118,49 @@ impl<'a> BattleStateFacadeGuard<'a> {
 
         core.load_state(&dirty_state).expect("load dirty state");
 
-        battle.set_audio_save_state(dirty_state);
+        round.set_audio_save_state(dirty_state);
 
         // const RENDEZVOUS_AUDIO_EVERY: u32 = 10;
         // if current_tick % RENDEZVOUS_AUDIO_EVERY == 0 {
-        //     battle
+        //     round
         //         .wait_for_audio_rendezvous()
         //         .expect("wait for audio rendezvous");
         // }
 
-        battle.set_committed_state(committed_state);
-        battle.set_last_input(last_input);
+        round.set_committed_state(committed_state);
+        round.set_last_input(last_input);
 
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
-            .set_fps_target((game::EXPECTED_FPS as i32 + battle.tps_adjustment()) as f32);
+            .set_fps_target((game::EXPECTED_FPS as i32 + round.tps_adjustment()) as f32);
 
         true
     }
 
     pub async fn set_committed_state(&mut self, state: mgba::state::State) {
-        let battle = self
+        let round = self
             .guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!");
-        if battle.committed_state().is_none() {
-            battle
+            .expect("attempted to get round information while no round was active!");
+        if round.committed_state().is_none() {
+            round
                 .replay_writer()
                 .write_state(&state)
                 .expect("write state");
         }
-        battle.set_committed_state(state);
+        round.set_committed_state(state);
     }
 
     pub async fn fill_input_delay(&mut self, current_tick: u32) {
-        let battle = self
+        let round = self
             .guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!");
-        for i in 0..battle.local_delay() {
-            battle.add_local_input(input::Input {
+            .expect("attempted to get round information while no round was active!");
+        for i in 0..round.local_delay() {
+            round.add_local_input(input::Input {
                 local_tick: current_tick + i,
                 remote_tick: 0,
                 joyflags: 0,
@@ -168,8 +168,8 @@ impl<'a> BattleStateFacadeGuard<'a> {
                 turn: vec![],
             });
         }
-        for i in 0..battle.remote_delay() {
-            battle.add_remote_input(input::Input {
+        for i in 0..round.remote_delay() {
+            round.add_remote_input(input::Input {
                 local_tick: current_tick + i,
                 remote_tick: 0,
                 joyflags: 0,
@@ -182,9 +182,9 @@ impl<'a> BattleStateFacadeGuard<'a> {
     pub async fn send_init(&mut self, init: &[u8]) {
         let local_delay = self
             .guard
-            .battle
+            .round
             .as_ref()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .local_delay();
 
         self.match_
@@ -205,91 +205,91 @@ impl<'a> BattleStateFacadeGuard<'a> {
         };
         log::info!("received remote init: {:?}", init);
 
-        if init.battle_number != self.guard.number {
+        if init.round_number != self.guard.number {
             log::warn!(
-                "expected battle number {} but got {}",
+                "expected round number {} but got {}",
                 self.guard.number,
-                init.battle_number,
+                init.round_number,
             )
         }
 
         self.guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .set_remote_delay(init.input_delay);
 
         Some(init.marshaled)
     }
 
     pub fn is_active(&self) -> bool {
-        self.guard.battle.is_some()
+        self.guard.round.is_some()
     }
 
     pub fn mark_accepting_input(&mut self) {
         self.guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .mark_accepting_input()
     }
 
     pub fn is_accepting_input(&self) -> bool {
         self.guard
-            .battle
+            .round
             .as_ref()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .is_accepting_input()
     }
 
     pub fn local_player_index(&self) -> u8 {
         self.guard
-            .battle
+            .round
             .as_ref()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .local_player_index()
     }
 
     pub fn remote_player_index(&self) -> u8 {
         self.guard
-            .battle
+            .round
             .as_ref()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .remote_player_index()
     }
 
     pub fn take_last_input(&mut self) -> Option<input::Pair<input::Input>> {
         self.guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .take_last_input()
     }
 
     pub fn take_local_pending_turn(&mut self) -> Vec<u8> {
         self.guard
-            .battle
+            .round
             .as_mut()
-            .expect("attempted to get battle information while no battle was active!")
+            .expect("attempted to get round information while no round was active!")
             .take_local_pending_turn()
     }
 
-    pub fn set_won_last_battle(&mut self, did_win: bool) {
-        self.guard.won_last_battle = did_win;
+    pub fn set_won_last_round(&mut self, did_win: bool) {
+        self.guard.won_last_round = did_win;
     }
 }
 
 impl MatchFacade {
-    pub async fn lock_battle_state(&self) -> BattleStateFacadeGuard<'_> {
-        let guard = self.arc.lock_battle_state().await;
-        BattleStateFacadeGuard {
+    pub async fn lock_round_state(&self) -> RoundStateFacadeGuard<'_> {
+        let guard = self.arc.lock_round_state().await;
+        RoundStateFacadeGuard {
             guard,
             match_: self.arc.clone(),
         }
     }
 
-    pub async fn start_battle(&self, core: mgba::core::CoreMutRef<'_>) {
-        self.arc.start_battle(core).await.expect("start battle");
+    pub async fn start_round(&self, core: mgba::core::CoreMutRef<'_>) {
+        self.arc.start_round(core).await.expect("start round");
     }
 
     pub async fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {

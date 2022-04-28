@@ -11,14 +11,14 @@ impl Transport {
 
     pub async fn send_init(
         &self,
-        battle_number: u8,
+        round_number: u8,
         input_delay: u32,
         marshaled: &[u8],
     ) -> anyhow::Result<()> {
         self.dc
             .send(
                 protocol::Packet::Init(protocol::Init {
-                    battle_number,
+                    round_number,
                     input_delay,
                     marshaled: marshaled.to_vec(),
                 })
@@ -31,7 +31,7 @@ impl Transport {
 
     pub async fn send_input(
         &self,
-        battle_number: u8,
+        round_number: u8,
         local_tick: u32,
         remote_tick: u32,
         joyflags: u16,
@@ -41,7 +41,7 @@ impl Transport {
         self.dc
             .send(
                 protocol::Packet::Input(protocol::Input {
-                    battle_number,
+                    round_number,
                     local_tick,
                     remote_tick,
                     joyflags,

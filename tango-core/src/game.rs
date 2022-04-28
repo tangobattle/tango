@@ -240,16 +240,16 @@ impl Game {
                             match match_.upgrade() {
                                 Some(match_) => match &*match_.lock().await {
                                     Some(match_) => Some(gui::MatchDebugStats {
-                                        battle: {
-                                            let battle_state = match_.lock_battle_state().await;
-                                            match &battle_state.battle {
-                                                Some(battle) => Some(gui::BattleDebugStats {
-                                                    local_player_index: battle.local_player_index(),
-                                                    local_qlen: battle.local_queue_length(),
-                                                    remote_qlen: battle.remote_queue_length(),
-                                                    local_delay: battle.local_delay(),
-                                                    remote_delay: battle.remote_delay(),
-                                                    tps_adjustment: battle.tps_adjustment(),
+                                        round: {
+                                            let round_state = match_.lock_round_state().await;
+                                            match &round_state.round {
+                                                Some(round) => Some(gui::RoundDebugStats {
+                                                    local_player_index: round.local_player_index(),
+                                                    local_qlen: round.local_queue_length(),
+                                                    remote_qlen: round.remote_queue_length(),
+                                                    local_delay: round.local_delay(),
+                                                    remote_delay: round.remote_delay(),
+                                                    tps_adjustment: round.tps_adjustment(),
                                                 }),
                                                 None => None,
                                             }

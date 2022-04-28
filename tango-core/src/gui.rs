@@ -100,7 +100,7 @@ pub struct State {
     debug_stats_getter: parking_lot::Mutex<Option<Box<dyn Fn() -> Option<DebugStats>>>>,
 }
 
-pub struct BattleDebugStats {
+pub struct RoundDebugStats {
     pub local_player_index: u8,
     pub local_qlen: usize,
     pub remote_qlen: usize,
@@ -110,7 +110,7 @@ pub struct BattleDebugStats {
 }
 
 pub struct MatchDebugStats {
-    pub battle: Option<BattleDebugStats>,
+    pub round: Option<RoundDebugStats>,
 }
 
 pub struct DebugStats {
@@ -156,7 +156,7 @@ impl State {
                             ui.end_row();
 
                             if let Some(match_debug_stats) = debug_stats.match_ {
-                                if let Some(battle_debug_stats) = match_debug_stats.battle {
+                                if let Some(battle_debug_stats) = match_debug_stats.round {
                                     ui.label("Player index");
                                     ui.label(format!(
                                         "{:.0}",

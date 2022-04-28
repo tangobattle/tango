@@ -45,14 +45,14 @@ pub struct Hola {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Init {
-    pub battle_number: u8,
+    pub round_number: u8,
     pub input_delay: u32,
     pub marshaled: Vec<u8>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Input {
-    pub battle_number: u8,
+    pub round_number: u8,
     pub local_tick: u32,
     pub remote_tick: u32,
     pub joyflags: u16,
