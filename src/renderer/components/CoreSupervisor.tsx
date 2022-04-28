@@ -96,7 +96,13 @@ export function CoreSupervisor({
                   match_type: matchSettings.matchType,
                   matchmaking_connect_addr:
                     configRef.current.matchmakingConnectAddr,
-                  ice_servers: configRef.current.iceServers,
+                  ice_servers: configRef.current.webrtc.iceServers.map(
+                    ({ urls, username, credential }) => ({
+                      urls,
+                      username: username ?? "",
+                      credential: credential ?? "",
+                    })
+                  ),
                   replays_path: matchSettings.replaysPath,
                   replay_metadata: JSON.stringify(matchSettings.replayInfo),
                 },
