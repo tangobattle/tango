@@ -192,6 +192,7 @@ function AboutTab({ active }: { active: boolean }) {
 
 function GeneralTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
+  const { i18n } = useTranslation();
   return (
     <Box
       flexGrow={1}
@@ -213,6 +214,23 @@ function GeneralTab({ active }: { active: boolean }) {
             width: "500px",
           }}
         >
+          <FormControl fullWidth size="small">
+            <InputLabel id="language-label">
+              <Trans i18nKey="settings:language" />
+            </InputLabel>
+            <Select
+              labelId="language-label"
+              value={i18n.resolvedLanguage}
+              onChange={(e) => {
+                i18n.changeLanguage(e.target.value);
+              }}
+              label={<Trans i18nKey="settings:language" />}
+            >
+              <MenuItem value="en">English</MenuItem>
+              <MenuItem value="ja">日本語</MenuItem>
+              <MenuItem value="zh-Hans">简体中文</MenuItem>
+            </Select>
+          </FormControl>
           <FormControl fullWidth size="small">
             <InputLabel id="theme-label">
               <Trans i18nKey="settings:theme" />

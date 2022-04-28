@@ -12,6 +12,7 @@ import { lighten } from "@mui/system/colorManipulator";
 
 import array2d from "../../array2d";
 import * as bn6 from "../../saveedit/bn6";
+import { fallbackLng } from "../i18n";
 
 const NAVICUST_COLORS = {
   red: {
@@ -412,7 +413,9 @@ export default function NavicustViewer({
                         ),
                       }}
                       label={
-                        ncp.name[i18n.resolvedLanguage as keyof typeof ncp.name]
+                        ncp.name[
+                          i18n.resolvedLanguage as keyof typeof ncp.name
+                        ] || ncp.name[fallbackLng as keyof typeof ncp.name]
                       }
                     />,
                   ];
@@ -444,7 +447,9 @@ export default function NavicustViewer({
                         ),
                       }}
                       label={
-                        ncp.name[i18n.resolvedLanguage as keyof typeof ncp.name]
+                        ncp.name[
+                          i18n.resolvedLanguage as keyof typeof ncp.name
+                        ] || ncp.name[fallbackLng as keyof typeof ncp.name]
                       }
                     />,
                   ];

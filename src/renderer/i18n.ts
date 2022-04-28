@@ -4,6 +4,8 @@ import { initReactI18next } from "react-i18next";
 
 import locales from "./locales";
 
+export const fallbackLng = "en";
+
 i18n
   .use({
     type: "backend",
@@ -26,7 +28,7 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    fallbackLng: "en",
+    fallbackLng,
     ns: Object.keys(locales.en.default),
     defaultNS: "common",
 

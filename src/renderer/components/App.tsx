@@ -1,4 +1,5 @@
 import React, { Suspense } from "react";
+import { withTranslation } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -16,7 +17,7 @@ import { ROMsProvider } from "./ROMsContext";
 import { SavesProvider } from "./SavesContext";
 import { TempDirProvider } from "./TempDirContext";
 
-function AppBody() {
+const AppBody = withTranslation()(() => {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
 
   const { config } = useConfig();
@@ -61,7 +62,7 @@ function AppBody() {
       </Box>
     </ThemeProvider>
   );
-}
+});
 
 export default function App() {
   return (

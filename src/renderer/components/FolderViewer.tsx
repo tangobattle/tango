@@ -11,6 +11,7 @@ import Tooltip from "@mui/material/Tooltip";
 import useTheme from "@mui/system/useTheme";
 
 import * as bn6 from "../../saveedit/bn6";
+import { fallbackLng } from "../i18n";
 
 const MEGA_BG = {
   dark: "#52849c",
@@ -75,12 +76,17 @@ function FolderChipRow({
           title={
             chipInfo.description[
               i18n.resolvedLanguage as keyof typeof chipInfo.description
+            ] ||
+            chipInfo.description[
+              fallbackLng as keyof typeof chipInfo.description
             ]
           }
           placement="right"
         >
           <span>
-            {chipInfo.name[i18n.resolvedLanguage as keyof typeof chipInfo.name]}{" "}
+            {chipInfo.name[
+              i18n.resolvedLanguage as keyof typeof chipInfo.name
+            ] || chipInfo.name[fallbackLng as keyof typeof chipInfo.name]}{" "}
             {code}
           </span>
         </Tooltip>{" "}

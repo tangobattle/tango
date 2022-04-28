@@ -10,6 +10,7 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 
 import * as bn6 from "../../saveedit/bn6";
+import { fallbackLng } from "../i18n";
 
 const DEBUFF_COLOR = "#b55ade";
 const BUFF_COLOR = "#ffbd18";
@@ -47,11 +48,10 @@ export default function ModcardsViewer({
             return (
               <TableRow key={i}>
                 <TableCell>
-                  {
-                    modcard.name[
-                      i18n.resolvedLanguage as keyof typeof modcard.name
-                    ]
-                  }{" "}
+                  {modcard.name[
+                    i18n.resolvedLanguage as keyof typeof modcard.name
+                  ] ||
+                    modcard.name[fallbackLng as keyof typeof modcard.name]}{" "}
                   <small>{modcard.mb}MB</small>
                 </TableCell>
                 <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
@@ -65,7 +65,7 @@ export default function ModcardsViewer({
                               label={
                                 l.name[
                                   i18n.resolvedLanguage as keyof typeof l.name
-                                ]
+                                ] || l.name[fallbackLng as keyof typeof l.name]
                               }
                               size="small"
                               sx={{
@@ -95,7 +95,7 @@ export default function ModcardsViewer({
                               label={
                                 l.name[
                                   i18n.resolvedLanguage as keyof typeof l.name
-                                ]
+                                ] || l.name[fallbackLng as keyof typeof l.name]
                               }
                               size="small"
                               sx={{
