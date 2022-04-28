@@ -1,14 +1,35 @@
 #[derive(Clone, Copy)]
 pub(super) struct EWRAMOffsets {
+    /// Player input data, indexed by player index. Layout is documented in the munger.
     pub(super) player_input_data_arr: u32,
+
+    /// Location of the battle state struct in memory.
     pub(super) battle_state: u32,
+
+    /// Transmit buffer for battle initialization and turn start data. This is 255 bytes in size.
     pub(super) tx_buf: u32,
+
+    /// Receive buffer array, indexed by player index.
+    ///
+    /// Each entry is 255 bytes in size.
     pub(super) rx_buf_arr: u32,
+
+    /// Start screen jump table control.
     pub(super) start_screen_control: u32,
+
+    /// Title menu jump table control.
     pub(super) title_menu_control: u32,
+
+    /// START menu control.
     pub(super) menu_control: u32,
+
+    /// START menu submenu (e.g. comm menu) control.
     pub(super) submenu_control: u32,
+
+    /// Local RNG state. Doesn't need to be synced.
     pub(super) rng1_state: u32,
+
+    /// Shared RNG state. Must be synced.
     pub(super) rng2_state: u32,
 }
 
@@ -21,7 +42,7 @@ pub(super) struct ROMOffsets {
 
     /// This is immediately after SRAM is copied to EWRAM and unmasked.
     ///
-    /// At this point, it is safe to do the equivalent of hitting the CONTINUE button.
+    /// At this point, it is safe to do the equivalent of selecting the CONTINUE on the START menu.
     pub(super) start_screen_sram_unmask_ret: u32,
 
     /// This is immediately after game initialization is complete: that is, the internal state is set correctly.
@@ -115,36 +136,15 @@ pub(super) struct ROMOffsets {
 }
 
 static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
-    /// Player input data, indexed by player index. Layout is documented in the munger.
     player_input_data_arr: 0x02036820,
-
-    /// Location of the battle state struct in memory.
     battle_state: 0x02034880,
-
-    /// Transmit buffer. This is 255 bytes in size.
     tx_buf: 0x0203cbe0,
-
-    /// Receive buffer array, indexed by player index.
-    ///
-    /// Each entry is 255 bytes in size.
     rx_buf_arr: 0x0203f4a0,
-
-    /// Start screen jump table control.
     start_screen_control: 0x02011800,
-
-    /// Title menu jump table control.
     title_menu_control: 0x0200ad10,
-
-    /// START menu control.
     menu_control: 0x0200df20,
-
-    /// START menu submenu (e.g. comm menu) control.
     submenu_control: 0x02009a30,
-
-    /// Local RNG state. Doesn't need to be synced.
     rng1_state: 0x02001120,
-
-    /// Shared RNG state. Must be synced.
     rng2_state: 0x020013f0,
 };
 
