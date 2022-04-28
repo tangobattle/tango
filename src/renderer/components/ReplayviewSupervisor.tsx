@@ -108,7 +108,9 @@ export default function ReplayviewSupervisor({
 
       proc.on("exit", (exitCode, signalCode) => {
         setStderr((stderr) => {
-          stderr.push(`\nexited with ${{ exitCode, signalCode }}\n`);
+          stderr.push(
+            `\nexited with ${JSON.stringify({ exitCode, signalCode })}\n`
+          );
           return stderr;
         });
         if (exitCode == 0 || signalCode == "SIGTERM") {

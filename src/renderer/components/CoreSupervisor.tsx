@@ -113,7 +113,7 @@ export function CoreSupervisor({
       );
       core.on("exit", (exitStatus) => {
         setStderr((stderr) => {
-          stderr.push(`\nexited with ${exitStatus}\n`);
+          stderr.push(`\nexited with ${JSON.stringify(exitStatus)}\n`);
           return stderr;
         });
         if (exitStatus.exitCode == 0 || exitStatus.signalCode == "SIGTERM") {

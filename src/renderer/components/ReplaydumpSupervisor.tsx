@@ -128,7 +128,9 @@ export default function ReplaydumpSupervisor({
 
       proc.on("exit", (exitCode, signalCode) => {
         setStderr((stderr) => {
-          stderr.push(`\nexited with ${{ exitCode, signalCode }}\n`);
+          stderr.push(
+            `\nexited with ${JSON.stringify({ exitCode, signalCode })}\n`
+          );
           return stderr;
         });
         if (signalCode == "SIGTERM") {

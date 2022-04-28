@@ -70,6 +70,12 @@ export class Core extends EventEmitter {
       }
 
       await this!._exitPromise;
+      // eslint-disable-next-line no-console
+      console.info(
+        `core exited with ${this!._proc.exitCode}, signal code = ${
+          this!._proc.signalCode
+        }`
+      );
       this!.emit("exit", {
         exitCode: this!._proc.exitCode,
         signalCode: this!._proc.signalCode,
