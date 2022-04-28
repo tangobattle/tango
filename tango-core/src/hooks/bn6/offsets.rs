@@ -103,7 +103,7 @@ pub(super) struct ROMOffsets {
     /// This should never be called.
     pub(super) comm_menu_handle_link_cable_input_entry: u32,
 
-    /// This handles link cable SIO in the comm menu.
+    /// This handles in-battle link cable SIO in the comm menu.
     ///
     /// This should be skipped.
     pub(super) comm_menu_in_battle_call_comm_menu_handle_link_cable_input: u32,
