@@ -54,6 +54,7 @@ export function ensureSync(path: string) {
   try {
     return { ...DEFAULT, ...JSON.parse(data.toString()) } as Config;
   } catch {
+    writeFileSync(path, JSON.stringify(DEFAULT, null, 4) + "\n");
     return DEFAULT;
   }
 }
