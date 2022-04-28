@@ -112,6 +112,10 @@ export function CoreSupervisor({
         }
       );
       core.on("exit", (exitStatus) => {
+        setStderr((stderr) => {
+          stderr.push(`\nexited with ${exitStatus}\n`);
+          return stderr;
+        });
         if (exitStatus.exitCode == 0 || exitStatus.signalCode == "SIGTERM") {
           onExitRef.current();
         } else {

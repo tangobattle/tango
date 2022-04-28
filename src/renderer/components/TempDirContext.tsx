@@ -50,7 +50,7 @@ export const TempDirProvider = ({
   return <Context.Provider value={{ tempDir }}>{children}</Context.Provider>;
 };
 
-export const ConfigConsumer = Context.Consumer;
+export const TempDirContext = Context.Consumer;
 
 export function useTempDir() {
   return useContext(Context);

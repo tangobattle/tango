@@ -106,8 +106,12 @@ export default function ReplayviewSupervisor({
         setExitLingering(true);
       });
 
-      proc.on("exit", (code, signal) => {
-        if (code == 0 || signal == "SIGTERM") {
+      proc.on("exit", (exitCode, signalCode) => {
+        setStderr((stderr) => {
+          stderr.push(`\nexited with ${{ exitCode, signalCode }}\n`);
+          return stderr;
+        });
+        if (exitCode == 0 || signalCode == "SIGTERM") {
           onExitRef.current();
         } else {
           setExitLingering(true);
