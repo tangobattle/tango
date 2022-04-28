@@ -287,8 +287,8 @@ impl Match {
                     .expect("sync")
                     .set_fps_target(game::EXPECTED_FPS as f32);
                 core.load_state(&save_state).expect("load state");
-                audio_core_mux_handle.switch();
             });
+            audio_core_mux_handle.switch();
         }
         audio_core_handle.unpause();
 
