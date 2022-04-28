@@ -46,12 +46,6 @@ impl Game {
         save_path: std::path::PathBuf,
         match_settings: Option<battle::Settings>,
     ) -> Result<Game, anyhow::Error> {
-        log::info!(
-            "wgpu adapters: {:?}",
-            wgpu::Instance::new(wgpu::Backends::all())
-                .enumerate_adapters(wgpu::Backends::all())
-                .collect::<Vec<_>>()
-        );
         let audio_device = cpal::default_host()
             .default_output_device()
             .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
