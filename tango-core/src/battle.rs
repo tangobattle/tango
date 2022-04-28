@@ -252,18 +252,17 @@ impl Match {
         let replay_file = std::fs::File::create(&replay_filename)?;
         log::info!("opened replay: {}", replay_filename.display());
 
+        log::info!("starting audio core");
         let mut audio_core = mgba::core::Core::new_gba("tango")?;
         let audio_save_state_holder = std::sync::Arc::new(parking_lot::Mutex::new(None));
-        let (audio_rendezvous_tx, audio_rendezvous_rx) = std::sync::mpsc::sync_channel(0);
         let rom_vf = mgba::vfile::VFile::open(&self.rom_path, mgba::vfile::flags::O_RDONLY)?;
         audio_core.as_mut().load_rom(rom_vf)?;
-        audio_core.as_mut().reset();
         audio_core.set_traps(self.hooks.audio_traps(facade::AudioFacade::new(
             audio_save_state_holder.clone(),
-            std::sync::Arc::new(audio_rendezvous_rx),
             local_player_index,
         )));
 
+        log::info!("starting audio thread");
         let audio_core_thread = mgba::thread::Thread::new(audio_core);
         audio_core_thread.start()?;
         let audio_core_handle = audio_core_thread.handle();
@@ -276,6 +275,8 @@ impl Match {
                     self.audio_supported_config.sample_rate(),
                     self.audio_supported_config.channels(),
                 ));
+
+        log::info!("loading our state into audio core");
         {
             let audio_core_mux_handle = audio_core_mux_handle.clone();
             let save_state = core.save_state()?;
@@ -290,6 +291,8 @@ impl Match {
             });
         }
         audio_core_handle.unpause();
+
+        log::info!("preparing battle state");
 
         let (state_committed_tx, state_committed_rx) = tokio::sync::oneshot::channel();
         battle_state.battle = Some(Battle {
@@ -307,7 +310,6 @@ impl Match {
             last_input: None,
             state_committed_tx: Some(state_committed_tx),
             state_committed_rx: Some(state_committed_rx),
-            audio_rendezvous_tx,
             committed_state: None,
             local_pending_turn: None,
             replay_writer: replay::Writer::new(
@@ -344,7 +346,6 @@ pub struct Battle {
     last_input: Option<input::Pair<input::Input>>,
     state_committed_tx: Option<tokio::sync::oneshot::Sender<()>>,
     state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
-    audio_rendezvous_tx: std::sync::mpsc::SyncSender<()>,
     committed_state: Option<mgba::state::State>,
     local_pending_turn: Option<LocalPendingTurn>,
     replay_writer: replay::Writer,
@@ -381,11 +382,6 @@ impl Battle {
 
     pub fn set_audio_save_state(&mut self, state: mgba::state::State) {
         *self.audio_save_state_holder.lock() = Some(state);
-    }
-
-    pub fn wait_for_audio_rendezvous(&mut self) -> anyhow::Result<()> {
-        self.audio_rendezvous_tx.send(())?;
-        Ok(())
     }
 
     pub fn set_last_input(&mut self, inp: input::Pair<input::Input>) {

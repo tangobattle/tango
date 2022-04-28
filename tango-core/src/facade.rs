@@ -357,19 +357,16 @@ impl Facade {
 #[derive(Clone)]
 pub struct AudioFacade {
     audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
-    audio_rendezvous_rx: std::sync::Arc<std::sync::mpsc::Receiver<()>>,
     local_player_index: u8,
 }
 
 impl AudioFacade {
     pub fn new(
         audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
-        audio_rendezvous_rx: std::sync::Arc<std::sync::mpsc::Receiver<()>>,
         local_player_index: u8,
     ) -> Self {
         Self {
             audio_save_state_holder,
-            audio_rendezvous_rx,
             local_player_index,
         }
     }
