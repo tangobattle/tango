@@ -12,6 +12,13 @@ pub struct Args {
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
+pub struct ICEServer {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub struct MatchSettings {
     pub session_id: String,
     pub input_delay: u32,
@@ -19,7 +26,7 @@ pub struct MatchSettings {
     pub replays_path: String,
     pub replay_metadata: String,
     pub matchmaking_connect_addr: String,
-    pub ice_servers: Vec<String>,
+    pub ice_servers: Vec<ICEServer>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]

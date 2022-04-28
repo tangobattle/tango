@@ -31,26 +31,16 @@ fn main() -> Result<(), anyhow::Error> {
                 input_delay: s.input_delay,
                 ice_servers: s
                     .ice_servers
-                    .iter()
-                    .map(|url| {
-                        let url = url::Url::parse(url)?;
-                        Ok(webrtc::ice_transport::ice_server::RTCIceServer {
-                            urls: vec![format!(
-                                "{}:{}{}{}",
-                                url.scheme(),
-                                url.host_str()
-                                    .ok_or_else(|| anyhow::anyhow!("missing host: {}", url))?,
-                                url.port()
-                                    .map_or_else(|| "".to_owned(), |x| format!(":{}", x)),
-                                url.query()
-                                    .map_or_else(|| "".to_owned(), |x| format!("?{}", x))
-                            )],
-                            username: url.username().to_owned(),
-                            credential: url.password().unwrap_or("").to_owned(),
+                    .into_iter()
+                    .map(
+                        |ice_server| webrtc::ice_transport::ice_server::RTCIceServer {
+                            urls: ice_server.urls,
+                            username: ice_server.username,
+                            credential: ice_server.credential,
                             ..Default::default()
-                        })
-                    })
-                    .collect::<Result<Vec<_>, anyhow::Error>>()?,
+                        },
+                    )
+                    .collect::<Vec<_>>(),
             })
         })
         .map_or(Ok(None), |r| r.map(Some))?;
