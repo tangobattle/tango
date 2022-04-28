@@ -302,20 +302,20 @@ function AdvancedTab({ active }: { active: boolean }) {
               </MenuItem>
             </Select>
           </FormControl>
-          <FormControl fullWidth size="small">
-            <TextField
-              value={config.rustLogFilter}
-              onChange={(e) => {
-                (async () => {
-                  saveConfig((config) => ({
-                    ...config,
-                    rustLogFilter: e.target.value,
-                  }));
-                })();
-              }}
-              label={<Trans i18nKey="settings:rust-log-filter" />}
-            />
-          </FormControl>
+          <TextField
+            size="small"
+            fullWidth
+            value={config.rustLogFilter}
+            onChange={(e) => {
+              (async () => {
+                saveConfig((config) => ({
+                  ...config,
+                  rustLogFilter: e.target.value,
+                }));
+              })();
+            }}
+            label={<Trans i18nKey="settings:rust-log-filter" />}
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="update-channel-label">
               <Trans i18nKey="settings:update-channel" />
