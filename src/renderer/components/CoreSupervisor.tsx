@@ -96,13 +96,7 @@ export function CoreSupervisor({
                   match_type: matchSettings.matchType,
                   matchmaking_connect_addr:
                     configRef.current.matchmakingConnectAddr,
-                  ice_servers: configRef.current.webrtc.iceServers.map(
-                    ({ urls, username, credential }) => ({
-                      urls,
-                      username: username ?? "",
-                      credential: credential ?? "",
-                    })
-                  ),
+                  ice_servers: configRef.current.iceServers,
                   replays_path: matchSettings.replaysPath,
                   replay_metadata: JSON.stringify(matchSettings.replayInfo),
                 },
@@ -114,6 +108,7 @@ export function CoreSupervisor({
                 ? configRef.current.wgpuBackend
                 : undefined,
             RUST_LOG: configRef.current.rustLogFilter,
+            RUST_BACKTRACE: "1",
           },
           signal: abortControllerRef.current.signal,
         }

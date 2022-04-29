@@ -11,13 +11,7 @@ export interface Config {
   rustLogFilter: string;
   keymapping: ipc.Args["keymapping"];
   matchmakingConnectAddr: string;
-  webrtc: {
-    iceServers: {
-      urls: string[];
-      username?: string;
-      credential?: string;
-    }[];
-  };
+  iceServers: string[];
 }
 
 export const DEFAULT: Config = {
@@ -39,25 +33,13 @@ export const DEFAULT: Config = {
     start: "Return",
   },
   matchmakingConnectAddr: "wss://mm.tango.murk.land",
-  webrtc: {
-    iceServers: [
-      {
-        urls: ["stun:stun.l.google.com:19302"],
-      },
-      {
-        urls: ["stun:stun1.l.google.com:19302"],
-      },
-      {
-        urls: ["stun:stun2.l.google.com:19302"],
-      },
-      {
-        urls: ["stun:stun3.l.google.com:19302"],
-      },
-      {
-        urls: ["stun:stun4.l.google.com:19302"],
-      },
-    ],
-  },
+  iceServers: [
+    "stun://stun.l.google.com:19302",
+    "stun://stun1.l.google.com:19302",
+    "stun://stun2.l.google.com:19302",
+    "stun://stun3.l.google.com:19302",
+    "stun://stun4.l.google.com:19302",
+  ],
 };
 
 export function ensureSync(path: string) {

@@ -79,6 +79,7 @@ export default function ReplayviewSupervisor({
                 ? configRef.current.wgpuBackend
                 : undefined,
             RUST_LOG: configRef.current.rustLogFilter,
+            RUST_BACKTRACE: "1",
           },
           signal: abortControllerRef.current.signal,
         }
