@@ -4,7 +4,6 @@ set -x
 
 TANGO_CORE_VERSION="3.0.0-alpha.7"
 TANGO_CORE_PLATFORM="x86_64-pc-windows-gnu"
-FFMPEG_VERSION="2022-04-21-git-83e1a1de88"
 
 tempdir="$(mktemp -d)"
 trap 'rm -rf -- "$tempdir"' EXIT
@@ -16,10 +15,10 @@ pushd bin
 unzip "${tempdir}/tango-core.zip"
 popd
 
-curl -L -o "${tempdir}/ffmpeg.7z" https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-${FFMPEG_VERSION}-essentials_build.7z
+curl -L -o "${tempdir}/ffmpeg.7z" "https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-essentials.7z"
 mkdir "${tempdir}/ffmpeg"
 pushd "${tempdir}/ffmpeg"
 7z x ../ffmpeg.7z
 popd
 
-cp "${tempdir}/ffmpeg/ffmpeg-${FFMPEG_VERSION}-essentials_build/bin/ffmpeg.exe" bin
+cp "${tempdir}"/ffmpeg/ffmpeg-*-essentials_build/bin/ffmpeg.exe bin
