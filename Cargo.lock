@@ -766,7 +766,7 @@ dependencies = [
 [[package]]
 name = "datachannel"
 version = "0.7.5"
-source = "git+https://github.com/bigfarts/datachannel-rs?rev=0ec6f9a0d63c733ae303463ba8da2a263f7e43f1#0ec6f9a0d63c733ae303463ba8da2a263f7e43f1"
+source = "git+https://github.com/bigfarts/datachannel-rs?rev=7071a240e734a99be0697b777ce367b668b85ec0#7071a240e734a99be0697b777ce367b668b85ec0"
 dependencies = [
  "datachannel-sys",
  "derivative",
@@ -779,7 +779,7 @@ dependencies = [
 [[package]]
 name = "datachannel-sys"
 version = "0.16.7"
-source = "git+https://github.com/bigfarts/datachannel-rs?rev=0ec6f9a0d63c733ae303463ba8da2a263f7e43f1#0ec6f9a0d63c733ae303463ba8da2a263f7e43f1"
+source = "git+https://github.com/bigfarts/datachannel-rs?rev=7071a240e734a99be0697b777ce367b668b85ec0#7071a240e734a99be0697b777ce367b668b85ec0"
 dependencies = [
  "bindgen 0.59.2",
  "cmake",

@@ -10,4 +10,4 @@ members = [
 ]
 
 [patch.crates-io]
-datachannel = { git = "https://github.com/bigfarts/datachannel-rs", rev = "0ec6f9a0d63c733ae303463ba8da2a263f7e43f1" }
+datachannel = { git = "https://github.com/bigfarts/datachannel-rs", rev = "7071a240e734a99be0697b777ce367b668b85ec0" }
