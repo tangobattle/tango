@@ -1,4 +1,4 @@
-use crate::{audio, battle, current_input, facade, gui, hooks, ipc, negotiation, tps};
+use crate::{audio, battle, facade, gui, hooks, ipc, negotiation, tps};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -30,7 +30,6 @@ pub struct Game {
     window: winit::window::Window,
     pixels: pixels::Pixels,
     vbuf: Arc<Mutex<Vec<u8>>>,
-    current_input: std::rc::Rc<std::cell::RefCell<current_input::CurrentInput>>,
     _stream: cpal::Stream,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     keymapping: Keymapping,
@@ -75,9 +74,6 @@ impl Game {
         };
 
         let event_loop = Some(winit::event_loop::EventLoop::new());
-
-        let current_input =
-            std::rc::Rc::new(std::cell::RefCell::new(current_input::CurrentInput::new()));
 
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
@@ -276,7 +272,6 @@ impl Game {
             _primary_mux_handle: primary_mux_handle,
             keymapping,
             fps_counter,
-            current_input,
             event_loop,
             window,
             pixels,
@@ -295,7 +290,7 @@ impl Game {
             anyhow::Result::<()>::Ok(())
         })?;
 
-        let current_input = self.current_input.clone();
+        let mut console_key_pressed = false;
 
         self.event_loop
             .take()
@@ -309,6 +304,71 @@ impl Game {
                         ..
                     } => {
                         match window_event {
+                            winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                                let mut keymask = 0u32;
+                                if input.virtual_keycode == Some(self.keymapping.left) {
+                                    keymask |= mgba::input::keys::LEFT;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.right) {
+                                    keymask |= mgba::input::keys::RIGHT;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.up) {
+                                    keymask |= mgba::input::keys::UP;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.down) {
+                                    keymask |= mgba::input::keys::DOWN;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.a) {
+                                    keymask |= mgba::input::keys::A;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.b) {
+                                    keymask |= mgba::input::keys::B;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.l) {
+                                    keymask |= mgba::input::keys::L;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.r) {
+                                    keymask |= mgba::input::keys::R;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.start) {
+                                    keymask |= mgba::input::keys::START;
+                                }
+                                if input.virtual_keycode == Some(self.keymapping.select) {
+                                    keymask |= mgba::input::keys::SELECT;
+                                }
+
+                                match input.state {
+                                    winit::event::ElementState::Pressed => {
+                                        self.joyflags.fetch_or(
+                                            keymask,
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                    }
+                                    winit::event::ElementState::Released => {
+                                        self.joyflags.fetch_and(
+                                            !keymask,
+                                            std::sync::atomic::Ordering::Relaxed,
+                                        );
+                                    }
+                                }
+
+                                if input.virtual_keycode
+                                    == Some(winit::event::VirtualKeyCode::Grave)
+                                {
+                                    match input.state {
+                                        winit::event::ElementState::Pressed => {
+                                            if console_key_pressed {
+                                                return;
+                                            }
+                                            console_key_pressed = true;
+                                            self.gui.state().toggle_debug();
+                                        }
+                                        winit::event::ElementState::Released => {
+                                            console_key_pressed = false;
+                                        }
+                                    }
+                                }
+                            }
                             winit::event::WindowEvent::CloseRequested => {
                                 *control_flow = winit::event_loop::ControlFlow::Exit;
                             }
@@ -319,58 +379,9 @@ impl Game {
                             _ => {}
                         };
 
-                        let mut current_input = current_input.borrow_mut();
-                        current_input.handle_event(window_event);
                         self.gui.handle_event(window_event);
                     }
                     winit::event::Event::MainEventsCleared => {
-                        let mut current_input = current_input.borrow_mut();
-
-                        let mut keys = 0u32;
-                        if current_input.key_held[self.keymapping.left as usize] {
-                            keys |= mgba::input::keys::LEFT;
-                        }
-                        if current_input.key_held[self.keymapping.right as usize] {
-                            keys |= mgba::input::keys::RIGHT;
-                        }
-                        if current_input.key_held[self.keymapping.up as usize] {
-                            keys |= mgba::input::keys::UP;
-                        }
-                        if current_input.key_held[self.keymapping.down as usize] {
-                            keys |= mgba::input::keys::DOWN;
-                        }
-                        if current_input.key_held[self.keymapping.a as usize] {
-                            keys |= mgba::input::keys::A;
-                        }
-                        if current_input.key_held[self.keymapping.b as usize] {
-                            keys |= mgba::input::keys::B;
-                        }
-                        if current_input.key_held[self.keymapping.l as usize] {
-                            keys |= mgba::input::keys::L;
-                        }
-                        if current_input.key_held[self.keymapping.r as usize] {
-                            keys |= mgba::input::keys::R;
-                        }
-                        if current_input.key_held[self.keymapping.start as usize] {
-                            keys |= mgba::input::keys::START;
-                        }
-                        if current_input.key_held[self.keymapping.select as usize] {
-                            keys |= mgba::input::keys::SELECT;
-                        }
-                        if current_input.key_actions.iter().any(|action| {
-                            matches!(
-                                action,
-                                current_input::KeyAction::Pressed(
-                                    winit::event::VirtualKeyCode::Grave,
-                                )
-                            )
-                        }) {
-                            self.gui.state().toggle_debug();
-                        }
-
-                        self.joyflags
-                            .store(keys, std::sync::atomic::Ordering::Relaxed);
-
                         let vbuf = self.vbuf.lock().clone();
                         self.pixels.get_frame().copy_from_slice(&vbuf);
 
@@ -383,8 +394,6 @@ impl Game {
                             })
                             .expect("render pixels");
                         self.fps_counter.lock().mark();
-
-                        current_input.step();
                     }
                     _ => {}
                 }

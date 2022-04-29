@@ -3,7 +3,6 @@ extern crate lazy_static;
 
 pub mod audio;
 pub mod battle;
-pub mod current_input;
 pub mod facade;
 pub mod fastforwarder;
 pub mod game;
