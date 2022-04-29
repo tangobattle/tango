@@ -1,12 +1,6 @@
 #![windows_subsystem = "windows"]
 
 fn main() -> Result<(), anyhow::Error> {
-    let args = tango_core::ipc::Args::parse(
-        &std::env::args()
-            .nth(1)
-            .ok_or_else(|| anyhow::anyhow!("missing startup args"))?,
-    )?;
-
     env_logger::Builder::from_default_env()
         .filter(Some("tango_core"), log::LevelFilter::Info)
         .init();
@@ -16,6 +10,12 @@ fn main() -> Result<(), anyhow::Error> {
         env!("CARGO_PKG_VERSION"),
         git_version::git_version!()
     );
+
+    let args = tango_core::ipc::Args::parse(
+        &std::env::args()
+            .nth(1)
+            .ok_or_else(|| anyhow::anyhow!("missing startup args"))?,
+    )?;
 
     mgba::log::init();
 
