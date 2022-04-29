@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["mgba", "tango-core", "tango-matchmaking", "mgba-sys", "keymaptool"]
+members = [
+    "mgba",
+    "tango-core",
+    "tango-matchmaking",
+    "mgba-sys",
+    "keymaptool",
+    "datachannel-wrapper",
+]
 
 [patch.crates-io]
-webrtc-util = { git = "https://github.com/webrtc-rs/util", rev = "2d193c0fd146e4d48ce63d07dbd085702b60aac2" }
+datachannel = { git = "https://github.com/bigfarts/datachannel-rs", rev = "0ec6f9a0d63c733ae303463ba8da2a263f7e43f1" }

@@ -118,7 +118,8 @@ async fn handle_connection(
                         session.sinks[1 - me]
                             .send(tokio_tungstenite::tungstenite::Message::Binary(
                                 protocol::Packet::ICECandidate(protocol::ICECandidate {
-                                    ice_candidate: ice_candidate.ice_candidate,
+                                    candidate: ice_candidate.candidate,
+                                    mid: ice_candidate.mid,
                                 })
                                 .serialize()?,
                             ))

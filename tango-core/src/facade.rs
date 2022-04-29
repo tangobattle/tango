@@ -63,8 +63,6 @@ impl<'a> RoundStateFacadeGuard<'a> {
 
         if let Err(e) = self
             .match_
-            .transport()
-            .expect("transport not available")
             .send_input(
                 round_number,
                 local_tick,
@@ -188,8 +186,6 @@ impl<'a> RoundStateFacadeGuard<'a> {
             .local_delay();
 
         self.match_
-            .transport()
-            .expect("no transport")
             .send_init(self.guard.number, local_delay, init)
             .await
             .expect("send init");

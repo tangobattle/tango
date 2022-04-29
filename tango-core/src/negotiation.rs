@@ -1,4 +1,4 @@
-use crate::{datachannel, ipc, protocol};
+use crate::{ipc, protocol};
 use rand::Rng;
 use rand::SeedableRng;
 use sha3::digest::ExtendableOutput;
@@ -7,9 +7,8 @@ use std::io::Write;
 use subtle::ConstantTimeEq;
 
 pub struct Negotiation {
-    pub dc: std::sync::Arc<datachannel::DataChannel>,
-    pub peer_conn: webrtc::peer_connection::RTCPeerConnection,
-    pub side: tango_matchmaking::client::ConnectionSide,
+    pub dc: datachannel_wrapper::DataChannel,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
     pub rng: rand_pcg::Mcg128Xsl64,
 }
 
@@ -30,14 +29,14 @@ impl From<anyhow::Error> for Error {
     }
 }
 
-impl From<webrtc::Error> for Error {
-    fn from(err: webrtc::Error) -> Self {
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Self {
         Error::Other(err.into())
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
+impl From<datachannel_wrapper::Error> for Error {
+    fn from(err: datachannel_wrapper::Error) -> Self {
         Error::Other(err.into())
     }
 }
@@ -75,54 +74,49 @@ pub async fn negotiate(
     ipc_client: &mut ipc::Client,
     session_id: &str,
     matchmaking_connect_addr: &str,
-    ice_servers: &[webrtc::ice_transport::ice_server::RTCIceServer],
+    ice_servers: &[String],
 ) -> Result<Negotiation, Error> {
     log::info!("negotiating match, session_id = {}", session_id);
     ipc_client
         .send_notification(ipc::Notification::State(ipc::State::Waiting))
         .await?;
 
-    let api = webrtc::api::APIBuilder::new().build();
-    let (peer_conn, dc, side) = tango_matchmaking::client::connect(
+    let (mut peer_conn, signal_receiver) =
+        datachannel_wrapper::PeerConnection::new(datachannel_wrapper::RtcConfig::new(ice_servers))?;
+
+    let dc = peer_conn.create_data_channel(
+        "tango",
+        datachannel_wrapper::DataChannelInit::default()
+            .reliability(datachannel_wrapper::Reliability {
+                unordered: false,
+                unreliable: false,
+                max_packet_life_time: 0,
+                max_retransmits: 0,
+            })
+            .negotiated()
+            .manual_stream()
+            .stream(0),
+    )?;
+
+    tango_matchmaking::client::connect(
         &matchmaking_connect_addr,
-        || async {
-            let peer_conn = api
-                .new_peer_connection(webrtc::peer_connection::configuration::RTCConfiguration {
-                    ice_servers: ice_servers.to_owned(),
-                    ..Default::default()
-                })
-                .await?;
-            let dc = peer_conn
-                .create_data_channel(
-                    "tango",
-                    Some(
-                        webrtc::data_channel::data_channel_init::RTCDataChannelInit {
-                            id: Some(1),
-                            negotiated: Some(true),
-                            ordered: Some(true),
-                            ..Default::default()
-                        },
-                    ),
-                )
-                .await?;
-            Ok((peer_conn, dc))
-        },
+        &mut peer_conn,
+        signal_receiver,
         &session_id,
     )
     .await?;
-    let dc = datachannel::DataChannel::new(dc).await;
+
+    let (mut dc_rx, mut dc_tx) = dc.split();
 
     log::info!(
-        "local sdp: {}",
-        peer_conn.local_description().await.expect("local sdp").sdp
+        "local sdp (type = {:?}): {}",
+        peer_conn.local_description().expect("local sdp").sdp_type,
+        peer_conn.local_description().expect("local sdp").sdp
     );
     log::info!(
-        "remote sdp: {}",
-        peer_conn
-            .remote_description()
-            .await
-            .expect("remote sdp")
-            .sdp
+        "remote sdp (type = {:?}): {}",
+        peer_conn.remote_description().expect("remote sdp").sdp_type,
+        peer_conn.remote_description().expect("remote sdp").sdp
     );
 
     ipc_client
@@ -134,19 +128,20 @@ pub async fn negotiate(
 
     log::info!("our nonce={:?}, commitment={:?}", nonce, commitment);
 
-    dc.send(
-        protocol::Packet::Hello(protocol::Hello {
-            protocol_version: protocol::VERSION,
-            rng_commitment: commitment.to_vec(),
-        })
-        .serialize()
-        .expect("serialize")
-        .as_slice(),
-    )
-    .await?;
+    dc_tx
+        .send(
+            protocol::Packet::Hello(protocol::Hello {
+                protocol_version: protocol::VERSION,
+                rng_commitment: commitment.to_vec(),
+            })
+            .serialize()
+            .expect("serialize")
+            .as_slice(),
+        )
+        .await?;
 
     let hello = match protocol::Packet::deserialize(
-        match dc.receive().await {
+        match dc_rx.receive().await {
             Some(d) => d,
             None => {
                 return Err(Error::ExpectedHello);
@@ -172,18 +167,19 @@ pub async fn negotiate(
         return Err(Error::ProtocolVersionMismatch);
     }
 
-    dc.send(
-        protocol::Packet::Hola(protocol::Hola {
-            rng_nonce: nonce.to_vec(),
-        })
-        .serialize()
-        .expect("serialize")
-        .as_slice(),
-    )
-    .await?;
+    dc_tx
+        .send(
+            protocol::Packet::Hola(protocol::Hola {
+                rng_nonce: nonce.to_vec(),
+            })
+            .serialize()
+            .expect("serialize")
+            .as_slice(),
+        )
+        .await?;
 
     let hola = match protocol::Packet::deserialize(
-        match dc.receive().await {
+        match dc_rx.receive().await {
             Some(d) => d,
             None => {
                 return Err(Error::ExpectedHola);
@@ -215,9 +211,8 @@ pub async fn negotiate(
         .collect::<Vec<u8>>();
 
     Ok(Negotiation {
-        dc,
+        dc: dc_rx.unsplit(dc_tx),
         peer_conn,
-        side,
         rng: rand_pcg::Mcg128Xsl64::from_seed(seed.try_into().expect("rng seed")),
     })
 }

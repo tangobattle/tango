@@ -29,18 +29,7 @@ fn main() -> Result<(), anyhow::Error> {
                 replays_path: s.replays_path.into(),
                 match_type: s.match_type,
                 input_delay: s.input_delay,
-                ice_servers: s
-                    .ice_servers
-                    .into_iter()
-                    .map(
-                        |ice_server| webrtc::ice_transport::ice_server::RTCIceServer {
-                            urls: ice_server.urls,
-                            username: ice_server.username,
-                            credential: ice_server.credential,
-                            ..Default::default()
-                        },
-                    )
-                    .collect::<Vec<_>>(),
+                ice_servers: s.ice_servers,
             })
         })
         .map_or(Ok(None), |r| r.map(Some))?;

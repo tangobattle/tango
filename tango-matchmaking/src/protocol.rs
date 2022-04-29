@@ -51,5 +51,6 @@ pub struct Answer {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct ICECandidate {
-    pub ice_candidate: String,
+    pub candidate: String,
+    pub mid: String,
 }

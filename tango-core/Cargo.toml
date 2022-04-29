@@ -8,7 +8,6 @@ default-run = "tango-core"
 [dependencies]
 anyhow = "1.0"
 env_logger = "0.9.0"
-webrtc = "0.4.0"
 winit = { version = "0.26.1", features = ["serde"] }
 wgpu = { version = "0.12", features = ["angle"] }
 cpal = "0.13.5"
@@ -43,9 +42,7 @@ serde_plain = "1.0"
 egui = "0.17"
 egui_wgpu_backend = "0.17"
 egui-winit = { version = "0.17", default-features = false }
-datachannel = { git = "https://github.com/bigfarts/datachannel-rs", rev = "1794a366142040e83df51861a6b7bb15ec6cbacb", features = [
-    "static",
-] }
+datachannel-wrapper = { path = "../datachannel-wrapper" }
 
 [build-dependencies]
 winres = "0.1"

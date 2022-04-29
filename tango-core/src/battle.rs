@@ -1,7 +1,6 @@
 use rand::Rng;
 
 use crate::audio;
-use crate::datachannel;
 use crate::facade;
 use crate::fastforwarder;
 use crate::game;
@@ -9,11 +8,10 @@ use crate::hooks;
 use crate::input;
 use crate::protocol;
 use crate::replay;
-use crate::transport;
 
 #[derive(Clone, Debug)]
 pub struct Settings {
-    pub ice_servers: Vec<webrtc::ice_transport::ice_server::RTCIceServer>,
+    pub ice_servers: Vec<String>,
     pub matchmaking_connect_addr: String,
     pub session_id: String,
     pub replays_path: std::path::PathBuf,
@@ -40,7 +38,9 @@ pub struct Match {
     audio_supported_config: cpal::SupportedStreamConfig,
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
-    dc: std::sync::Arc<datachannel::DataChannel>,
+    _peer_conn: datachannel_wrapper::PeerConnection,
+    dc_rx: tokio::sync::Mutex<datachannel_wrapper::DataChannelReceiver>,
+    dc_tx: tokio::sync::Mutex<datachannel_wrapper::DataChannelSender>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     settings: Settings,
     round_state: tokio::sync::Mutex<RoundState>,
@@ -68,8 +68,8 @@ impl From<anyhow::Error> for NegotiationError {
     }
 }
 
-impl From<webrtc::Error> for NegotiationError {
-    fn from(err: webrtc::Error) -> Self {
+impl From<datachannel_wrapper::Error> for NegotiationError {
+    fn from(err: datachannel_wrapper::Error) -> Self {
         NegotiationError::Other(err.into())
     }
 }
@@ -125,26 +125,29 @@ impl Match {
         rom_path: std::path::PathBuf,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         audio_mux: audio::mux_stream::MuxStream,
-        dc: std::sync::Arc<datachannel::DataChannel>,
+        peer_conn: datachannel_wrapper::PeerConnection,
+        dc: datachannel_wrapper::DataChannel,
         mut rng: rand_pcg::Mcg128Xsl64,
-        side: tango_matchmaking::client::ConnectionSide,
+        is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
         settings: Settings,
     ) -> Self {
         let (remote_init_sender, remote_init_receiver) = tokio::sync::mpsc::channel(1);
+        let (dc_rx, dc_tx) = dc.split();
         let did_polite_win_last_round = rng.gen::<bool>();
         Self {
             audio_supported_config,
             rom_path,
             hooks,
-            dc,
+            _peer_conn: peer_conn,
+            dc_rx: tokio::sync::Mutex::new(dc_rx),
+            dc_tx: tokio::sync::Mutex::new(dc_tx),
             rng: tokio::sync::Mutex::new(rng),
             settings,
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
                 round: None,
-                won_last_round: did_polite_win_last_round
-                    == (side == tango_matchmaking::client::ConnectionSide::Polite),
+                won_last_round: did_polite_win_last_round == is_offerer,
             }),
             remote_init_sender,
             remote_init_receiver: tokio::sync::Mutex::new(remote_init_receiver),
@@ -154,9 +157,10 @@ impl Match {
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
+        let mut dc_rx = self.dc_rx.lock().await;
         loop {
             match protocol::Packet::deserialize(
-                match self.dc.receive().await {
+                match dc_rx.receive().await {
                     None => break,
                     Some(buf) => buf,
                 }
@@ -226,8 +230,54 @@ impl Match {
         remote_init_receiver.recv().await
     }
 
-    pub fn transport(&self) -> anyhow::Result<transport::Transport> {
-        Ok(transport::Transport::new(self.dc.clone()))
+    pub async fn send_init(
+        &self,
+        round_number: u8,
+        input_delay: u32,
+        marshaled: &[u8],
+    ) -> anyhow::Result<()> {
+        self.dc_tx
+            .lock()
+            .await
+            .send(
+                protocol::Packet::Init(protocol::Init {
+                    round_number,
+                    input_delay,
+                    marshaled: marshaled.to_vec(),
+                })
+                .serialize()?
+                .as_slice(),
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn send_input(
+        &self,
+        round_number: u8,
+        local_tick: u32,
+        remote_tick: u32,
+        joyflags: u16,
+        custom_screen_state: u8,
+        turn: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        self.dc_tx
+            .lock()
+            .await
+            .send(
+                protocol::Packet::Input(protocol::Input {
+                    round_number,
+                    local_tick,
+                    remote_tick,
+                    joyflags,
+                    custom_screen_state,
+                    turn,
+                })
+                .serialize()?
+                .as_slice(),
+            )
+            .await?;
+        Ok(())
     }
 
     pub async fn lock_rng(&self) -> tokio::sync::MutexGuard<'_, rand_pcg::Mcg128Xsl64> {

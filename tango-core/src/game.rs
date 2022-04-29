@@ -165,14 +165,17 @@ impl Game {
 
             let match_ = match_.clone();
             handle.block_on(async {
+                let is_offerer = negotiation.peer_conn.local_description().unwrap().sdp_type
+                    == datachannel_wrapper::SdpType::Offer;
                 *match_.lock().await = Some(std::sync::Arc::new(battle::Match::new(
                     audio_supported_config.clone(),
                     rom_path.clone(),
                     hooks,
                     audio_mux.clone(),
+                    negotiation.peer_conn,
                     negotiation.dc,
                     negotiation.rng,
-                    negotiation.side,
+                    is_offerer,
                     thread.handle(),
                     match_settings,
                 )));
