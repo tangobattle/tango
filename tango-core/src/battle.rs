@@ -28,16 +28,20 @@ pub struct RoundState {
 
 impl RoundState {
     pub async fn end_round(&mut self) -> anyhow::Result<()> {
-        match &mut self.round {
-            Some(round) => {
-                round.replay_writer.write_eor().expect("write eor");
+        match self.round.take() {
+            Some(mut round) => {
+                round
+                    .replay_writer
+                    .take()
+                    .unwrap()
+                    .finish()
+                    .expect("finish");
             }
             None => {
                 return Ok(());
             }
         }
         log::info!("round ended");
-        self.round = None;
         Ok(())
     }
 }
@@ -370,11 +374,11 @@ impl Match {
             state_committed_rx: Some(state_committed_rx),
             committed_state: None,
             local_pending_turn: None,
-            replay_writer: replay::Writer::new(
+            replay_writer: Some(replay::Writer::new(
                 Box::new(replay_file),
                 &self.settings.replay_metadata,
                 local_player_index,
-            )?,
+            )?),
             fastforwarder: fastforwarder::Fastforwarder::new(
                 &self.rom_path,
                 self.hooks,
@@ -406,7 +410,7 @@ pub struct Round {
     state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<mgba::state::State>,
     local_pending_turn: Option<LocalPendingTurn>,
-    replay_writer: replay::Writer,
+    replay_writer: Option<replay::Writer>,
     fastforwarder: fastforwarder::Fastforwarder,
     audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
     primary_thread_handle: mgba::thread::Handle,
@@ -429,7 +433,11 @@ impl Round {
 
     pub fn set_committed_state(&mut self, state: mgba::state::State) {
         if self.committed_state.is_none() {
-            self.replay_writer.write_state(&state).expect("write state");
+            self.replay_writer
+                .as_mut()
+                .unwrap()
+                .write_state(&state)
+                .expect("write state");
         }
         self.committed_state = Some(state);
         if let Some(tx) = self.state_committed_tx.take() {
@@ -495,6 +503,8 @@ impl Round {
 
         for ip in &input_pairs {
             self.replay_writer
+                .as_mut()
+                .unwrap()
                 .write_input(self.local_player_index, ip)
                 .expect("write input");
         }

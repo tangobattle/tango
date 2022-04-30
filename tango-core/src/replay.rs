@@ -3,13 +3,16 @@ use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use std::io::Read;
 use std::io::Write;
+pub trait WriteSeek: std::io::Write + std::io::Seek {}
+impl<T: std::io::Write + std::io::Seek> WriteSeek for T {}
 
 pub struct Writer {
-    encoder: zstd::stream::write::AutoFinishEncoder<'static, Box<dyn std::io::Write + Send>>,
+    encoder: zstd::stream::write::Encoder<'static, Box<dyn WriteSeek + Send>>,
+    num_inputs: u32,
 }
 
 const HEADER: &[u8] = b"TOOT";
-const VERSION: u8 = 0x0d;
+const VERSION: u8 = 0x0f;
 
 pub struct Replay {
     pub metadata: Vec<u8>,
@@ -36,6 +39,14 @@ impl Replay {
             ));
         }
 
+        let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
+        if num_inputs == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "replay was not finished",
+            ));
+        }
+
         let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
         let mut metadata = vec![0u8; metadata_len as usize];
         r.read_exact(&mut metadata[..])?;
@@ -50,11 +61,8 @@ impl Replay {
 
         let mut input_pairs = vec![];
 
-        loop {
+        for _ in 0..num_inputs {
             let local_tick = zr.read_u32::<byteorder::LittleEndian>()?;
-            if local_tick == 0 {
-                break;
-            }
             let remote_tick = zr.read_u32::<byteorder::LittleEndian>()?;
 
             let p1_joyflags = zr.read_u16::<byteorder::LittleEndian>()?;
@@ -105,18 +113,22 @@ impl Replay {
 
 impl Writer {
     pub fn new(
-        mut writer: Box<dyn std::io::Write + Send>,
+        mut writer: Box<dyn WriteSeek + Send>,
         metadata: &[u8],
         local_player_index: u8,
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
         writer.write_u8(VERSION)?;
+        writer.write_u32::<byteorder::LittleEndian>(0)?;
         writer.write_u32::<byteorder::LittleEndian>(metadata.len() as u32)?;
         writer.write_all(metadata)?;
-        let mut encoder = zstd::Encoder::new(writer, 3)?.auto_finish();
+        let mut encoder = zstd::Encoder::new(writer, 3)?;
         encoder.write_u8(local_player_index)?;
         encoder.flush()?;
-        Ok(Writer { encoder })
+        Ok(Writer {
+            encoder,
+            num_inputs: 0,
+        })
     }
 
     pub fn write_state(&mut self, state: &mgba::state::State) -> std::io::Result<()> {
@@ -157,11 +169,14 @@ impl Writer {
             .write_u32::<byteorder::LittleEndian>(p2.turn.len() as u32)?;
         self.encoder.write_all(&p2.turn)?;
 
+        self.num_inputs += 1;
         Ok(())
     }
 
-    pub fn write_eor(&mut self) -> std::io::Result<()> {
-        self.encoder.write_u32::<byteorder::LittleEndian>(0)?;
-        Ok(())
+    pub fn finish(self) -> std::io::Result<Box<dyn WriteSeek + Send>> {
+        let mut w = self.encoder.finish()?;
+        w.seek(std::io::SeekFrom::Start((HEADER.len() + 1) as u64))?;
+        w.write_u32::<byteorder::LittleEndian>(self.num_inputs)?;
+        Ok(w)
     }
 }
