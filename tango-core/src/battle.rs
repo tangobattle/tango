@@ -28,6 +28,14 @@ pub struct RoundState {
 
 impl RoundState {
     pub async fn end_round(&mut self) -> anyhow::Result<()> {
+        match &mut self.round {
+            Some(round) => {
+                round.replay_writer.write_eor().expect("write eor");
+            }
+            None => {
+                return Ok(());
+            }
+        }
         log::info!("round ended");
         self.round = None;
         Ok(())
@@ -411,10 +419,6 @@ impl Round {
         &mut self.fastforwarder
     }
 
-    pub fn replay_writer(&mut self) -> &mut replay::Writer {
-        &mut self.replay_writer
-    }
-
     pub fn local_player_index(&self) -> u8 {
         self.local_player_index
     }
@@ -424,6 +428,9 @@ impl Round {
     }
 
     pub fn set_committed_state(&mut self, state: mgba::state::State) {
+        if self.committed_state.is_none() {
+            self.replay_writer.write_state(&state).expect("write state");
+        }
         self.committed_state = Some(state);
         if let Some(tx) = self.state_committed_tx.take() {
             let _ = tx.send(());
@@ -485,6 +492,13 @@ impl Round {
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
         }
+
+        for ip in &input_pairs {
+            self.replay_writer
+                .write_input(self.local_player_index, ip)
+                .expect("write input");
+        }
+
         (input_pairs, left)
     }
 

@@ -15,9 +15,6 @@ impl<'a> RoundStateFacadeGuard<'a> {
     }
 
     pub async fn end_round(&mut self) {
-        if let Some(round) = &mut self.guard.round {
-            round.replay_writer().write_eor().expect("write eor");
-        }
         self.guard.end_round().await.expect("end round");
     }
 
@@ -46,7 +43,6 @@ impl<'a> RoundStateFacadeGuard<'a> {
             .as_mut()
             .expect("attempted to get round information while no round was active!");
 
-        let local_player_index = round.local_player_index();
         let local_tick = current_tick + round.local_delay();
         let remote_tick = round.last_committed_remote_input().local_tick;
 
@@ -86,13 +82,6 @@ impl<'a> RoundStateFacadeGuard<'a> {
         });
 
         let (input_pairs, left) = round.consume_and_peek_local();
-
-        for ip in &input_pairs {
-            round
-                .replay_writer()
-                .write_input(local_player_index, ip)
-                .expect("write input");
-        }
 
         let committed_state = round
             .committed_state()
@@ -142,12 +131,6 @@ impl<'a> RoundStateFacadeGuard<'a> {
             .round
             .as_mut()
             .expect("attempted to get round information while no round was active!");
-        if round.committed_state().is_none() {
-            round
-                .replay_writer()
-                .write_state(&state)
-                .expect("write state");
-        }
         round.set_committed_state(state);
     }
 

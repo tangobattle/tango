@@ -344,19 +344,39 @@ impl hooks::Hooks for BN6 {
                                 return;
                             }
 
-                            if match core.as_ref().gba().cpu().gpr(0) {
+                            match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
                                     round_state.set_won_last_round(true);
-                                    true
                                 }
                                 2 => {
                                     round_state.set_won_last_round(false);
-                                    true
                                 }
-                                _ => false,
-                            } {
-                                round_state.end_round().await;
+                                _ => {}
                             }
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_ending_ret,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+                            if !round_state.is_active() {
+                                return;
+                            }
+
+                            round_state.end_round().await;
                         });
                     }),
                 )

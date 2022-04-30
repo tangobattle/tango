@@ -72,6 +72,11 @@ pub(super) struct ROMOffsets {
     /// If the remote has sent turn data this tick, we also copy it into the receive buffer at this point.
     pub(super) round_update_call_battle_copy_input_data: u32,
 
+    /// This hooks the point when the round is ending and the game will process no further input.
+    ///
+    /// At this point, Tango will clean up its round state and commit the replay.
+    pub(super) round_ending_ret: u32,
+
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
     /// If r0 = 1, the local player won the last round.
@@ -170,6 +175,7 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         round_init_call_battle_copy_input_data: 0x08007902,
         round_update_call_battle_copy_input_data: 0x08007a6e,
         round_run_unpaused_step_cmp_retval: 0x08008102,
+        round_ending_ret: 0x0800951c,
         round_init_tx_buf_copy_ret: 0x0800b2b8,
         round_turn_tx_buf_copy_ret: 0x0800b3d6,
         round_start_ret: 0x08007304,
@@ -195,6 +201,7 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         round_init_call_battle_copy_input_data: 0x08007902,
         round_update_call_battle_copy_input_data: 0x08007a6e,
         round_run_unpaused_step_cmp_retval: 0x08008102,
+        round_ending_ret: 0x0800951c,
         round_init_tx_buf_copy_ret: 0x0800b2b8,
         round_turn_tx_buf_copy_ret: 0x0800b3d6,
         round_start_ret: 0x08007304,
@@ -220,6 +227,7 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         round_init_call_battle_copy_input_data: 0x080078ee,
         round_update_call_battle_copy_input_data: 0x08007a6a,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
+        round_ending_ret: 0x080096ec,
         round_init_tx_buf_copy_ret: 0x0800b8a0,
         round_turn_tx_buf_copy_ret: 0x0800b9be,
         round_start_ret: 0x080072f8,
@@ -245,6 +253,7 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         round_init_call_battle_copy_input_data: 0x080078ee,
         round_update_call_battle_copy_input_data: 0x08007a6a,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
+        round_ending_ret: 0x080096ec,
         round_init_tx_buf_copy_ret: 0x0800b8a0,
         round_turn_tx_buf_copy_ret: 0x0800b9be,
         round_start_ret: 0x080072f8,
