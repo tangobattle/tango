@@ -7,7 +7,7 @@ pub trait WriteSeek: std::io::Write + std::io::Seek {}
 impl<T: std::io::Write + std::io::Seek> WriteSeek for T {}
 
 pub struct Writer {
-    encoder: zstd::stream::write::Encoder<'static, Box<dyn WriteSeek + Send>>,
+    encoder: Option<zstd::stream::write::Encoder<'static, Box<dyn WriteSeek + Send>>>,
     num_inputs: u32,
 }
 
@@ -126,16 +126,18 @@ impl Writer {
         encoder.write_u8(local_player_index)?;
         encoder.flush()?;
         Ok(Writer {
-            encoder,
+            encoder: Some(encoder),
             num_inputs: 0,
         })
     }
 
     pub fn write_state(&mut self, state: &mgba::state::State) -> std::io::Result<()> {
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u32::<byteorder::LittleEndian>(state.as_slice().len() as u32)?;
-        self.encoder.write_all(state.as_slice())?;
-        self.encoder.flush()?;
+        self.encoder.as_mut().unwrap().write_all(state.as_slice())?;
+        self.encoder.as_mut().unwrap().flush()?;
         Ok(())
     }
 
@@ -150,33 +152,59 @@ impl Writer {
             (&ip.remote, &ip.local)
         };
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u32::<byteorder::LittleEndian>(ip.local.local_tick)?;
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u32::<byteorder::LittleEndian>(ip.local.remote_tick)?;
 
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u16::<byteorder::LittleEndian>(p1.joyflags)?;
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u16::<byteorder::LittleEndian>(p2.joyflags)?;
 
-        self.encoder.write_u8(p1.custom_screen_state)?;
-        self.encoder.write_u8(p2.custom_screen_state)?;
+        self.encoder
+            .as_mut()
+            .unwrap()
+            .write_u8(p1.custom_screen_state)?;
+        self.encoder
+            .as_mut()
+            .unwrap()
+            .write_u8(p2.custom_screen_state)?;
 
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u32::<byteorder::LittleEndian>(p1.turn.len() as u32)?;
-        self.encoder.write_all(&p1.turn)?;
+        self.encoder.as_mut().unwrap().write_all(&p1.turn)?;
         self.encoder
+            .as_mut()
+            .unwrap()
             .write_u32::<byteorder::LittleEndian>(p2.turn.len() as u32)?;
-        self.encoder.write_all(&p2.turn)?;
+        self.encoder.as_mut().unwrap().write_all(&p2.turn)?;
 
         self.num_inputs += 1;
         Ok(())
     }
 
-    pub fn finish(self) -> std::io::Result<Box<dyn WriteSeek + Send>> {
-        let mut w = self.encoder.finish()?;
+    pub fn finish(mut self) -> std::io::Result<Box<dyn WriteSeek + Send>> {
+        let mut w = self.encoder.take().unwrap().finish()?;
         w.seek(std::io::SeekFrom::Start((HEADER.len() + 1) as u64))?;
         w.write_u32::<byteorder::LittleEndian>(self.num_inputs)?;
         Ok(w)
+    }
+}
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        if let Some(encoder) = self.encoder.take() {
+            encoder.finish().expect("finish");
+        }
     }
 }
