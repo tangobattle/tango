@@ -14,17 +14,17 @@ function makeGetTempDir() {
       result = await mkdtemp(path.join(tmpdir(), "tango-"));
       // eslint-disable-next-line no-console
       console.info("created temporary directory:", result);
+      const beforeunload = () => {
+        (async () => {
+          await rm(result, { recursive: true, force: true });
+        })();
+        window.removeEventListener("beforeunload", beforeunload);
+      };
+      window.addEventListener("beforeunload", beforeunload);
     } catch (e) {
       err = e;
       status = "error";
     }
-    const beforeunload = () => {
-      (async () => {
-        await rm(result, { recursive: true, force: true });
-      })();
-      window.removeEventListener("beforeunload", beforeunload);
-    };
-    window.addEventListener("beforeunload", beforeunload);
     status = "ok";
   })();
   return () => {
