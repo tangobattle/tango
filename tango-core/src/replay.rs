@@ -204,6 +204,7 @@ impl Writer {
 impl Drop for Writer {
     fn drop(&mut self) {
         if let Some(encoder) = self.encoder.take() {
+            log::info!("writer was not finished before drop, this replay will be incomplete!");
             encoder.finish().expect("finish");
         }
     }
