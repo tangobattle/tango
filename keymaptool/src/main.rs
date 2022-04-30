@@ -46,12 +46,16 @@ pub fn init_wgpu(
     (device, queue, surface, config)
 }
 
+enum UserEvent {
+    Gilrs(gilrs::Event),
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_default_env()
         .filter(Some("keymaptool"), log::LevelFilter::Info)
         .init();
 
-    let event_loop = Some(winit::event_loop::EventLoop::new());
+    let event_loop = Some(winit::event_loop::EventLoop::with_user_event());
 
     let size = winit::dpi::LogicalSize::new(400u32, 100u32);
     let window = winit::window::WindowBuilder::new()
@@ -83,6 +87,16 @@ fn main() -> anyhow::Result<()> {
             panic!("{}", e);
         }
     }
+
+    let el_proxy = event_loop.as_ref().expect("event loop").create_proxy();
+    let mut gilrs = gilrs::Gilrs::new().unwrap();
+    std::thread::spawn(move || {
+        while let Some(event) = gilrs.next_event() {
+            if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
+                break;
+            }
+        }
+    });
 
     event_loop
         .expect("event loop")
@@ -194,6 +208,9 @@ fn main() -> anyhow::Result<()> {
                         }
                         _ => {}
                     };
+                }
+                winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {
+                    log::info!("{:?}", gilrs_ev);
                 }
                 _ => {}
             };

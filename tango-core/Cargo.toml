@@ -43,6 +43,7 @@ egui = "0.17"
 egui_wgpu_backend = "0.17"
 egui-winit = { version = "0.17", default-features = false }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
+gilrs = "0.7"
 
 [build-dependencies]
 winres = "0.1"

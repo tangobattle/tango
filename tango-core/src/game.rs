@@ -24,7 +24,7 @@ pub struct Game {
     gui: gui::Gui,
     ipc_client: ipc::Client,
     fps_counter: Arc<Mutex<tps::Counter>>,
-    event_loop: Option<winit::event_loop::EventLoop<()>>,
+    event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
     _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
     window: winit::window::Window,
@@ -34,6 +34,10 @@ pub struct Game {
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     keymapping: Keymapping,
     _thread: mgba::thread::Thread,
+}
+
+enum UserEvent {
+    Gilrs(gilrs::Event),
 }
 
 impl Game {
@@ -73,7 +77,7 @@ impl Game {
             None
         };
 
-        let event_loop = Some(winit::event_loop::EventLoop::new());
+        let event_loop = Some(winit::event_loop::EventLoop::with_user_event());
 
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
@@ -290,6 +294,24 @@ impl Game {
             anyhow::Result::<()>::Ok(())
         })?;
 
+        let mut gilrs = gilrs::Gilrs::new().unwrap();
+        for (_id, gamepad) in gilrs.gamepads() {
+            log::info!(
+                "found gamepad: {} is {:?}",
+                gamepad.name(),
+                gamepad.power_info()
+            );
+        }
+
+        let el_proxy = self.event_loop.as_ref().expect("event loop").create_proxy();
+        std::thread::spawn(move || {
+            while let Some(event) = gilrs.next_event() {
+                if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
+                    break;
+                }
+            }
+        });
+
         let mut console_key_pressed = false;
 
         self.event_loop
@@ -394,6 +416,9 @@ impl Game {
                             })
                             .expect("render pixels");
                         self.fps_counter.lock().mark();
+                    }
+                    winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {
+                        log::info!("{:?}", gilrs_ev);
                     }
                     _ => {}
                 }
