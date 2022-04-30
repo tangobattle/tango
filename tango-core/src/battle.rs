@@ -438,6 +438,11 @@ impl Round {
                 .unwrap()
                 .write_state(&state)
                 .expect("write state");
+            self.replay_writer
+                .as_mut()
+                .unwrap()
+                .write_state_placeholder()
+                .expect("write state");
         }
         self.committed_state = Some(state);
         if let Some(tx) = self.state_committed_tx.take() {

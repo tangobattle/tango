@@ -59,6 +59,10 @@ impl Replay {
         zr.read_exact(&mut local_state)?;
         let local_state = mgba::state::State::from_slice(&local_state);
 
+        // This is unused, for now.
+        let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
+        zr.read_exact(&mut remote_state)?;
+
         let mut input_pairs = vec![];
 
         for _ in 0..num_inputs {
@@ -137,6 +141,17 @@ impl Writer {
             .unwrap()
             .write_u32::<byteorder::LittleEndian>(state.as_slice().len() as u32)?;
         self.encoder.as_mut().unwrap().write_all(state.as_slice())?;
+        self.encoder.as_mut().unwrap().flush()?;
+        Ok(())
+    }
+
+    pub fn write_state_placeholder(&mut self) -> std::io::Result<()> {
+        let placeholder = [];
+        self.encoder
+            .as_mut()
+            .unwrap()
+            .write_u32::<byteorder::LittleEndian>(placeholder.len() as u32)?;
+        self.encoder.as_mut().unwrap().write_all(&placeholder)?;
         self.encoder.as_mut().unwrap().flush()?;
         Ok(())
     }
