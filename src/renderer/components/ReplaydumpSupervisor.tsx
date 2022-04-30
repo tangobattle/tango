@@ -1,4 +1,3 @@
-import { spawn } from "child_process";
 import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
@@ -14,6 +13,7 @@ import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
 import { getBinPath } from "../../paths";
+import { spawn } from "../../process";
 import { usePatchPath, useROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { CopyButton } from "./CopyButton";
@@ -78,7 +78,8 @@ export default function ReplaydumpSupervisor({
       }
 
       const proc = spawn(
-        getBinPath(app, "replaydump"),
+        app,
+        "replaydump",
         [
           outROMPath,
           "--ffmpeg",

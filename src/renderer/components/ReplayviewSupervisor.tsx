@@ -1,4 +1,3 @@
-import { spawn } from "child_process";
 import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
@@ -13,7 +12,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
-import { getBinPath } from "../../paths";
+import { spawn } from "../../process";
 import { usePatchPath, useROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { CopyButton } from "./CopyButton";
@@ -69,21 +68,17 @@ export default function ReplayviewSupervisor({
         throw e;
       }
 
-      const proc = spawn(
-        getBinPath(app, "replayview"),
-        [outROMPath, replayPath],
-        {
-          env: {
-            WGPU_BACKEND:
-              configRef.current.wgpuBackend != null
-                ? configRef.current.wgpuBackend
-                : undefined,
-            RUST_LOG: configRef.current.rustLogFilter,
-            RUST_BACKTRACE: "1",
-          },
-          signal: abortControllerRef.current.signal,
-        }
-      );
+      const proc = spawn(app, "replayview", [outROMPath, replayPath], {
+        env: {
+          WGPU_BACKEND:
+            configRef.current.wgpuBackend != null
+              ? configRef.current.wgpuBackend
+              : undefined,
+          RUST_LOG: configRef.current.rustLogFilter,
+          RUST_BACKTRACE: "1",
+        },
+        signal: abortControllerRef.current.signal,
+      });
 
       const beforeunload = () => {
         proc.kill();

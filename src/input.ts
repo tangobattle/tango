@@ -1,14 +1,14 @@
-import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { ChildProcessWithoutNullStreams } from "child_process";
 
 import { app } from "@electron/remote";
 
-import { getBinPath } from "./paths";
+import { spawn } from "./process";
 
 export class Keymaptool {
   private proc: ChildProcessWithoutNullStreams;
 
   constructor({ env }: { env?: NodeJS.ProcessEnv } = {}) {
-    this.proc = spawn(getBinPath(app, "keymaptool"), { env });
+    this.proc = spawn(app, "keymaptool", [], { env });
   }
 
   async request(message: string) {
