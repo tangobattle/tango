@@ -373,7 +373,7 @@ impl Match {
                 local_player_index,
             )?,
             audio_save_state_holder,
-            audio_core_thread: Some(audio_core_thread),
+            _audio_core_thread: audio_core_thread,
             _audio_core_mux_handle: audio_core_mux_handle,
             primary_thread_handle: self.primary_thread_handle.clone(),
         });
@@ -402,7 +402,7 @@ pub struct Round {
     fastforwarder: fastforwarder::Fastforwarder,
     audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
     primary_thread_handle: mgba::thread::Handle,
-    audio_core_thread: Option<mgba::thread::Thread>,
+    _audio_core_thread: mgba::thread::Thread,
     _audio_core_mux_handle: audio::mux_stream::MuxHandle,
 }
 
@@ -545,7 +545,6 @@ impl Round {
 impl Drop for Round {
     fn drop(&mut self) {
         // HACK: This is the only safe way to set the FPS without clogging everything else up.
-        log::info!("dropping round, will reset primary thread and join audio core");
         self.primary_thread_handle
             .lock_audio()
             .core_mut()
@@ -553,9 +552,5 @@ impl Drop for Round {
             .sync_mut()
             .expect("sync")
             .set_fps_target(game::EXPECTED_FPS as f32);
-        let audio_core_thread = self.audio_core_thread.take().unwrap();
-        audio_core_thread.handle().end();
-        audio_core_thread.join();
-        log::info!("audio core joined");
     }
 }

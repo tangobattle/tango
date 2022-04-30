@@ -89,17 +89,13 @@ impl Thread {
         }
         Ok(())
     }
-
-    pub fn join(self) {
-        unsafe { mgba_sys::mCoreThreadJoin(&mut self.0.lock().raw) }
-    }
 }
 
-impl Drop for Thread {
+impl Drop for InnerThread {
     fn drop(&mut self) {
-        if unsafe { mgba_sys::mCoreThreadIsActive(&mut self.0.lock().raw) } {
-            panic!("dropped running mgba thread!")
-        }
+        unsafe { mgba_sys::mCoreThreadEnd(&mut self.raw) }
+        unsafe { mgba_sys::mCoreThreadJoin(&mut self.raw) }
+        log::info!("thread is being dropped, ended and joined");
     }
 }
 
