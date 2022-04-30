@@ -2,6 +2,7 @@
   "viewing": "正在播放……",
   "exporting": "正在导出……",
   "export-complete": "回放导出成功。",
+  "no-replays": "没有回放",
   "play": "播放",
   "show-file": "目录中显示",
   "export-video": "视频导出",

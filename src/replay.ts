@@ -1,6 +1,6 @@
 import { open } from "fs/promises";
 
-const REPLAY_VERSION = 0x0d;
+const REPLAY_VERSION = 0x0f;
 
 export interface ReplayInfo {
   ts: number;
@@ -17,12 +17,13 @@ export async function readReplayMetadata(
   filename: string
 ): Promise<ReplayInfo | null> {
   const fd = await open(filename, "r");
+  let i = 0;
   try {
     {
       const chunks = [];
       for await (const chunk of fd.createReadStream({
-        start: 0,
-        end: 0 + 4,
+        start: i,
+        end: i + 5 - 1,
         autoClose: false,
       })) {
         chunks.push(chunk);
@@ -35,16 +36,37 @@ export async function readReplayMetadata(
         header[3] != 84 /* T */ ||
         header[4] != REPLAY_VERSION
       ) {
+        console.warn("replay skipped:", filename, "invalid header");
         return null;
       }
     }
+    i += 5;
+
+    {
+      const chunks = [];
+      for await (const chunk of fd.createReadStream({
+        start: i,
+        end: i + 4 - 1,
+        autoClose: false,
+      })) {
+        chunks.push(chunk);
+      }
+      const numInputs = new DataView(
+        new Uint8Array(Buffer.concat(chunks)).buffer
+      ).getUint32(0, true);
+      if (numInputs == 0) {
+        console.warn("replay skipped:", filename, "incomplete");
+        return null;
+      }
+    }
+    i += 4;
 
     let metaSize = 0;
     {
       const chunks = [];
       for await (const chunk of fd.createReadStream({
-        start: 5,
-        end: 5 + 4 - 1,
+        start: i,
+        end: i + 4 - 1,
         autoClose: false,
       })) {
         chunks.push(chunk);
@@ -53,11 +75,12 @@ export async function readReplayMetadata(
         new Uint8Array(Buffer.concat(chunks)).buffer
       ).getUint32(0, true);
     }
+    i += 4;
 
     const chunks = [];
     for await (const chunk of fd.createReadStream({
-      start: 5 + 4,
-      end: 5 + 4 + metaSize - 1,
+      start: i,
+      end: i + metaSize - 1,
       autoClose: false,
     })) {
       chunks.push(chunk);
@@ -65,6 +88,9 @@ export async function readReplayMetadata(
     return JSON.parse(
       textDecoder.decode(new Uint8Array(Buffer.concat(chunks)).buffer)
     );
+  } catch (e) {
+    console.warn("replay skipped:", filename, e);
+    return null;
   } finally {
     await fd.close();
   }

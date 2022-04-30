@@ -8,6 +8,7 @@ import { FixedSizeList, ListChildComponentProps } from "react-window";
 import { app, BrowserWindow, dialog, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -16,6 +17,7 @@ import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
+import Typography from "@mui/material/Typography";
 
 import { findPatchVersion } from "../../../patch";
 import { getReplaysPath } from "../../../paths";
@@ -188,52 +190,69 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       sx={{
         width: "100%",
         height: "100%",
-        display: active ? "block" : "none",
+        display: active ? "flex" : "none",
       }}
     >
       {replays != null ? (
-        <AutoSizer>
-          {({ height, width }) => (
-            <FixedSizeList
-              height={height}
-              width={width}
-              itemCount={replays.length}
-              itemSize={60}
-            >
-              {(props) => (
-                <ReplayItem
-                  ListChildProps={props}
-                  replay={replays[props.index]}
-                  onDumpClick={() => {
-                    const replay = replays[props.index];
-                    const fn = dialog.showSaveDialogSync(
-                      BrowserWindow.getFocusedWindow()!,
-                      {
-                        defaultPath: path.join(
-                          getReplaysPath(app),
-                          replay.name.replace(/\.[^/.]+$/, "")
-                        ),
-                        filters: [{ name: "MP4", extensions: ["mp4"] }],
-                      }
-                    );
-                    setDumpingReplay(
-                      fn != null
-                        ? {
-                            replay: replay,
-                            outPath: fn,
-                            done: false,
-                          }
-                        : null
-                    );
-                  }}
-                  onPlayClick={() => {
-                    setViewingReplay(replays[props.index]);
-                  }}
-                />
-              )}
-            </FixedSizeList>
-          )}
-        </AutoSizer>
+        replays.length > 0 ? (
+          <AutoSizer>
+            {({ height, width }) => (
+              <FixedSizeList
+                height={height}
+                width={width}
+                itemCount={replays.length}
+                itemSize={60}
+              >
+                {(props) => (
+                  <ReplayItem
+                    ListChildProps={props}
+                    replay={replays[props.index]}
+                    onDumpClick={() => {
+                      const replay = replays[props.index];
+                      const fn = dialog.showSaveDialogSync(
+                        BrowserWindow.getFocusedWindow()!,
+                        {
+                          defaultPath: path.join(
+                            getReplaysPath(app),
+                            replay.name.replace(/\.[^/.]+$/, "")
+                          ),
+                          filters: [{ name: "MP4", extensions: ["mp4"] }],
+                        }
+                      );
+                      setDumpingReplay(
+                        fn != null
+                          ? {
+                              replay: replay,
+                              outPath: fn,
+                              done: false,
+                            }
+                          : null
+                      );
+                    }}
+                    onPlayClick={() => {
+                      setViewingReplay(replays[props.index]);
+                    }}
+                  />
+                )}
+              </FixedSizeList>
+            )}
+          </AutoSizer>
+        ) : (
+          <Box
+            flexGrow={1}
+            display="flex"
+            justifyContent="center"
+            alignItems="center"
+            sx={{ userSelect: "none", color: "text.disabled" }}
+          >
+            <Stack alignItems="center" spacing={1}>
+              <SlowMotionVideoOutlinedIcon sx={{ fontSize: "4rem" }} />
+              <Typography variant="h6">
+                <Trans i18nKey="replays:no-replays" />
+              </Typography>
+            </Stack>
+          </Box>
+        )
       ) : (
         <Box
           sx={{

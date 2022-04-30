@@ -2,6 +2,7 @@
   "viewing": "Playback in progress...",
   "exporting": "Export in progress...",
   "export-complete": "Your replay was successfully exported.",
+  "no-replays": "No replays (yet!)",
   "play": "Play",
   "show-file": "Show in folder",
   "export-video": "Export to video",

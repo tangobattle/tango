@@ -2,7 +2,7 @@
 set -euo pipefail
 set -x
 
-TANGO_CORE_VERSION="3.0.0-alpha.9"
+TANGO_CORE_VERSION="3.0.0-alpha.10"
 TANGO_CORE_PLATFORM="x86_64-pc-windows-gnu"
 
 tempdir="$(mktemp -d)"

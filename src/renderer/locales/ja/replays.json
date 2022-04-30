@@ -2,6 +2,7 @@
   "viewing": "再生中...",
   "exporting": "エクスポート中...",
   "export-complete": "リプレイのエクスポートに成功しました。",
+  "no-replays": "リプレイがない",
   "play": "再生",
   "show-file": "フォルダー内に表示",
   "export-video": "ビデオにエクスポート",
