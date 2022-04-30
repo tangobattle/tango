@@ -89,6 +89,18 @@ impl Thread {
         }
         Ok(())
     }
+
+    pub fn join(self) {
+        unsafe { mgba_sys::mCoreThreadJoin(&mut self.0.lock().raw) }
+    }
+}
+
+impl Drop for Thread {
+    fn drop(&mut self) {
+        if unsafe { mgba_sys::mCoreThreadIsActive(&mut self.0.lock().raw) } {
+            panic!("dropped running mgba thread!")
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -130,10 +142,6 @@ impl Handle {
         };
         core.gba_mut().sync_mut().unwrap().lock_audio();
         AudioGuard { thread }
-    }
-
-    pub fn join(&self) {
-        unsafe { mgba_sys::mCoreThreadJoin(self.ptr) }
     }
 
     pub fn end(&self) {
