@@ -49,7 +49,7 @@ pub fn open_stream(
                     let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
                     realign_samples(&mut buf, channels);
                     for (x, y) in data.iter_mut().zip(buf[..n / 2 * channels as usize].iter()) {
-                        *x = *y as u16 + 32768;
+                        *x = (std::num::Wrapping(*y as u16) + std::num::Wrapping(32768)).0;
                     }
                 }
             },
