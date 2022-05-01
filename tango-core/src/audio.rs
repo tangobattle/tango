@@ -3,6 +3,7 @@ use cpal::traits::DeviceTrait;
 pub mod loop_stream;
 pub mod mgba_stream;
 pub mod mix_stream;
+pub mod mux_stream;
 
 pub trait Stream {
     fn fill(&mut self, buf: &mut [i16]) -> usize;
