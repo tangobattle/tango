@@ -56,14 +56,15 @@ impl MuxStream {
 }
 
 impl super::Stream for MuxStream {
-    fn fill(&self, buf: &mut [i16]) -> usize {
-        let mux = self.0.lock();
-        for (id, stream) in mux.streams.iter() {
-            if *id == mux.current_id {
+    fn fill(&mut self, buf: &mut [i16]) -> usize {
+        let mut mux = self.0.lock();
+        let current_id = mux.current_id;
+        for (id, stream) in mux.streams.iter_mut() {
+            if *id == current_id {
                 continue;
             }
             stream.fill(buf);
         }
-        mux.streams[&mux.current_id].fill(buf)
+        mux.streams.get_mut(&current_id).unwrap().fill(buf)
     }
 }

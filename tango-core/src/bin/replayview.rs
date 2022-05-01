@@ -145,10 +145,9 @@ fn main() -> Result<(), anyhow::Error> {
     let stream = tango_core::audio::open_stream(
         &audio_device,
         &supported_config,
-        tango_core::audio::timewarp_stream::TimewarpStream::new(
+        tango_core::audio::mgba_stream::MGBAStream::new(
             thread.handle(),
             supported_config.sample_rate(),
-            supported_config.channels(),
         ),
     )?;
     stream.play()?;

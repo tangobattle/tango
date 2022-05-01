@@ -151,12 +151,10 @@ impl Game {
         let thread = mgba::thread::Thread::new(core);
 
         let audio_mux = audio::mux_stream::MuxStream::new();
-        let primary_mux_handle =
-            audio_mux.open_stream(audio::timewarp_stream::TimewarpStream::new(
-                thread.handle(),
-                audio_supported_config.sample_rate(),
-                audio_supported_config.channels(),
-            ));
+        let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
+            thread.handle(),
+            audio_supported_config.sample_rate(),
+        ));
 
         if let Some(match_settings) = match_settings {
             let negotiation = negotiation.unwrap();

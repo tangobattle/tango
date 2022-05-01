@@ -332,10 +332,9 @@ impl Match {
         audio_core_handle.pause();
         let audio_core_mux_handle =
             self.audio_mux
-                .open_stream(audio::timewarp_stream::TimewarpStream::new(
+                .open_stream(audio::mgba_stream::MGBAStream::new(
                     audio_core_handle.clone(),
                     self.audio_supported_config.sample_rate(),
-                    self.audio_supported_config.channels(),
                 ));
 
         log::info!("loading our state into audio core");
