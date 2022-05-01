@@ -6,14 +6,17 @@ use std::io::Write;
 
 #[derive(clap::Parser)]
 struct Cli {
-    #[clap(long)]
-    dump: bool,
-
-    #[clap(parse(from_os_str))]
-    rom_path: std::path::PathBuf,
-
     #[clap(parse(from_os_str))]
     path: std::path::PathBuf,
+
+    #[clap(subcommand)]
+    action: Action,
+}
+
+#[derive(clap::Parser)]
+struct DumpVideoCli {
+    #[clap(parse(from_os_str))]
+    rom_path: std::path::PathBuf,
 
     #[clap(parse(from_os_str))]
     output_path: std::path::PathBuf,
@@ -35,6 +38,15 @@ struct Cli {
     ffmpeg_mux_flags: String,
 }
 
+#[derive(clap::Parser)]
+struct DumpEWRAMCli {}
+
+#[derive(clap::Subcommand)]
+enum Action {
+    DumpVideo(DumpVideoCli),
+    DumpEWRAM(DumpEWRAMCli),
+}
+
 fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
         .filter(Some("tango_core"), log::LevelFilter::Info)
@@ -54,6 +66,13 @@ fn main() -> Result<(), anyhow::Error> {
         replay.local_state.rom_crc32()
     );
 
+    match args.action {
+        Action::DumpVideo(args) => dump_video(args, replay),
+        Action::DumpEWRAM(args) => dump_ewram(args, replay),
+    }
+}
+
+fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango_core")?;
     core.enable_video_buffer();
 
@@ -184,5 +203,14 @@ fn main() -> Result<(), anyhow::Error> {
         .spawn()?;
     mux_child.wait()?;
 
+    Ok(())
+}
+
+fn dump_ewram(
+    _args: DumpEWRAMCli,
+    replay: tango_core::replay::Replay,
+) -> Result<(), anyhow::Error> {
+    std::io::stdout().write_all(replay.local_state.wram())?;
+    std::io::stdout().flush()?;
     Ok(())
 }

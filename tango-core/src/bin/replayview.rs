@@ -6,9 +6,6 @@ use cpal::traits::{HostTrait, StreamTrait};
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
-    dump: bool,
-
-    #[clap(long)]
     remote: bool,
 
     #[clap(parse(from_os_str))]
@@ -36,12 +33,6 @@ fn main() -> Result<(), anyhow::Error> {
         replay.local_state.rom_title(),
         replay.local_state.rom_crc32()
     );
-
-    if args.dump {
-        for ip in &replay.input_pairs {
-            println!("{:?}", ip);
-        }
-    }
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
 

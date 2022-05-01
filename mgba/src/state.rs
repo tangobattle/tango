@@ -21,6 +21,22 @@ impl State {
         self.0.romCrc32
     }
 
+    pub fn wram(&self) -> &[u8] {
+        &self.0.wram
+    }
+
+    pub fn iwram(&self) -> &[u8] {
+        &self.0.iwram
+    }
+
+    pub fn oam(&self) -> &[u16] {
+        &self.0.oam
+    }
+
+    pub fn pram(&self) -> &[u16] {
+        &self.0.pram
+    }
+
     pub fn as_slice(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
