@@ -1,6 +1,7 @@
 {
   "play": "Play",
   "replays": "Replays",
-  "saves": "Saves",
-  "settings": "Settings"
+  "settings": "Settings",
+  "settings-update-available": "Settings (update available)",
+  "settings-update-downloaded": "Settings (will update on restart)"
 }

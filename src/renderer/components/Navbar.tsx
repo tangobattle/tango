@@ -1,4 +1,3 @@
-import { ipcRenderer } from "electron";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
@@ -15,6 +14,8 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import { styled } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
+
+import { useUpdateStatus } from "./UpdaterStatusContext";
 
 const Drawer = styled(MuiDrawer, {
   shouldForwardProp: (prop) => prop !== "open",
@@ -74,19 +75,7 @@ export default function Navbar({
   onSelect: (selected: NavbarSelection) => void;
 }) {
   const { t } = useTranslation();
-
-  const [updateStatus, setUpdateStatus] = React.useState(
-    "not-available" as "not-available" | "available" | "downloaded"
-  );
-  const updateStatusListenerCallback = React.useCallback((v) => {
-    setUpdateStatus(v);
-  }, []);
-  React.useEffect(() => {
-    ipcRenderer.on("update-status", updateStatusListenerCallback);
-    return () => {
-      ipcRenderer.off("update-status", updateStatusListenerCallback);
-    };
-  }, [updateStatusListenerCallback]);
+  const { status: updateStatus } = useUpdateStatus();
 
   const SettingsIconWrapper = ({ children }: { children: React.ReactNode }) =>
     updateStatus == "available" ? (
@@ -129,7 +118,13 @@ export default function Navbar({
           onClick={() => {
             onSelect("settings");
           }}
-          title={t("navbar:settings")}
+          title={
+            updateStatus == "available"
+              ? t("navbar:settings-update-available")
+              : updateStatus == "downloaded"
+              ? t("navbar:settings-update-downloaded")
+              : t("navbar:settings")
+          }
           unselectedIcon={
             <SettingsIconWrapper>
               <SettingsOutlinedIcon />

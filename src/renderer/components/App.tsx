@@ -16,6 +16,7 @@ import { PatchesProvider } from "./PatchesContext";
 import { ROMsProvider } from "./ROMsContext";
 import { SavesProvider } from "./SavesContext";
 import { TempDirProvider } from "./TempDirContext";
+import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
 const AppBody = withTranslation()(() => {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
@@ -66,26 +67,28 @@ const AppBody = withTranslation()(() => {
 
 export default function App() {
   return (
-    <Suspense
-      fallback={
-        <Box
-          sx={{
-            display: "flex",
-            width: "100%",
-            height: "100%",
-            justifyContent: "center",
-            alignItems: "center",
-          }}
-        >
-          <CircularProgress />
-        </Box>
-      }
-    >
-      <TempDirProvider>
-        <ConfigProvider>
-          <AppBody />
-        </ConfigProvider>
-      </TempDirProvider>
-    </Suspense>
+    <UpdateStatusProvider>
+      <Suspense
+        fallback={
+          <Box
+            sx={{
+              display: "flex",
+              width: "100%",
+              height: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        }
+      >
+        <TempDirProvider>
+          <ConfigProvider>
+            <AppBody />
+          </ConfigProvider>
+        </TempDirProvider>
+      </Suspense>
+    </UpdateStatusProvider>
   );
 }

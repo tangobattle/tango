@@ -20,6 +20,7 @@ remoteMain.initialize();
 Object.assign(console, log.functions);
 
 autoUpdater.channel = cfg.updateChannel;
+autoUpdater.allowDowngrade = false;
 autoUpdater.allowPrerelease = cfg.updateChannel != "latest";
 autoUpdater.logger = console;
 
@@ -119,7 +120,7 @@ function createWindow() {
   });
 
   remoteMain.enable(mainWindow.webContents);
-  autoUpdater.checkForUpdatesAndNotify();
+  autoUpdater.checkForUpdates();
 }
 
 // This method will be called when Electron has finished
