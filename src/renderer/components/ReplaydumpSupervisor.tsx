@@ -81,10 +81,11 @@ export default function ReplaydumpSupervisor({
         app,
         "replaydump",
         [
+          replayPath,
+          "dump-video",
           outROMPath,
           "--ffmpeg",
           getBinPath(app, "ffmpeg"),
-          replayPath,
           outPath,
         ],
         {
