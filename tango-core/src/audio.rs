@@ -1,7 +1,8 @@
 use cpal::traits::DeviceTrait;
 
+pub mod loop_stream;
 pub mod mgba_stream;
-pub mod mux_stream;
+pub mod mix_stream;
 
 pub trait Stream {
     fn fill(&mut self, buf: &mut [i16]) -> usize;
@@ -42,7 +43,7 @@ pub fn open_stream(
             {
                 let mut buf = vec![];
                 move |data: &mut [u16], _: &cpal::OutputCallbackInfo| {
-                    if data.len() > buf.len() {
+                    if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
                     let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
@@ -59,7 +60,7 @@ pub fn open_stream(
             {
                 let mut buf = vec![];
                 move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    if data.len() > buf.len() {
+                    if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
                     let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
@@ -76,7 +77,7 @@ pub fn open_stream(
             {
                 let mut buf = vec![];
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    if data.len() > buf.len() {
+                    if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
                     let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
