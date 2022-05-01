@@ -7,6 +7,7 @@ import { FixedSizeList, ListChildComponentProps } from "react-window";
 
 import { app, BrowserWindow, dialog, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
@@ -24,6 +25,7 @@ import { getReplaysPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
 import { usePatches } from "../PatchesContext";
 import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
+import ReplayInfoDialog from "../ReplayInfoDialog";
 import ReplayviewSupervisor from "../ReplayviewSupervisor";
 import { useROMs } from "../ROMsContext";
 
@@ -34,7 +36,7 @@ async function* walk(dir: string, root?: string): AsyncIterable<string> {
   for await (const d of await opendir(dir)) {
     const entry = path.join(dir, d.name);
     if (d.isDirectory()) {
-      yield* await walk(entry, root);
+      yield* walk(entry, root);
     } else if (d.isFile()) {
       yield path.relative(root, entry);
     }
@@ -43,18 +45,16 @@ async function* walk(dir: string, root?: string): AsyncIterable<string> {
 
 function ReplayItem({
   ListChildProps: { index, style },
+  onInfoClick,
   onDumpClick,
   onPlayClick,
   replay,
 }: {
   ListChildProps: ListChildComponentProps;
+  onInfoClick: () => void;
   onDumpClick: () => void;
   onPlayClick: () => void;
-  replay: {
-    name: string;
-    info: ReplayInfo;
-    resolvedPatchVersion: string | null;
-  };
+  replay: LoadedReplay;
 }) {
   const { i18n } = useTranslation();
   const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
@@ -75,11 +75,20 @@ function ReplayItem({
       sx={{ userSelect: "none" }}
       secondaryAction={
         <Stack direction="row">
+          <Tooltip title={<Trans i18nKey="replays:show-info" />}>
+            <IconButton
+              onClick={() => {
+                onInfoClick();
+              }}
+            >
+              <InfoOutlinedIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title={<Trans i18nKey="replays:show-file" />}>
             <IconButton
               onClick={() => {
                 shell.showItemInFolder(
-                  path.join(getReplaysPath(app), replay.name)
+                  path.join(getReplaysPath(app), replay.filename)
                 );
               }}
             >
@@ -111,14 +120,14 @@ function ReplayItem({
     >
       <ListItemText
         primary={dateFormat.format(new Date(replay.info.ts))}
-        secondary={<>{replay.name}</>}
+        secondary={<>{replay.filename}</>}
       />
     </ListItem>
   );
 }
 
 interface LoadedReplay {
-  name: string;
+  filename: string;
   info: ReplayInfo;
   resolvedPatchVersion: string | null;
 }
@@ -126,10 +135,7 @@ interface LoadedReplay {
 export default function ReplaysPane({ active }: { active: boolean }) {
   const { patches } = usePatches();
 
-  const [replays, setReplays] = React.useState<
-    | { name: string; info: ReplayInfo; resolvedPatchVersion: string | null }[]
-    | null
-  >(null);
+  const [replays, setReplays] = React.useState<LoadedReplay[] | null>(null);
 
   const [dumpingReplay, setDumpingReplay] = React.useState<{
     replay: LoadedReplay;
@@ -140,6 +146,9 @@ export default function ReplaysPane({ active }: { active: boolean }) {
   const [viewingReplay, setViewingReplay] = React.useState<LoadedReplay | null>(
     null
   );
+
+  const [infoDialogReplay, setInfoDialogReplay] =
+    React.useState<LoadedReplay | null>(null);
 
   React.useEffect(() => {
     if (!active) {
@@ -163,7 +172,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
             continue;
           }
           replays.push({
-            name: filename,
+            filename,
             info: replayInfo,
             resolvedPatchVersion:
               replayInfo.patch != null && patches[replayInfo.patch.name] != null
@@ -177,7 +186,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       } catch (e) {
         console.error("failed to get replays:", e);
       }
-      replays.sort(({ name: name1 }, { name: name2 }) => {
+      replays.sort(({ filename: name1 }, { filename: name2 }) => {
         return name1 < name2 ? -1 : name1 > name2 ? 1 : 0;
       });
       replays.reverse();
@@ -207,6 +216,9 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                   <ReplayItem
                     ListChildProps={props}
                     replay={replays[props.index]}
+                    onInfoClick={() => {
+                      setInfoDialogReplay(replays[props.index]);
+                    }}
                     onDumpClick={() => {
                       const replay = replays[props.index];
                       const fn = dialog.showSaveDialogSync(
@@ -214,7 +226,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                         {
                           defaultPath: path.join(
                             getReplaysPath(app),
-                            replay.name.replace(/\.[^/.]+$/, "")
+                            replay.filename.replace(/\.[^/.]+$/, "")
                           ),
                           filters: [{ name: "MP4", extensions: ["mp4"] }],
                         }
@@ -277,7 +289,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 }
               : undefined
           }
-          replayPath={path.join(getReplaysPath(app), viewingReplay.name)}
+          replayPath={path.join(getReplaysPath(app), viewingReplay.filename)}
           onExit={() => {
             setViewingReplay(null);
           }}
@@ -294,10 +306,22 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 }
               : undefined
           }
-          replayPath={path.join(getReplaysPath(app), dumpingReplay.replay.name)}
+          replayPath={path.join(
+            getReplaysPath(app),
+            dumpingReplay.replay.filename
+          )}
           outPath={dumpingReplay.outPath}
           onExit={() => {
             setDumpingReplay(null);
+          }}
+        />
+      ) : null}
+      {infoDialogReplay != null ? (
+        <ReplayInfoDialog
+          filename={infoDialogReplay.filename}
+          replayInfo={infoDialogReplay.info}
+          onClose={() => {
+            setInfoDialogReplay(null);
           }}
         />
       ) : null}

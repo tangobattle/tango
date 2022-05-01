@@ -1,4 +1,5 @@
 import * as datefns from "date-fns";
+import { readFile } from "fs/promises";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -31,6 +32,7 @@ import Typography from "@mui/material/Typography";
 
 import { getReplaysPath, getSavesPath } from "../../../paths";
 import { KNOWN_ROMS } from "../../../rom";
+import { Editor } from "../../../saveedit/bn6";
 import { CopyButton } from "../CopyButton";
 import { CoreSupervisor } from "../CoreSupervisor";
 import { usePatches } from "../PatchesContext";
@@ -39,6 +41,36 @@ import { useSaves } from "../SavesContext";
 import SaveViewer from "../SaveViewer";
 
 const MATCH_TYPES = ["single", "triple"];
+
+function SaveViewerWrapper({
+  filename,
+  romName,
+  incarnation,
+}: {
+  filename: string;
+  romName: string;
+  incarnation: number;
+}) {
+  const [editor, setEditor] = React.useState<Editor | null>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const e = new Editor(
+        Editor.sramDumpToRaw(
+          (await readFile(path.join(getSavesPath(app), filename))).buffer
+        ),
+        romName
+      );
+      setEditor(e);
+    })();
+  }, [filename, romName, incarnation]);
+
+  if (editor == null) {
+    return null;
+  }
+
+  return <SaveViewer editor={editor} />;
+}
 
 export default function PlayPane({ active }: { active: boolean }) {
   const { saves, rescan: rescanSaves } = useSaves();
@@ -343,7 +375,7 @@ export default function PlayPane({ active }: { active: boolean }) {
         </Box>
         {saveName != null ? (
           <Box flexGrow={1} display="flex">
-            <SaveViewer
+            <SaveViewerWrapper
               romName={saves[saveName].romName}
               filename={saveName}
               incarnation={incarnation}

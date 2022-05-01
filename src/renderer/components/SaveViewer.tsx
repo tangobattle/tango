@@ -1,49 +1,23 @@
-import { readFile } from "fs/promises";
-import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
 
-import { app } from "@electron/remote";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 
-import { getSavesPath } from "../../paths";
 import * as bn6 from "../../saveedit/bn6";
 import FolderViewer from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
 
-export default function SaveViewer({
-  filename,
-  romName,
-  incarnation,
-}: {
-  filename: string;
-  romName: string;
-  incarnation: number;
-}) {
+export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
   const [tab, setTab] = React.useState("navicust");
-  const [editor, setEditor] = React.useState<bn6.Editor | null>(null);
 
   React.useEffect(() => {
-    (async () => {
-      const e = new bn6.Editor(
-        bn6.Editor.sramDumpToRaw(
-          (await readFile(path.join(getSavesPath(app), filename))).buffer
-        ),
-        romName
-      );
-      setEditor(e);
-      if (!e.supportsModcards() && tab == "modcards") {
-        setTab("navicust");
-      }
-    })();
-  }, [filename, romName, incarnation, tab]);
-
-  if (editor == null) {
-    return null;
-  }
+    if (tab == "modcards" && !editor.supportsModcards()) {
+      setTab("navicust");
+    }
+  }, [tab, editor]);
 
   return (
     <Stack flexGrow={1} flexShrink={0} sx={{ width: 0 }}>

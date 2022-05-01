@@ -4,6 +4,7 @@
   "export-complete": "回放导出成功。",
   "no-replays": "没有回放",
   "play": "播放",
+  "show-info": "显示信息",
   "show-file": "目录中显示",
   "export-video": "视频导出",
   "crash": "抱歉，回放播放器遇到崩溃。在报告错误时，请提供此日志！"
