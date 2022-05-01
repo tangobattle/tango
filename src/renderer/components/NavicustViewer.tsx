@@ -372,93 +372,111 @@ export default function NavicustViewer({
   }, [editor]);
 
   return (
-    <Box display={active ? "flex" : "none"} flexGrow={1}>
-      <Table
-        size="small"
-        sx={{
-          [`& .${tableCellClasses.root}`]: { borderBottom: "none" },
-          alignSelf: "center",
-        }}
-      >
-        <TableBody>
-          <TableRow>
-            <TableCell sx={{ verticalAlign: "top", textAlign: "center" }}>
-              <NavicustGrid
-                placements={placements}
-                gameVersion={editor.getGameInfo().version}
-              />
-            </TableCell>
-            <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
-              <Stack spacing={0.5} flexGrow={1}>
-                {placements.flatMap((placement, i) => {
-                  const ncp = bn6.NCPS[placement.id]!;
-                  if (!ncp.isSolid) {
-                    return [];
-                  }
-                  return [
-                    <Chip
-                      key={i}
-                      size="small"
-                      sx={{
-                        fontSize: "0.9rem",
-                        justifyContent: "flex-start",
-                        color: "black",
-                        backgroundColor: lighten(
-                          NAVICUST_COLORS[
-                            ncp.colors[
-                              placement.variant
-                            ] as keyof typeof NAVICUST_COLORS
-                          ].color,
-                          0.25
-                        ),
-                      }}
-                      label={
-                        ncp.name[
-                          i18n.resolvedLanguage as keyof typeof ncp.name
-                        ] || ncp.name[fallbackLng as keyof typeof ncp.name]
-                      }
-                    />,
-                  ];
-                })}
-              </Stack>
-            </TableCell>
-            <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
-              <Stack spacing={0.5} flexGrow={1}>
-                {placements.flatMap((placement, i) => {
-                  const ncp = bn6.NCPS[placement.id]!;
-                  if (ncp.isSolid) {
-                    return [];
-                  }
-                  return [
-                    <Chip
-                      key={i}
-                      size="small"
-                      sx={{
-                        fontSize: "0.9rem",
-                        justifyContent: "flex-start",
-                        color: "black",
-                        backgroundColor: lighten(
-                          NAVICUST_COLORS[
-                            ncp.colors[
-                              placement.variant
-                            ] as keyof typeof NAVICUST_COLORS
-                          ].color,
-                          0.25
-                        ),
-                      }}
-                      label={
-                        ncp.name[
-                          i18n.resolvedLanguage as keyof typeof ncp.name
-                        ] || ncp.name[fallbackLng as keyof typeof ncp.name]
-                      }
-                    />,
-                  ];
-                })}
-              </Stack>
-            </TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
+    <Box
+      display={active ? "flex" : "none"}
+      flexGrow={1}
+      sx={{
+        justifyContent: "center",
+        py: 1,
+        overflow: "auto",
+        height: 0,
+      }}
+    >
+      <Stack direction="column" spacing={1}>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <NavicustGrid
+            placements={placements}
+            gameVersion={editor.getGameInfo().version}
+          />
+        </Box>
+        <Table
+          size="small"
+          sx={{
+            [`& .${tableCellClasses.root}`]: { borderBottom: "none" },
+            alignSelf: "center",
+            width: "400px",
+          }}
+        >
+          <TableBody>
+            <TableRow>
+              <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
+                <Stack spacing={0.5} flexGrow={1}>
+                  {placements.flatMap((placement, i) => {
+                    const ncp = bn6.NCPS[placement.id]!;
+                    if (!ncp.isSolid) {
+                      return [];
+                    }
+                    return [
+                      <Chip
+                        key={i}
+                        size="small"
+                        sx={{
+                          fontSize: "0.9rem",
+                          justifyContent: "flex-start",
+                          color: "black",
+                          backgroundColor: lighten(
+                            NAVICUST_COLORS[
+                              ncp.colors[
+                                placement.variant
+                              ] as keyof typeof NAVICUST_COLORS
+                            ].color,
+                            0.25
+                          ),
+                        }}
+                        label={
+                          ncp.name[
+                            i18n.resolvedLanguage as keyof typeof ncp.name
+                          ] || ncp.name[fallbackLng as keyof typeof ncp.name]
+                        }
+                      />,
+                    ];
+                  })}
+                </Stack>
+              </TableCell>
+              <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
+                <Stack spacing={0.5} flexGrow={1}>
+                  {placements.flatMap((placement, i) => {
+                    const ncp = bn6.NCPS[placement.id]!;
+                    if (ncp.isSolid) {
+                      return [];
+                    }
+                    return [
+                      <Chip
+                        key={i}
+                        size="small"
+                        sx={{
+                          fontSize: "0.9rem",
+                          justifyContent: "flex-start",
+                          color: "black",
+                          backgroundColor: lighten(
+                            NAVICUST_COLORS[
+                              ncp.colors[
+                                placement.variant
+                              ] as keyof typeof NAVICUST_COLORS
+                            ].color,
+                            0.25
+                          ),
+                        }}
+                        label={
+                          ncp.name[
+                            i18n.resolvedLanguage as keyof typeof ncp.name
+                          ] || ncp.name[fallbackLng as keyof typeof ncp.name]
+                        }
+                      />,
+                    ];
+                  })}
+                </Stack>
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </Stack>
     </Box>
   );
 }

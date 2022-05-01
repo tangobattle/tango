@@ -1,10 +1,15 @@
 import path from "path";
 import React from "react";
+import { Trans } from "react-i18next";
 
 import { app } from "@electron/remote";
+import CloseIcon from "@mui/icons-material/Close";
 import Box from "@mui/material/Box";
+import CircularProgress from "@mui/material/CircularProgress";
+import IconButton from "@mui/material/IconButton";
 import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { getReplaysPath } from "../../paths";
@@ -26,7 +31,7 @@ export default function ReplayInfoDialog({
 
   React.useEffect(() => {
     (async () => {
-      const proc = await spawn(app, "replaydump", [
+      const proc = spawn(app, "replaydump", [
         path.join(getReplaysPath(app), filename),
         "dump-ewram",
       ]);
@@ -72,17 +77,43 @@ export default function ReplayInfoDialog({
           }}
           direction="column"
         >
-          <Typography
-            variant="h6"
-            component="h2"
-            flexGrow={0}
-            flexShrink={0}
-            sx={{ px: 2, pt: 1 }}
-          >
-            {filename}
-          </Typography>
+          <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
+            <Typography
+              variant="h6"
+              component="h2"
+              flexGrow={0}
+              flexShrink={0}
+              sx={{ px: 1 }}
+            >
+              {filename}
+            </Typography>
+            <Tooltip title={<Trans i18nKey="common:close" />}>
+              <IconButton
+                sx={{ ml: "auto" }}
+                onClick={() => {
+                  onClose();
+                }}
+              >
+                <CloseIcon />
+              </IconButton>
+            </Tooltip>
+          </Stack>
           <Box flexGrow={1} sx={{ display: "flex" }}>
-            {editor != null ? <SaveViewer editor={editor} /> : null}
+            {editor != null ? (
+              <SaveViewer editor={editor} />
+            ) : (
+              <Box
+                sx={{
+                  display: "flex",
+                  width: "100%",
+                  height: "100%",
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <CircularProgress />
+              </Box>
+            )}
           </Box>
         </Stack>
       </Box>
