@@ -343,7 +343,11 @@ export default function PlayPane({ active }: { active: boolean }) {
         </Box>
         {saveName != null ? (
           <Box flexGrow={1} display="flex">
-            <SaveViewer filename={saveName} incarnation={incarnation} />
+            <SaveViewer
+              romName={saves[saveName].romName}
+              filename={saveName}
+              incarnation={incarnation}
+            />
           </Box>
         ) : (
           <Box

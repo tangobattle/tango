@@ -27,14 +27,14 @@ export async function scan(dir: string) {
   for (const result of await Promise.allSettled(
     saveNames.map(async (saveName) => {
       try {
-        const editor = new bn6.Editor(
+        const editor = bn6.Editor.fromUnmaskedSRAM(
           bn6.Editor.sramDumpToRaw(
             (await readFile(path.join(dir, saveName))).buffer
           )
         );
         saves[saveName] = {
           loader: "bn6",
-          romName: editor.getGameInfo().romName,
+          romName: editor.getROMName(),
         };
       } catch (e) {
         throw `failed to scan save ${saveName}: ${e}`;

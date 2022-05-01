@@ -16,9 +16,11 @@ import NavicustViewer from "./NavicustViewer";
 
 export default function SaveViewer({
   filename,
+  romName,
   incarnation,
 }: {
   filename: string;
+  romName: string;
   incarnation: number;
 }) {
   const [tab, setTab] = React.useState("navicust");
@@ -29,14 +31,15 @@ export default function SaveViewer({
       const e = new bn6.Editor(
         bn6.Editor.sramDumpToRaw(
           (await readFile(path.join(getSavesPath(app), filename))).buffer
-        )
+        ),
+        romName
       );
       setEditor(e);
       if (!e.supportsModcards() && tab == "modcards") {
         setTab("navicust");
       }
     })();
-  }, [filename, incarnation, tab]);
+  }, [filename, romName, incarnation, tab]);
 
   if (editor == null) {
     return null;
