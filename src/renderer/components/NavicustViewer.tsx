@@ -278,14 +278,51 @@ function NavicustGrid({
                                     calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
                                     calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
                         : emptyColor;
+
+                    const mergeLeft =
+                      placementIdx != -1 &&
+                      j > 0 &&
+                      grid[i][j - 1] == placementIdx;
+
+                    const mergeTop =
+                      ncpColor != null &&
+                      i > 0 &&
+                      grid[i - 1][j] == placementIdx;
+
+                    const mergeRight =
+                      placementIdx != -1 &&
+                      j < grid.length - 1 &&
+                      grid[i][j + 1] == placementIdx;
+
+                    const mergeBottom =
+                      placementIdx != -1 &&
+                      i < row.length - 1 &&
+                      grid[i + 1][j] == placementIdx;
+
                     return (
                       <td
                         style={{
-                          borderColor: borderColor,
                           borderWidth: `${borderWidth / 2}px`,
                           borderStyle: "solid",
                           width: `${borderWidth * 9}px`,
                           height: `${borderWidth * 9}px`,
+                          borderColor,
+                          borderLeftColor:
+                            mergeLeft && ncpColor != null
+                              ? ncpColor.color
+                              : borderColor,
+                          borderTopColor:
+                            mergeTop && ncpColor != null
+                              ? ncpColor.color
+                              : borderColor,
+                          borderRightColor:
+                            mergeRight && ncpColor != null
+                              ? ncpColor.color
+                              : borderColor,
+                          borderBottomColor:
+                            mergeBottom && ncpColor != null
+                              ? ncpColor.color
+                              : borderColor,
                           padding: 0,
                           opacity:
                             i == 0 ||
