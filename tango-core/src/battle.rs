@@ -55,6 +55,7 @@ pub struct Match {
     dc_tx: tokio::sync::Mutex<datachannel_wrapper::DataChannelSender>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     settings: Settings,
+    is_offerer: bool,
     round_state: tokio::sync::Mutex<RoundState>,
     remote_init_sender: tokio::sync::mpsc::Sender<protocol::Init>,
     remote_init_receiver: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<protocol::Init>>,
@@ -161,6 +162,7 @@ impl Match {
                 round: None,
                 won_last_round: did_polite_win_last_round == is_offerer,
             }),
+            is_offerer,
             remote_init_sender,
             remote_init_receiver: tokio::sync::Mutex::new(remote_init_receiver),
             audio_mux,
@@ -298,6 +300,10 @@ impl Match {
 
     pub fn match_type(&self) -> u16 {
         self.settings.match_type
+    }
+
+    pub fn is_offerer(&self) -> bool {
+        self.is_offerer
     }
 
     pub async fn start_round(&self, core: mgba::core::CoreMutRef<'_>) -> anyhow::Result<()> {

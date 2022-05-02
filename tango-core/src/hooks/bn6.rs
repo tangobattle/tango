@@ -107,19 +107,25 @@ impl hooks::Hooks for BN6 {
 
                             munger.start_battle_from_comm_menu(core, match_.match_type());
 
-                            // rng1 is the per-player rng, it does not need to be synced.
+                            let mut rng = match_.lock_rng().await;
+
+                            // rng1 is the local rng, it should not be synced.
+                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                            let offerer_rng_steps = rng.gen_range(0..=0xffusize);
+                            let anwswerer_rng_steps = rng.gen_range(0..=0xffusize);
                             let mut rng1_state = 0;
-                            for _ in 0..rand_pcg::Mcg128Xsl64::new(rand::thread_rng().gen())
-                                .gen_range(0..=0xff)
-                            {
+                            for _ in 0..(if match_.is_offerer() {
+                                offerer_rng_steps
+                            } else {
+                                anwswerer_rng_steps
+                            }) {
                                 rng1_state = step_rng(rng1_state);
                             }
                             munger.set_rng1_state(core, rng1_state);
 
                             // rng2 is the shared rng, it must be synced.
-                            let mut rng = match_.lock_rng().await;
                             let mut rng2_state = 0xa338244f;
-                            for _ in 0..rng.gen_range(0..=0xff) {
+                            for _ in 0..rng.gen_range(0..=0xffusize) {
                                 rng2_state = step_rng(rng2_state);
                             }
                             munger.set_rng2_state(core, rng2_state);

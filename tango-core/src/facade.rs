@@ -278,6 +278,10 @@ impl MatchFacade {
     pub fn match_type(&self) -> u16 {
         self.arc.match_type()
     }
+
+    pub fn is_offerer(&self) -> bool {
+        self.arc.is_offerer()
+    }
 }
 
 #[derive(Clone)]
