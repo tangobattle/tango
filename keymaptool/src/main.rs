@@ -1,6 +1,8 @@
 #![windows_subsystem = "windows"]
 use std::io::Write;
 
+use clap::StructOpt;
+
 pub fn init_wgpu(
     window: &winit::window::Window,
 ) -> (
@@ -50,10 +52,18 @@ enum UserEvent {
     Gilrs(gilrs::Event),
 }
 
+#[derive(clap::Parser)]
+struct Cli {
+    #[clap(long)]
+    lang: String,
+}
+
 fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_default_env()
         .filter(Some("keymaptool"), log::LevelFilter::Info)
         .init();
+
+    let args = Cli::parse();
 
     let event_loop = Some(winit::event_loop::EventLoop::with_user_event());
 
@@ -68,10 +78,13 @@ fn main() -> anyhow::Result<()> {
 
     let (device, queue, surface, config) = init_wgpu(&window);
 
-    let mut brush = wgpu_text::BrushBuilder::using_fonts(vec![
-        ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSansJP-Regular.otf"))?,
-        ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSans-Regular.ttf"))?,
-    ])
+    let mut brush = wgpu_text::BrushBuilder::using_font(match args.lang.as_str() {
+        "ja" => ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSansJP-Regular.otf"))?,
+        "zh-Hans" => {
+            ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSansSC-Regular.otf"))?
+        }
+        _ => ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSans-Regular.ttf"))?,
+    })
     .build(&device, &config);
 
     let mut keys_pressed = [false; 255];
@@ -143,7 +156,7 @@ fn main() -> anyhow::Result<()> {
 
                     let window_size = window.inner_size();
                     let section = wgpu_text::section::Section::default()
-                        .add_text(wgpu_text::section::Text::new(&text).with_scale(72.0))
+                        .add_text(wgpu_text::section::Text::new(&text).with_scale(48.0))
                         .with_layout(
                             wgpu_text::section::Layout::default()
                                 .h_align(wgpu_text::section::HorizontalAlign::Center)
