@@ -54,13 +54,13 @@ function FolderChipRow({
 
   return (
     <TableRow sx={{ backgroundColor }}>
-      <TableCell sx={{ width: "32px", textAlign: "right" }}>
+      <TableCell sx={{ width: "28px", textAlign: "right" }}>
         <strong>{count}x</strong>
       </TableCell>
       <TableCell sx={{ width: 0 }}>
         <img
-          height="32"
-          width="32"
+          height="28"
+          width="28"
           src={(() => {
             try {
               return require(`../../../static/images/games/bn6/chipicons/${id}.png`);
