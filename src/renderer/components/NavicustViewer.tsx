@@ -279,50 +279,70 @@ function NavicustGrid({
                                     calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
                         : emptyColor;
 
-                    const mergeLeft =
-                      placementIdx != -1 &&
-                      j > 0 &&
-                      grid[i][j - 1] == placementIdx;
+                    const softBorders: string[] = [];
+                    const hardBorders: string[] = [];
 
-                    const mergeTop =
-                      ncpColor != null &&
-                      i > 0 &&
-                      grid[i - 1][j] == placementIdx;
+                    if (
+                      placementIdx == -1 ||
+                      j <= 0 ||
+                      grid[i][j - 1] != placementIdx
+                    ) {
+                      hardBorders.push(
+                        `inset ${borderWidth / 2}px 0 ${borderColor}`
+                      );
+                    } else {
+                      softBorders.push(
+                        `inset ${borderWidth / 2}px 0 ${ncpColor!.plusColor}`
+                      );
+                    }
 
-                    const mergeRight =
-                      placementIdx != -1 &&
-                      j < grid.length - 1 &&
-                      grid[i][j + 1] == placementIdx;
+                    if (
+                      placementIdx == -1 ||
+                      j >= grid.length - 1 ||
+                      grid[i][j + 1] != placementIdx
+                    ) {
+                      hardBorders.push(
+                        `inset ${-borderWidth / 2}px 0 ${borderColor}`
+                      );
+                    } else {
+                      softBorders.push(
+                        `inset ${-borderWidth / 2}px 0 ${ncpColor!.plusColor}`
+                      );
+                    }
 
-                    const mergeBottom =
-                      placementIdx != -1 &&
-                      i < row.length - 1 &&
-                      grid[i + 1][j] == placementIdx;
+                    if (
+                      placementIdx == -1 ||
+                      i <= 0 ||
+                      grid[i - 1][j] != placementIdx
+                    ) {
+                      hardBorders.push(
+                        `inset 0 ${borderWidth / 2}px ${borderColor}`
+                      );
+                    } else {
+                      softBorders.push(
+                        `inset 0 ${borderWidth / 2}px ${ncpColor!.plusColor}`
+                      );
+                    }
+
+                    if (
+                      placementIdx == -1 ||
+                      i >= row.length - 1 ||
+                      grid[i + 1][j] != placementIdx
+                    ) {
+                      hardBorders.push(
+                        `inset 0 ${-borderWidth / 2}px ${borderColor}`
+                      );
+                    } else {
+                      softBorders.push(
+                        `inset 0 ${-borderWidth / 2}px ${ncpColor!.plusColor}`
+                      );
+                    }
 
                     return (
                       <td
                         style={{
-                          borderWidth: `${borderWidth / 2}px`,
-                          borderStyle: "solid",
                           width: `${borderWidth * 9}px`,
                           height: `${borderWidth * 9}px`,
-                          borderColor,
-                          borderLeftColor:
-                            mergeLeft && ncpColor != null
-                              ? ncpColor.color
-                              : borderColor,
-                          borderTopColor:
-                            mergeTop && ncpColor != null
-                              ? ncpColor.color
-                              : borderColor,
-                          borderRightColor:
-                            mergeRight && ncpColor != null
-                              ? ncpColor.color
-                              : borderColor,
-                          borderBottomColor:
-                            mergeBottom && ncpColor != null
-                              ? ncpColor.color
-                              : borderColor,
                           padding: 0,
                           opacity:
                             i == 0 ||
@@ -338,6 +358,9 @@ function NavicustGrid({
                           style={{
                             width: "100%",
                             height: "100%",
+                            boxShadow: [...hardBorders, ...softBorders].join(
+                              ","
+                            ),
                             background,
                           }}
                         />
