@@ -7,8 +7,8 @@ import { spawn } from "./process";
 export class Keymaptool {
   private proc: ChildProcessWithoutNullStreams;
 
-  constructor({ env }: { env?: NodeJS.ProcessEnv } = {}) {
-    this.proc = spawn(app, "keymaptool", [], { env });
+  constructor(lang: string, { env }: { env?: NodeJS.ProcessEnv } = {}) {
+    this.proc = spawn(app, "keymaptool", ["--lang", lang], { env });
   }
 
   async request(message: string) {

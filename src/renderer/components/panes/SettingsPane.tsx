@@ -371,7 +371,7 @@ function AdvancedTab({ active }: { active: boolean }) {
 
 function KeymappingTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
-  const { t } = useTranslation();
+  const { i18n, t } = useTranslation();
   const keymaptoolRef = React.useRef<Keymaptool | null>(null);
   return (
     <Box
@@ -413,7 +413,7 @@ function KeymappingTab({ active }: { active: boolean }) {
                 if (keymaptoolRef.current != null) {
                   return;
                 }
-                keymaptoolRef.current = new Keymaptool({
+                keymaptoolRef.current = new Keymaptool(i18n.resolvedLanguage, {
                   env: {
                     WGPU_BACKEND:
                       config.wgpuBackend != null
