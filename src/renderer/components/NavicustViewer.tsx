@@ -373,7 +373,7 @@ function NavicustGrid({
           </table>
           <hr
             style={{
-              top: `${borderWidth * 33.5}px`,
+              top: `${borderWidth * 29.5}px`,
               margin: 0,
               padding: 0,
               position: "absolute",
@@ -390,7 +390,7 @@ function NavicustGrid({
           />
           <hr
             style={{
-              bottom: `${borderWidth * 33.5}px`,
+              bottom: `${borderWidth * 29.5}px`,
               margin: 0,
               padding: 0,
               position: "absolute",
