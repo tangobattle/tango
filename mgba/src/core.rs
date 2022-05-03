@@ -297,6 +297,10 @@ impl<'a> CoreMutRef<'a> {
         unsafe { (*self.ptr).runLoop.unwrap()(self.ptr) }
     }
 
+    pub fn step(&mut self) {
+        unsafe { (*self.ptr).step.unwrap()(self.ptr) }
+    }
+
     pub fn reset(&mut self) {
         unsafe { (*self.ptr).reset.unwrap()(self.ptr) }
     }

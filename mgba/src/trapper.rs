@@ -21,6 +21,9 @@ struct Impl {
     core_ptr: *mut mgba_sys::mCore,
 }
 
+unsafe impl Send for TrapperCStruct {}
+unsafe impl Send for Impl {}
+
 const TRAPPER_IMM: i32 = 0xef;
 
 unsafe extern "C" fn c_trapper_init(

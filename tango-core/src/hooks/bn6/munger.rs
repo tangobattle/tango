@@ -46,6 +46,14 @@ impl Munger {
         core.raw_write_32(self.offsets.ewram.rng2_state, -1, state);
     }
 
+    pub(super) fn rng1_state(&self, mut core: mgba::core::CoreMutRef) -> u32 {
+        core.raw_read_32(self.offsets.ewram.rng1_state, -1)
+    }
+
+    pub(super) fn rng2_state(&self, mut core: mgba::core::CoreMutRef) -> u32 {
+        core.raw_read_32(self.offsets.ewram.rng2_state, -1)
+    }
+
     pub(super) fn local_custom_screen_state(&self, mut core: mgba::core::CoreMutRef) -> u8 {
         core.raw_read_8(self.offsets.ewram.battle_state + 0x11, -1)
     }

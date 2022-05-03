@@ -3,19 +3,19 @@ use crate::input;
 
 struct InnerState {
     local_player_index: u8,
-    input_pairs: std::collections::VecDeque<input::Pair<input::Input>>,
+    input_pairs: std::collections::VecDeque<input::Pair<input::Input, input::Input>>,
     commit_time: u32,
     committed_state: Option<mgba::state::State>,
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
     on_battle_ended: Box<dyn Fn() + Send>,
-    result: anyhow::Result<()>,
+    error: Option<anyhow::Error>,
 }
 
 impl InnerState {
     pub fn new(
         local_player_index: u8,
-        input_pairs: Vec<input::Pair<input::Input>>,
+        input_pairs: Vec<input::Pair<input::Input, input::Input>>,
         commit_time: u32,
         dirty_time: u32,
         on_battle_ended: Box<dyn Fn() + Send>,
@@ -28,7 +28,7 @@ impl InnerState {
             dirty_time,
             dirty_state: None,
             on_battle_ended,
-            result: Ok(()),
+            error: None,
         }
     }
 }
@@ -46,7 +46,7 @@ pub struct State(std::sync::Arc<parking_lot::Mutex<Option<InnerState>>>);
 impl State {
     pub fn new(
         local_player_index: u8,
-        input_pairs: Vec<input::Pair<input::Input>>,
+        input_pairs: Vec<input::Pair<input::Input, input::Input>>,
         commit_time: u32,
         dirty_time: u32,
         on_battle_ended: Box<dyn Fn() + Send>,
@@ -82,7 +82,7 @@ impl State {
         self.0.lock().as_mut().expect("dirty state").dirty_state = Some(state);
     }
 
-    pub fn peek_input_pair(&self) -> Option<input::Pair<input::Input>> {
+    pub fn peek_input_pair(&self) -> Option<input::Pair<input::Input, input::Input>> {
         self.0
             .lock()
             .as_ref()
@@ -92,7 +92,7 @@ impl State {
             .cloned()
     }
 
-    pub fn pop_input_pair(&self) -> Option<input::Pair<input::Input>> {
+    pub fn pop_input_pair(&self) -> Option<input::Pair<input::Input, input::Input>> {
         self.0
             .lock()
             .as_mut()
@@ -102,7 +102,7 @@ impl State {
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
-        self.0.lock().as_mut().expect("error").result = Err(err);
+        self.0.lock().as_mut().expect("error").error = Some(err);
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -138,12 +138,9 @@ impl Fastforwarder {
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         local_player_index: u8,
     ) -> anyhow::Result<Self> {
-        let mut core = {
-            let mut core = mgba::core::Core::new_gba("tango")?;
-            let rom_vf = mgba::vfile::VFile::open(rom_path, mgba::vfile::flags::O_RDONLY)?;
-            core.as_mut().load_rom(rom_vf)?;
-            core
-        };
+        let mut core = mgba::core::Core::new_gba("tango")?;
+        let rom_vf = mgba::vfile::VFile::open(rom_path, mgba::vfile::flags::O_RDONLY)?;
+        core.as_mut().load_rom(rom_vf)?;
 
         let state = State(std::sync::Arc::new(parking_lot::Mutex::new(None)));
 
@@ -161,13 +158,13 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        commit_pairs: &[input::Pair<input::Input>],
+        commit_pairs: &[input::Pair<input::Input, input::Input>],
         last_committed_remote_input: input::Input,
         local_player_inputs_left: &[input::Input],
     ) -> anyhow::Result<(
         mgba::state::State,
         mgba::state::State,
-        input::Pair<input::Input>,
+        input::Pair<input::Input, input::Input>,
     )> {
         let input_pairs = commit_pairs
             .iter()
@@ -199,7 +196,7 @@ impl Fastforwarder {
                     },
                 }
             }))
-            .collect::<Vec<input::Pair<input::Input>>>();
+            .collect::<Vec<input::Pair<input::Input, input::Input>>>();
         let last_input = input_pairs.last().expect("last input pair").clone();
 
         self.core.as_mut().load_state(state)?;
@@ -229,13 +226,13 @@ impl Fastforwarder {
                         last_input,
                     ));
                 }
-                inner_state.result = Ok(());
+                inner_state.error = None;
             }
             self.core.as_mut().run_loop();
             let mut inner_state = self.state.0.lock();
-            if inner_state.as_ref().expect("state").result.is_err() {
+            if let Some(_) = inner_state.as_ref().expect("state").error {
                 let state = inner_state.take().expect("state");
-                return Err(state.result.expect_err("state result err"));
+                return Err(state.error.expect("error"));
             }
         }
     }

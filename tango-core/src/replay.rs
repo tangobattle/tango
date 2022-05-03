@@ -18,7 +18,8 @@ pub struct Replay {
     pub metadata: Vec<u8>,
     pub local_player_index: u8,
     pub local_state: mgba::state::State,
-    pub input_pairs: Vec<input::Pair<input::Input>>,
+    pub remote_state: Option<mgba::state::State>,
+    pub input_pairs: Vec<input::Pair<input::Input, input::Input>>,
 }
 
 impl Replay {
@@ -62,6 +63,11 @@ impl Replay {
         // This is unused, for now.
         let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut remote_state)?;
+        let remote_state = if remote_state.len() > 0 {
+            Some(mgba::state::State::from_slice(&remote_state))
+        } else {
+            None
+        };
 
         let mut input_pairs = vec![];
 
@@ -110,6 +116,7 @@ impl Replay {
             metadata,
             local_player_index,
             local_state,
+            remote_state,
             input_pairs,
         })
     }
@@ -145,21 +152,10 @@ impl Writer {
         Ok(())
     }
 
-    pub fn write_state_placeholder(&mut self) -> std::io::Result<()> {
-        let placeholder = [];
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .write_u32::<byteorder::LittleEndian>(placeholder.len() as u32)?;
-        self.encoder.as_mut().unwrap().write_all(&placeholder)?;
-        self.encoder.as_mut().unwrap().flush()?;
-        Ok(())
-    }
-
     pub fn write_input(
         &mut self,
         local_player_index: u8,
-        ip: &input::Pair<input::Input>,
+        ip: &input::Pair<input::Input, input::Input>,
     ) -> std::io::Result<()> {
         let (p1, p2) = if local_player_index == 0 {
             (&ip.local, &ip.remote)

@@ -1,4 +1,4 @@
-use crate::{facade, fastforwarder};
+use crate::{facade, fastforwarder, shadow};
 
 mod bn6;
 
@@ -20,15 +20,22 @@ pub trait Hooks {
         ff_state: fastforwarder::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
+    fn shadow_traps(
+        &self,
+        shadow_state: shadow::State,
+    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+
     fn primary_traps(
         &self,
         handle: tokio::runtime::Handle,
+        joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn audio_traps(
         &self,
-        facade: facade::AudioFacade,
+        audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
+        local_player_index: u8,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
