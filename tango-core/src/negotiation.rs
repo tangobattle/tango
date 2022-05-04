@@ -10,6 +10,7 @@ pub struct Negotiation {
     pub dc: datachannel_wrapper::DataChannel,
     pub peer_conn: datachannel_wrapper::PeerConnection,
     pub rng: rand_pcg::Mcg128Xsl64,
+    pub input_delay: u32,
 }
 
 #[derive(Debug)]
@@ -75,6 +76,7 @@ pub async fn negotiate(
     session_id: &str,
     matchmaking_connect_addr: &str,
     ice_servers: &[String],
+    input_delay: u32,
 ) -> Result<Negotiation, Error> {
     log::info!("negotiating match, session_id = {}", session_id);
     ipc_client
@@ -133,6 +135,7 @@ pub async fn negotiate(
             protocol::Packet::Hello(protocol::Hello {
                 protocol_version: protocol::VERSION,
                 rng_commitment: commitment.to_vec(),
+                input_delay,
             })
             .serialize()
             .expect("serialize")
@@ -214,5 +217,6 @@ pub async fn negotiate(
         dc: dc_rx.unsplit(dc_tx),
         peer_conn,
         rng: rand_pcg::Mcg128Xsl64::from_seed(seed.try_into().expect("rng seed")),
+        input_delay: hello.input_delay,
     })
 }

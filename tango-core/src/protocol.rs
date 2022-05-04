@@ -35,6 +35,7 @@ impl Packet {
 pub struct Hello {
     pub protocol_version: u8,
     pub rng_commitment: Vec<u8>,
+    pub input_delay: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

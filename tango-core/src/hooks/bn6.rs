@@ -236,7 +236,6 @@ impl hooks::Hooks for BN6 {
                                 };
 
                                 let mut round_state = match_.lock_round_state().await;
-                                let round_number = round_state.number;
 
                                 let round = match round_state.round.as_mut() {
                                     Some(round) => round,
@@ -275,7 +274,6 @@ impl hooks::Hooks for BN6 {
                                 if !round
                                     .add_local_input_and_fastforward(
                                         core,
-                                        round_number,
                                         current_tick,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
                                         munger.local_custom_screen_state(core),

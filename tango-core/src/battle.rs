@@ -68,6 +68,7 @@ pub struct Match {
     round_state: tokio::sync::Mutex<RoundState>,
     primary_thread_handle: mgba::thread::Handle,
     audio_mux: audio::mux_stream::MuxStream,
+    remote_delay: u32,
 }
 
 #[derive(Debug)]
@@ -150,6 +151,7 @@ impl Match {
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
+        remote_delay: u32,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (dc_rx, dc_tx) = dc.split();
@@ -183,6 +185,7 @@ impl Match {
             is_offerer,
             audio_mux,
             primary_thread_handle,
+            remote_delay,
         });
         Ok(match_)
     }
@@ -342,9 +345,10 @@ impl Match {
 
         let (first_state_committed_tx, first_state_committed_rx) = tokio::sync::oneshot::channel();
         round_state.round = Some(Round {
+            number: round_state.number,
             local_player_index,
             iq: input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay),
-            remote_delay: 0,
+            remote_delay: self.remote_delay,
             is_accepting_input: false,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
@@ -386,6 +390,7 @@ struct PendingTurn {
 }
 
 pub struct Round {
+    number: u8,
     local_player_index: u8,
     iq: input::PairQueue<input::Input, input::PartialInput>,
     remote_delay: u32,
@@ -441,11 +446,6 @@ impl Round {
     }
 
     pub fn fill_input_delay(&mut self, current_tick: u32) {
-        log::info!(
-            "local delay = {}, remote_delay = {}",
-            self.local_delay(),
-            self.remote_delay()
-        );
         for i in 0..self.local_delay() {
             self.add_local_input(input::Input {
                 local_tick: current_tick + i,
@@ -467,7 +467,6 @@ impl Round {
     pub async fn add_local_input_and_fastforward(
         &mut self,
         mut core: mgba::core::CoreMutRef<'_>,
-        round_number: u8,
         current_tick: u32,
         joyflags: u16,
         custom_screen_state: u8,
@@ -491,7 +490,7 @@ impl Round {
             .transport
             .lock()
             .await
-            .send_input(round_number, local_tick, remote_tick, joyflags)
+            .send_input(self.number, local_tick, remote_tick, joyflags)
             .await
         {
             log::warn!("failed to send input: {}", e);
@@ -572,10 +571,6 @@ impl Round {
 
     pub fn local_delay(&self) -> u32 {
         self.iq.local_delay()
-    }
-
-    pub fn set_remote_delay(&mut self, delay: u32) {
-        self.remote_delay = delay;
     }
 
     pub fn remote_delay(&self) -> u32 {

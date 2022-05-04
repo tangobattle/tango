@@ -70,6 +70,7 @@ impl Game {
                     &match_settings.session_id,
                     &match_settings.matchmaking_connect_addr,
                     &match_settings.ice_servers,
+                    match_settings.input_delay,
                 )
                 .await
             })?)
@@ -177,6 +178,7 @@ impl Game {
                         negotiation.rng,
                         is_offerer,
                         thread.handle(),
+                        negotiation.input_delay,
                         match_settings,
                     )
                     .expect("new match"),
