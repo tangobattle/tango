@@ -113,6 +113,10 @@ impl State {
             .local_player_index
     }
 
+    pub fn remote_player_index(&self) -> u8 {
+        1 - self.local_player_index()
+    }
+
     pub fn on_battle_ended(&self) {
         (self
             .0

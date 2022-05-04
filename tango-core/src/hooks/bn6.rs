@@ -212,7 +212,12 @@ impl hooks::Hooks for BN6 {
                             let mut round_state = match_.lock_round_state().await;
                             let round = round_state.round.as_mut().expect("round");
 
-                            log::info!("turn data marshaled on {}", munger.current_tick(core));
+                            log::info!(
+                                "turn data marshaled on {}, rng1 = {:08x}, rng2 = {:08x}",
+                                munger.current_tick(core),
+                                munger.rng1_state(core),
+                                munger.rng2_state(core)
+                            );
                             let local_turn = munger.tx_buf(core);
                             round.add_local_pending_turn(local_turn);
                         });
@@ -669,10 +674,13 @@ impl hooks::Hooks for BN6 {
                         let round = round_state.round.as_mut().expect("round");
 
                         log::info!(
-                            "shadow turn data marshaled on {}",
-                            munger.current_tick(core)
+                            "shadow turn data marshaled on {}, rng1 = {:08x}, rng2 = {:08x}",
+                            munger.current_tick(core),
+                            munger.rng1_state(core),
+                            munger.rng2_state(core)
                         );
-                        round.set_pending_out_turn(munger.tx_buf(core));
+                        let remote_turn = munger.tx_buf(core);
+                        round.set_pending_out_turn(remote_turn);
                     }),
                 )
             },
@@ -809,6 +817,7 @@ impl hooks::Hooks for BN6 {
                                 ip.local.turn.as_slice(),
                             );
                         }
+
                         munger.set_player_input_state(
                             core,
                             round.remote_player_index() as u32,
@@ -1037,33 +1046,30 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        let local_player_index = ff_state.local_player_index();
-                        let remote_player_index = 1 - local_player_index;
-
                         munger.set_player_input_state(
                             core,
-                            local_player_index as u32,
+                            ff_state.local_player_index() as u32,
                             ip.local.joyflags,
                             ip.local.custom_screen_state,
                         );
                         if !ip.local.turn.is_empty() {
                             munger.set_rx_buf(
                                 core,
-                                local_player_index as u32,
+                                ff_state.local_player_index() as u32,
                                 ip.local.turn.as_slice(),
                             );
                         }
 
                         munger.set_player_input_state(
                             core,
-                            remote_player_index as u32,
+                            ff_state.remote_player_index() as u32,
                             ip.remote.joyflags,
                             ip.remote.custom_screen_state,
                         );
                         if !ip.remote.turn.is_empty() {
                             munger.set_rx_buf(
                                 core,
-                                remote_player_index as u32,
+                                ff_state.remote_player_index() as u32,
                                 ip.remote.turn.as_slice(),
                             );
                         }
