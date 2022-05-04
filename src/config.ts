@@ -17,7 +17,7 @@ export interface Config {
 export const DEFAULT: Config = {
   theme: "light",
   language: null,
-  updateChannel: "alpha",
+  updateChannel: "latest",
   wgpuBackend: null,
   rustLogFilter: "",
   keymapping: {
