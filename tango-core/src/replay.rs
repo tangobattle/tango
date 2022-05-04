@@ -23,6 +23,22 @@ pub struct Replay {
 }
 
 impl Replay {
+    pub fn into_remote(mut self) -> Option<Self> {
+        let remote_state = match self.remote_state.take() {
+            Some(remote_state) => remote_state,
+            None => {
+                return None;
+            }
+        };
+        self.remote_state = Some(self.local_state);
+        self.local_state = remote_state;
+        self.local_player_index = 1 - self.local_player_index;
+        for ip in self.input_pairs.iter_mut() {
+            std::mem::swap(&mut ip.local, &mut ip.remote);
+        }
+        Some(self)
+    }
+
     pub fn decode(mut r: impl std::io::Read) -> std::io::Result<Self> {
         let mut header = [0u8; 4];
         r.read_exact(&mut header)?;

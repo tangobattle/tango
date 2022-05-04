@@ -9,6 +9,9 @@ struct Cli {
     #[clap(parse(from_os_str))]
     path: std::path::PathBuf,
 
+    #[clap(long)]
+    remote: bool,
+
     #[clap(subcommand)]
     action: Action,
 }
@@ -41,10 +44,14 @@ struct DumpVideoCli {
 #[derive(clap::Parser)]
 struct DumpEWRAMCli {}
 
+#[derive(clap::Parser)]
+struct DumpTextCli {}
+
 #[derive(clap::Subcommand)]
 enum Action {
     DumpVideo(DumpVideoCli),
     DumpEWRAM(DumpEWRAMCli),
+    DumpText(DumpTextCli),
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -58,7 +65,11 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut f = std::fs::File::open(&args.path)?;
 
-    let replay = tango_core::replay::Replay::decode(&mut f)?;
+    let mut replay = tango_core::replay::Replay::decode(&mut f)?;
+
+    if args.remote {
+        replay = replay.into_remote();
+    }
 
     log::info!(
         "replay is for {} (crc32 = {:08x})",
@@ -69,6 +80,7 @@ fn main() -> Result<(), anyhow::Error> {
     match args.action {
         Action::DumpVideo(args) => dump_video(args, replay),
         Action::DumpEWRAM(args) => dump_ewram(args, replay),
+        Action::DumpText(args) => dump_text(args, replay),
     }
 }
 
@@ -212,5 +224,25 @@ fn dump_ewram(
 ) -> Result<(), anyhow::Error> {
     std::io::stdout().write_all(replay.local_state.wram())?;
     std::io::stdout().flush()?;
+    Ok(())
+}
+
+fn dump_text(_args: DumpTextCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+    for ip in &replay.input_pairs {
+        println!(
+            "tick = {:?}, local joyflags = {}, local custom screen state = {}, remote joyflags = {}, remote custom screen state = {}",
+            ip.local.local_tick,
+            ip.local.joyflags,
+            ip.local.custom_screen_state,
+            ip.remote.joyflags,
+            ip.remote.custom_screen_state,
+        );
+        if !ip.local.turn.is_empty() {
+            println!("+ local turn: {:?}", ip.local.turn);
+        }
+        if !ip.remote.turn.is_empty() {
+            println!("+ remote turn: {:?}", ip.remote.turn);
+        }
+    }
     Ok(())
 }
