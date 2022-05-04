@@ -413,6 +413,28 @@ impl hooks::Hooks for BN6 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
+                    self.offsets.rom.round_end_entry,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            match_
+                                .advance_shadow_until_round_end()
+                                .await
+                                .expect("advance shadow");
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
@@ -743,15 +765,11 @@ impl hooks::Hooks for BN6 {
                                     turn,
                                 },
                             });
-                        }
 
-                        let ip = round
-                            .peek_out_input_pair()
-                            .as_ref()
-                            .expect("peek out input pair");
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(4, ip.remote.joyflags as i32);
+                            core.gba_mut()
+                                .cpu_mut()
+                                .set_gpr(4, ip.remote.joyflags as i32);
+                        }
 
                         if round.take_input_injected() {
                             shadow_state.set_applied_state(core.save_state().expect("save state"));
@@ -780,10 +798,11 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        let ip = round
-                            .peek_out_input_pair()
-                            .as_ref()
-                            .expect("out input pairs");
+                        let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
+                            ip
+                        } else {
+                            return;
+                        };
 
                         if ip.local.local_tick != ip.remote.local_tick {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
