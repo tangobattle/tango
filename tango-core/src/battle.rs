@@ -19,6 +19,7 @@ pub struct Settings {
     pub session_id: String,
     pub replays_path: std::path::PathBuf,
     pub shadow_save_path: std::path::PathBuf,
+    pub shadow_rom_path: std::path::PathBuf,
     pub replay_metadata: Vec<u8>,
     pub match_type: u16,
     pub input_delay: u32,
@@ -159,7 +160,7 @@ impl Match {
         let won_last_round = did_polite_win_last_round == is_offerer;
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(tokio::sync::Mutex::new(shadow::Shadow::new(
-                &rom_path,
+                &settings.shadow_rom_path,
                 &settings.shadow_save_path,
                 hooks,
                 settings.match_type,

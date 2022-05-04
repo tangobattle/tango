@@ -14,6 +14,7 @@ pub struct Args {
 #[derive(Debug, serde::Serialize, serde::Deserialize, typescript_type_def::TypeDef)]
 pub struct MatchSettings {
     pub shadow_save_path: String,
+    pub shadow_rom_path: String,
     pub session_id: String,
     pub input_delay: u32,
     pub match_type: u16,

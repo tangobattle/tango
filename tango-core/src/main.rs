@@ -28,6 +28,7 @@ fn main() -> Result<(), anyhow::Error> {
                 replay_metadata: s.replay_metadata.into(),
                 replays_path: s.replays_path.into(),
                 shadow_save_path: s.shadow_save_path.into(),
+                shadow_rom_path: s.shadow_rom_path.into(),
                 match_type: s.match_type,
                 input_delay: s.input_delay,
                 ice_servers: s.ice_servers,
