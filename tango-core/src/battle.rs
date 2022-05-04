@@ -69,6 +69,8 @@ pub struct Match {
     round_state: tokio::sync::Mutex<RoundState>,
     primary_thread_handle: mgba::thread::Handle,
     audio_mux: audio::mux_stream::MuxStream,
+    round_started_tx: tokio::sync::mpsc::Sender<u8>,
+    round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
     remote_delay: u32,
 }
 
@@ -155,6 +157,7 @@ impl Match {
         remote_delay: u32,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
+        let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let (dc_rx, dc_tx) = dc.split();
         let did_polite_win_last_round = rng.gen::<bool>();
         let won_last_round = did_polite_win_last_round == is_offerer;
@@ -186,6 +189,8 @@ impl Match {
             is_offerer,
             audio_mux,
             primary_thread_handle,
+            round_started_tx,
+            round_started_rx: tokio::sync::Mutex::new(round_started_rx),
             remote_delay,
         });
         Ok(match_)
@@ -213,6 +218,7 @@ impl Match {
 
     pub async fn run(&self) -> anyhow::Result<()> {
         let mut dc_rx = self.dc_rx.lock().await;
+        let mut last_round_number = 0;
         loop {
             match protocol::Packet::deserialize(
                 match dc_rx.receive().await {
@@ -222,11 +228,23 @@ impl Match {
                 .as_slice(),
             )? {
                 protocol::Packet::Input(input) => {
+                    if input.round_number != last_round_number {
+                        let round_number =
+                            if let Some(number) = self.round_started_rx.lock().await.recv().await {
+                                number
+                            } else {
+                                break;
+                            };
+                        assert!(round_number == input.round_number);
+                        last_round_number = input.round_number;
+                    }
                     let first_state_committed_rx = {
                         let mut round_state = self.round_state.lock().await;
 
                         if input.round_number != round_state.number {
-                            log::info!("round number mismatch, dropping input");
+                            log::error!(
+                                "round number mismatch, dropping input: this is probably bad!"
+                            );
                             continue;
                         }
 
@@ -380,6 +398,7 @@ impl Match {
             transport: self.transport.clone(),
             shadow: self.shadow.clone(),
         });
+        self.round_started_tx.send(round_state.number).await?;
         log::info!("round has started");
         Ok(())
     }
@@ -611,8 +630,9 @@ impl Round {
         let mut shadow = self.shadow.lock().await;
         let input_pairs = partial_input_pairs
             .into_iter()
-            .map(|pair| shadow.apply_input(pair).expect("apply input to shadow"))
-            .collect::<Vec<_>>();
+            .map(|pair| shadow.apply_input(pair))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("apply input");
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();

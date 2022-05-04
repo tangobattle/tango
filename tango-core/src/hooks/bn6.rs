@@ -282,7 +282,7 @@ impl hooks::Hooks for BN6 {
                                         current_tick,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
                                         munger.local_custom_screen_state(core),
-                                        turn.clone(),
+                                        turn,
                                     )
                                     .await
                                 {
@@ -783,7 +783,7 @@ impl hooks::Hooks for BN6 {
                         let ip = round
                             .peek_out_input_pair()
                             .as_ref()
-                            .expect("in input pairs");
+                            .expect("out input pairs");
 
                         if ip.local.local_tick != ip.remote.local_tick {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
