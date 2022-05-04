@@ -12,6 +12,7 @@ pub struct Round {
     pending_out_turn: Option<PendingTurn>,
     pending_in_input: Option<input::Pair<input::Input, input::PartialInput>>,
     pending_out_input: Option<input::Pair<input::Input, input::Input>>,
+    input_injected: bool,
 }
 
 impl Round {
@@ -80,6 +81,16 @@ impl Round {
 
     pub fn peek_out_input_pair(&self) -> &Option<input::Pair<input::Input, input::Input>> {
         &self.pending_out_input
+    }
+
+    pub fn set_input_injected(&mut self) {
+        self.input_injected = true;
+    }
+
+    pub fn take_input_injected(&mut self) -> bool {
+        let input_injected = self.input_injected;
+        self.input_injected = false;
+        input_injected
     }
 }
 
@@ -163,6 +174,7 @@ impl State {
             pending_out_turn: None,
             pending_in_input: None,
             pending_out_input: None,
+            input_injected: false,
         });
     }
 

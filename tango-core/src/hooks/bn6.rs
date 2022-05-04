@@ -708,54 +708,54 @@ impl hooks::Hooks for BN6 {
                             round.set_first_committed_state(core.save_state().expect("save state"));
                             log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
+                            return;
                         }
 
-                        let ip = match round.take_in_input_pair() {
-                            Some(ip) => ip,
-                            None => {
-                                if round.peek_out_input_pair().is_some() {
-                                    shadow_state
-                                        .set_applied_state(core.save_state().expect("save state"));
-                                }
+                        if let Some(ip) = round.take_in_input_pair() {
+                            if ip.local.local_tick != ip.remote.local_tick {
+                                shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                    "local tick != remote tick (in battle tick = {}): {} != {}",
+                                    current_tick,
+                                    ip.local.local_tick,
+                                    ip.remote.local_tick
+                                ));
                                 return;
                             }
-                        };
 
-                        if ip.local.local_tick != ip.remote.local_tick {
-                            shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                "local tick != remote tick (in battle tick = {}): {} != {}",
-                                current_tick,
-                                ip.local.local_tick,
-                                ip.remote.local_tick
-                            ));
-                            return;
+                            if ip.local.local_tick != current_tick {
+                                shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                    "input tick != in battle tick: {} != {}",
+                                    ip.local.local_tick,
+                                    current_tick,
+                                ));
+                                return;
+                            }
+
+                            let turn = round.take_pending_out_turn();
+
+                            round.set_out_input_pair(input::Pair {
+                                local: ip.local,
+                                remote: input::Input {
+                                    local_tick: ip.remote.local_tick,
+                                    remote_tick: ip.remote.remote_tick,
+                                    joyflags: ip.remote.joyflags,
+                                    custom_screen_state: munger.local_custom_screen_state(core),
+                                    turn,
+                                },
+                            });
                         }
 
-                        if ip.local.local_tick != current_tick {
-                            shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                "input tick != in battle tick: {} != {}",
-                                ip.local.local_tick,
-                                current_tick,
-                            ));
-                            return;
-                        }
-
-                        let turn = round.take_pending_out_turn();
-
-                        round.set_out_input_pair(input::Pair {
-                            local: ip.local,
-                            remote: input::Input {
-                                local_tick: ip.remote.local_tick,
-                                remote_tick: ip.remote.remote_tick,
-                                joyflags: ip.remote.joyflags,
-                                custom_screen_state: munger.local_custom_screen_state(core),
-                                turn,
-                            },
-                        });
-
+                        let ip = round
+                            .peek_out_input_pair()
+                            .as_ref()
+                            .expect("peek out input pair");
                         core.gba_mut()
                             .cpu_mut()
                             .set_gpr(4, ip.remote.joyflags as i32);
+
+                        if round.take_input_injected() {
+                            shadow_state.set_applied_state(core.save_state().expect("save state"));
+                        }
                     }),
                 )
             },
@@ -780,7 +780,10 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        let ip = round.peek_out_input_pair().clone().expect("in input pairs");
+                        let ip = round
+                            .peek_out_input_pair()
+                            .as_ref()
+                            .expect("in input pairs");
 
                         if ip.local.local_tick != ip.remote.local_tick {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
@@ -829,7 +832,7 @@ impl hooks::Hooks for BN6 {
                             );
                         }
 
-                        round.set_out_input_pair(ip);
+                        round.set_input_injected();
                     }),
                 )
             },
