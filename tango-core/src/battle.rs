@@ -447,6 +447,11 @@ impl Round {
     }
 
     pub fn fill_input_delay(&mut self, current_tick: u32) {
+        log::info!(
+            "filling input delay: local = {}, remote = {}",
+            self.local_delay(),
+            self.remote_delay()
+        );
         for i in 0..self.local_delay() {
             self.add_local_input(input::Input {
                 local_tick: current_tick + i,
