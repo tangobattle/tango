@@ -78,8 +78,8 @@ impl Round {
         &self.pending_in_input
     }
 
-    pub fn has_output_pair(&self) -> bool {
-        self.pending_out_input.is_some()
+    pub fn peek_out_input_pair(&self) -> &Option<input::Pair<input::Input, input::Input>> {
+        &self.pending_out_input
     }
 }
 

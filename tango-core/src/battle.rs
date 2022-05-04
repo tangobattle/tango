@@ -532,13 +532,6 @@ impl Round {
 
         self.set_audio_save_state(dirty_state);
 
-        // const RENDEZVOUS_AUDIO_EVERY: u32 = 10;
-        // if current_tick % RENDEZVOUS_AUDIO_EVERY == 0 {
-        //     self
-        //         .wait_for_audio_rendezvous()
-        //         .expect("wait for audio rendezvous");
-        // }
-
         self.set_committed_state(committed_state);
         self.set_last_input(last_input);
 

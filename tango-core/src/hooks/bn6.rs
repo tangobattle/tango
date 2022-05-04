@@ -710,10 +710,10 @@ impl hooks::Hooks for BN6 {
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
                         }
 
-                        let ip = match round.peek_in_input_pair() {
+                        let ip = match round.take_in_input_pair() {
                             Some(ip) => ip,
                             None => {
-                                if round.has_output_pair() {
+                                if round.peek_out_input_pair().is_some() {
                                     shadow_state
                                         .set_applied_state(core.save_state().expect("save state"));
                                 }
@@ -739,6 +739,19 @@ impl hooks::Hooks for BN6 {
                             ));
                             return;
                         }
+
+                        let turn = round.take_pending_out_turn();
+
+                        round.set_out_input_pair(input::Pair {
+                            local: ip.local,
+                            remote: input::Input {
+                                local_tick: ip.remote.local_tick,
+                                remote_tick: ip.remote.remote_tick,
+                                joyflags: ip.remote.joyflags,
+                                custom_screen_state: munger.local_custom_screen_state(core),
+                                turn,
+                            },
+                        });
 
                         core.gba_mut()
                             .cpu_mut()
@@ -767,23 +780,7 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        let ip = match round.take_in_input_pair() {
-                            Some(ip) => ip,
-                            None => {
-                                return;
-                            }
-                        };
-
-                        let ip = input::Pair {
-                            local: ip.local,
-                            remote: input::Input {
-                                local_tick: ip.remote.local_tick,
-                                remote_tick: ip.remote.remote_tick,
-                                joyflags: ip.remote.joyflags,
-                                custom_screen_state: munger.local_custom_screen_state(core),
-                                turn: round.take_pending_out_turn(),
-                            },
-                        };
+                        let ip = round.peek_out_input_pair().clone().expect("in input pairs");
 
                         if ip.local.local_tick != ip.remote.local_tick {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
