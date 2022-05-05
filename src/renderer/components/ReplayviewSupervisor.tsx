@@ -123,9 +123,13 @@ export default function ReplayviewSupervisor({
     <Modal
       open={true}
       onClose={(_e, reason) => {
-        if (reason == "backdropClick" || reason == "escapeKeyDown") {
+        if (
+          !exitLingering &&
+          (reason == "backdropClick" || reason == "escapeKeyDown")
+        ) {
           return;
         }
+        onExit();
       }}
     >
       <Box
