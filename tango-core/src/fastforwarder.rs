@@ -164,7 +164,7 @@ impl Fastforwarder {
         state: &mgba::state::State,
         commit_pairs: &[input::Pair<input::Input, input::Input>],
         last_committed_remote_input: input::Input,
-        local_player_inputs_left: &[input::Input],
+        local_player_inputs_left: &[input::PartialInput],
     ) -> anyhow::Result<(
         mgba::state::State,
         mgba::state::State,
@@ -177,7 +177,13 @@ impl Fastforwarder {
                 let local_tick = local.local_tick;
                 let remote_tick = local.remote_tick;
                 input::Pair {
-                    local,
+                    local: input::Input {
+                        local_tick,
+                        remote_tick,
+                        joyflags: local.joyflags,
+                        custom_screen_state: 0, // TODO
+                        turn: vec![],
+                    },
                     remote: input::Input {
                         local_tick,
                         remote_tick,

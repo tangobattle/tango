@@ -214,12 +214,9 @@ impl hooks::Hooks for BN6 {
                             let mut round_state = match_.lock_round_state().await;
                             let round = round_state.round.as_mut().expect("round");
 
-                            // Committing the round turn tx must be done on the correct frame, adjusted by local delay.
-                            //
-                            // Because each input into the shadow has a forward adjustment of the local delay, we need to undo this adjustment here such that when they do get added into the shadow core on the right frame (it will take # input delay frames to consume this turn data).
                             let current_tick = munger.current_tick(core);
-                            let commit_tick = current_tick + TURN_TX_DELAY - round.local_delay();
-                            log::debug!(
+                            let commit_tick = current_tick + TURN_TX_DELAY;
+                            log::info!(
                                 "turn data marshaled on {}, will commit to shadow at {}, rng1 = {:08x}, rng2 = {:08x}",
                                 current_tick,
                                 commit_tick,
@@ -706,7 +703,7 @@ impl hooks::Hooks for BN6 {
                         let current_tick = munger.current_tick(core);
                         let commit_tick = current_tick + TURN_TX_DELAY;
 
-                        log::debug!(
+                        log::info!(
                             "shadow turn data marshaled on {}, will commit at {}, rng1 = {:08x}, rng2 = {:08x}",
                             current_tick,
                             commit_tick,
@@ -849,7 +846,7 @@ impl hooks::Hooks for BN6 {
                             ip.local.custom_screen_state,
                         );
                         if !ip.local.turn.is_empty() {
-                            log::debug!("shadow local turn injected on {}", ip.local.local_tick);
+                            log::info!("shadow local turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 round.local_player_index() as u32,
@@ -864,7 +861,7 @@ impl hooks::Hooks for BN6 {
                             ip.remote.custom_screen_state,
                         );
                         if !ip.remote.turn.is_empty() {
-                            log::debug!("shadow remote turn injected on {}", ip.local.local_tick);
+                            log::info!("shadow remote turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 round.remote_player_index() as u32,
@@ -1093,7 +1090,7 @@ impl hooks::Hooks for BN6 {
                             ip.local.custom_screen_state,
                         );
                         if !ip.local.turn.is_empty() {
-                            log::debug!("primary local turn injected on {}", ip.local.local_tick);
+                            log::info!("primary local turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 ff_state.local_player_index() as u32,
@@ -1108,7 +1105,7 @@ impl hooks::Hooks for BN6 {
                             ip.remote.custom_screen_state,
                         );
                         if !ip.remote.turn.is_empty() {
-                            log::debug!("primary remote turn injected on {}", ip.local.local_tick);
+                            log::info!("primary remote turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 ff_state.remote_player_index() as u32,

@@ -376,6 +376,7 @@ impl Match {
             number: round_state.number,
             local_player_index,
             iq: input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay),
+            local_custom_input_queue: std::collections::VecDeque::with_capacity(MAX_QUEUE_LENGTH),
             remote_delay: self.remote_delay,
             is_accepting_input: false,
             last_committed_remote_input: input::Input {
@@ -418,10 +419,17 @@ struct PendingTurn {
     on_tick: u32,
 }
 
+struct LocalCustomInput {
+    current_tick: u32,
+    custom_screen_state: u8,
+    turn: Vec<u8>,
+}
+
 pub struct Round {
     number: u8,
     local_player_index: u8,
-    iq: input::PairQueue<input::Input, input::PartialInput>,
+    iq: input::PairQueue<input::PartialInput, input::PartialInput>,
+    local_custom_input_queue: std::collections::VecDeque<LocalCustomInput>,
     remote_delay: u32,
     is_accepting_input: bool,
     last_committed_remote_input: input::Input,
@@ -481,12 +489,10 @@ impl Round {
             self.remote_delay()
         );
         for i in 0..self.local_delay() {
-            self.add_local_input(input::Input {
+            self.add_local_input(input::PartialInput {
                 local_tick: current_tick + i,
                 remote_tick: 0,
                 joyflags: 0,
-                custom_screen_state: 0,
-                turn: vec![],
             });
         }
         for i in 0..self.remote_delay() {
@@ -531,15 +537,25 @@ impl Round {
             return false;
         }
 
-        self.add_local_input(input::Input {
+        self.add_local_input(input::PartialInput {
             local_tick,
             remote_tick,
             joyflags,
+        });
+
+        self.add_local_custom_input(LocalCustomInput {
+            current_tick,
             custom_screen_state,
             turn,
         });
 
-        let (input_pairs, left) = self.consume_and_peek_local().await;
+        let (input_pairs, left) = match self.consume_and_peek_local().await {
+            Ok(r) => r,
+            Err(e) => {
+                log::warn!("failed to consume input: {}", e);
+                return false;
+            }
+        };
 
         let committed_state = self
             .committed_state()
@@ -628,20 +644,57 @@ impl Round {
         &self.committed_state
     }
 
+    fn add_local_custom_input(&mut self, lci: LocalCustomInput) {
+        self.local_custom_input_queue.push_back(lci);
+    }
+
+    fn pop_local_custom_input(&mut self) -> Option<LocalCustomInput> {
+        self.local_custom_input_queue.pop_front()
+    }
+
     pub async fn consume_and_peek_local(
         &mut self,
-    ) -> (
+    ) -> anyhow::Result<(
         Vec<input::Pair<input::Input, input::Input>>,
-        Vec<input::Input>,
-    ) {
+        Vec<input::PartialInput>,
+    )> {
         let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
+
+        let partial_input_pairs = partial_input_pairs
+            .into_iter()
+            .map(|pair| {
+                let lci = self
+                    .pop_local_custom_input()
+                    .unwrap_or_else(|| LocalCustomInput {
+                        current_tick: pair.local.local_tick,
+                        custom_screen_state: 0,
+                        turn: vec![],
+                    });
+                if lci.current_tick != pair.local.local_tick {
+                    anyhow::bail!(
+                        "custom input did not match current tick: {} != {}",
+                        lci.current_tick,
+                        pair.local.local_tick
+                    );
+                }
+                Ok(input::Pair {
+                    local: input::Input {
+                        local_tick: pair.local.local_tick,
+                        remote_tick: pair.local.remote_tick,
+                        joyflags: pair.local.joyflags,
+                        custom_screen_state: lci.custom_screen_state,
+                        turn: lci.turn,
+                    },
+                    remote: pair.remote,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let mut shadow = self.shadow.lock().await;
         let input_pairs = partial_input_pairs
             .into_iter()
             .map(|pair| shadow.apply_input(pair))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("apply input");
+            .collect::<Result<Vec<_>, _>>()?;
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
@@ -655,14 +708,14 @@ impl Round {
                 .expect("write input");
         }
 
-        (input_pairs, left)
+        Ok((input_pairs, left))
     }
 
     pub fn can_add_local_input(&mut self) -> bool {
         self.iq.local_queue_length() < MAX_QUEUE_LENGTH
     }
 
-    pub fn add_local_input(&mut self, input: input::Input) {
+    pub fn add_local_input(&mut self, input: input::PartialInput) {
         log::debug!("local input: {:?}", input);
         self.iq.add_local_input(input);
     }
