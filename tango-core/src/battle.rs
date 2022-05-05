@@ -358,13 +358,12 @@ impl Match {
             let audio_core_mux_handle = audio_core_mux_handle.clone();
             let save_state = core.save_state()?;
             audio_core_handle.run_on_core(move |mut core| {
-                core.gba_mut()
-                    .sync_mut()
-                    .as_mut()
-                    .expect("sync")
-                    .set_fps_target(game::EXPECTED_FPS as f32);
                 core.load_state(&save_state).expect("load state");
             });
+            audio_core_handle
+                .lock_audio()
+                .sync_mut()
+                .set_fps_target(game::EXPECTED_FPS as f32);
             audio_core_mux_handle.switch();
         }
         audio_core_handle.unpause();

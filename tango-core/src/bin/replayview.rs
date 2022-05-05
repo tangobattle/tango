@@ -114,14 +114,9 @@ fn main() -> Result<(), anyhow::Error> {
 
     let thread = mgba::thread::Thread::new(core);
     thread.start().expect("start thread");
-    thread.handle().pause();
-    thread.handle().run_on_core(|mut core| {
-        core.gba_mut()
-            .sync_mut()
-            .as_mut()
-            .expect("sync")
-            .set_fps_target(60.0);
-    });
+    let thread_handle = thread.handle();
+    thread_handle.pause();
+    thread_handle.lock_audio().sync_mut().set_fps_target(60.0);
     {
         let vbuf = vbuf.clone();
         thread.set_frame_callback(move |_core, video_buffer| {
