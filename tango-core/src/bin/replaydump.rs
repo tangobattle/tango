@@ -71,12 +71,6 @@ fn main() -> Result<(), anyhow::Error> {
         replay = replay.into_remote().unwrap();
     }
 
-    log::info!(
-        "replay is for {} (crc32 = {:08x})",
-        replay.local_state.as_ref().unwrap().rom_title(),
-        replay.local_state.as_ref().unwrap().rom_crc32()
-    );
-
     match args.action {
         Action::DumpVideo(args) => dump_video(args, replay),
         Action::DumpEWRAM(args) => dump_ewram(args, replay),

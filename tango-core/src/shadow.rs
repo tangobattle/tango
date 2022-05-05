@@ -229,7 +229,7 @@ impl Shadow {
         *self.state.0.pending_in_init.lock() = Some(local_init);
 
         loop {
-            self.core.as_mut().run_frame();
+            self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(err.into());
             }
@@ -255,7 +255,7 @@ impl Shadow {
     pub fn advance_until_first_committed_state(&mut self) -> anyhow::Result<mgba::state::State> {
         log::info!("advancing shadow until first committed state");
         loop {
-            self.core.as_mut().run_frame();
+            self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(err.into());
             }
@@ -277,7 +277,7 @@ impl Shadow {
         log::info!("advancing shadow until round end");
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
-            self.core.as_mut().run_frame();
+            self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(err.into());
             }
@@ -316,7 +316,7 @@ impl Shadow {
             self.hooks.current_tick(self.core.as_mut())
         );
         loop {
-            self.core.as_mut().run_frame();
+            self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(err.into());
             }
