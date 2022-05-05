@@ -239,6 +239,26 @@ impl Match {
                         last_round_number = input.round_number;
                     }
 
+                    let first_state_committed_rx = {
+                        let mut round_state = self.round_state.lock().await;
+
+                        if input.round_number != round_state.number {
+                            log::error!(
+                                "round number mismatch, dropping input: this is probably bad!"
+                            );
+                            continue;
+                        }
+
+                        let round = match &mut round_state.round {
+                            None => {
+                                log::info!("no round in progress, dropping input");
+                                continue;
+                            }
+                            Some(b) => b,
+                        };
+                        round.first_state_committed_rx.take()
+                    };
+
                     let mut round_state = self.round_state.lock().await;
                     if input.round_number != round_state.number {
                         log::error!(
@@ -346,6 +366,7 @@ impl Match {
 
         log::info!("preparing round state");
 
+        let (first_state_committed_tx, first_state_committed_rx) = tokio::sync::oneshot::channel();
         round_state.round = Some(Round {
             number: round_state.number,
             local_player_index,
@@ -360,6 +381,8 @@ impl Match {
                 turn: vec![],
             },
             last_input: None,
+            first_state_committed_tx: Some(first_state_committed_tx),
+            first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
             local_pending_turn: None,
             replay_writer: Some(replay::Writer::new(
@@ -398,6 +421,8 @@ pub struct Round {
     is_accepting_input: bool,
     last_committed_remote_input: input::Input,
     last_input: Option<input::Pair<input::Input, input::Input>>,
+    first_state_committed_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<mgba::state::State>,
     local_pending_turn: Option<PendingTurn>,
     replay_writer: Option<replay::Writer>,
@@ -439,6 +464,9 @@ impl Round {
             .write_state(&remote_state)
             .expect("write remote state");
         self.committed_state = Some(state);
+        if let Some(tx) = self.first_state_committed_tx.take() {
+            let _ = tx.send(());
+        }
     }
 
     pub fn fill_input_delay(&mut self, current_tick: u32) {

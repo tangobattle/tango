@@ -734,10 +734,7 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        log::info!("shadow joyflags: {}", current_tick);
-
                         if let Some(ip) = round.take_in_input_pair() {
-                            log::info!("ip: {:?}", ip);
                             if ip.local.local_tick != ip.remote.local_tick {
                                 shadow_state.set_anyhow_error(anyhow::anyhow!(
                                     "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
