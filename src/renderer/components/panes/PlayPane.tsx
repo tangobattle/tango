@@ -30,7 +30,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { getReplaysPath, getSavesPath } from "../../../paths";
+import { getBasePath, getReplaysPath, getSavesPath } from "../../../paths";
 import { KNOWN_ROMS } from "../../../rom";
 import { Editor } from "../../../saveedit/bn6";
 import { CopyButton } from "../CopyButton";
@@ -238,7 +238,7 @@ export default function PlayPane({ active }: { active: boolean }) {
               <IconButton
                 onClick={() => {
                   if (saveName == null) {
-                    shell.openPath(getSavesPath(app));
+                    shell.openPath(getBasePath(app));
                   } else {
                     shell.showItemInFolder(
                       path.join(getSavesPath(app), saveName)
