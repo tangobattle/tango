@@ -529,6 +529,7 @@ export default function PlayPane({ active }: { active: boolean }) {
                                     version: patchVersion!,
                                   }
                                 : null,
+                            remote: null,
                           },
                           inputDelay,
                           matchType,

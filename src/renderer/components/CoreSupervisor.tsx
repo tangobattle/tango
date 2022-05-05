@@ -91,6 +91,8 @@ export function CoreSupervisor({
             matchSettings == null
               ? null
               : {
+                  shadow_rom_path: outROMPath,
+                  shadow_save_path: savePath,
                   session_id: matchSettings.sessionID,
                   input_delay: matchSettings.inputDelay,
                   match_type: matchSettings.matchType,

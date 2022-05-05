@@ -9,6 +9,13 @@ export interface ReplayInfo {
     name: string;
     version: string;
   } | null;
+  remote: {
+    rom: string;
+    patch: {
+      name: string;
+      version: string;
+    } | null;
+  } | null;
 }
 
 const textDecoder = new TextDecoder("utf-8");
