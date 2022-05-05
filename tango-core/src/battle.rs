@@ -258,6 +258,9 @@ impl Match {
                         };
                         round.first_state_committed_rx.take()
                     };
+                    if let Some(first_state_committed_rx) = first_state_committed_rx {
+                        first_state_committed_rx.await.unwrap();
+                    }
 
                     let mut round_state = self.round_state.lock().await;
                     if input.round_number != round_state.number {
