@@ -814,6 +814,8 @@ impl hooks::Hooks for BN6 {
                             return;
                         };
 
+                        // HACK: This is required if the emulator advances beyond read joyflags and runs this function again, but is missing input data.
+                        // We permit this for one tick only, but really we should just not be able to get into this situation in the first place.
                         if ip.local.local_tick + 1 == current_tick {
                             return;
                         }

@@ -226,6 +226,7 @@ impl Match {
                 .as_slice(),
             )? {
                 protocol::Packet::Input(input) => {
+                    // We need to wait for the next round to start to avoid dropping inputs on the floor.
                     if input.round_number != last_round_number {
                         let round_number =
                             if let Some(number) = self.round_started_rx.lock().await.recv().await {
@@ -237,6 +238,9 @@ impl Match {
                         last_round_number = input.round_number;
                     }
 
+                    // We need to wait for the first state to be committed before we can add remote input.
+                    //
+                    // This is because we don't know what tick to add the input at, and the input queue has not been filled up with delay frames yet.
                     let first_state_committed_rx = {
                         let mut round_state = self.round_state.lock().await;
 
