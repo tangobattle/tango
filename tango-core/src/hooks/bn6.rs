@@ -3,7 +3,7 @@ use crate::{facade, fastforwarder, hooks, input, shadow};
 mod munger;
 mod offsets;
 
-const TURN_TX_DELAY: u32 = 0x40;
+const TURN_TX_DELAY: u32 = 0x100 / 0x4;
 
 #[derive(Clone)]
 pub struct BN6 {
