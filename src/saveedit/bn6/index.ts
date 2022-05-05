@@ -199,8 +199,11 @@ export class Editor {
     return this.dv.setUint32(0x1c6c, this.computeChecksum(), true);
   }
 
-  getNaviStatsOffset() {
-    return this.getGameInfo().region == "JP" ? 0x478c : 0x47cc;
+  getNaviStatsOffset(i: number) {
+    return (
+      (this.getGameInfo().region == "JP" ? 0x478c : 0x47cc) +
+      0x64 * (i == 0 ? 0 : 1)
+    );
   }
 
   getNaviCustOffset() {
@@ -287,19 +290,6 @@ export class Editor {
       }
     }
     this.navicustDirty = false;
-  }
-
-  getEquippedFolder() {
-    return this.dv.getUint8(
-      this.getGameInfo().region == "JP" ? 0x47b9 : 0x47f9
-    );
-  }
-
-  setEquippedFolder(i: number) {
-    return this.dv.setUint8(
-      this.getGameInfo().region == "JP" ? 0x47b9 : 0x47f9,
-      i
-    );
   }
 
   getChipCount(id: number, code: string) {
@@ -407,59 +397,89 @@ export class Editor {
     this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
   }
 
+  getCurrentNavi() {
+    return this.dv.getUint8(0x1b81);
+  }
+
+  getEquippedFolder() {
+    return this.dv.getUint8(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2d
+    );
+  }
+
+  setEquippedFolder(i: number) {
+    return this.dv.setUint8(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2d,
+      i
+    );
+  }
+
   getRegularChipIndex(folderIdx: number) {
-    const i = this.dv.getUint8(this.getNaviStatsOffset() + 0x2e + folderIdx);
+    const i = this.dv.getUint8(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2e + folderIdx
+    );
     return i != 0xff ? i : null;
   }
 
   setRegularChipIndex(folderIdx: number, i: number) {
     this.dv.setUint8(
-      this.getNaviStatsOffset() + 0x2e + folderIdx,
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2e + folderIdx,
       i != null ? i : 0xff
     );
   }
 
   getTagChip1Index(folderIdx: number) {
     const i = this.dv.getUint8(
-      this.getNaviStatsOffset() + 0x56 + folderIdx * 2
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x56 + folderIdx * 2
     );
     return i != 0xff ? i : null;
   }
 
   setTagChip1Index(folderIdx: number, i: number) {
     this.dv.setUint8(
-      this.getNaviStatsOffset() + 0x56 + folderIdx * 2,
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x56 + folderIdx * 2,
       i != null ? i : 0xff
     );
   }
 
   getTagChip2Index(folderIdx: number) {
     const i = this.dv.getUint8(
-      this.getNaviStatsOffset() + 0x57 + folderIdx * 2
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x57 + folderIdx * 2
     );
     return i != 0xff ? i : null;
   }
 
   setTagChip2Index(folderIdx: number, i: number) {
     this.dv.setUint8(
-      this.getNaviStatsOffset() + 0x57 + folderIdx * 2,
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x57 + folderIdx * 2,
       i != null ? i : 0xff
     );
   }
 
   getRegMemory() {
-    return this.dv.getUint8(this.getNaviStatsOffset() + 0x09);
+    return this.dv.getUint8(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x09
+    );
   }
 
   getBaseHP() {
-    return this.dv.getUint16(this.getNaviStatsOffset() + 0x3e, true);
+    return this.dv.getUint16(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x3e,
+      true
+    );
   }
 
   getCurrentHP() {
-    return this.dv.getUint16(this.getNaviStatsOffset() + 0x40, true);
+    return this.dv.getUint16(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x40,
+      true
+    );
   }
 
   getMaxHP() {
-    return this.dv.getUint16(this.getNaviStatsOffset() + 0x42, true);
+    return this.dv.getUint16(
+      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x42,
+      true
+    );
   }
 }
