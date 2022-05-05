@@ -1,4 +1,4 @@
-use super::core;
+use super::{core, sync};
 
 #[repr(transparent)]
 pub struct Thread(std::sync::Arc<parking_lot::Mutex<Box<InnerThread>>>);
@@ -27,6 +27,7 @@ unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
 }
 
 pub struct AudioGuard<'a> {
+    sync: sync::SyncMutRef<'a>,
     thread: parking_lot::MutexGuard<'a, Box<InnerThread>>,
 }
 
@@ -43,6 +44,14 @@ impl<'a> AudioGuard<'a> {
             ptr: self.thread.raw.core,
             _lifetime: std::marker::PhantomData::<&'a ()>,
         }
+    }
+
+    pub fn sync(&self) -> sync::SyncRef<'_> {
+        self.sync.as_ref()
+    }
+
+    pub fn sync_mut(&self) -> sync::SyncMutRef<'_> {
+        self.sync
     }
 }
 
@@ -131,13 +140,13 @@ impl Handle {
     }
 
     pub fn lock_audio(&self) -> AudioGuard {
-        let thread = self.thread.lock();
-        let mut core = core::CoreMutRef {
-            ptr: thread.raw.core,
+        let mut thread = self.thread.lock();
+        let mut sync = sync::SyncMutRef {
+            ptr: unsafe { &mut (*thread.raw.impl_).sync as *mut _ },
             _lifetime: std::marker::PhantomData,
         };
-        core.gba_mut().sync_mut().unwrap().lock_audio();
-        AudioGuard { thread }
+        sync.lock_audio();
+        AudioGuard { sync, thread }
     }
 
     pub fn end(&self) {

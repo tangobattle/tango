@@ -25,7 +25,7 @@ impl super::Stream for MGBAStream {
 
         let clock_rate = core.as_ref().frequency();
 
-        let mut fps_target = core.as_ref().gba().sync().unwrap().fps_target();
+        let mut fps_target = audio_guard.sync().fps_target();
         if fps_target <= 0.0 {
             fps_target = 1.0;
         }

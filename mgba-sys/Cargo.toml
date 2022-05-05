@@ -6,3 +6,4 @@ edition = "2021"
 [build-dependencies]
 bindgen = "0.57"
 cmake = "0.1"
+shell-words = "1.1"

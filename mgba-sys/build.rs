@@ -1,6 +1,7 @@
 extern crate bindgen;
 
 use std::env;
+use std::io::BufRead;
 use std::path::PathBuf;
 
 #[derive(Debug)]
@@ -54,9 +55,28 @@ fn main() {
         .collect(),
     );
 
+    let flags_file = std::fs::File::open(
+        mgba_dst
+            .join("build")
+            .join("CMakeFiles")
+            .join("mgba.dir")
+            .join("flags.make"),
+    )
+    .unwrap();
+
+    let mut flags = vec![];
+    for line in std::io::BufReader::new(flags_file).lines() {
+        let line = line.unwrap();
+        if !line.starts_with("C_DEFINES = ") {
+            continue;
+        }
+        flags = shell_words::split(line.strip_prefix("C_DEFINES = ").unwrap()).unwrap();
+    }
+
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_args(&["-Iexternal/mgba/include", "-D__STDC_NO_THREADS__=1"])
+        .clang_args(&["-Iexternal/mgba/include"])
+        .clang_args(&flags)
         // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
         .parse_callbacks(Box::new(ignored_macros))
         .generate()
