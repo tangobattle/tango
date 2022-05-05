@@ -73,8 +73,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     log::info!(
         "replay is for {} (crc32 = {:08x})",
-        replay.local_state.rom_title(),
-        replay.local_state.rom_crc32()
+        replay.local_state.as_ref().unwrap().rom_title(),
+        replay.local_state.as_ref().unwrap().rom_crc32()
     );
 
     match args.action {
@@ -118,7 +118,7 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
         core.set_traps(hooks.fastforwarder_traps(ff_state));
     }
 
-    core.as_mut().load_state(&replay.local_state)?;
+    core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = std::process::Command::new(&args.ffmpeg)
@@ -222,7 +222,7 @@ fn dump_ewram(
     _args: DumpEWRAMCli,
     replay: tango_core::replay::Replay,
 ) -> Result<(), anyhow::Error> {
-    std::io::stdout().write_all(replay.local_state.wram())?;
+    std::io::stdout().write_all(replay.local_state.unwrap().wram())?;
     std::io::stdout().flush()?;
     Ok(())
 }

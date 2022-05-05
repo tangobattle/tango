@@ -271,7 +271,7 @@ impl hooks::Hooks for BN6 {
                                         "primary rng2 state: {:08x}",
                                         munger.rng2_state(core)
                                     );
-                                    log::info!("battle state committed");
+                                    log::info!("battle state committed on {}", current_tick);
                                 }
 
                                 let turn = round.take_local_pending_turn();
@@ -730,13 +730,17 @@ impl hooks::Hooks for BN6 {
                             round.set_first_committed_state(core.save_state().expect("save state"));
                             log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
+                            log::info!("shadow state committed on {}", current_tick);
                             return;
                         }
 
+                        log::info!("shadow joyflags: {}", current_tick);
+
                         if let Some(ip) = round.take_in_input_pair() {
+                            log::info!("ip: {:?}", ip);
                             if ip.local.local_tick != ip.remote.local_tick {
                                 shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                    "local tick != remote tick (in battle tick = {}): {} != {}",
+                                    "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
                                     current_tick,
                                     ip.local.local_tick,
                                     ip.remote.local_tick
@@ -746,7 +750,7 @@ impl hooks::Hooks for BN6 {
 
                             if ip.local.local_tick != current_tick {
                                 shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                    "input tick != in battle tick: {} != {}",
+                                    "read joyflags: input tick != in battle tick: {} != {}",
                                     ip.local.local_tick,
                                     current_tick,
                                 ));
@@ -804,9 +808,13 @@ impl hooks::Hooks for BN6 {
                             return;
                         };
 
+                        if ip.local.local_tick + 1 == current_tick {
+                            return;
+                        }
+
                         if ip.local.local_tick != ip.remote.local_tick {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                "local tick != remote tick (in battle tick = {}): {} != {}",
+                                "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
                                 current_tick,
                                 ip.local.local_tick,
                                 ip.remote.local_tick
@@ -816,7 +824,7 @@ impl hooks::Hooks for BN6 {
 
                         if ip.local.local_tick != current_tick {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                "input tick != in battle tick: {} != {}",
+                                "copy input data: input tick != in battle tick: {} != {}",
                                 ip.local.local_tick,
                                 current_tick,
                             ));
@@ -1000,7 +1008,7 @@ impl hooks::Hooks for BN6 {
 
                         if ip.local.local_tick != ip.remote.local_tick {
                             ff_state.set_anyhow_error(anyhow::anyhow!(
-                                "local tick != remote tick (in battle tick = {}): {} != {}",
+                                "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
                                 current_tick,
                                 ip.local.local_tick,
                                 ip.remote.local_tick
@@ -1010,7 +1018,7 @@ impl hooks::Hooks for BN6 {
 
                         if ip.local.local_tick != current_tick {
                             ff_state.set_anyhow_error(anyhow::anyhow!(
-                                "input tick != in battle tick: {} != {}",
+                                "read joyflags: input tick != in battle tick: {} != {}",
                                 ip.local.local_tick,
                                 current_tick,
                             ));
@@ -1048,7 +1056,7 @@ impl hooks::Hooks for BN6 {
 
                         if ip.local.local_tick != ip.remote.local_tick {
                             ff_state.set_anyhow_error(anyhow::anyhow!(
-                                "local tick != remote tick (in battle tick = {}): {} != {}",
+                                "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
                                 current_tick,
                                 ip.local.local_tick,
                                 ip.local.local_tick
@@ -1058,7 +1066,7 @@ impl hooks::Hooks for BN6 {
 
                         if ip.local.local_tick != current_tick {
                             ff_state.set_anyhow_error(anyhow::anyhow!(
-                                "input tick != in battle tick: {} != {}",
+                                "copy input data: input tick != in battle tick: {} != {}",
                                 ip.local.local_tick,
                                 current_tick,
                             ));

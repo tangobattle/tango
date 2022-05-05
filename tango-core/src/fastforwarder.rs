@@ -232,7 +232,7 @@ impl Fastforwarder {
                 }
                 inner_state.error = None;
             }
-            self.core.as_mut().run_loop();
+            self.core.as_mut().run_frame();
             let mut inner_state = self.state.0.lock();
             if let Some(_) = inner_state.as_ref().expect("state").error {
                 let state = inner_state.take().expect("state");

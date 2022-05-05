@@ -17,20 +17,15 @@ const VERSION: u8 = 0x0f;
 pub struct Replay {
     pub metadata: Vec<u8>,
     pub local_player_index: u8,
-    pub local_state: mgba::state::State,
+    pub local_state: Option<mgba::state::State>,
     pub remote_state: Option<mgba::state::State>,
     pub input_pairs: Vec<input::Pair<input::Input, input::Input>>,
 }
 
 impl Replay {
     pub fn into_remote(mut self) -> Option<Self> {
-        let remote_state = match self.remote_state.take() {
-            Some(remote_state) => remote_state,
-            None => {
-                return None;
-            }
-        };
-        self.remote_state = Some(self.local_state);
+        let remote_state = self.remote_state.take();
+        self.remote_state = self.local_state;
         self.local_state = remote_state;
         self.local_player_index = 1 - self.local_player_index;
         for ip in self.input_pairs.iter_mut() {
@@ -74,9 +69,12 @@ impl Replay {
 
         let mut local_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut local_state)?;
-        let local_state = mgba::state::State::from_slice(&local_state);
+        let local_state = if local_state.len() > 0 {
+            Some(mgba::state::State::from_slice(&local_state))
+        } else {
+            None
+        };
 
-        // This is unused, for now.
         let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut remote_state)?;
         let remote_state = if remote_state.len() > 0 {

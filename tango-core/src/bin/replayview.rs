@@ -30,8 +30,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     log::info!(
         "replay is for {} (crc32 = {:08x})",
-        replay.local_state.rom_title(),
-        replay.local_state.rom_crc32()
+        replay.local_state.as_ref().unwrap().rom_title(),
+        replay.local_state.as_ref().unwrap().rom_crc32()
     );
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
@@ -144,7 +144,8 @@ fn main() -> Result<(), anyhow::Error> {
     stream.play()?;
 
     thread.handle().run_on_core(move |mut core| {
-        core.load_state(&replay.local_state).expect("load state");
+        core.load_state(replay.local_state.as_ref().unwrap())
+            .expect("load state");
     });
     thread.handle().unpause();
 
