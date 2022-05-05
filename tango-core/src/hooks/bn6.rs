@@ -846,7 +846,7 @@ impl hooks::Hooks for BN6 {
                             ip.local.custom_screen_state,
                         );
                         if !ip.local.turn.is_empty() {
-                            log::info!("shadow local turn injected on {}", ip.local.local_tick);
+                            log::debug!("shadow local turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 round.local_player_index() as u32,
@@ -861,7 +861,7 @@ impl hooks::Hooks for BN6 {
                             ip.remote.custom_screen_state,
                         );
                         if !ip.remote.turn.is_empty() {
-                            log::info!("shadow remote turn injected on {}", ip.local.local_tick);
+                            log::debug!("shadow remote turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 round.remote_player_index() as u32,
@@ -1090,7 +1090,7 @@ impl hooks::Hooks for BN6 {
                             ip.local.custom_screen_state,
                         );
                         if !ip.local.turn.is_empty() {
-                            log::info!("primary local turn injected on {}", ip.local.local_tick);
+                            log::debug!("primary local turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 ff_state.local_player_index() as u32,
@@ -1105,7 +1105,7 @@ impl hooks::Hooks for BN6 {
                             ip.remote.custom_screen_state,
                         );
                         if !ip.remote.turn.is_empty() {
-                            log::info!("primary remote turn injected on {}", ip.local.local_tick);
+                            log::debug!("primary remote turn injected on {}", ip.local.local_tick);
                             munger.set_rx_buf(
                                 core,
                                 ff_state.remote_player_index() as u32,
