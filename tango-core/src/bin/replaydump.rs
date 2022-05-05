@@ -230,11 +230,11 @@ fn dump_ewram(
 fn dump_text(_args: DumpTextCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
-            "tick = {:?}, local joyflags = {}, local custom screen state = {}, remote joyflags = {}, remote custom screen state = {}",
+            "tick = {:?}, local joyflags = {}, remote joyflags = {}, local custom screen state = {}, remote custom screen state = {}",
             ip.local.local_tick,
             ip.local.joyflags,
-            ip.local.custom_screen_state,
             ip.remote.joyflags,
+            ip.local.custom_screen_state,
             ip.remote.custom_screen_state,
         );
         if !ip.local.turn.is_empty() {
