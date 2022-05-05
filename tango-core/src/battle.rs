@@ -684,10 +684,7 @@ impl Drop for Round {
         // HACK: This is the only safe way to set the FPS without clogging everything else up.
         self.primary_thread_handle
             .lock_audio()
-            .core_mut()
-            .gba_mut()
             .sync_mut()
-            .expect("sync")
             .set_fps_target(game::EXPECTED_FPS as f32);
     }
 }

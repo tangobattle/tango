@@ -57,11 +57,7 @@ impl<'a> AudioGuard<'a> {
 
 impl<'a> Drop for AudioGuard<'a> {
     fn drop(&mut self) {
-        self.core_mut()
-            .gba_mut()
-            .sync_mut()
-            .unwrap()
-            .consume_audio()
+        self.sync_mut().consume_audio()
     }
 }
 

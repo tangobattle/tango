@@ -204,11 +204,7 @@ impl Game {
         thread
             .handle()
             .lock_audio()
-            .core_mut()
-            .gba_mut()
             .sync_mut()
-            .as_mut()
-            .unwrap()
             .set_fps_target(EXPECTED_FPS as f32);
 
         {
