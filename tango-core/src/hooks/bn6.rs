@@ -214,6 +214,9 @@ impl hooks::Hooks for BN6 {
                             let mut round_state = match_.lock_round_state().await;
                             let round = round_state.round.as_mut().expect("round");
 
+                            // Committing the round turn tx must be done on the correct frame, adjusted by local delay.
+                            //
+                            // Because each input into the shadow has a forward adjustment of the local delay, we need to undo this adjustment here such that when they do get added into the shadow core on the right frame (it will take # input delay frames to consume this turn data).
                             let current_tick = munger.current_tick(core);
                             let commit_tick = current_tick + TURN_TX_DELAY - round.local_delay();
                             log::debug!(
