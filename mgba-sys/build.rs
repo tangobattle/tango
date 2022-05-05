@@ -75,7 +75,7 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_args(&["-Iexternal/mgba/include"])
+        .clang_args(&["-Iexternal/mgba/include", "-D__STDC_NO_THREADS__=1"])
         .clang_args(&flags)
         // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
         .parse_callbacks(Box::new(ignored_macros))
