@@ -1,8 +1,8 @@
-use crate::{battle, hooks, input};
+use crate::{hooks, input};
 
 struct PendingTurn {
     tx_buf: Vec<u8>,
-    ticks_left: u8,
+    on_tick: u32,
 }
 
 pub struct Round {
@@ -41,21 +41,14 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub fn set_pending_out_turn(&mut self, tx_buf: Vec<u8>) {
-        self.pending_out_turn = Some(PendingTurn {
-            ticks_left: battle::TURN_TX_DELAY,
-            tx_buf,
-        });
+    pub fn set_pending_out_turn(&mut self, tx_buf: Vec<u8>, on_tick: u32) {
+        self.pending_out_turn = Some(PendingTurn { on_tick, tx_buf });
     }
 
-    pub fn take_pending_out_turn(&mut self) -> Vec<u8> {
+    pub fn take_pending_out_turn(&mut self, current_tick: u32) -> Vec<u8> {
         match &mut self.pending_out_turn {
             Some(pt) => {
-                if pt.ticks_left > 0 {
-                    pt.ticks_left -= 1;
-                    if pt.ticks_left != 0 {
-                        return vec![];
-                    }
+                if pt.on_tick == current_tick {
                     self.pending_out_turn.take().unwrap().tx_buf
                 } else {
                     vec![]
@@ -311,10 +304,6 @@ impl Shadow {
             round.pending_in_input = Some(input);
         }
         self.hooks.prepare_for_fastforward(self.core.as_mut());
-        log::info!(
-            "current shadow tick: {}",
-            self.hooks.current_tick(self.core.as_mut())
-        );
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {

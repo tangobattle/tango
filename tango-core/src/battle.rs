@@ -10,8 +10,6 @@ use crate::replay;
 use crate::shadow;
 use crate::transport;
 
-pub const TURN_TX_DELAY: u8 = 64;
-
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub ice_servers: Vec<String>,
@@ -413,7 +411,7 @@ impl Match {
 
 struct PendingTurn {
     tx_buf: Vec<u8>,
-    ticks_left: u8,
+    on_tick: u32,
 }
 
 pub struct Round {
@@ -674,21 +672,14 @@ impl Round {
         self.iq.add_remote_input(input);
     }
 
-    pub fn add_local_pending_turn(&mut self, tx_buf: Vec<u8>) {
-        self.local_pending_turn = Some(PendingTurn {
-            ticks_left: TURN_TX_DELAY,
-            tx_buf,
-        })
+    pub fn add_local_pending_turn(&mut self, tx_buf: Vec<u8>, on_tick: u32) {
+        self.local_pending_turn = Some(PendingTurn { on_tick, tx_buf })
     }
 
-    pub fn take_local_pending_turn(&mut self) -> Vec<u8> {
+    pub fn take_local_pending_turn(&mut self, current_tick: u32) -> Vec<u8> {
         match &mut self.local_pending_turn {
             Some(pt) => {
-                if pt.ticks_left > 0 {
-                    pt.ticks_left -= 1;
-                    if pt.ticks_left != 0 {
-                        return vec![];
-                    }
+                if pt.on_tick == current_tick {
                     self.local_pending_turn.take().unwrap().tx_buf
                 } else {
                     vec![]
