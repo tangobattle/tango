@@ -11,7 +11,6 @@ log = "0.4"
 futures-util = "0.3.21"
 envconfig = "0.10.0"
 git-version = "0.3.5"
-datachannel-wrapper = { path = "../datachannel-wrapper" }
 tango-protos = { path = "../tango-protos" }
 prost = "0.10"
 bytes = "1.1.0"

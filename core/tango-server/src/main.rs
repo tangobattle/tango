@@ -20,7 +20,7 @@ async fn handle_signaling_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(hyper::Body::empty())?);
+            .body("Bad request".into())?);
     }
 
     let (response, websocket) = hyper_tungstenite::upgrade(
@@ -55,7 +55,7 @@ async fn handle_lobby_create_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(hyper::Body::empty())?);
+            .body("Bad request".into())?);
     }
 
     let (response, websocket) = hyper_tungstenite::upgrade(
@@ -90,7 +90,7 @@ async fn handle_lobby_join_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(hyper::Body::empty())?);
+            .body("Bad request".into())?);
     }
 
     let (response, websocket) = hyper_tungstenite::upgrade(
