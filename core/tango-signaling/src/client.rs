@@ -79,7 +79,7 @@ where
                 };
 
                 match packet.which {
-                    Some(tango_protos::signaling::packet::Which::Start(start)) => {
+                    Some(tango_protos::signaling::packet::Which::Start(_)) => {
                         anyhow::bail!("unexpected start");
                     }
                     Some(tango_protos::signaling::packet::Which::Offer(offer)) => {
