@@ -2719,6 +2719,7 @@ dependencies = [
  "mgba",
  "parking_lot 0.12.0",
  "pixels",
+ "prost",
  "rand",
  "rand_pcg",
  "serde",
@@ -2727,11 +2728,12 @@ dependencies = [
  "sha3",
  "shell-words",
  "subtle",
- "tango-signaling",
+ "tango-protos",
  "tempfile",
  "time",
  "tokio",
  "tokio-stream",
+ "tokio-tungstenite",
  "tokio-util",
  "typescript-type-def",
  "url",
@@ -2742,15 +2744,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-protos"
-version = "0.1.0"
-dependencies = [
- "prost",
- "prost-build",
-]
-
-[[package]]
-name = "tango-signaling"
+name = "tango-lobby"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2767,6 +2761,14 @@ dependencies = [
  "tango-protos",
  "tokio",
  "tokio-tungstenite",
+]
+
+[[package]]
+name = "tango-protos"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
 ]
 
 [[package]]

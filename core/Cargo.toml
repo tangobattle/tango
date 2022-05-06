@@ -3,8 +3,8 @@ resolver = "2"
 members = [
     "mgba",
     "tango-core",
-    "tango-signaling",
     "tango-protos",
+    "tango-lobby",
     "mgba-sys",
     "keymaptool",
     "datachannel-wrapper",

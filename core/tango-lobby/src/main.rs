@@ -1,5 +1,5 @@
+mod signaling;
 use envconfig::Envconfig;
-use tango_signaling::server;
 
 #[derive(Envconfig)]
 struct Config {
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     );
     let config = Config::init_from_env().unwrap();
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
-    let mut server = server::Server::new(listener);
+    let mut server = signaling::Server::new(listener);
     server.run().await;
     Ok(())
 }

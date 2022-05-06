@@ -29,7 +29,6 @@ where
             tango_protos::signaling::Packet {
                 which: Some(tango_protos::signaling::packet::Which::Start(
                     tango_protos::signaling::packet::Start {
-                        protocol_version: super::PROTOCOL_VERSION,
                         session_id: session_id.to_string(),
                         offer_sdp: local_description.sdp.to_string(),
                     },

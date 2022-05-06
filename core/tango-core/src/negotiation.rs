@@ -1,4 +1,4 @@
-use crate::{ipc, protocol};
+use crate::{ipc, protocol, signaling};
 use rand::Rng;
 use rand::SeedableRng;
 use sha3::digest::ExtendableOutput;
@@ -100,7 +100,7 @@ pub async fn negotiate(
             .stream(0),
     )?;
 
-    tango_signaling::client::connect(
+    signaling::connect(
         &signaling_connect_addr,
         &mut peer_conn,
         signal_receiver,

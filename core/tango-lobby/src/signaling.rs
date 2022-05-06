@@ -45,11 +45,11 @@ async fn handle_connection(
                     Some(tokio_tungstenite::tungstenite::Message::Binary(d)) => {
                         tango_protos::signaling::Packet::decode(bytes::Bytes::from(d))?
                     }
+                    Some(tokio_tungstenite::tungstenite::Message::Close(_)) | None => {
+                        break;
+                    }
                     Some(m) => {
                         anyhow::bail!("unexpected message: {:?}", m);
-                    }
-                    None => {
-                        break;
                     }
                 };
                 log::debug!("received message from {}: {:?}", addr, msg);

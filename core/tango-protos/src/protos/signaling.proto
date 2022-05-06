@@ -4,9 +4,8 @@ package tango.signaling;
 
 message Packet {
   message Start {
-    uint32 protocol_version = 1;
-    string session_id = 2;
-    string offer_sdp = 3;
+    string session_id = 1;
+    string offer_sdp = 2;
   }
 
   message Offer { string sdp = 1; }
