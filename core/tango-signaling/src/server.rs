@@ -1,5 +1,5 @@
-use super::protocol;
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
+use prost::Message;
 
 struct Session {
     num_clients: usize,
@@ -43,18 +43,18 @@ async fn handle_connection(
             loop {
                 let msg = match rx.try_next().await? {
                     Some(tokio_tungstenite::tungstenite::Message::Binary(d)) => {
-                        protocol::Packet::deserialize(&d)?
+                        tango_protos::signaling::Packet::decode(bytes::Bytes::from(d))?
                     }
-                    Some(_) => {
-                        anyhow::bail!("unexpected message");
+                    Some(m) => {
+                        anyhow::bail!("unexpected message: {:?}", m);
                     }
                     None => {
                         break;
                     }
                 };
                 log::debug!("received message from {}: {:?}", addr, msg);
-                match msg {
-                    protocol::Packet::Start(start) => {
+                match msg.which {
+                    Some(tango_protos::signaling::packet::Which::Start(start)) => {
                         let mut sessions = sessions.lock().await;
                         session = Some(
                             sessions
@@ -81,18 +81,24 @@ async fn handle_connection(
                         if me == 1 {
                             session.sinks[me]
                                 .send(tokio_tungstenite::tungstenite::Message::Binary(
-                                    protocol::Packet::Offer(protocol::Offer { sdp: offer_sdp })
-                                        .serialize()?,
+                                    tango_protos::signaling::Packet {
+                                        which: Some(tango_protos::signaling::packet::Which::Offer(
+                                            tango_protos::signaling::packet::Offer {
+                                                sdp: offer_sdp,
+                                            },
+                                        )),
+                                    }
+                                    .encode_to_vec(),
                                 ))
                                 .await?;
                         }
                     }
-                    protocol::Packet::Offer(_) => {
+                    Some(tango_protos::signaling::packet::Which::Offer(_)) => {
                         anyhow::bail!(
                             "received offer from client: only the server may send offers"
                         );
                     }
-                    protocol::Packet::Answer(answer) => {
+                    Some(tango_protos::signaling::packet::Which::Answer(answer)) => {
                         let session = match session.as_ref() {
                             Some(session) => session,
                             None => {
@@ -102,12 +108,16 @@ async fn handle_connection(
                         let mut session = session.lock().await;
                         session.sinks[0]
                             .send(tokio_tungstenite::tungstenite::Message::Binary(
-                                protocol::Packet::Answer(protocol::Answer { sdp: answer.sdp })
-                                    .serialize()?,
+                                tango_protos::signaling::Packet {
+                                    which: Some(tango_protos::signaling::packet::Which::Answer(
+                                        tango_protos::signaling::packet::Answer { sdp: answer.sdp },
+                                    )),
+                                }
+                                .encode_to_vec(),
                             ))
                             .await?;
                     }
-                    protocol::Packet::ICECandidate(ice_candidate) => {
+                    Some(tango_protos::signaling::packet::Which::IceCandidate(ice_candidate)) => {
                         let session = match session.as_ref() {
                             Some(session) => session,
                             None => {
@@ -117,14 +127,21 @@ async fn handle_connection(
                         let mut session = session.lock().await;
                         session.sinks[1 - me]
                             .send(tokio_tungstenite::tungstenite::Message::Binary(
-                                protocol::Packet::ICECandidate(protocol::ICECandidate {
-                                    candidate: ice_candidate.candidate,
-                                    mid: ice_candidate.mid,
-                                })
-                                .serialize()?,
+                                tango_protos::signaling::Packet {
+                                    which: Some(
+                                        tango_protos::signaling::packet::Which::IceCandidate(
+                                            tango_protos::signaling::packet::IceCandidate {
+                                                candidate: ice_candidate.candidate,
+                                                mid: ice_candidate.mid,
+                                            },
+                                        ),
+                                    ),
+                                }
+                                .encode_to_vec(),
                             ))
                             .await?;
                     }
+                    p => anyhow::bail!("unknown packet: {:?}", p),
                 }
             }
             Ok(())

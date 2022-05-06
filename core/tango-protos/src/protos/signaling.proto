@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package tango.signaling;
+
+message Packet {
+  message Start {
+    uint32 protocol_version = 1;
+    string session_id = 2;
+    string offer_sdp = 3;
+  }
+
+  message Offer { string sdp = 1; }
+
+  message Answer { string sdp = 1; }
+
+  message ICECandidate {
+    string candidate = 1;
+    string mid = 2;
+  }
+
+  oneof which {
+    Start start = 1;
+    Offer offer = 2;
+    Answer answer = 3;
+    ICECandidate ice_candidate = 4;
+  }
+}

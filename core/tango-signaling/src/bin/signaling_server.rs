@@ -1,5 +1,5 @@
 use envconfig::Envconfig;
-use tango_matchmaking::server;
+use tango_signaling::server;
 
 #[derive(Envconfig)]
 struct Config {
@@ -11,10 +11,10 @@ struct Config {
 async fn main() -> anyhow::Result<()> {
     env_logger::Builder::from_default_env()
         .filter(Some("tango"), log::LevelFilter::Info)
-        .filter(Some("matchmaking_server"), log::LevelFilter::Info)
+        .filter(Some("signaling_server"), log::LevelFilter::Info)
         .init();
     log::info!(
-        "welcome to tango's matchmaking_server v{}-{}!",
+        "welcome to tango's signaling_server v{}-{}!",
         env!("CARGO_PKG_VERSION"),
         git_version::git_version!()
     );

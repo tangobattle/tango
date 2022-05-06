@@ -1,6 +1,6 @@
-use super::protocol;
 use futures_util::SinkExt;
 use futures_util::TryStreamExt;
+use prost::Message;
 
 pub async fn connect(
     addr: &str,
@@ -26,12 +26,16 @@ where
     let local_description = peer_conn.local_description().unwrap();
     stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
-            protocol::Packet::Start(protocol::Start {
-                protocol_version: protocol::VERSION,
-                session_id: session_id.to_string(),
-                offer_sdp: local_description.sdp.to_string(),
-            })
-            .serialize()?,
+            tango_protos::signaling::Packet {
+                which: Some(tango_protos::signaling::packet::Which::Start(
+                    tango_protos::signaling::packet::Start {
+                        protocol_version: super::PROTOCOL_VERSION,
+                        session_id: session_id.to_string(),
+                        offer_sdp: local_description.sdp.to_string(),
+                    },
+                )),
+            }
+            .encode_to_vec(),
         ))
         .await?;
     log::info!("negotiation start sent");
@@ -47,12 +51,18 @@ where
 
                 stream
                     .send(tokio_tungstenite::tungstenite::Message::Binary(
-                        protocol::Packet::ICECandidate(protocol::ICECandidate {
-                            candidate: cand.candidate,
-                            mid: cand.mid,
-                        })
-                        .serialize()?,
-                    ))
+                        tango_protos::signaling::Packet {
+                            which: Some(
+                                tango_protos::signaling::packet::Which::IceCandidate(
+                                    tango_protos::signaling::packet::IceCandidate {
+                                        candidate: cand.candidate,
+                                        mid: cand.mid,
+                                    },
+                                ),
+                            ),
+                        }
+                        .encode_to_vec(),
+            ))
                     .await?;
             }
             ws_msg = stream.try_next() => {
@@ -63,16 +73,16 @@ where
                 };
 
                 let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-                    protocol::Packet::deserialize(&d)?
+                    tango_protos::signaling::Packet::decode(bytes::Bytes::from(d))?
                 } else {
                     anyhow::bail!("invalid packet");
                 };
 
-                match packet {
-                    protocol::Packet::Start(_) => {
+                match packet.which {
+                    Some(tango_protos::signaling::packet::Which::Start(start)) => {
                         anyhow::bail!("unexpected start");
                     }
-                    protocol::Packet::Offer(offer) => {
+                    Some(tango_protos::signaling::packet::Which::Offer(offer)) => {
                         log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
                         peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
@@ -84,16 +94,18 @@ where
                         let local_description = peer_conn.local_description().unwrap();
                         stream
                             .send(tokio_tungstenite::tungstenite::Message::Binary(
-                                protocol::Packet::Answer(protocol::Answer {
-                                    sdp: local_description.sdp.to_string(),
-                                })
-                                .serialize()?,
+                                tango_protos::signaling::Packet {
+                                    which: Some(tango_protos::signaling::packet::Which::Answer(
+                                        tango_protos::signaling::packet::Answer { sdp: local_description.sdp.to_string() },
+                                    )),
+                                }
+                                .encode_to_vec(),
                             ))
                             .await?;
                         log::info!("sent answer to impolite side");
                         break;
                     }
-                    protocol::Packet::Answer(answer) => {
+                    Some(tango_protos::signaling::packet::Which::Answer(answer)) => {
                         log::info!("received an answer, this is the impolite side");
 
                         peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
@@ -102,8 +114,11 @@ where
                         })?;
                         break;
                     }
-                    protocol::Packet::ICECandidate(_ice_candidate) => {
+                    Some(tango_protos::signaling::packet::Which::IceCandidate(_ice_candidate)) => {
                         anyhow::bail!("ice candidates not supported");
+                    }
+                    p => {
+                        anyhow::bail!("unexpected packet: {:?}", p);
                     }
                 }
             }

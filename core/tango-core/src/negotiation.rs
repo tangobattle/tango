@@ -100,7 +100,7 @@ pub async fn negotiate(
             .stream(0),
     )?;
 
-    tango_matchmaking::client::connect(
+    tango_signaling::client::connect(
         &matchmaking_connect_addr,
         &mut peer_conn,
         signal_receiver,
