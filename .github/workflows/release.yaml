@@ -67,3 +67,5 @@ jobs:
              bin
 
       - run: GITHUB_TOKEN="${{ secrets.github_token }}" npm run "dist:${{ matrix.electron-target }}" -- --publish always
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
