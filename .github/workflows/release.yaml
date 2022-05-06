@@ -12,25 +12,58 @@ jobs:
     strategy:
       matrix:
         include:
-          - target: win32-x64
+          - rust-target: x86_64-pc-windows-gnu
+            electron-target: win32-x64
+            sysroot: /usr/x86_64-w64-mingw32/
 
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - uses: pat-s/always-upload-cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            core/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - uses: actions/setup-node@v1
         with:
           node-version: 18
 
-      - run: >
-          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
-          sudo apt-get update &&
-          sudo apt-get install -y --allow-downgrades libpcre2-8-0/focal libpcre2-16-0/focal libpcre2-32-0/focal libpcre2-posix2/focal
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
 
       - run: >
           sudo dpkg --add-architecture i386 &&
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
           sudo apt-get update &&
-          sudo apt-get install -y wine-stable wine64 wine32:i386 wine64
+          sudo apt-get install -y --allow-downgrades libpcre2-8-0/focal libpcre2-16-0/focal libpcre2-32-0/focal libpcre2-posix2/focal wine-stable wine64 wine32:i386 wine64 mingw-w64
+
+      - run: >
+          sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60 &&
+          sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix 90 &&
+          sudo update-alternatives --config x86_64-w64-mingw32-gcc &&
+          sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-win32 60 &&
+          sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix 90 &&
+          sudo update-alternatives --config x86_64-w64-mingw32-g++
 
       - run: npm install
 
-      - run: GITHUB_TOKEN="${{ secrets.github_token }}" npm run "dist:${{ matrix.target }}" -- --publish always
+      - run: cd core && BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${{ matrix.sysroot }}" cargo build --release --target ${{ matrix.rust-target }}
+
+      - run: >
+          mkdir bin &&
+          cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll \
+             /usr/lib/gcc/x86_64-w64-mingw32/9.3-posix/*.dll \
+             core/target/x86_64-pc-windows-gnu/release/tango-core.exe \
+             core/target/x86_64-pc-windows-gnu/release/replayview.exe \
+             core/target/x86_64-pc-windows-gnu/release/replaydump.exe \
+             core/target/x86_64-pc-windows-gnu/release/keymaptool.exe \
+             bin
+
+      - run: GITHUB_TOKEN="${{ secrets.github_token }}" npm run "dist:${{ matrix.electron-target }}" -- --publish always
