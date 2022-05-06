@@ -11,63 +11,65 @@ message GameInfo {
   Patch patch = 2;
 }
 
-message CreateLobbyRequest {
-  string identity_token = 1;
-  GameInfo game_info = 2;
-  bytes save_data = 3;
-}
+message CreateStreamToServerMessage {
+  message CreateRequest {
+    string identity_token = 1;
+    GameInfo game_info = 2;
+    bytes save_data = 3;
+  }
 
-message CreateLobbyResponse { string lobby_id = 1; }
+  message AcceptRequest { string opponent_id = 1; }
 
-message JoinIndication {
-  string opponent_id = 1;
-  GameInfo game_info = 2;
-  bytes save_data = 3;
-}
+  message RejectRequest { string opponent_id = 1; }
 
-message AcceptRequest { string opponent_id = 1; }
-
-message AcceptResponse { string session_id = 1; }
-
-message RejectRequest { string opponent_id = 1; }
-
-message RejectResponse {}
-
-message JoinRequest {
-  string lobby_id = 1;
-  GameInfo game_info = 2;
-  bytes save_data = 3;
-}
-
-message JoinResponse {
-  GameInfo game_info = 1;
-  bytes save_data = 2;
-}
-
-message AcceptIndication { string session_id = 1; }
-
-message CreateToServerMessage {
   oneof which {
-    CreateLobbyRequest create_lobby_req = 1;
+    CreateRequest create_req = 1;
     AcceptRequest accept_req = 2;
-    RejectRequest reject_resp = 3;
+    RejectRequest reject_req = 3;
   }
 }
 
-message CreateToClientMessage {
+message CreateStreamToClientMessage {
+  message CreateResponse { string lobby_id = 1; }
+
+  message JoinIndication {
+    string opponent_id = 1;
+    GameInfo game_info = 2;
+    bytes save_data = 3;
+  }
+
+  message AcceptResponse { string session_id = 1; }
+
+  message RejectResponse {}
+
   oneof which {
-    CreateLobbyResponse create_lobby_resp = 1;
+    CreateResponse create_resp = 1;
     JoinIndication join_ind = 2;
     AcceptResponse accept_resp = 3;
     RejectResponse reject_resp = 4;
   }
 }
 
-message JoinToServerMessage {
+message JoinStreamToServerMessage {
+  message JoinRequest {
+    string identity_token = 1;
+    string lobby_id = 2;
+    GameInfo game_info = 3;
+    bytes save_data = 4;
+  }
+
   oneof which { JoinRequest join_req = 1; }
 }
 
-message JoinToClientMessage {
+message JoinStreamToClientMessage {
+  message JoinResponse {
+    string opponent_id = 1;
+    GameInfo game_info = 2;
+    bytes save_data = 3;
+  }
+
+  message AcceptIndication { string session_id = 1; }
+
   oneof which {
     JoinResponse join_resp = 1;
     AcceptIndication accept_ind = 2;

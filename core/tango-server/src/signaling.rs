@@ -72,14 +72,23 @@ impl Server {
                                     .clone(),
                             );
 
-                            let session = session.as_ref().unwrap();
+                            let session = if let Some(session) = session.as_ref() {
+                                session
+                            } else {
+                                anyhow::bail!("no such session");
+                            };
                             let mut session = session.lock().await;
                             session.num_clients += 1;
                             *session_id.lock().await = Some(start.session_id.clone());
                             let offer_sdp = session.offer_sdp.to_string();
 
                             me = session.sinks.len();
-                            session.sinks.push(tx.take().unwrap());
+                            let tx = if let Some(tx) = tx.take() {
+                                tx
+                            } else {
+                                anyhow::bail!("attempted to take tx twice");
+                            };
+                            session.sinks.push(tx);
 
                             if me == 1 {
                                 session.sinks[me]

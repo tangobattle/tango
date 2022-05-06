@@ -2861,6 +2861,7 @@ dependencies = [
  "hyper-tungstenite",
  "log",
  "prost",
+ "rand",
  "routerify",
  "tango-protos",
  "tokio",
