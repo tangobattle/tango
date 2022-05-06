@@ -383,29 +383,29 @@ export default function SavesPane({ active }: { active: boolean }) {
               startIcon={<PlayArrowIcon />}
             >
               <Trans i18nKey="saves:play" />
-              {started ? (
-                <CoreSupervisor
-                  incarnation={incarnation}
-                  romName={saves[saveName!].romName}
-                  patch={
-                    patchVersion != null
-                      ? { name: patchName!, version: patchVersion }
-                      : null
-                  }
-                  matchSettings={null}
-                  savePath={path.join(getSavesPath(app), saveName!)}
-                  windowTitle={`${
-                    KNOWN_ROMS[saves[saveName!].romName].title[
-                      i18n.resolvedLanguage
-                    ]
-                  }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
-                  onExit={() => {
-                    setStarted(false);
-                    setIncarnation((incarnation) => incarnation + 1);
-                  }}
-                />
-              ) : null}
             </Button>
+            {started ? (
+              <CoreSupervisor
+                incarnation={incarnation}
+                romName={saves[saveName!].romName}
+                patch={
+                  patchVersion != null
+                    ? { name: patchName!, version: patchVersion }
+                    : null
+                }
+                matchSettings={null}
+                savePath={path.join(getSavesPath(app), saveName!)}
+                windowTitle={`${
+                  KNOWN_ROMS[saves[saveName!].romName].title[
+                    i18n.resolvedLanguage
+                  ]
+                }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
+                onExit={() => {
+                  setStarted(false);
+                  setIncarnation((incarnation) => incarnation + 1);
+                }}
+              />
+            ) : null}
           </Box>
         </Stack>
       </Stack>
