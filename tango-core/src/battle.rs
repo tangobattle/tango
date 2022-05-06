@@ -375,7 +375,9 @@ impl Match {
             number: round_state.number,
             local_player_index,
             iq: input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay),
-            local_custom_input_queue: std::collections::VecDeque::with_capacity(MAX_QUEUE_LENGTH),
+            local_immediate_input_queue: std::collections::VecDeque::with_capacity(
+                MAX_QUEUE_LENGTH,
+            ),
             remote_delay: self.remote_delay,
             is_accepting_input: false,
             last_committed_remote_input: input::Input {
@@ -418,7 +420,7 @@ struct PendingTurn {
     on_tick: u32,
 }
 
-struct LocalCustomInput {
+struct LocalImmediateInput {
     current_tick: u32,
     custom_screen_state: u8,
     turn: Vec<u8>,
@@ -428,7 +430,7 @@ pub struct Round {
     number: u8,
     local_player_index: u8,
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
-    local_custom_input_queue: std::collections::VecDeque<LocalCustomInput>,
+    local_immediate_input_queue: std::collections::VecDeque<LocalImmediateInput>,
     remote_delay: u32,
     is_accepting_input: bool,
     last_committed_remote_input: input::Input,
@@ -542,11 +544,12 @@ impl Round {
             joyflags,
         });
 
-        self.add_local_custom_input(LocalCustomInput {
-            current_tick,
-            custom_screen_state,
-            turn,
-        });
+        self.local_immediate_input_queue
+            .push_back(LocalImmediateInput {
+                current_tick,
+                custom_screen_state,
+                turn,
+            });
 
         let (input_pairs, left) = match self.consume_and_peek_local().await {
             Ok(r) => r,
@@ -643,14 +646,6 @@ impl Round {
         &self.committed_state
     }
 
-    fn add_local_custom_input(&mut self, lci: LocalCustomInput) {
-        self.local_custom_input_queue.push_back(lci);
-    }
-
-    fn pop_local_custom_input(&mut self) -> Option<LocalCustomInput> {
-        self.local_custom_input_queue.pop_front()
-    }
-
     pub async fn consume_and_peek_local(
         &mut self,
     ) -> anyhow::Result<(
@@ -662,17 +657,18 @@ impl Round {
         let partial_input_pairs = partial_input_pairs
             .into_iter()
             .map(|pair| {
-                let lci = self
-                    .pop_local_custom_input()
-                    .unwrap_or_else(|| LocalCustomInput {
+                let imm = self
+                    .local_immediate_input_queue
+                    .pop_front()
+                    .unwrap_or_else(|| LocalImmediateInput {
                         current_tick: pair.local.local_tick,
                         custom_screen_state: 0,
                         turn: vec![],
                     });
-                if lci.current_tick != pair.local.local_tick {
+                if imm.current_tick != pair.local.local_tick {
                     anyhow::bail!(
                         "custom input did not match current tick: {} != {}",
-                        lci.current_tick,
+                        imm.current_tick,
                         pair.local.local_tick
                     );
                 }
@@ -681,8 +677,8 @@ impl Round {
                         local_tick: pair.local.local_tick,
                         remote_tick: pair.local.remote_tick,
                         joyflags: pair.local.joyflags,
-                        custom_screen_state: lci.custom_screen_state,
-                        turn: lci.turn,
+                        custom_screen_state: imm.custom_screen_state,
+                        turn: imm.turn,
                     },
                     remote: pair.remote,
                 })
