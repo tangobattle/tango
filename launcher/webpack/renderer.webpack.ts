@@ -29,6 +29,7 @@ const config: Configuration = {
       },
       {
         test: /\.(png|svg|jpg|jpeg|gif)$/i,
+        exclude: [path.join(rootPath, "core")],
         type: "asset/resource",
       },
     ],
