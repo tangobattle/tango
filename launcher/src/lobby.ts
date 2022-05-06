@@ -2,7 +2,7 @@ import { subscribe } from "event-iterator/lib/dom";
 
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
-    JoinStreamToServerMessage, Settings
+    JoinStreamToServerMessage, QueryRequest, QueryResponse, Settings
 } from "./protos/lobby";
 
 export { GameInfo };
@@ -225,4 +225,26 @@ export async function create(
       }
     },
   };
+}
+
+export async function query(
+  addr: string,
+  identityToken: string,
+  lobbyId: string,
+  { signal }: { signal?: AbortSignal } = {}
+) {
+  const httpResp = await fetch(`${addr}/query`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-protobuf",
+    },
+    body: QueryRequest.encode({ identityToken, lobbyId }).finish(),
+    signal,
+  });
+
+  if (httpResp.status != 200) {
+    throw `unexpected status: ${httpResp.status}`;
+  }
+
+  return QueryResponse.decode(new Uint8Array(await httpResp.arrayBuffer()));
 }

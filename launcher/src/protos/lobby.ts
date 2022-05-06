@@ -89,6 +89,16 @@ export interface JoinStreamToClientMessage_AcceptIndication {
   sessionId: string;
 }
 
+export interface QueryRequest {
+  identityToken: string;
+  lobbyId: string;
+}
+
+export interface QueryResponse {
+  gameInfo: GameInfo | undefined;
+  settings: Settings | undefined;
+}
+
 function createBaseGameInfo(): GameInfo {
   return { romName: "", patch: undefined };
 }
@@ -1461,6 +1471,151 @@ export const JoinStreamToClientMessage_AcceptIndication = {
   >(object: I): JoinStreamToClientMessage_AcceptIndication {
     const message = createBaseJoinStreamToClientMessage_AcceptIndication();
     message.sessionId = object.sessionId ?? "";
+    return message;
+  },
+};
+
+function createBaseQueryRequest(): QueryRequest {
+  return { identityToken: "", lobbyId: "" };
+}
+
+export const QueryRequest = {
+  encode(
+    message: QueryRequest,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.identityToken !== "") {
+      writer.uint32(10).string(message.identityToken);
+    }
+    if (message.lobbyId !== "") {
+      writer.uint32(18).string(message.lobbyId);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): QueryRequest {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseQueryRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.identityToken = reader.string();
+          break;
+        case 2:
+          message.lobbyId = reader.string();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): QueryRequest {
+    return {
+      identityToken: isSet(object.identityToken)
+        ? String(object.identityToken)
+        : "",
+      lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
+    };
+  },
+
+  toJSON(message: QueryRequest): unknown {
+    const obj: any = {};
+    message.identityToken !== undefined &&
+      (obj.identityToken = message.identityToken);
+    message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<QueryRequest>, I>>(
+    object: I
+  ): QueryRequest {
+    const message = createBaseQueryRequest();
+    message.identityToken = object.identityToken ?? "";
+    message.lobbyId = object.lobbyId ?? "";
+    return message;
+  },
+};
+
+function createBaseQueryResponse(): QueryResponse {
+  return { gameInfo: undefined, settings: undefined };
+}
+
+export const QueryResponse = {
+  encode(
+    message: QueryResponse,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.gameInfo !== undefined) {
+      GameInfo.encode(message.gameInfo, writer.uint32(10).fork()).ldelim();
+    }
+    if (message.settings !== undefined) {
+      Settings.encode(message.settings, writer.uint32(18).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): QueryResponse {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseQueryResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.gameInfo = GameInfo.decode(reader, reader.uint32());
+          break;
+        case 2:
+          message.settings = Settings.decode(reader, reader.uint32());
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): QueryResponse {
+    return {
+      gameInfo: isSet(object.gameInfo)
+        ? GameInfo.fromJSON(object.gameInfo)
+        : undefined,
+      settings: isSet(object.settings)
+        ? Settings.fromJSON(object.settings)
+        : undefined,
+    };
+  },
+
+  toJSON(message: QueryResponse): unknown {
+    const obj: any = {};
+    message.gameInfo !== undefined &&
+      (obj.gameInfo = message.gameInfo
+        ? GameInfo.toJSON(message.gameInfo)
+        : undefined);
+    message.settings !== undefined &&
+      (obj.settings = message.settings
+        ? Settings.toJSON(message.settings)
+        : undefined);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<QueryResponse>, I>>(
+    object: I
+  ): QueryResponse {
+    const message = createBaseQueryResponse();
+    message.gameInfo =
+      object.gameInfo !== undefined && object.gameInfo !== null
+        ? GameInfo.fromPartial(object.gameInfo)
+        : undefined;
+    message.settings =
+      object.settings !== undefined && object.settings !== null
+        ? Settings.fromPartial(object.settings)
+        : undefined;
     return message;
   },
 };
