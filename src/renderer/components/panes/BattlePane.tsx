@@ -9,7 +9,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
 export default function BattlePane({ active }: { active: boolean }) {
-  const lobbies = [""];
+  const lobbies = [];
 
   return (
     <Box
