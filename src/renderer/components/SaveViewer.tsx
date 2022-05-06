@@ -10,7 +10,13 @@ import FolderViewer from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
 
-export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
+export default function SaveViewer({
+  editor,
+  hasFab,
+}: {
+  editor: bn6.Editor;
+  hasFab?: boolean;
+}) {
   const [tab, setTab] = React.useState("navicust");
 
   React.useEffect(() => {
@@ -36,10 +42,18 @@ export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
           disabled={!editor.supportsModcards()}
         />
       </Tabs>
-      <NavicustViewer editor={editor} active={tab == "navicust"} />
-      <FolderViewer editor={editor} active={tab == "folder"} />
+      <NavicustViewer
+        editor={editor}
+        active={tab == "navicust"}
+        hasFab={hasFab}
+      />
+      <FolderViewer editor={editor} active={tab == "folder"} hasFab={hasFab} />
       {editor.supportsModcards() ? (
-        <ModcardsViewer editor={editor} active={tab == "modcards"} />
+        <ModcardsViewer
+          editor={editor}
+          active={tab == "modcards"}
+          hasFab={hasFab}
+        />
       ) : null}
     </Stack>
   );

@@ -14,6 +14,13 @@ export default function createTheme(mode: "dark" | "light") {
       primary: green,
     },
     components: {
+      MuiFab: {
+        styleOverrides: {
+          root: {
+            boxShadow: "none",
+          },
+        },
+      },
       MuiButton: {
         defaultProps: {
           disableElevation: true,

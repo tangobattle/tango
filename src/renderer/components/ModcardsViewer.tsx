@@ -19,9 +19,11 @@ const OFF_COLOR = "#bdbdbd";
 export default function ModcardsViewer({
   editor,
   active,
+  hasFab,
 }: {
   editor: bn6.Editor;
   active: boolean;
+  hasFab?: boolean;
 }) {
   const { i18n } = useTranslation();
 
@@ -35,7 +37,7 @@ export default function ModcardsViewer({
       flexGrow={1}
       display={active ? "block" : "none"}
       overflow="auto"
-      sx={{ px: 1, height: 0 }}
+      sx={{ px: 1, height: 0, paddingBottom: hasFab ? "72px" : undefined }}
     >
       <Table size="small">
         <TableBody>

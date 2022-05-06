@@ -28,15 +28,15 @@ export function CoreSupervisor({
   onExit,
 }: {
   romName: string;
-  patch?: { name: string; version: string };
+  patch: { name: string; version: string } | null;
   savePath: string;
-  matchSettings?: {
+  matchSettings: {
     sessionID: string;
     replaysPath: string;
     replayInfo: ReplayInfo;
     inputDelay: number;
     matchType: number;
-  };
+  } | null;
   incarnation: number;
   windowTitle: string;
   onExit: () => void;

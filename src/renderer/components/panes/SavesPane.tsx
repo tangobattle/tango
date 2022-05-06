@@ -1,4 +1,3 @@
-import * as datefns from "date-fns";
 import { readFile } from "fs/promises";
 import path from "path";
 import React from "react";
@@ -12,35 +11,28 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
-import SportsMmaIcon from "@mui/icons-material/SportsMma";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
+import Fab from "@mui/material/Fab";
 import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
-import InputAdornment from "@mui/material/InputAdornment";
 import InputLabel from "@mui/material/InputLabel";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
-import Slider from "@mui/material/Slider";
 import Stack from "@mui/material/Stack";
-import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { getBasePath, getReplaysPath, getSavesPath } from "../../../paths";
+import { getBasePath, getSavesPath } from "../../../paths";
 import { KNOWN_ROMS } from "../../../rom";
 import { Editor } from "../../../saveedit/bn6";
-import { CopyButton } from "../CopyButton";
 import { CoreSupervisor } from "../CoreSupervisor";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
 import { useSaves } from "../SavesContext";
 import SaveViewer from "../SaveViewer";
-
-const MATCH_TYPES = ["single", "triple"];
 
 function SaveViewerWrapper({
   filename,
@@ -69,22 +61,19 @@ function SaveViewerWrapper({
     return null;
   }
 
-  return <SaveViewer editor={editor} />;
+  return <SaveViewer editor={editor} hasFab />;
 }
 
-export default function PlayPane({ active }: { active: boolean }) {
+export default function SavesPane({ active }: { active: boolean }) {
   const { saves, rescan: rescanSaves } = useSaves();
   const { patches, rescan: rescanPatches } = usePatches();
   const { roms, rescan: rescanROMs } = useROMs();
   const { i18n } = useTranslation();
 
   const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
-  const [extraOptionsOpen, setExtraOptionsOpen] = React.useState(false);
 
   const [saveName_, setSaveName] = React.useState<string | null>(null);
-  const [startedState, setStartedState] = React.useState<{
-    linkCode: string | null;
-  } | null>(null);
+  const [started, setStarted] = React.useState(false);
   const [incarnation, setIncarnation] = React.useState(0);
 
   const saveName =
@@ -134,22 +123,6 @@ export default function PlayPane({ active }: { active: boolean }) {
     setPatchVersion(patchVersions[0]);
   }, [patchVersions]);
 
-  const [matchType, setMatchType] = React.useState(1);
-  const [inputDelay, setInputDelay] = React.useState(3);
-  const [linkCode, setLinkCode] = React.useState("");
-
-  const romInfo = save != null ? KNOWN_ROMS[save.romName] : null;
-
-  const netplayCompatibility =
-    romInfo != null
-      ? patchInfo != null &&
-        patchVersion != null &&
-        patchInfo.versions[patchVersion] != null
-        ? patchInfo.versions[patchVersion].netplayCompatibility
-        : romInfo.netplayCompatibility
-      : "";
-
-  const now = new Date();
   const listFormatter = new Intl.ListFormat(i18n.resolvedLanguage, {
     style: "long",
     type: "conjunction",
@@ -397,180 +370,45 @@ export default function PlayPane({ active }: { active: boolean }) {
             </Stack>
           </Box>
         )}
-        <Stack
-          component="form"
-          onSubmit={(e: any) => {
-            e.preventDefault();
-            setStartedState({ linkCode: linkCode != "" ? linkCode : null });
-          }}
-        >
-          <Stack
-            flexGrow={0}
-            flexShrink={0}
-            direction="row"
-            justifyContent="flex-end"
-            spacing={1}
-            sx={{ px: 1 }}
+        <Tooltip title={<Trans i18nKey="play:play" />}>
+          <Fab
+            sx={{
+              position: "absolute",
+              right: 16,
+              bottom: 16,
+            }}
+            disabled={saveName == null}
+            color="primary"
+            size="medium"
+            onClick={() => {
+              setStarted(true);
+            }}
           >
-            <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
-              <IconButton
-                onClick={() => {
-                  setExtraOptionsOpen((o) => !o);
-                }}
-              >
-                {extraOptionsOpen ? (
-                  <KeyboardArrowDownIcon />
-                ) : (
-                  <KeyboardArrowUpIcon />
-                )}
-              </IconButton>
-            </Tooltip>
-            <Box flexGrow={1} flexShrink={0}>
-              <TextField
-                disabled={saveName == null}
-                size="small"
-                label={<Trans i18nKey={"play:link-code"} />}
-                value={linkCode}
-                onChange={(e) => {
-                  setLinkCode(
-                    e.target.value
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]/g, "")
-                      .slice(0, 40)
-                  );
-                }}
-                fullWidth
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start" sx={{ mr: 0 }}>
-                      {romInfo != null ? (
-                        <>
-                          {netplayCompatibility}-
-                          <Select
-                            variant="standard"
-                            value={matchType}
-                            onChange={(e) => {
-                              setMatchType(e.target.value as number);
-                            }}
-                            renderValue={(v) => MATCH_TYPES[v]}
-                            disabled={saveName == null}
-                          >
-                            {MATCH_TYPES.map((v, k) => (
-                              <MenuItem key={k} value={k}>
-                                <ListItemText
-                                  primary={v}
-                                  secondary={
-                                    k == 0 ? (
-                                      <Trans i18nKey="play:match-type.single" />
-                                    ) : k == 1 ? (
-                                      <Trans i18nKey="play:match-type.triple" />
-                                    ) : null
-                                  }
-                                />
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          -
-                        </>
-                      ) : null}
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <CopyButton
-                        disabled={saveName == null}
-                        value={`${netplayCompatibility}-${MATCH_TYPES[matchType]}-${linkCode}`}
-                      />
-                    </InputAdornment>
-                  ),
+            <PlayArrowIcon />
+            {started ? (
+              <CoreSupervisor
+                incarnation={incarnation}
+                romName={saves[saveName!].romName}
+                patch={
+                  patchVersion != null
+                    ? { name: patchName!, version: patchVersion }
+                    : null
+                }
+                matchSettings={null}
+                savePath={path.join(getSavesPath(app), saveName!)}
+                windowTitle={`${
+                  KNOWN_ROMS[saves[saveName!].romName].title[
+                    i18n.resolvedLanguage
+                  ]
+                }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
+                onExit={() => {
+                  setStarted(false);
+                  setIncarnation((incarnation) => incarnation + 1);
                 }}
               />
-            </Box>
-            <Button
-              type="submit"
-              variant="contained"
-              startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
-              disabled={saveName == null}
-            >
-              {linkCode != "" ? (
-                <Trans i18nKey="play:fight" />
-              ) : (
-                <Trans i18nKey="play:play" />
-              )}
-              {startedState != null ? (
-                <CoreSupervisor
-                  incarnation={incarnation}
-                  romName={saves[saveName!].romName}
-                  patch={
-                    patchVersion != null
-                      ? { name: patchName!, version: patchVersion }
-                      : undefined
-                  }
-                  matchSettings={
-                    startedState.linkCode != null
-                      ? {
-                          sessionID: `${netplayCompatibility}-${MATCH_TYPES[matchType]}-${startedState.linkCode}`,
-                          replaysPath: path.join(
-                            getReplaysPath(app),
-                            `${datefns.format(
-                              now,
-                              "yyyyMMddHHmmmmss"
-                            )}-${netplayCompatibility}-${
-                              MATCH_TYPES[matchType]
-                            }-${startedState.linkCode}`
-                          ),
-                          replayInfo: {
-                            ts: now.valueOf(),
-                            rom: saves[saveName!].romName!,
-                            patch:
-                              patchInfo != null
-                                ? {
-                                    name: patchName!,
-                                    version: patchVersion!,
-                                  }
-                                : null,
-                            remote: null,
-                          },
-                          inputDelay,
-                          matchType,
-                        }
-                      : undefined
-                  }
-                  savePath={path.join(getSavesPath(app), saveName!)}
-                  windowTitle={`${
-                    KNOWN_ROMS[saves[saveName!].romName].title[
-                      i18n.resolvedLanguage
-                    ]
-                  }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
-                  onExit={() => {
-                    setStartedState(null);
-                    setIncarnation((incarnation) => incarnation + 1);
-                  }}
-                />
-              ) : null}
-            </Button>
-          </Stack>
-          <Collapse in={extraOptionsOpen}>
-            <Stack spacing={1}>
-              <Box sx={{ px: 1 }}>
-                <Typography sx={{ userSelect: "none" }} variant="body2">
-                  <Trans i18nKey="play:input-delay" />
-                </Typography>
-                <Slider
-                  value={inputDelay}
-                  marks
-                  min={0}
-                  max={10}
-                  valueLabelDisplay="auto"
-                  size="small"
-                  onChange={(e, value) => {
-                    setInputDelay(value as number);
-                  }}
-                />
-              </Box>
-            </Stack>
-          </Collapse>
-        </Stack>
+            ) : null}
+          </Fab>
+        </Tooltip>
       </Stack>
     </Box>
   );
