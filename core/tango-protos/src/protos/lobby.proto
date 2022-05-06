@@ -79,3 +79,13 @@ message JoinStreamToClientMessage {
     AcceptIndication accept_ind = 2;
   }
 }
+
+message QueryRequest {
+  string identity_token = 1;
+  string lobby_id = 2;
+}
+
+message QueryResponse {
+  GameInfo game_info = 1;
+  Settings settings = 2;
+}

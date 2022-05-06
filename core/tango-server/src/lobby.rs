@@ -14,20 +14,23 @@ struct Lobby {
     game_info: tango_protos::lobby::GameInfo,
     settings: tango_protos::lobby::Settings,
     save_data: Vec<u8>,
-    pending_players:
-        std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<PendingPlayer>>>,
-    creator_tx: futures_util::stream::SplitSink<
-        hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
-        tungstenite::Message,
+    pending_players: std::sync::Arc<
+        tokio::sync::Mutex<
+            std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<PendingPlayer>>>,
+        >,
+    >,
+    creator_tx: std::sync::Arc<
+        tokio::sync::Mutex<
+            futures_util::stream::SplitSink<
+                hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
+                tungstenite::Message,
+            >,
+        >,
     >,
 }
 
 pub struct Server {
-    lobbies: std::sync::Arc<
-        tokio::sync::Mutex<
-            std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<Lobby>>>,
-        >,
-    >,
+    lobbies: std::sync::Arc<tokio::sync::Mutex<std::collections::HashMap<String, Lobby>>>,
 }
 
 fn generate_id() -> String {
@@ -45,6 +48,20 @@ impl Server {
         }
     }
 
+    pub async fn query(&self, lobby_id: &str) -> Option<tango_protos::lobby::QueryResponse> {
+        let lobbies = self.lobbies.lock().await;
+        let lobby = if let Some(lobby) = lobbies.get(lobby_id) {
+            lobby
+        } else {
+            return None;
+        };
+
+        Some(tango_protos::lobby::QueryResponse {
+            game_info: Some(lobby.game_info.clone()),
+            settings: Some(lobby.settings.clone()),
+        })
+    }
+
     pub async fn handle_create_stream(
         &self,
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
@@ -53,7 +70,6 @@ impl Server {
         let lobby_id = std::sync::Arc::new(tokio::sync::Mutex::new(None));
 
         let r = {
-            let lobbies = self.lobbies.clone();
             let lobby_id = lobby_id.clone();
 
             (move || async move {
@@ -104,16 +120,15 @@ impl Server {
                         )),
                 }.encode_to_vec())).await?;
 
-                let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby {
-                    game_info,
-                    settings,
-                    save_data: create_req.save_data,
-                    pending_players: std::collections::HashMap::new(),
-                    creator_tx: tx,
-                }));
-                lobbies.lock().await.insert(
+                self.lobbies.lock().await.insert(
                     generated_lobby_id.clone(),
-                    lobby.clone(),
+                    Lobby {
+                        game_info,
+                        settings,
+                        save_data: create_req.save_data,
+                        pending_players: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+                        creator_tx: std::sync::Arc::new(tokio::sync::Mutex::new(tx)),
+                    },
                 );
 
                 *lobby_id.lock().await = Some(generated_lobby_id);
@@ -140,19 +155,29 @@ impl Server {
                                     accept_req,
                                 )),
                         } => {
-                            let mut lobby = lobby.lock().await;
-                            let pp = if let Some(pp) = lobby.pending_players.get(&accept_req.opponent_id) {
-                                pp.clone()
+                            let lobbies = self.lobbies.lock().await;
+                            let lobby = if let Some(lobby) = lobbies.get(lobby_id.lock().await.as_ref().unwrap()) {
+                                lobby
                             } else {
-                                // No such player, just continue.
-                                continue;
+                                break;
+                            };
+
+                            let pp = {
+                                let pending_players = lobby.pending_players.lock().await;
+                                if let Some(pp) = pending_players.get(&accept_req.opponent_id) {
+                                    pp.clone()
+                                } else {
+                                    // No such player, just continue.
+                                    continue;
+                                }
                             };
 
                             let mut pp = pp.lock().await;
 
                             let session_id = generate_id();
 
-                            lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
+                            let mut creator_tx = lobby.creator_tx.lock().await;
+                            creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
                                 which:
                                     Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
                                         tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
@@ -183,15 +208,23 @@ impl Server {
                                     reject_req,
                                 )),
                         } => {
-                            let mut lobby = lobby.lock().await;
-                            let pp = if let Some(pp) = lobby.pending_players.remove(&reject_req.opponent_id) {
+                            let lobbies = self.lobbies.lock().await;
+                            let lobby = if let Some(lobby) = lobbies.get(lobby_id.lock().await.as_ref().unwrap()) {
+                                lobby
+                            } else {
+                                break;
+                            };
+
+                            let mut pending_players = lobby.pending_players.lock().await;
+                            let pp = if let Some(pp) = pending_players.remove(&reject_req.opponent_id) {
                                 pp
                             } else {
                                 // No such player, just continue.
                                 continue;
                             };
 
-                            lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
+                            let mut creator_tx = lobby.creator_tx.lock().await;
+                            creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
                                 which:
                                     Some(tango_protos::lobby::create_stream_to_client_message::Which::RejectResp(
                                         tango_protos::lobby::create_stream_to_client_message::RejectResponse { }
@@ -219,8 +252,8 @@ impl Server {
                 return r;
             };
 
-            let mut lobby = lobby.lock().await;
-            for (_, pp) in &mut lobby.pending_players {
+            let mut pending_players = lobby.pending_players.lock().await;
+            for (_, pp) in &mut *pending_players {
                 // TODO: Inform client why they're being disconnected.
                 let mut pp = pp.lock().await;
                 if let Some(close_sender) = pp.close_sender.take() {
@@ -274,8 +307,9 @@ impl Server {
                     anyhow::bail!("create request was missing game info");
                 };
 
-                let lobby = match lobbies.lock().await.get(&join_req.lobby_id) {
-                    Some(lobby) => lobby.clone(),
+                let lobbies = lobbies.lock().await;
+                let lobby = match lobbies.get(&join_req.lobby_id) {
+                    Some(lobby) => lobby,
                     None => {
                         anyhow::bail!("no such lobby");
                     }
@@ -284,9 +318,8 @@ impl Server {
                 let generated_opponent_id = generate_id();
                 let (close_sender, close_receiver) = tokio::sync::oneshot::channel();
                 {
-                    let mut lobby = lobby.lock().await;
-
-                    lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
+                    let mut creator_tx = lobby.creator_tx.lock().await;
+                    creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
                         which:
                             Some(tango_protos::lobby::create_stream_to_client_message::Which::JoinInd(
                                 tango_protos::lobby::create_stream_to_client_message::JoinIndication {
@@ -313,8 +346,9 @@ impl Server {
                         tx,
                         close_sender: Some(close_sender),
                     }));
-                    lobby
-                        .pending_players
+
+                    let mut pending_players = lobby.pending_players.lock().await;
+                    pending_players
                         .insert(generated_opponent_id.clone(), pp);
                 }
 
@@ -335,8 +369,8 @@ impl Server {
             } else {
                 return r;
             };
-            let mut lobby = lobby.lock().await;
-            lobby.pending_players.remove(opponent_id);
+            let mut pending_players = lobby.pending_players.lock().await;
+            pending_players.remove(opponent_id);
         }
 
         r
