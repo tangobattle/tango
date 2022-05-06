@@ -1,0 +1,56 @@
+name: release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                include:
+                    - target: x86_64-pc-windows-gnu
+                      sysroot: /usr/x86_64-w64-mingw32/
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                  submodules: recursive
+
+            - uses: pat-s/always-upload-cache@v2
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      target
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+            - run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+            - run: >
+                  sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60 &&
+                  sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix 90 &&
+                  sudo update-alternatives --config x86_64-w64-mingw32-gcc &&
+                  sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-win32 60 &&
+                  sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix 90 &&
+                  sudo update-alternatives --config x86_64-w64-mingw32-g++
+
+            - uses: actions-rs/toolchain@v1
+              with:
+                  toolchain: stable
+                  target: ${{ matrix.target }}
+
+            - run: BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${{ matrix.sysroot }}" cargo build --release --target ${{ matrix.target }}
+
+            - run: >
+                  mkdir out &&
+                  cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll /usr/lib/gcc/x86_64-w64-mingw32/9.3-posix/*.dll target/x86_64-pc-windows-gnu/release/tango-core.exe target/x86_64-pc-windows-gnu/release/replayview.exe target/x86_64-pc-windows-gnu/release/replaydump.exe target/x86_64-pc-windows-gnu/release/keymaptool.exe out &&
+                  cd out &&
+                  zip -r tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip * &&
+                  mv tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip ..
+
+            - uses: softprops/action-gh-release@v1
+              with:
+                  files: |
+                      tango-core-${{ github.ref_name }}-${{ matrix.target }}.zip

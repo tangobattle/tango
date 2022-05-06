@@ -1,0 +1,9 @@
+#include <mgba-util/vfs.h>
+#include <mgba/core/blip_buf.h>
+#include <mgba/core/core.h>
+#include <mgba/core/log.h>
+#include <mgba/core/sync.h>
+#include <mgba/core/thread.h>
+#include <mgba/gba/core.h>
+#include <mgba/internal/gba/gba.h>
+#include <mgba/internal/gba/serialize.h>
