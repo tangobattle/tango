@@ -29,11 +29,11 @@ impl Server {
         }
     }
 
-    pub async fn handle_connection(
+    pub async fn handle_stream(
         &self,
-        ws: hyper_tungstenite::HyperWebsocket,
+        ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
     ) -> anyhow::Result<()> {
-        let (tx, mut rx) = ws.await?.split();
+        let (tx, mut rx) = ws.split();
         let mut tx = Some(tx);
         let session_id = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let mut session = None;

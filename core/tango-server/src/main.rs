@@ -11,6 +11,7 @@ struct Config {
 
 struct State {
     signaling_server: std::sync::Arc<signaling::Server>,
+    lobby_server: std::sync::Arc<lobby::Server>,
 }
 
 async fn handle_signaling_request(
@@ -31,24 +32,101 @@ async fn handle_signaling_request(
         }),
     )?;
 
-    // Spawn a task to handle the websocket connection.
     let signaling_server = request.data::<State>().unwrap().signaling_server.clone();
     tokio::spawn(async move {
-        if let Err(e) = signaling_server.handle_connection(websocket).await {
-            eprintln!("Error in websocket connection: {}", e);
+        let websocket = match websocket.await {
+            Ok(websocket) => websocket,
+            Err(e) => {
+                log::error!("error in websocket connection: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = signaling_server.handle_stream(websocket).await {
+            log::error!("error in websocket connection: {}", e);
         }
     });
 
-    // Return the response so the spawned future can continue.
     Ok(response)
 }
 
+async fn handle_lobby_create_request(
+    mut request: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    if !hyper_tungstenite::is_upgrade_request(&request) {
+        return Ok(hyper::Response::builder()
+            .status(hyper::StatusCode::BAD_REQUEST)
+            .body(hyper::Body::empty())?);
+    }
+
+    let (response, websocket) = hyper_tungstenite::upgrade(
+        &mut request,
+        Some(tungstenite::protocol::WebSocketConfig {
+            max_message_size: Some(4 * 1024 * 1024),
+            max_frame_size: Some(1 * 1024 * 1024),
+            ..Default::default()
+        }),
+    )?;
+
+    let lobby_server = request.data::<State>().unwrap().lobby_server.clone();
+    tokio::spawn(async move {
+        let websocket = match websocket.await {
+            Ok(websocket) => websocket,
+            Err(e) => {
+                log::error!("error in websocket connection: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = lobby_server.handle_create_stream(websocket).await {
+            log::error!("error in websocket connection: {}", e);
+        }
+    });
+
+    Ok(response)
+}
+
+async fn handle_lobby_join_request(
+    mut request: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    if !hyper_tungstenite::is_upgrade_request(&request) {
+        return Ok(hyper::Response::builder()
+            .status(hyper::StatusCode::BAD_REQUEST)
+            .body(hyper::Body::empty())?);
+    }
+
+    let (response, websocket) = hyper_tungstenite::upgrade(
+        &mut request,
+        Some(tungstenite::protocol::WebSocketConfig {
+            max_message_size: Some(4 * 1024 * 1024),
+            max_frame_size: Some(1 * 1024 * 1024),
+            ..Default::default()
+        }),
+    )?;
+
+    let lobby_server = request.data::<State>().unwrap().lobby_server.clone();
+    tokio::spawn(async move {
+        let websocket = match websocket.await {
+            Ok(websocket) => websocket,
+            Err(e) => {
+                log::error!("error in websocket connection: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = lobby_server.handle_join_stream(websocket).await {
+            log::error!("error in websocket connection: {}", e);
+        }
+    });
+
+    Ok(response)
+}
 fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
             signaling_server: std::sync::Arc::new(signaling::Server::new()),
+            lobby_server: std::sync::Arc::new(lobby::Server::new()),
         })
         .get("/signaling", handle_signaling_request)
+        .get("/lobby/create", handle_lobby_create_request)
+        .get("/lobby/join", handle_lobby_join_request)
         .build()
         .unwrap()
 }
