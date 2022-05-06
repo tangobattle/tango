@@ -36,7 +36,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-          target: ${{ matrix.target }}
+          target: ${{ matrix.rust-target }}
 
       - run: >
           sudo dpkg --add-architecture i386 &&
