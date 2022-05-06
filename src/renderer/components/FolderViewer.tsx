@@ -92,21 +92,21 @@ function FolderChipRow({
         </Tooltip>{" "}
         {isRegular ? (
           <Chip
-            label={<Trans i18nKey="play:folder.regular-chip" />}
+            label={<Trans i18nKey="saves:folder.regular-chip" />}
             sx={{ backgroundColor: "#FF42A5", color: "white" }}
             size="small"
           />
         ) : null}{" "}
         {isTag1 ? (
           <Chip
-            label={<Trans i18nKey="play:folder.tag-chip" />}
+            label={<Trans i18nKey="saves:folder.tag-chip" />}
             sx={{ backgroundColor: "#29F721", color: "white" }}
             size="small"
           />
         ) : null}{" "}
         {isTag2 ? (
           <Chip
-            label={<Trans i18nKey="play:folder.tag-chip" />}
+            label={<Trans i18nKey="saves:folder.tag-chip" />}
             sx={{ backgroundColor: "#29F721", color: "white" }}
             size="small"
           />

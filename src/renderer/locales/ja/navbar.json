@@ -1,5 +1,6 @@
 {
-  "play": "プレイ",
+  "battle": "対戦",
+  "saves": "セーブファイル",
   "replays": "リプレイ",
   "settings": "設定",
   "settings-update-available": "設定（更新あり）",

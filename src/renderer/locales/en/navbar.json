@@ -1,5 +1,6 @@
 {
-  "play": "Play",
+  "battle": "Battle",
+  "saves": "Saves",
   "replays": "Replays",
   "settings": "Settings",
   "settings-update-available": "Settings (update available)",

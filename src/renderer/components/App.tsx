@@ -9,6 +9,7 @@ import ThemeProvider from "@mui/system/ThemeProvider";
 import createTheme from "../theme";
 import { ConfigProvider, useConfig } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
+import BattlePane from "./panes/BattlePane";
 import ReplaysPane from "./panes/ReplaysPane";
 import SavesPane from "./panes/SavesPane";
 import SettingsPane from "./panes/SettingsPane";
@@ -53,6 +54,7 @@ const AppBody = withTranslation()(() => {
           <ROMsProvider>
             <PatchesProvider>
               <SavesProvider>
+                <BattlePane active={selected == "battle"} />
                 <SavesPane active={selected == "saves"} />
                 <ReplaysPane active={selected == "replays"} />
                 <SettingsPane active={selected == "settings"} />

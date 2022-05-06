@@ -28,10 +28,10 @@ export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
           setTab(value);
         }}
       >
-        <Tab label={<Trans i18nKey="play:tab.navicust" />} value="navicust" />
-        <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
+        <Tab label={<Trans i18nKey="saves:tab.navicust" />} value="navicust" />
+        <Tab label={<Trans i18nKey="saves:tab.folder" />} value="folder" />
         <Tab
-          label={<Trans i18nKey="play:tab.modcards" />}
+          label={<Trans i18nKey="saves:tab.modcards" />}
           value="modcards"
           disabled={!editor.supportsModcards()}
         />

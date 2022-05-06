@@ -1,5 +1,6 @@
 {
-  "play": "玩",
+  "battle": "战斗",
+  "saves": "游戏存档",
   "replays": "回放",
   "settings": "设定",
   "settings-update-available": "设定（有更新）",

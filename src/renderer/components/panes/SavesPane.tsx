@@ -139,7 +139,7 @@ export default function SavesPane({ active }: { active: boolean }) {
       <Stack sx={{ flexGrow: 1, width: 0 }} spacing={1}>
         <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
           <Stack spacing={1} flexGrow={0} flexShrink={0} direction="row">
-            <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
+            <Tooltip title={<Trans i18nKey="saves:show-hide-extra-options" />}>
               <IconButton
                 onClick={() => {
                   setPatchOptionsOpen((o) => !o);
@@ -154,11 +154,11 @@ export default function SavesPane({ active }: { active: boolean }) {
             </Tooltip>
             <FormControl fullWidth size="small">
               <InputLabel id="select-save-label">
-                <Trans i18nKey="play:select-save" />
+                <Trans i18nKey="saves:select-save" />
               </InputLabel>
               <Select
                 labelId="select-save-label"
-                label={<Trans i18nKey="play:select-save" />}
+                label={<Trans i18nKey="saves:select-save" />}
                 value={saveName ?? ""}
                 renderValue={(v) => {
                   if (v == "") {
@@ -207,7 +207,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 })}
               </Select>
             </FormControl>
-            <Tooltip title={<Trans i18nKey="play:open-dir" />}>
+            <Tooltip title={<Trans i18nKey="saves:open-dir" />}>
               <IconButton
                 onClick={() => {
                   if (saveName == null) {
@@ -222,7 +222,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 <FolderOpenIcon />
               </IconButton>
             </Tooltip>
-            <Tooltip title={<Trans i18nKey="play:rescan" />}>
+            <Tooltip title={<Trans i18nKey="saves:rescan" />}>
               <IconButton
                 onClick={() => {
                   (async () => {
@@ -250,14 +250,14 @@ export default function SavesPane({ active }: { active: boolean }) {
               <Box flexGrow={5} flexShrink={0}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="game-label">
-                    <Trans i18nKey="play:patch-name" />
+                    <Trans i18nKey="saves:patch-name" />
                   </InputLabel>
                   <Select
                     labelId="game-label"
                     disabled={saveName == null}
                     size="small"
                     value={JSON.stringify(patchName)}
-                    label={<Trans i18nKey={"play:patch-name"} />}
+                    label={<Trans i18nKey={"saves:patch-name"} />}
                     onChange={(e) => {
                       setPatchName(JSON.parse(e.target.value));
                       setPatchVersion(null);
@@ -265,14 +265,14 @@ export default function SavesPane({ active }: { active: boolean }) {
                     renderValue={(v) => {
                       const patchName = JSON.parse(v);
                       if (patchName == null) {
-                        return <Trans i18nKey="play:unpatched" />;
+                        return <Trans i18nKey="saves:unpatched" />;
                       }
                       return (
                         <>
                           {patches[patchName].title}{" "}
                           <small>
                             <Trans
-                              i18nKey="play:patch-byline"
+                              i18nKey="saves:patch-byline"
                               values={{
                                 authors: listFormatter.format(
                                   patches[patchName].authors.flatMap(
@@ -288,7 +288,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                     fullWidth
                   >
                     <MenuItem value="null">
-                      <Trans i18nKey="play:unpatched" />
+                      <Trans i18nKey="saves:unpatched" />
                     </MenuItem>
                     {eligiblePatchNames.map((patchName) => {
                       const v = JSON.stringify(patchName);
@@ -298,7 +298,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                             primary={patches[patchName].title}
                             secondary={
                               <Trans
-                                i18nKey="play:patch-byline"
+                                i18nKey="saves:patch-byline"
                                 values={{
                                   authors: listFormatter.format(
                                     patches[patchName].authors.flatMap(
@@ -318,14 +318,14 @@ export default function SavesPane({ active }: { active: boolean }) {
               <Box flexGrow={1} flexShrink={0}>
                 <FormControl fullWidth size="small">
                   <InputLabel id="patch-version-label">
-                    <Trans i18nKey="play:patch-version" />
+                    <Trans i18nKey="saves:patch-version" />
                   </InputLabel>
                   <Select
                     labelId="patch-version-label"
                     disabled={saveName == null || patchName == null}
                     size="small"
                     value={patchVersion || ""}
-                    label={<Trans i18nKey={"play:patch-version"} />}
+                    label={<Trans i18nKey={"saves:patch-version"} />}
                     onChange={(e) => {
                       setPatchVersion(e.target.value);
                     }}
@@ -365,7 +365,7 @@ export default function SavesPane({ active }: { active: boolean }) {
             <Stack alignItems="center" spacing={1}>
               <SportsEsportsOutlinedIcon sx={{ fontSize: "4rem" }} />
               <Typography variant="h6">
-                <Trans i18nKey="play:no-save-selected" />
+                <Trans i18nKey="saves:no-save-selected" />
               </Typography>
             </Stack>
           </Box>
@@ -382,7 +382,7 @@ export default function SavesPane({ active }: { active: boolean }) {
               }}
               startIcon={<PlayArrowIcon />}
             >
-              <Trans i18nKey="play:play" />
+              <Trans i18nKey="saves:play" />
               {started ? (
                 <CoreSupervisor
                   incarnation={incarnation}
