@@ -96,7 +96,9 @@ export function CoreSupervisor({
                   session_id: matchSettings.sessionID,
                   input_delay: matchSettings.inputDelay,
                   match_type: matchSettings.matchType,
-                  signaling_connect_addr: `wss://${configRef.current.lobbyServer}/signaling`,
+                  signaling_connect_addr: `ws${
+                    !configRef.current.lobby.insecure ? "s" : ""
+                  }://${configRef.current.lobby.address}/signaling`,
                   ice_servers: configRef.current.iceServers,
                   replays_path: matchSettings.replaysPath,
                   replay_metadata: JSON.stringify(matchSettings.replayInfo),

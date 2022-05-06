@@ -10,7 +10,10 @@ export interface Config {
   wgpuBackend: string | null;
   rustLogFilter: string;
   keymapping: ipc.Args["keymapping"];
-  lobbyServer: string;
+  lobby: {
+    address: string;
+    insecure: boolean;
+  };
   iceServers: string[];
 }
 
@@ -32,7 +35,10 @@ export const DEFAULT: Config = {
     select: "Back",
     start: "Return",
   },
-  lobbyServer: "lobby.tangobattle.com",
+  lobby: {
+    address: "lobby.tangobattle.com",
+    insecure: false,
+  },
   iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",
