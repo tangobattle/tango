@@ -2,7 +2,7 @@ import { subscribe } from "event-iterator/lib/dom";
 
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
-    JoinStreamToServerMessage
+    JoinStreamToServerMessage, Settings
 } from "./protos/lobby";
 
 export { GameInfo };
@@ -106,6 +106,7 @@ export async function create(
   addr: string,
   identityToken: string,
   gameInfo: GameInfo,
+  settings: Settings,
   saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyCreateHandle> {
@@ -122,6 +123,7 @@ export async function create(
         createReq: {
           identityToken,
           gameInfo,
+          settings,
           saveData,
         },
         acceptReq: undefined,

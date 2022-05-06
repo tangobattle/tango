@@ -12,6 +12,7 @@ struct PendingPlayer {
 
 struct Lobby {
     game_info: tango_protos::lobby::GameInfo,
+    settings: tango_protos::lobby::Settings,
     save_data: Vec<u8>,
     pending_players:
         std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<PendingPlayer>>>,
@@ -86,6 +87,12 @@ impl Server {
                     anyhow::bail!("create request was missing game info");
                 };
 
+                let settings = if let Some(settings) = create_req.settings {
+                    settings
+                } else {
+                    anyhow::bail!("create request was missing settings");
+                };
+
                 let generated_lobby_id = generate_id();
 
                 tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
@@ -99,6 +106,7 @@ impl Server {
 
                 let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby {
                     game_info,
+                    settings,
                     save_data: create_req.save_data,
                     pending_players: std::collections::HashMap::new(),
                     creator_tx: tx,
@@ -295,6 +303,7 @@ impl Server {
                                 tango_protos::lobby::join_stream_to_client_message::JoinResponse {
                                     opponent_id: generated_opponent_id.clone(),
                                     game_info: Some(lobby.game_info.clone()),
+                                    settings: Some(lobby.settings.clone()),
                                     save_data: lobby.save_data.clone(),
                                 }
                             )),

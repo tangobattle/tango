@@ -11,11 +11,14 @@ message GameInfo {
   Patch patch = 2;
 }
 
+message Settings { bool open = 1; }
+
 message CreateStreamToServerMessage {
   message CreateRequest {
     string identity_token = 1;
     GameInfo game_info = 2;
-    bytes save_data = 3;
+    Settings settings = 3;
+    bytes save_data = 4;
   }
 
   message AcceptRequest { string opponent_id = 1; }
@@ -65,7 +68,8 @@ message JoinStreamToClientMessage {
   message JoinResponse {
     string opponent_id = 1;
     GameInfo game_info = 2;
-    bytes save_data = 3;
+    Settings settings = 3;
+    bytes save_data = 4;
   }
 
   message AcceptIndication { string session_id = 1; }

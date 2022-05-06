@@ -14,6 +14,10 @@ export interface GameInfo_Patch {
   version: string;
 }
 
+export interface Settings {
+  open: boolean;
+}
+
 export interface CreateStreamToServerMessage {
   createReq: CreateStreamToServerMessage_CreateRequest | undefined;
   acceptReq: CreateStreamToServerMessage_AcceptRequest | undefined;
@@ -23,6 +27,7 @@ export interface CreateStreamToServerMessage {
 export interface CreateStreamToServerMessage_CreateRequest {
   identityToken: string;
   gameInfo: GameInfo | undefined;
+  settings: Settings | undefined;
   saveData: Uint8Array;
 }
 
@@ -76,6 +81,7 @@ export interface JoinStreamToClientMessage {
 export interface JoinStreamToClientMessage_JoinResponse {
   opponentId: string;
   gameInfo: GameInfo | undefined;
+  settings: Settings | undefined;
   saveData: Uint8Array;
 }
 
@@ -215,6 +221,58 @@ export const GameInfo_Patch = {
   },
 };
 
+function createBaseSettings(): Settings {
+  return { open: false };
+}
+
+export const Settings = {
+  encode(
+    message: Settings,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.open === true) {
+      writer.uint32(8).bool(message.open);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): Settings {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseSettings();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.open = reader.bool();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): Settings {
+    return {
+      open: isSet(object.open) ? Boolean(object.open) : false,
+    };
+  },
+
+  toJSON(message: Settings): unknown {
+    const obj: any = {};
+    message.open !== undefined && (obj.open = message.open);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<Settings>, I>>(object: I): Settings {
+    const message = createBaseSettings();
+    message.open = object.open ?? false;
+    return message;
+  },
+};
+
 function createBaseCreateStreamToServerMessage(): CreateStreamToServerMessage {
   return { createReq: undefined, acceptReq: undefined, rejectReq: undefined };
 }
@@ -339,7 +397,12 @@ export const CreateStreamToServerMessage = {
 };
 
 function createBaseCreateStreamToServerMessage_CreateRequest(): CreateStreamToServerMessage_CreateRequest {
-  return { identityToken: "", gameInfo: undefined, saveData: new Uint8Array() };
+  return {
+    identityToken: "",
+    gameInfo: undefined,
+    settings: undefined,
+    saveData: new Uint8Array(),
+  };
 }
 
 export const CreateStreamToServerMessage_CreateRequest = {
@@ -353,8 +416,11 @@ export const CreateStreamToServerMessage_CreateRequest = {
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
+    if (message.settings !== undefined) {
+      Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
+    }
     if (message.saveData.length !== 0) {
-      writer.uint32(26).bytes(message.saveData);
+      writer.uint32(34).bytes(message.saveData);
     }
     return writer;
   },
@@ -376,6 +442,9 @@ export const CreateStreamToServerMessage_CreateRequest = {
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 3:
+          message.settings = Settings.decode(reader, reader.uint32());
+          break;
+        case 4:
           message.saveData = reader.bytes();
           break;
         default:
@@ -394,6 +463,9 @@ export const CreateStreamToServerMessage_CreateRequest = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
+      settings: isSet(object.settings)
+        ? Settings.fromJSON(object.settings)
+        : undefined,
       saveData: isSet(object.saveData)
         ? bytesFromBase64(object.saveData)
         : new Uint8Array(),
@@ -407,6 +479,10 @@ export const CreateStreamToServerMessage_CreateRequest = {
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
+        : undefined);
+    message.settings !== undefined &&
+      (obj.settings = message.settings
+        ? Settings.toJSON(message.settings)
         : undefined);
     message.saveData !== undefined &&
       (obj.saveData = base64FromBytes(
@@ -423,6 +499,10 @@ export const CreateStreamToServerMessage_CreateRequest = {
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
+        : undefined;
+    message.settings =
+      object.settings !== undefined && object.settings !== null
+        ? Settings.fromPartial(object.settings)
         : undefined;
     message.saveData = object.saveData ?? new Uint8Array();
     return message;
@@ -1219,7 +1299,12 @@ export const JoinStreamToClientMessage = {
 };
 
 function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientMessage_JoinResponse {
-  return { opponentId: "", gameInfo: undefined, saveData: new Uint8Array() };
+  return {
+    opponentId: "",
+    gameInfo: undefined,
+    settings: undefined,
+    saveData: new Uint8Array(),
+  };
 }
 
 export const JoinStreamToClientMessage_JoinResponse = {
@@ -1233,8 +1318,11 @@ export const JoinStreamToClientMessage_JoinResponse = {
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
+    if (message.settings !== undefined) {
+      Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
+    }
     if (message.saveData.length !== 0) {
-      writer.uint32(26).bytes(message.saveData);
+      writer.uint32(34).bytes(message.saveData);
     }
     return writer;
   },
@@ -1256,6 +1344,9 @@ export const JoinStreamToClientMessage_JoinResponse = {
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 3:
+          message.settings = Settings.decode(reader, reader.uint32());
+          break;
+        case 4:
           message.saveData = reader.bytes();
           break;
         default:
@@ -1272,6 +1363,9 @@ export const JoinStreamToClientMessage_JoinResponse = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
+      settings: isSet(object.settings)
+        ? Settings.fromJSON(object.settings)
+        : undefined,
       saveData: isSet(object.saveData)
         ? bytesFromBase64(object.saveData)
         : new Uint8Array(),
@@ -1284,6 +1378,10 @@ export const JoinStreamToClientMessage_JoinResponse = {
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
+        : undefined);
+    message.settings !== undefined &&
+      (obj.settings = message.settings
+        ? Settings.toJSON(message.settings)
         : undefined);
     message.saveData !== undefined &&
       (obj.saveData = base64FromBytes(
@@ -1300,6 +1398,10 @@ export const JoinStreamToClientMessage_JoinResponse = {
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
+        : undefined;
+    message.settings =
+      object.settings !== undefined && object.settings !== null
+        ? Settings.fromPartial(object.settings)
         : undefined;
     message.saveData = object.saveData ?? new Uint8Array();
     return message;
