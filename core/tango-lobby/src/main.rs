@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let router = router();
 
     env_logger::Builder::from_default_env()
-        .filter(Some("tango-lobby"), log::LevelFilter::Info)
+        .filter(Some("tango_lobby"), log::LevelFilter::Info)
         .init();
     log::info!("welcome to tango-lobby {}!", git_version::git_version!());
     let config = Config::init_from_env().unwrap();
