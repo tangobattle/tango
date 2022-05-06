@@ -7,7 +7,7 @@ struct Session {
     sinks: Vec<
         futures_util::stream::SplitSink<
             hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
-            tokio_tungstenite::tungstenite::Message,
+            tungstenite::Message,
         >,
     >,
 }
@@ -45,10 +45,10 @@ impl Server {
             (move || async move {
                 loop {
                     let msg = match rx.try_next().await? {
-                        Some(tokio_tungstenite::tungstenite::Message::Binary(d)) => {
+                        Some(tungstenite::Message::Binary(d)) => {
                             tango_protos::signaling::Packet::decode(bytes::Bytes::from(d))?
                         }
-                        Some(tokio_tungstenite::tungstenite::Message::Close(_)) | None => {
+                        Some(tungstenite::Message::Close(_)) | None => {
                             break;
                         }
                         Some(m) => {
@@ -83,7 +83,7 @@ impl Server {
 
                             if me == 1 {
                                 session.sinks[me]
-                                    .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                    .send(tungstenite::Message::Binary(
                                         tango_protos::signaling::Packet {
                                             which: Some(
                                                 tango_protos::signaling::packet::Which::Offer(
@@ -112,7 +112,7 @@ impl Server {
                             };
                             let mut session = session.lock().await;
                             session.sinks[0]
-                                .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                .send(tungstenite::Message::Binary(
                                     tango_protos::signaling::Packet {
                                         which: Some(
                                             tango_protos::signaling::packet::Which::Answer(
@@ -137,7 +137,7 @@ impl Server {
                             };
                             let mut session = session.lock().await;
                             session.sinks[1 - me]
-                                .send(tokio_tungstenite::tungstenite::Message::Binary(
+                                .send(tungstenite::Message::Binary(
                                     tango_protos::signaling::Packet {
                                         which: Some(
                                             tango_protos::signaling::packet::Which::IceCandidate(

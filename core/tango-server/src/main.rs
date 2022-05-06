@@ -22,7 +22,14 @@ async fn handle_signaling_request(
             .body(hyper::Body::empty())?);
     }
 
-    let (response, websocket) = hyper_tungstenite::upgrade(&mut request, None)?;
+    let (response, websocket) = hyper_tungstenite::upgrade(
+        &mut request,
+        Some(tungstenite::protocol::WebSocketConfig {
+            max_message_size: Some(4 * 1024 * 1024),
+            max_frame_size: Some(1 * 1024 * 1024),
+            ..Default::default()
+        }),
+    )?;
 
     // Spawn a task to handle the websocket connection.
     let signaling_server = request.data::<State>().unwrap().signaling_server.clone();
