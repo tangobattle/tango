@@ -29,9 +29,15 @@ export async function join(
   identityToken: string,
   lobbyId: string,
   gameInfo: GameInfo,
-  saveData: Uint8Array
+  saveData: Uint8Array,
+  { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyJoinHandle> {
   const ws = new WebSocket(`${addr}/join`);
+  if (signal != null) {
+    signal.onabort = () => {
+      ws.close();
+    };
+  }
   ws.binaryType = "arraybuffer";
   ws.onopen = () => {
     ws.send(
@@ -46,6 +52,9 @@ export async function join(
     );
   };
   const stream = wrapMessageStream(ws);
+  ws.onclose = () => {
+    stream.return();
+  };
   const { value: raw, done } = await stream.next();
   if (done) {
     throw "stream ended early";
@@ -97,9 +106,15 @@ export async function create(
   addr: string,
   identityToken: string,
   gameInfo: GameInfo,
-  saveData: Uint8Array
+  saveData: Uint8Array,
+  { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyCreateHandle> {
   const ws = new WebSocket(`${addr}/create`);
+  if (signal != null) {
+    signal.onabort = () => {
+      ws.close();
+    };
+  }
   ws.binaryType = "arraybuffer";
   ws.onopen = () => {
     ws.send(
@@ -115,6 +130,9 @@ export async function create(
     );
   };
   const stream = wrapMessageStream(ws);
+  ws.onclose = () => {
+    stream.return();
+  };
   const { value: raw, done } = await stream.next();
   if (done) {
     throw "stream ended early";
