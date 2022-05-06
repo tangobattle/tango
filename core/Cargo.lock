@@ -2839,7 +2839,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-lobby"
+name = "tango-protos"
+version = "0.1.0"
+dependencies = [
+ "prost",
+ "prost-build",
+]
+
+[[package]]
+name = "tango-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2859,14 +2867,6 @@ dependencies = [
  "tango-protos",
  "tokio",
  "tokio-tungstenite",
-]
-
-[[package]]
-name = "tango-protos"
-version = "0.1.0"
-dependencies = [
- "prost",
- "prost-build",
 ]
 
 [[package]]

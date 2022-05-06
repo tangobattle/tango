@@ -1,3 +1,4 @@
+mod lobby;
 mod signaling;
 use envconfig::Envconfig;
 use routerify::ext::RequestExt;
@@ -50,9 +51,9 @@ async fn main() -> anyhow::Result<()> {
     let router = router();
 
     env_logger::Builder::from_default_env()
-        .filter(Some("tango_lobby"), log::LevelFilter::Info)
+        .filter(Some("tango_server"), log::LevelFilter::Info)
         .init();
-    log::info!("welcome to tango-lobby {}!", git_version::git_version!());
+    log::info!("welcome to tango-server {}!", git_version::git_version!());
     let config = Config::init_from_env().unwrap();
     let addr = config.listen_addr.parse()?;
     let service = routerify::RouterService::new(router).unwrap();
