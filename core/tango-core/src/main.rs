@@ -5,11 +5,7 @@ fn main() -> Result<(), anyhow::Error> {
         .filter(Some("tango_core"), log::LevelFilter::Info)
         .init();
 
-    log::info!(
-        "welcome to tango-core v{}-{}!",
-        env!("CARGO_PKG_VERSION"),
-        git_version::git_version!()
-    );
+    log::info!("welcome to tango-core {}!", git_version::git_version!());
 
     let args = tango_core::ipc::Args::parse(
         &std::env::args()

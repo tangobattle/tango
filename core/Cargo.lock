@@ -2698,7 +2698,7 @@ dependencies = [
 
 [[package]]
 name = "tango-core"
-version = "3.0.0-alpha.11"
+version = "0.0.0"
 dependencies = [
  "anyhow",
  "bincode",
