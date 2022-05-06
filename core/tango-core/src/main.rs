@@ -23,7 +23,7 @@ fn main() -> Result<(), anyhow::Error> {
         .match_settings
         .map(|s| {
             Ok::<_, anyhow::Error>(tango_core::battle::Settings {
-                matchmaking_connect_addr: s.matchmaking_connect_addr,
+                signaling_connect_addr: s.signaling_connect_addr,
                 session_id: s.session_id,
                 replay_metadata: s.replay_metadata.into(),
                 replays_path: s.replays_path.into(),

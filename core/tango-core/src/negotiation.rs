@@ -74,7 +74,7 @@ fn make_rng_commitment(nonce: &[u8]) -> std::io::Result<[u8; 32]> {
 pub async fn negotiate(
     ipc_client: &mut ipc::Client,
     session_id: &str,
-    matchmaking_connect_addr: &str,
+    signaling_connect_addr: &str,
     ice_servers: &[String],
     input_delay: u32,
 ) -> Result<Negotiation, Error> {
@@ -101,7 +101,7 @@ pub async fn negotiate(
     )?;
 
     tango_signaling::client::connect(
-        &matchmaking_connect_addr,
+        &signaling_connect_addr,
         &mut peer_conn,
         signal_receiver,
         &session_id,

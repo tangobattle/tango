@@ -68,7 +68,7 @@ impl Game {
                 negotiation::negotiate(
                     &mut ipc_client,
                     &match_settings.session_id,
-                    &match_settings.matchmaking_connect_addr,
+                    &match_settings.signaling_connect_addr,
                     &match_settings.ice_servers,
                     match_settings.input_delay,
                 )

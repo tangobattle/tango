@@ -13,7 +13,7 @@ use crate::transport;
 #[derive(Clone, Debug)]
 pub struct Settings {
     pub ice_servers: Vec<String>,
-    pub matchmaking_connect_addr: String,
+    pub signaling_connect_addr: String,
     pub session_id: String,
     pub replays_path: std::path::PathBuf,
     pub shadow_save_path: std::path::PathBuf,

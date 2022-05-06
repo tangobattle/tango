@@ -20,7 +20,7 @@ pub struct MatchSettings {
     pub match_type: u16,
     pub replays_path: String,
     pub replay_metadata: String,
-    pub matchmaking_connect_addr: String,
+    pub signaling_connect_addr: String,
     pub ice_servers: Vec<String>,
 }
 

@@ -10,7 +10,7 @@ export interface Config {
   wgpuBackend: string | null;
   rustLogFilter: string;
   keymapping: ipc.Args["keymapping"];
-  matchmakingConnectAddr: string;
+  lobbyServer: string;
   iceServers: string[];
 }
 
@@ -32,7 +32,7 @@ export const DEFAULT: Config = {
     select: "Back",
     start: "Return",
   },
-  matchmakingConnectAddr: "wss://mm.tango.murk.land",
+  lobbyServer: "lobby.tangobattle.com",
   iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",
