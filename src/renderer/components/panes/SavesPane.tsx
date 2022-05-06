@@ -12,8 +12,8 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
-import Fab from "@mui/material/Fab";
 import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
@@ -61,7 +61,7 @@ function SaveViewerWrapper({
     return null;
   }
 
-  return <SaveViewer editor={editor} hasFab />;
+  return <SaveViewer editor={editor} />;
 }
 
 export default function SavesPane({ active }: { active: boolean }) {
@@ -370,45 +370,44 @@ export default function SavesPane({ active }: { active: boolean }) {
             </Stack>
           </Box>
         )}
-        <Tooltip title={<Trans i18nKey="play:play" />}>
-          <Fab
-            sx={{
-              position: "absolute",
-              right: 16,
-              bottom: 16,
-            }}
-            disabled={saveName == null}
-            color="primary"
-            size="medium"
-            onClick={() => {
-              setStarted(true);
-            }}
-          >
-            <PlayArrowIcon />
-            {started ? (
-              <CoreSupervisor
-                incarnation={incarnation}
-                romName={saves[saveName!].romName}
-                patch={
-                  patchVersion != null
-                    ? { name: patchName!, version: patchVersion }
-                    : null
-                }
-                matchSettings={null}
-                savePath={path.join(getSavesPath(app), saveName!)}
-                windowTitle={`${
-                  KNOWN_ROMS[saves[saveName!].romName].title[
-                    i18n.resolvedLanguage
-                  ]
-                }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
-                onExit={() => {
-                  setStarted(false);
-                  setIncarnation((incarnation) => incarnation + 1);
-                }}
-              />
-            ) : null}
-          </Fab>
-        </Tooltip>
+        <Stack sx={{ px: 1 }}>
+          <Box sx={{ alignSelf: "flex-end" }}>
+            <Button
+              disabled={saveName == null}
+              color="primary"
+              size="medium"
+              variant="contained"
+              onClick={() => {
+                setStarted(true);
+              }}
+              startIcon={<PlayArrowIcon />}
+            >
+              <Trans i18nKey="play:play" />
+              {started ? (
+                <CoreSupervisor
+                  incarnation={incarnation}
+                  romName={saves[saveName!].romName}
+                  patch={
+                    patchVersion != null
+                      ? { name: patchName!, version: patchVersion }
+                      : null
+                  }
+                  matchSettings={null}
+                  savePath={path.join(getSavesPath(app), saveName!)}
+                  windowTitle={`${
+                    KNOWN_ROMS[saves[saveName!].romName].title[
+                      i18n.resolvedLanguage
+                    ]
+                  }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
+                  onExit={() => {
+                    setStarted(false);
+                    setIncarnation((incarnation) => incarnation + 1);
+                  }}
+                />
+              ) : null}
+            </Button>
+          </Box>
+        </Stack>
       </Stack>
     </Box>
   );

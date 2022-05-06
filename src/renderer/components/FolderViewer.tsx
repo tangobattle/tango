@@ -135,11 +135,9 @@ function FolderChipRow({
 export default function FolderViewer({
   editor,
   active,
-  hasFab,
 }: {
   editor: bn6.Editor;
   active: boolean;
-  hasFab?: boolean;
 }) {
   const chips: {
     id: number;
@@ -207,7 +205,7 @@ export default function FolderViewer({
       flexGrow={1}
       display={active ? "block" : "none"}
       overflow="auto"
-      sx={{ px: 1, height: 0, paddingBottom: hasFab ? "72px" : undefined }}
+      sx={{ px: 1, height: 0 }}
     >
       <Table size="small">
         <TableBody>

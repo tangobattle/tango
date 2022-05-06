@@ -419,11 +419,9 @@ function NavicustGrid({
 export default function NavicustViewer({
   editor,
   active,
-  hasFab,
 }: {
   editor: bn6.Editor;
   active: boolean;
-  hasFab?: boolean;
 }) {
   const { i18n } = useTranslation();
   const placements = React.useMemo(() => {
@@ -447,7 +445,6 @@ export default function NavicustViewer({
         py: 1,
         overflow: "auto",
         height: 0,
-        paddingBottom: hasFab ? "72px" : undefined,
       }}
     >
       <Stack direction="column" spacing={1}>
