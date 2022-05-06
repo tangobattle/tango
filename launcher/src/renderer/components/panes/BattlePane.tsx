@@ -8,7 +8,11 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 
+import { create } from "../../../lobby";
+import { useConfig } from "../ConfigContext";
+
 export default function BattlePane({ active }: { active: boolean }) {
+  const { config } = useConfig();
   const lobbies = [];
 
   return (
@@ -62,7 +66,9 @@ export default function BattlePane({ active }: { active: boolean }) {
                   color="primary"
                   size="medium"
                   variant="contained"
-                  onClick={() => {}}
+                  onClick={() => {
+                    (async () => {})();
+                  }}
                   startIcon={<AddIcon />}
                 >
                   <Trans i18nKey="battle:placeholder-create-lobby" />

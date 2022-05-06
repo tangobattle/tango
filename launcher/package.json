@@ -40,6 +40,7 @@
     "electron-updater": "^5.0.1",
     "electronmon": "^2.0.2",
     "email-addresses": "^5.0.0",
+    "event-iterator": "^2.0.0",
     "i18next-browser-languagedetector": "^6.1.4",
     "long": "^5.2.0",
     "mkdirp": "^1.0.4",

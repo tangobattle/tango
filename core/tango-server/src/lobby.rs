@@ -86,8 +86,7 @@ impl Server {
                     anyhow::bail!("create request was missing game info");
                 };
 
-                // TODO: Generate an actual lobby ID.
-                let generated_lobby_id = "aaaaaa".to_string();
+                let generated_lobby_id = generate_id();
 
                 tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
                     which:
