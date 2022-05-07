@@ -18,7 +18,6 @@ interface OpponentInfo {
   id: string;
   nickname: string;
   gameInfo: GameInfo;
-  saveData: Uint8Array;
 }
 
 interface NegotiatedSession {
@@ -78,7 +77,6 @@ export async function join(
     id: resp.joinResp.opponentId,
     nickname: resp.joinResp.opponentNickname,
     gameInfo: resp.joinResp.gameInfo,
-    saveData: resp.joinResp.saveData,
   };
 
   return {
@@ -104,7 +102,10 @@ export async function join(
 
 interface LobbyCreateHandle {
   lobbyId: string;
-  nextOpponent(): Promise<OpponentInfo | null>;
+  nextOpponent(): Promise<{
+    info: OpponentInfo;
+    saveData: Uint8Array;
+  } | null>;
   accept(id: string): Promise<NegotiatedSession>;
   reject(id: string): Promise<void>;
 }
@@ -176,9 +177,11 @@ export async function create(
       }
 
       return {
-        id: resp.joinInd.opponentId,
-        nickname: resp.joinInd.opponentNickname,
-        gameInfo: resp.joinInd.gameInfo,
+        info: {
+          id: resp.joinInd.opponentId,
+          nickname: resp.joinInd.opponentNickname,
+          gameInfo: resp.joinInd.gameInfo,
+        },
         saveData: resp.joinInd.saveData,
       };
     },

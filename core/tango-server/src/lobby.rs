@@ -4,7 +4,6 @@ use rand::Rng;
 
 struct PendingPlayer {
     close_sender: Option<tokio::sync::oneshot::Sender<()>>,
-    save_data: Vec<u8>,
     tx: futures_util::stream::SplitSink<
         hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
         tungstenite::Message,
@@ -63,6 +62,7 @@ impl Server {
             game_info: Some(lobby.game_info.clone()),
             available_patches: lobby.available_patches.clone(),
             settings: Some(lobby.settings.clone()),
+            save_data: lobby.save_data.clone(),
         })
     }
 
@@ -345,14 +345,12 @@ impl Server {
                                     opponent_nickname: lobby.creator_nickname.clone(),
                                     game_info: Some(lobby.game_info.clone()),
                                     settings: Some(lobby.settings.clone()),
-                                    save_data: lobby.save_data.clone(),
                                 }
                             )),
                     }.encode_to_vec())).await?;
 
                     let pp = std::sync::Arc::new(tokio::sync::Mutex::new(PendingPlayer {
                         tx,
-                        save_data: join_req.save_data,
                         close_sender: Some(close_sender),
                     }));
 

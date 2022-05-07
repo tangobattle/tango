@@ -85,7 +85,6 @@ export interface JoinStreamToClientMessage_JoinResponse {
   opponentNickname: string;
   gameInfo: GameInfo | undefined;
   settings: Settings | undefined;
-  saveData: Uint8Array;
 }
 
 export interface JoinStreamToClientMessage_AcceptIndication {
@@ -101,6 +100,7 @@ export interface QueryResponse {
   gameInfo: GameInfo | undefined;
   availablePatches: Patch[];
   settings: Settings | undefined;
+  saveData: Uint8Array;
 }
 
 function createBasePatch(): Patch {
@@ -1339,7 +1339,6 @@ function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientM
     opponentNickname: "",
     gameInfo: undefined,
     settings: undefined,
-    saveData: new Uint8Array(),
   };
 }
 
@@ -1359,9 +1358,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
     }
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
-    }
-    if (message.saveData.length !== 0) {
-      writer.uint32(42).bytes(message.saveData);
     }
     return writer;
   },
@@ -1388,9 +1384,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
         case 4:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
-        case 5:
-          message.saveData = reader.bytes();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -1411,9 +1404,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
-        : new Uint8Array(),
     };
   },
 
@@ -1430,10 +1420,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
         : undefined);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
-      ));
     return obj;
   },
 
@@ -1451,7 +1437,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
         : undefined;
-    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
@@ -1577,7 +1562,12 @@ export const QueryRequest = {
 };
 
 function createBaseQueryResponse(): QueryResponse {
-  return { gameInfo: undefined, availablePatches: [], settings: undefined };
+  return {
+    gameInfo: undefined,
+    availablePatches: [],
+    settings: undefined,
+    saveData: new Uint8Array(),
+  };
 }
 
 export const QueryResponse = {
@@ -1593,6 +1583,9 @@ export const QueryResponse = {
     }
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
+    }
+    if (message.saveData.length !== 0) {
+      writer.uint32(34).bytes(message.saveData);
     }
     return writer;
   },
@@ -1613,6 +1606,9 @@ export const QueryResponse = {
         case 3:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
+        case 4:
+          message.saveData = reader.bytes();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -1632,6 +1628,9 @@ export const QueryResponse = {
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
+      saveData: isSet(object.saveData)
+        ? bytesFromBase64(object.saveData)
+        : new Uint8Array(),
     };
   },
 
@@ -1652,6 +1651,10 @@ export const QueryResponse = {
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
         : undefined);
+    message.saveData !== undefined &&
+      (obj.saveData = base64FromBytes(
+        message.saveData !== undefined ? message.saveData : new Uint8Array()
+      ));
     return obj;
   },
 
@@ -1669,6 +1672,7 @@ export const QueryResponse = {
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
         : undefined;
+    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };

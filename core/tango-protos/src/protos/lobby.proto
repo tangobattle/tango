@@ -73,7 +73,6 @@ message JoinStreamToClientMessage {
     string opponent_nickname = 2;
     GameInfo game_info = 3;
     Settings settings = 4;
-    bytes save_data = 5;
   }
 
   message AcceptIndication { string session_id = 1; }
@@ -93,4 +92,5 @@ message QueryResponse {
   GameInfo game_info = 1;
   repeated Patch available_patches = 2;
   Settings settings = 3;
+  bytes save_data = 4;
 }
