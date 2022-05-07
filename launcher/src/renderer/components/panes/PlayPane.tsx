@@ -347,13 +347,13 @@ export default function SavesPane({ active }: { active: boolean }) {
           </Collapse>
         </Box>
         {saveName != null ? (
-          <Box flexGrow={1} display="flex">
+          <Stack direction="column" flexGrow={1}>
             <SaveViewerWrapper
               romName={saves[saveName].romName}
               filename={saveName}
               incarnation={incarnation}
             />
-          </Box>
+          </Stack>
         ) : (
           <Box
             flexGrow={1}

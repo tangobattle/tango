@@ -20,7 +20,7 @@ export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
   }, [tab, editor]);
 
   return (
-    <Stack flexGrow={1} flexShrink={0} sx={{ width: 0 }}>
+    <Stack flexGrow={1} flexShrink={0}>
       <Tabs
         sx={{ px: 1 }}
         value={tab}

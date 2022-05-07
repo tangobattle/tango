@@ -14,6 +14,13 @@ export default function createTheme(mode: "dark" | "light") {
       primary: green,
     },
     components: {
+      MuiAlert: {
+        styleOverrides: {
+          root: {
+            borderRadius: 0,
+          },
+        },
+      },
       MuiFab: {
         styleOverrides: {
           root: {
