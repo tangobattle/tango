@@ -6,30 +6,27 @@ import * as zlib from "zlib";
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, GetInfoRequest,
     GetInfoResponse, GetSaveDataRequest, GetSaveDataResponse, JoinStreamToClientMessage,
-    JoinStreamToServerMessage, Settings
+    JoinStreamToClientMessage_JoinResponse_Status, JoinStreamToServerMessage, Settings
 } from "./protos/lobby";
 
 export { GameInfo, Settings, GetInfoResponse };
 
-async function* wrapMessageStream(ws: WebSocket) {
-  for await (const msg of subscribe.call(ws, "message")) {
-    yield (msg as MessageEvent<ArrayBuffer>).data;
-  }
+function wrapMessageStream(ws: WebSocket) {
+  const stream = (async function* () {
+    for await (const msg of subscribe.call(ws, "message")) {
+      yield (msg as MessageEvent<ArrayBuffer>).data;
+    }
+  })();
+  ws.onclose = () => {
+    stream.return();
+  };
+  return stream;
 }
 
 interface OpponentInfo {
   id: number;
   nickname: string;
   gameInfo: GameInfo;
-}
-
-interface NegotiatedSession {
-  sessionId: string;
-}
-
-interface LobbyJoinHandle {
-  opponentInfo: OpponentInfo;
-  negotiatedSession: Promise<NegotiatedSession | null>;
 }
 
 export async function join(
@@ -39,7 +36,7 @@ export async function join(
   gameInfo: GameInfo,
   saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
-): Promise<LobbyJoinHandle> {
+): Promise<string | null> {
   saveData = await promisify(zlib.brotliCompress)(saveData);
 
   const ws = new WebSocket(`${addr}/join`);
@@ -62,47 +59,37 @@ export async function join(
     );
   };
   const stream = wrapMessageStream(ws);
-  ws.onclose = () => {
-    stream.return();
-  };
+
+  {
+    const { value: raw, done } = await stream.next();
+    if (done) {
+      throw "stream ended early";
+    }
+    const resp = JoinStreamToClientMessage.decode(new Uint8Array(raw));
+    if (resp.joinResp == null) {
+      throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
+    }
+
+    if (
+      resp.joinResp.status != JoinStreamToClientMessage_JoinResponse_Status.OK
+    ) {
+      return null;
+    }
+  }
+
   const { value: raw, done } = await stream.next();
   if (done) {
-    throw "stream ended early";
+    return null;
   }
+
   const resp = JoinStreamToClientMessage.decode(new Uint8Array(raw));
-  if (resp.joinResp == null) {
+  if (resp.acceptInd != null) {
+    return resp.acceptInd.sessionId;
+  } else if (resp.disconnectInd != null) {
+    return null;
+  } else {
     throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
   }
-
-  if (resp.joinResp.gameInfo == null) {
-    throw "missing game info";
-  }
-
-  const opponentInfo = {
-    id: resp.joinResp.opponentId,
-    nickname: resp.joinResp.opponentNickname,
-    gameInfo: resp.joinResp.gameInfo,
-  };
-
-  return {
-    opponentInfo,
-
-    negotiatedSession: (async () => {
-      const { value: raw, done } = await stream.next();
-      if (done) {
-        return null;
-      }
-
-      const resp = JoinStreamToClientMessage.decode(new Uint8Array(raw));
-      if (resp.acceptInd == null) {
-        throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
-      }
-
-      return {
-        sessionId: resp.acceptInd.sessionId,
-      };
-    })(),
-  };
 }
 
 interface LobbyCreateHandle {
@@ -111,7 +98,7 @@ interface LobbyCreateHandle {
     info: OpponentInfo;
     saveData: Uint8Array;
   } | null>;
-  accept(id: number): Promise<NegotiatedSession>;
+  accept(id: number): Promise<string>;
   reject(id: number): Promise<void>;
 }
 
@@ -149,9 +136,6 @@ export async function create(
     );
   };
   const stream = wrapMessageStream(ws);
-  ws.onclose = () => {
-    stream.return();
-  };
   const { value: raw, done } = await stream.next();
   if (done) {
     throw "stream ended early";
@@ -173,6 +157,11 @@ export async function create(
       }
 
       const resp = CreateStreamToClientMessage.decode(new Uint8Array(raw));
+      if (resp.disconnectInd != null) {
+        // TODO: Have a better message here.
+        throw `disconnected: ${CreateStreamToClientMessage.toJSON(resp)}`;
+      }
+
       if (resp.joinInd == null) {
         throw `unexpected response: ${CreateStreamToClientMessage.toJSON(
           resp
@@ -216,9 +205,7 @@ export async function create(
         )}`;
       }
 
-      return {
-        sessionId: resp.acceptResp.sessionId,
-      };
+      return resp.acceptResp.sessionId;
     },
 
     async reject(opponentId: number) {

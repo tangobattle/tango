@@ -41,6 +41,7 @@ export interface CreateStreamToServerMessage_RejectRequest {
 }
 
 export interface CreateStreamToClientMessage {
+  disconnectInd: CreateStreamToClientMessage_DisconnectIndication | undefined;
   createResp: CreateStreamToClientMessage_CreateResponse | undefined;
   joinInd: CreateStreamToClientMessage_JoinIndication | undefined;
   acceptResp: CreateStreamToClientMessage_AcceptResponse | undefined;
@@ -64,6 +65,52 @@ export interface CreateStreamToClientMessage_AcceptResponse {
 
 export interface CreateStreamToClientMessage_RejectResponse {}
 
+export interface CreateStreamToClientMessage_DisconnectIndication {
+  reason: CreateStreamToClientMessage_DisconnectIndication_Reason;
+}
+
+export enum CreateStreamToClientMessage_DisconnectIndication_Reason {
+  UNKNOWN = 0,
+  START_TIMEOUT = 1,
+  WAIT_TIMEOUT = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function createStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
+  object: any
+): CreateStreamToClientMessage_DisconnectIndication_Reason {
+  switch (object) {
+    case 0:
+    case "UNKNOWN":
+      return CreateStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN;
+    case 1:
+    case "START_TIMEOUT":
+      return CreateStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT;
+    case 2:
+    case "WAIT_TIMEOUT":
+      return CreateStreamToClientMessage_DisconnectIndication_Reason.WAIT_TIMEOUT;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return CreateStreamToClientMessage_DisconnectIndication_Reason.UNRECOGNIZED;
+  }
+}
+
+export function createStreamToClientMessage_DisconnectIndication_ReasonToJSON(
+  object: CreateStreamToClientMessage_DisconnectIndication_Reason
+): string {
+  switch (object) {
+    case CreateStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN:
+      return "UNKNOWN";
+    case CreateStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT:
+      return "START_TIMEOUT";
+    case CreateStreamToClientMessage_DisconnectIndication_Reason.WAIT_TIMEOUT:
+      return "WAIT_TIMEOUT";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 export interface JoinStreamToServerMessage {
   joinReq: JoinStreamToServerMessage_JoinRequest | undefined;
 }
@@ -76,19 +123,111 @@ export interface JoinStreamToServerMessage_JoinRequest {
 }
 
 export interface JoinStreamToClientMessage {
+  disconnectInd: JoinStreamToClientMessage_DisconnectIndication | undefined;
   joinResp: JoinStreamToClientMessage_JoinResponse | undefined;
   acceptInd: JoinStreamToClientMessage_AcceptIndication | undefined;
 }
 
 export interface JoinStreamToClientMessage_JoinResponse {
-  opponentId: number;
-  opponentNickname: string;
-  gameInfo: GameInfo | undefined;
-  settings: Settings | undefined;
+  status: JoinStreamToClientMessage_JoinResponse_Status;
+}
+
+export enum JoinStreamToClientMessage_JoinResponse_Status {
+  UNKNOWN = 0,
+  OK = 1,
+  NOT_FOUND = 2,
+  UNRECOGNIZED = -1,
+}
+
+export function joinStreamToClientMessage_JoinResponse_StatusFromJSON(
+  object: any
+): JoinStreamToClientMessage_JoinResponse_Status {
+  switch (object) {
+    case 0:
+    case "UNKNOWN":
+      return JoinStreamToClientMessage_JoinResponse_Status.UNKNOWN;
+    case 1:
+    case "OK":
+      return JoinStreamToClientMessage_JoinResponse_Status.OK;
+    case 2:
+    case "NOT_FOUND":
+      return JoinStreamToClientMessage_JoinResponse_Status.NOT_FOUND;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return JoinStreamToClientMessage_JoinResponse_Status.UNRECOGNIZED;
+  }
+}
+
+export function joinStreamToClientMessage_JoinResponse_StatusToJSON(
+  object: JoinStreamToClientMessage_JoinResponse_Status
+): string {
+  switch (object) {
+    case JoinStreamToClientMessage_JoinResponse_Status.UNKNOWN:
+      return "UNKNOWN";
+    case JoinStreamToClientMessage_JoinResponse_Status.OK:
+      return "OK";
+    case JoinStreamToClientMessage_JoinResponse_Status.NOT_FOUND:
+      return "NOT_FOUND";
+    default:
+      return "UNKNOWN";
+  }
 }
 
 export interface JoinStreamToClientMessage_AcceptIndication {
   sessionId: string;
+}
+
+export interface JoinStreamToClientMessage_DisconnectIndication {
+  reason: JoinStreamToClientMessage_DisconnectIndication_Reason;
+}
+
+export enum JoinStreamToClientMessage_DisconnectIndication_Reason {
+  UNKNOWN = 0,
+  START_TIMEOUT = 1,
+  LOBBY_CLOSED = 2,
+  REJECTED = 3,
+  UNRECOGNIZED = -1,
+}
+
+export function joinStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
+  object: any
+): JoinStreamToClientMessage_DisconnectIndication_Reason {
+  switch (object) {
+    case 0:
+    case "UNKNOWN":
+      return JoinStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN;
+    case 1:
+    case "START_TIMEOUT":
+      return JoinStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT;
+    case 2:
+    case "LOBBY_CLOSED":
+      return JoinStreamToClientMessage_DisconnectIndication_Reason.LOBBY_CLOSED;
+    case 3:
+    case "REJECTED":
+      return JoinStreamToClientMessage_DisconnectIndication_Reason.REJECTED;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return JoinStreamToClientMessage_DisconnectIndication_Reason.UNRECOGNIZED;
+  }
+}
+
+export function joinStreamToClientMessage_DisconnectIndication_ReasonToJSON(
+  object: JoinStreamToClientMessage_DisconnectIndication_Reason
+): string {
+  switch (object) {
+    case JoinStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN:
+      return "UNKNOWN";
+    case JoinStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT:
+      return "START_TIMEOUT";
+    case JoinStreamToClientMessage_DisconnectIndication_Reason.LOBBY_CLOSED:
+      return "LOBBY_CLOSED";
+    case JoinStreamToClientMessage_DisconnectIndication_Reason.REJECTED:
+      return "REJECTED";
+    default:
+      return "UNKNOWN";
+  }
 }
 
 export interface GetInfoRequest {
@@ -96,6 +235,7 @@ export interface GetInfoRequest {
 }
 
 export interface GetInfoResponse {
+  opponentNickname: string;
   gameInfo: GameInfo | undefined;
   availableGames: GameInfo[];
   settings: Settings | undefined;
@@ -663,6 +803,7 @@ export const CreateStreamToServerMessage_RejectRequest = {
 
 function createBaseCreateStreamToClientMessage(): CreateStreamToClientMessage {
   return {
+    disconnectInd: undefined,
     createResp: undefined,
     joinInd: undefined,
     acceptResp: undefined,
@@ -675,28 +816,34 @@ export const CreateStreamToClientMessage = {
     message: CreateStreamToClientMessage,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
+    if (message.disconnectInd !== undefined) {
+      CreateStreamToClientMessage_DisconnectIndication.encode(
+        message.disconnectInd,
+        writer.uint32(10).fork()
+      ).ldelim();
+    }
     if (message.createResp !== undefined) {
       CreateStreamToClientMessage_CreateResponse.encode(
         message.createResp,
-        writer.uint32(10).fork()
+        writer.uint32(18).fork()
       ).ldelim();
     }
     if (message.joinInd !== undefined) {
       CreateStreamToClientMessage_JoinIndication.encode(
         message.joinInd,
-        writer.uint32(18).fork()
+        writer.uint32(26).fork()
       ).ldelim();
     }
     if (message.acceptResp !== undefined) {
       CreateStreamToClientMessage_AcceptResponse.encode(
         message.acceptResp,
-        writer.uint32(26).fork()
+        writer.uint32(34).fork()
       ).ldelim();
     }
     if (message.rejectResp !== undefined) {
       CreateStreamToClientMessage_RejectResponse.encode(
         message.rejectResp,
-        writer.uint32(34).fork()
+        writer.uint32(42).fork()
       ).ldelim();
     }
     return writer;
@@ -713,26 +860,33 @@ export const CreateStreamToClientMessage = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
+          message.disconnectInd =
+            CreateStreamToClientMessage_DisconnectIndication.decode(
+              reader,
+              reader.uint32()
+            );
+          break;
+        case 2:
           message.createResp =
             CreateStreamToClientMessage_CreateResponse.decode(
               reader,
               reader.uint32()
             );
           break;
-        case 2:
+        case 3:
           message.joinInd = CreateStreamToClientMessage_JoinIndication.decode(
             reader,
             reader.uint32()
           );
           break;
-        case 3:
+        case 4:
           message.acceptResp =
             CreateStreamToClientMessage_AcceptResponse.decode(
               reader,
               reader.uint32()
             );
           break;
-        case 4:
+        case 5:
           message.rejectResp =
             CreateStreamToClientMessage_RejectResponse.decode(
               reader,
@@ -749,6 +903,11 @@ export const CreateStreamToClientMessage = {
 
   fromJSON(object: any): CreateStreamToClientMessage {
     return {
+      disconnectInd: isSet(object.disconnectInd)
+        ? CreateStreamToClientMessage_DisconnectIndication.fromJSON(
+            object.disconnectInd
+          )
+        : undefined,
       createResp: isSet(object.createResp)
         ? CreateStreamToClientMessage_CreateResponse.fromJSON(object.createResp)
         : undefined,
@@ -766,6 +925,12 @@ export const CreateStreamToClientMessage = {
 
   toJSON(message: CreateStreamToClientMessage): unknown {
     const obj: any = {};
+    message.disconnectInd !== undefined &&
+      (obj.disconnectInd = message.disconnectInd
+        ? CreateStreamToClientMessage_DisconnectIndication.toJSON(
+            message.disconnectInd
+          )
+        : undefined);
     message.createResp !== undefined &&
       (obj.createResp = message.createResp
         ? CreateStreamToClientMessage_CreateResponse.toJSON(message.createResp)
@@ -789,6 +954,12 @@ export const CreateStreamToClientMessage = {
     object: I
   ): CreateStreamToClientMessage {
     const message = createBaseCreateStreamToClientMessage();
+    message.disconnectInd =
+      object.disconnectInd !== undefined && object.disconnectInd !== null
+        ? CreateStreamToClientMessage_DisconnectIndication.fromPartial(
+            object.disconnectInd
+          )
+        : undefined;
     message.createResp =
       object.createResp !== undefined && object.createResp !== null
         ? CreateStreamToClientMessage_CreateResponse.fromPartial(
@@ -1082,6 +1253,76 @@ export const CreateStreamToClientMessage_RejectResponse = {
   },
 };
 
+function createBaseCreateStreamToClientMessage_DisconnectIndication(): CreateStreamToClientMessage_DisconnectIndication {
+  return { reason: 0 };
+}
+
+export const CreateStreamToClientMessage_DisconnectIndication = {
+  encode(
+    message: CreateStreamToClientMessage_DisconnectIndication,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.reason !== 0) {
+      writer.uint32(8).int32(message.reason);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): CreateStreamToClientMessage_DisconnectIndication {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message =
+      createBaseCreateStreamToClientMessage_DisconnectIndication();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.reason = reader.int32() as any;
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): CreateStreamToClientMessage_DisconnectIndication {
+    return {
+      reason: isSet(object.reason)
+        ? createStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
+            object.reason
+          )
+        : 0,
+    };
+  },
+
+  toJSON(message: CreateStreamToClientMessage_DisconnectIndication): unknown {
+    const obj: any = {};
+    message.reason !== undefined &&
+      (obj.reason =
+        createStreamToClientMessage_DisconnectIndication_ReasonToJSON(
+          message.reason
+        ));
+    return obj;
+  },
+
+  fromPartial<
+    I extends Exact<
+      DeepPartial<CreateStreamToClientMessage_DisconnectIndication>,
+      I
+    >
+  >(object: I): CreateStreamToClientMessage_DisconnectIndication {
+    const message =
+      createBaseCreateStreamToClientMessage_DisconnectIndication();
+    message.reason = object.reason ?? 0;
+    return message;
+  },
+};
+
 function createBaseJoinStreamToServerMessage(): JoinStreamToServerMessage {
   return { joinReq: undefined };
 }
@@ -1256,7 +1497,11 @@ export const JoinStreamToServerMessage_JoinRequest = {
 };
 
 function createBaseJoinStreamToClientMessage(): JoinStreamToClientMessage {
-  return { joinResp: undefined, acceptInd: undefined };
+  return {
+    disconnectInd: undefined,
+    joinResp: undefined,
+    acceptInd: undefined,
+  };
 }
 
 export const JoinStreamToClientMessage = {
@@ -1264,16 +1509,22 @@ export const JoinStreamToClientMessage = {
     message: JoinStreamToClientMessage,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
+    if (message.disconnectInd !== undefined) {
+      JoinStreamToClientMessage_DisconnectIndication.encode(
+        message.disconnectInd,
+        writer.uint32(10).fork()
+      ).ldelim();
+    }
     if (message.joinResp !== undefined) {
       JoinStreamToClientMessage_JoinResponse.encode(
         message.joinResp,
-        writer.uint32(10).fork()
+        writer.uint32(18).fork()
       ).ldelim();
     }
     if (message.acceptInd !== undefined) {
       JoinStreamToClientMessage_AcceptIndication.encode(
         message.acceptInd,
-        writer.uint32(18).fork()
+        writer.uint32(26).fork()
       ).ldelim();
     }
     return writer;
@@ -1290,12 +1541,19 @@ export const JoinStreamToClientMessage = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
+          message.disconnectInd =
+            JoinStreamToClientMessage_DisconnectIndication.decode(
+              reader,
+              reader.uint32()
+            );
+          break;
+        case 2:
           message.joinResp = JoinStreamToClientMessage_JoinResponse.decode(
             reader,
             reader.uint32()
           );
           break;
-        case 2:
+        case 3:
           message.acceptInd = JoinStreamToClientMessage_AcceptIndication.decode(
             reader,
             reader.uint32()
@@ -1311,6 +1569,11 @@ export const JoinStreamToClientMessage = {
 
   fromJSON(object: any): JoinStreamToClientMessage {
     return {
+      disconnectInd: isSet(object.disconnectInd)
+        ? JoinStreamToClientMessage_DisconnectIndication.fromJSON(
+            object.disconnectInd
+          )
+        : undefined,
       joinResp: isSet(object.joinResp)
         ? JoinStreamToClientMessage_JoinResponse.fromJSON(object.joinResp)
         : undefined,
@@ -1322,6 +1585,12 @@ export const JoinStreamToClientMessage = {
 
   toJSON(message: JoinStreamToClientMessage): unknown {
     const obj: any = {};
+    message.disconnectInd !== undefined &&
+      (obj.disconnectInd = message.disconnectInd
+        ? JoinStreamToClientMessage_DisconnectIndication.toJSON(
+            message.disconnectInd
+          )
+        : undefined);
     message.joinResp !== undefined &&
       (obj.joinResp = message.joinResp
         ? JoinStreamToClientMessage_JoinResponse.toJSON(message.joinResp)
@@ -1337,6 +1606,12 @@ export const JoinStreamToClientMessage = {
     object: I
   ): JoinStreamToClientMessage {
     const message = createBaseJoinStreamToClientMessage();
+    message.disconnectInd =
+      object.disconnectInd !== undefined && object.disconnectInd !== null
+        ? JoinStreamToClientMessage_DisconnectIndication.fromPartial(
+            object.disconnectInd
+          )
+        : undefined;
     message.joinResp =
       object.joinResp !== undefined && object.joinResp !== null
         ? JoinStreamToClientMessage_JoinResponse.fromPartial(object.joinResp)
@@ -1352,12 +1627,7 @@ export const JoinStreamToClientMessage = {
 };
 
 function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientMessage_JoinResponse {
-  return {
-    opponentId: 0,
-    opponentNickname: "",
-    gameInfo: undefined,
-    settings: undefined,
-  };
+  return { status: 0 };
 }
 
 export const JoinStreamToClientMessage_JoinResponse = {
@@ -1365,17 +1635,8 @@ export const JoinStreamToClientMessage_JoinResponse = {
     message: JoinStreamToClientMessage_JoinResponse,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== 0) {
-      writer.uint32(8).uint32(message.opponentId);
-    }
-    if (message.opponentNickname !== "") {
-      writer.uint32(18).string(message.opponentNickname);
-    }
-    if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(26).fork()).ldelim();
-    }
-    if (message.settings !== undefined) {
-      Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
+    if (message.status !== 0) {
+      writer.uint32(8).int32(message.status);
     }
     return writer;
   },
@@ -1391,16 +1652,7 @@ export const JoinStreamToClientMessage_JoinResponse = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.uint32();
-          break;
-        case 2:
-          message.opponentNickname = reader.string();
-          break;
-        case 3:
-          message.gameInfo = GameInfo.decode(reader, reader.uint32());
-          break;
-        case 4:
-          message.settings = Settings.decode(reader, reader.uint32());
+          message.status = reader.int32() as any;
           break;
         default:
           reader.skipType(tag & 7);
@@ -1412,33 +1664,18 @@ export const JoinStreamToClientMessage_JoinResponse = {
 
   fromJSON(object: any): JoinStreamToClientMessage_JoinResponse {
     return {
-      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
-      opponentNickname: isSet(object.opponentNickname)
-        ? String(object.opponentNickname)
-        : "",
-      gameInfo: isSet(object.gameInfo)
-        ? GameInfo.fromJSON(object.gameInfo)
-        : undefined,
-      settings: isSet(object.settings)
-        ? Settings.fromJSON(object.settings)
-        : undefined,
+      status: isSet(object.status)
+        ? joinStreamToClientMessage_JoinResponse_StatusFromJSON(object.status)
+        : 0,
     };
   },
 
   toJSON(message: JoinStreamToClientMessage_JoinResponse): unknown {
     const obj: any = {};
-    message.opponentId !== undefined &&
-      (obj.opponentId = Math.round(message.opponentId));
-    message.opponentNickname !== undefined &&
-      (obj.opponentNickname = message.opponentNickname);
-    message.gameInfo !== undefined &&
-      (obj.gameInfo = message.gameInfo
-        ? GameInfo.toJSON(message.gameInfo)
-        : undefined);
-    message.settings !== undefined &&
-      (obj.settings = message.settings
-        ? Settings.toJSON(message.settings)
-        : undefined);
+    message.status !== undefined &&
+      (obj.status = joinStreamToClientMessage_JoinResponse_StatusToJSON(
+        message.status
+      ));
     return obj;
   },
 
@@ -1446,16 +1683,7 @@ export const JoinStreamToClientMessage_JoinResponse = {
     I extends Exact<DeepPartial<JoinStreamToClientMessage_JoinResponse>, I>
   >(object: I): JoinStreamToClientMessage_JoinResponse {
     const message = createBaseJoinStreamToClientMessage_JoinResponse();
-    message.opponentId = object.opponentId ?? 0;
-    message.opponentNickname = object.opponentNickname ?? "";
-    message.gameInfo =
-      object.gameInfo !== undefined && object.gameInfo !== null
-        ? GameInfo.fromPartial(object.gameInfo)
-        : undefined;
-    message.settings =
-      object.settings !== undefined && object.settings !== null
-        ? Settings.fromPartial(object.settings)
-        : undefined;
+    message.status = object.status ?? 0;
     return message;
   },
 };
@@ -1517,6 +1745,73 @@ export const JoinStreamToClientMessage_AcceptIndication = {
   },
 };
 
+function createBaseJoinStreamToClientMessage_DisconnectIndication(): JoinStreamToClientMessage_DisconnectIndication {
+  return { reason: 0 };
+}
+
+export const JoinStreamToClientMessage_DisconnectIndication = {
+  encode(
+    message: JoinStreamToClientMessage_DisconnectIndication,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.reason !== 0) {
+      writer.uint32(8).int32(message.reason);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToClientMessage_DisconnectIndication {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseJoinStreamToClientMessage_DisconnectIndication();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.reason = reader.int32() as any;
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): JoinStreamToClientMessage_DisconnectIndication {
+    return {
+      reason: isSet(object.reason)
+        ? joinStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
+            object.reason
+          )
+        : 0,
+    };
+  },
+
+  toJSON(message: JoinStreamToClientMessage_DisconnectIndication): unknown {
+    const obj: any = {};
+    message.reason !== undefined &&
+      (obj.reason = joinStreamToClientMessage_DisconnectIndication_ReasonToJSON(
+        message.reason
+      ));
+    return obj;
+  },
+
+  fromPartial<
+    I extends Exact<
+      DeepPartial<JoinStreamToClientMessage_DisconnectIndication>,
+      I
+    >
+  >(object: I): JoinStreamToClientMessage_DisconnectIndication {
+    const message = createBaseJoinStreamToClientMessage_DisconnectIndication();
+    message.reason = object.reason ?? 0;
+    return message;
+  },
+};
+
 function createBaseGetInfoRequest(): GetInfoRequest {
   return { lobbyId: "" };
 }
@@ -1572,7 +1867,12 @@ export const GetInfoRequest = {
 };
 
 function createBaseGetInfoResponse(): GetInfoResponse {
-  return { gameInfo: undefined, availableGames: [], settings: undefined };
+  return {
+    opponentNickname: "",
+    gameInfo: undefined,
+    availableGames: [],
+    settings: undefined,
+  };
 }
 
 export const GetInfoResponse = {
@@ -1580,14 +1880,17 @@ export const GetInfoResponse = {
     message: GetInfoResponse,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
+    if (message.opponentNickname !== "") {
+      writer.uint32(10).string(message.opponentNickname);
+    }
     if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(10).fork()).ldelim();
+      GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
     for (const v of message.availableGames) {
-      GameInfo.encode(v!, writer.uint32(18).fork()).ldelim();
+      GameInfo.encode(v!, writer.uint32(26).fork()).ldelim();
     }
     if (message.settings !== undefined) {
-      Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
+      Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
     }
     return writer;
   },
@@ -1600,12 +1903,15 @@ export const GetInfoResponse = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.gameInfo = GameInfo.decode(reader, reader.uint32());
+          message.opponentNickname = reader.string();
           break;
         case 2:
-          message.availableGames.push(GameInfo.decode(reader, reader.uint32()));
+          message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 3:
+          message.availableGames.push(GameInfo.decode(reader, reader.uint32()));
+          break;
+        case 4:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
         default:
@@ -1618,6 +1924,9 @@ export const GetInfoResponse = {
 
   fromJSON(object: any): GetInfoResponse {
     return {
+      opponentNickname: isSet(object.opponentNickname)
+        ? String(object.opponentNickname)
+        : "",
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
@@ -1632,6 +1941,8 @@ export const GetInfoResponse = {
 
   toJSON(message: GetInfoResponse): unknown {
     const obj: any = {};
+    message.opponentNickname !== undefined &&
+      (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -1654,6 +1965,7 @@ export const GetInfoResponse = {
     object: I
   ): GetInfoResponse {
     const message = createBaseGetInfoResponse();
+    message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)

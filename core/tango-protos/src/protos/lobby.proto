@@ -48,11 +48,21 @@ message CreateStreamToClientMessage {
 
   message RejectResponse {}
 
+  message DisconnectIndication {
+    enum Reason {
+      UNKNOWN = 0;
+      START_TIMEOUT = 1;
+      WAIT_TIMEOUT = 2;
+    }
+    Reason reason = 1;
+  }
+
   oneof which {
-    CreateResponse create_resp = 1;
-    JoinIndication join_ind = 2;
-    AcceptResponse accept_resp = 3;
-    RejectResponse reject_resp = 4;
+    DisconnectIndication disconnect_ind = 1;
+    CreateResponse create_resp = 2;
+    JoinIndication join_ind = 3;
+    AcceptResponse accept_resp = 4;
+    RejectResponse reject_resp = 5;
   }
 }
 
@@ -69,26 +79,40 @@ message JoinStreamToServerMessage {
 
 message JoinStreamToClientMessage {
   message JoinResponse {
-    uint32 opponent_id = 1;
-    string opponent_nickname = 2;
-    GameInfo game_info = 3;
-    Settings settings = 4;
+    enum Status {
+      UNKNOWN = 0;
+      OK = 1;
+      NOT_FOUND = 2;
+    }
+    Status status = 1;
   }
 
   message AcceptIndication { string session_id = 1; }
 
+  message DisconnectIndication {
+    enum Reason {
+      UNKNOWN = 0;
+      START_TIMEOUT = 1;
+      LOBBY_CLOSED = 2;
+      REJECTED = 3;
+    }
+    Reason reason = 1;
+  }
+
   oneof which {
-    JoinResponse join_resp = 1;
-    AcceptIndication accept_ind = 2;
+    DisconnectIndication disconnect_ind = 1;
+    JoinResponse join_resp = 2;
+    AcceptIndication accept_ind = 3;
   }
 }
 
 message GetInfoRequest { string lobby_id = 1; }
 
 message GetInfoResponse {
-  GameInfo game_info = 1;
-  repeated GameInfo available_games = 2;
-  Settings settings = 3;
+  string opponent_nickname = 1;
+  GameInfo game_info = 2;
+  repeated GameInfo available_games = 3;
+  Settings settings = 4;
 }
 
 message GetSaveDataRequest { string lobby_id = 1; }
