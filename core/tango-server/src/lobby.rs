@@ -54,9 +54,8 @@ impl Server {
         let r = {
             let lobby_id_for_cleanup = lobby_id_for_cleanup.clone();
 
-            const START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-
             (move || async move {
+                const START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
                 let msg = match tokio::time::timeout(START_TIMEOUT, rx.try_next()).await {
                     Ok(msg) => match msg? {
                         Some(tungstenite::Message::Binary(d)) => {
@@ -135,7 +134,6 @@ impl Server {
 
                 loop {
                     const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60 * 5);
-
                     let msg = match tokio::time::timeout(WAIT_TIMEOUT, rx.try_next()).await {
                         Ok(msg) => match msg? {
                             Some(tungstenite::Message::Binary(d)) => {
@@ -341,9 +339,8 @@ impl Server {
             let lobbies = self.lobbies.clone();
             let lobby_and_opponent_id_for_cleanup = lobby_and_opponent_id_for_cleanup.clone();
 
-            const START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
-
             (move || async move {
+                const START_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
                 let msg = match tokio::time::timeout(START_TIMEOUT, rx.try_next()).await {
                     Ok(msg) => match msg? {
                         Some(tungstenite::Message::Binary(d)) => {
@@ -430,7 +427,8 @@ impl Server {
                     opponent_id
                 };
 
-                let msg = match tokio::time::timeout(START_TIMEOUT, rx.try_next()).await {
+                const PROPOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60*5);
+                let msg = match tokio::time::timeout(PROPOSE_TIMEOUT, rx.try_next()).await {
                     Ok(msg) => match msg? {
                         Some(tungstenite::Message::Binary(d)) => {
                             tango_protos::lobby::JoinStreamToServerMessage::decode(bytes::Bytes::from(
@@ -464,7 +462,7 @@ impl Server {
                             which:
                                 Some(tango_protos::lobby::join_stream_to_client_message::Which::DisconnectInd(
                                     tango_protos::lobby::join_stream_to_client_message::DisconnectIndication {
-                                        reason: tango_protos::lobby::join_stream_to_client_message::disconnect_indication::Reason::StartTimeout.into(),
+                                        reason: tango_protos::lobby::join_stream_to_client_message::disconnect_indication::Reason::ProposeTimeout.into(),
                                     }
                                 )),
                         }.encode_to_vec())).await?;

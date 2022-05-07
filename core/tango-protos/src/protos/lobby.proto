@@ -129,8 +129,8 @@ message JoinStreamToClientMessage {
     enum Reason {
       UNKNOWN = 0;
       START_TIMEOUT = 1;
-      LOBBY_CLOSED = 2;
-      REJECTED = 3;
+      PROPOSE_TIMEOUT = 2;
+      LOBBY_CLOSED = 3;
     }
     Reason reason = 1;
   }
