@@ -37,14 +37,29 @@ message CreateStreamToServerMessage {
 message CreateStreamToClientMessage {
   message CreateResponse { string lobby_id = 1; }
 
-  message JoinIndication {
+  message ProposeIndication {
     uint32 opponent_id = 1;
     string opponent_nickname = 2;
     GameInfo game_info = 3;
-    bytes save_data = 4;
   }
 
-  message AcceptResponse { string session_id = 1; }
+  message AcceptResponse {
+    message Error {
+      enum Reason {
+        UNKNOWN = 0;
+        NO_SUCH_OPPONENT = 1;
+      }
+      Reason reason = 1;
+    }
+    message Ok {
+      string session_id = 1;
+      bytes save_data = 2;
+    }
+    oneof which {
+      Ok ok = 1;
+      Error error = 2;
+    }
+  }
 
   message RejectResponse {}
 
@@ -60,34 +75,44 @@ message CreateStreamToClientMessage {
   oneof which {
     DisconnectIndication disconnect_ind = 1;
     CreateResponse create_resp = 2;
-    JoinIndication join_ind = 3;
+    ProposeIndication propose_ind = 3;
     AcceptResponse accept_resp = 4;
     RejectResponse reject_resp = 5;
   }
 }
 
 message JoinStreamToServerMessage {
-  message JoinRequest {
+  message JoinRequest { string lobby_id = 1; }
+
+  message ProposeRequest {
     string nickname = 1;
-    string lobby_id = 2;
-    GameInfo game_info = 3;
-    bytes save_data = 4;
+    GameInfo game_info = 2;
+    bytes save_data = 3;
   }
 
-  oneof which { JoinRequest join_req = 1; }
+  oneof which {
+    JoinRequest join_req = 1;
+    ProposeRequest propose_req = 2;
+  }
 }
 
 message JoinStreamToClientMessage {
   message JoinResponse {
-    enum Status {
-      UNKNOWN = 0;
-      OK = 1;
-      NOT_FOUND = 2;
+    message Info {
+      string opponent_nickname = 1;
+      GameInfo game_info = 2;
+      repeated GameInfo available_games = 3;
+      Settings settings = 4;
     }
-    Status status = 1;
+    Info info = 1;
   }
 
-  message AcceptIndication { string session_id = 1; }
+  message ProposeResponse {}
+
+  message AcceptIndication {
+    string session_id = 1;
+    bytes save_data = 2;
+  }
 
   message DisconnectIndication {
     enum Reason {
@@ -102,19 +127,7 @@ message JoinStreamToClientMessage {
   oneof which {
     DisconnectIndication disconnect_ind = 1;
     JoinResponse join_resp = 2;
-    AcceptIndication accept_ind = 3;
+    ProposeResponse propose_resp = 3;
+    AcceptIndication accept_ind = 4;
   }
 }
-
-message GetInfoRequest { string lobby_id = 1; }
-
-message GetInfoResponse {
-  string opponent_nickname = 1;
-  GameInfo game_info = 2;
-  repeated GameInfo available_games = 3;
-  Settings settings = 4;
-}
-
-message GetSaveDataRequest { string lobby_id = 1; }
-
-message GetSaveDataResponse { bytes save_data = 1; }

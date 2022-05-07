@@ -1,7 +1,6 @@
 mod lobby;
 mod signaling;
 use envconfig::Envconfig;
-use prost::Message;
 use routerify::ext::RequestExt;
 
 #[derive(Envconfig)]
@@ -120,45 +119,6 @@ async fn handle_lobby_join_request(
     Ok(response)
 }
 
-async fn handle_lobby_get_info_request(
-    request: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    let lobby_server = request.data::<State>().unwrap().lobby_server.clone();
-    let req = tango_protos::lobby::GetInfoRequest::decode(
-        hyper::body::to_bytes(request.into_body()).await?,
-    )?;
-    log::debug!("/lobby/get_info: {:?}", req);
-    match lobby_server.handle_get_info_request(&req.lobby_id).await {
-        Some(resp) => Ok(hyper::Response::builder()
-            .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")
-            .body(resp.encode_to_vec().into())?),
-        None => Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::NOT_FOUND)
-            .body("Not found".into())?),
-    }
-}
-
-async fn handle_lobby_get_save_data_request(
-    request: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    let lobby_server = request.data::<State>().unwrap().lobby_server.clone();
-    let req = tango_protos::lobby::GetInfoRequest::decode(
-        hyper::body::to_bytes(request.into_body()).await?,
-    )?;
-    log::debug!("/lobby/get_save_data: {:?}", req);
-    match lobby_server
-        .handle_get_save_data_request(&req.lobby_id)
-        .await
-    {
-        Some(resp) => Ok(hyper::Response::builder()
-            .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")
-            .body(resp.encode_to_vec().into())?),
-        None => Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::NOT_FOUND)
-            .body("Not found".into())?),
-    }
-}
-
 fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
@@ -168,8 +128,6 @@ fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
         .get("/signaling", handle_signaling_request)
         .get("/lobby/create", handle_lobby_create_request)
         .get("/lobby/join", handle_lobby_join_request)
-        .post("/lobby/get_info", handle_lobby_get_info_request)
-        .post("/lobby/get_save_data", handle_lobby_get_save_data_request)
         .build()
         .unwrap()
 }
