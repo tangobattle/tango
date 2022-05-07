@@ -222,7 +222,7 @@ function GeneralTab({ active }: { active: boolean }) {
               (async () => {
                 saveConfig((config) => ({
                   ...config,
-                  nickname: e.target.value,
+                  nickname: e.target.value.substring(0, 32),
                 }));
               })();
             }}
