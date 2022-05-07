@@ -4,14 +4,14 @@ import * as _m0 from "protobufjs/minimal";
 
 export const protobufPackage = "tango.lobby";
 
-export interface Patch {
-  name: string;
-  version: string;
-}
-
 export interface GameInfo {
   romName: string;
-  patch: Patch | undefined;
+  patch: GameInfo_Patch | undefined;
+}
+
+export interface GameInfo_Patch {
+  name: string;
+  version: string;
 }
 
 export interface Settings {
@@ -27,7 +27,7 @@ export interface CreateStreamToServerMessage {
 export interface CreateStreamToServerMessage_CreateRequest {
   nickname: string;
   gameInfo: GameInfo | undefined;
-  availablePatches: Patch[];
+  availableGames: GameInfo[];
   settings: Settings | undefined;
   saveData: Uint8Array;
 }
@@ -97,7 +97,7 @@ export interface GetInfoRequest {
 
 export interface GetInfoResponse {
   gameInfo: GameInfo | undefined;
-  availablePatches: Patch[];
+  availableGames: GameInfo[];
   settings: Settings | undefined;
 }
 
@@ -109,12 +109,84 @@ export interface GetSaveDataResponse {
   saveData: Uint8Array;
 }
 
-function createBasePatch(): Patch {
+function createBaseGameInfo(): GameInfo {
+  return { romName: "", patch: undefined };
+}
+
+export const GameInfo = {
+  encode(
+    message: GameInfo,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.romName !== "") {
+      writer.uint32(10).string(message.romName);
+    }
+    if (message.patch !== undefined) {
+      GameInfo_Patch.encode(message.patch, writer.uint32(18).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GameInfo {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGameInfo();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.romName = reader.string();
+          break;
+        case 2:
+          message.patch = GameInfo_Patch.decode(reader, reader.uint32());
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GameInfo {
+    return {
+      romName: isSet(object.romName) ? String(object.romName) : "",
+      patch: isSet(object.patch)
+        ? GameInfo_Patch.fromJSON(object.patch)
+        : undefined,
+    };
+  },
+
+  toJSON(message: GameInfo): unknown {
+    const obj: any = {};
+    message.romName !== undefined && (obj.romName = message.romName);
+    message.patch !== undefined &&
+      (obj.patch = message.patch
+        ? GameInfo_Patch.toJSON(message.patch)
+        : undefined);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GameInfo>, I>>(object: I): GameInfo {
+    const message = createBaseGameInfo();
+    message.romName = object.romName ?? "";
+    message.patch =
+      object.patch !== undefined && object.patch !== null
+        ? GameInfo_Patch.fromPartial(object.patch)
+        : undefined;
+    return message;
+  },
+};
+
+function createBaseGameInfo_Patch(): GameInfo_Patch {
   return { name: "", version: "" };
 }
 
-export const Patch = {
-  encode(message: Patch, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+export const GameInfo_Patch = {
+  encode(
+    message: GameInfo_Patch,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.name !== "") {
       writer.uint32(10).string(message.name);
     }
@@ -124,10 +196,10 @@ export const Patch = {
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): Patch {
+  decode(input: _m0.Reader | Uint8Array, length?: number): GameInfo_Patch {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBasePatch();
+    const message = createBaseGameInfo_Patch();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -145,89 +217,26 @@ export const Patch = {
     return message;
   },
 
-  fromJSON(object: any): Patch {
+  fromJSON(object: any): GameInfo_Patch {
     return {
       name: isSet(object.name) ? String(object.name) : "",
       version: isSet(object.version) ? String(object.version) : "",
     };
   },
 
-  toJSON(message: Patch): unknown {
+  toJSON(message: GameInfo_Patch): unknown {
     const obj: any = {};
     message.name !== undefined && (obj.name = message.name);
     message.version !== undefined && (obj.version = message.version);
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<Patch>, I>>(object: I): Patch {
-    const message = createBasePatch();
+  fromPartial<I extends Exact<DeepPartial<GameInfo_Patch>, I>>(
+    object: I
+  ): GameInfo_Patch {
+    const message = createBaseGameInfo_Patch();
     message.name = object.name ?? "";
     message.version = object.version ?? "";
-    return message;
-  },
-};
-
-function createBaseGameInfo(): GameInfo {
-  return { romName: "", patch: undefined };
-}
-
-export const GameInfo = {
-  encode(
-    message: GameInfo,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.romName !== "") {
-      writer.uint32(10).string(message.romName);
-    }
-    if (message.patch !== undefined) {
-      Patch.encode(message.patch, writer.uint32(18).fork()).ldelim();
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GameInfo {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGameInfo();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.romName = reader.string();
-          break;
-        case 2:
-          message.patch = Patch.decode(reader, reader.uint32());
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): GameInfo {
-    return {
-      romName: isSet(object.romName) ? String(object.romName) : "",
-      patch: isSet(object.patch) ? Patch.fromJSON(object.patch) : undefined,
-    };
-  },
-
-  toJSON(message: GameInfo): unknown {
-    const obj: any = {};
-    message.romName !== undefined && (obj.romName = message.romName);
-    message.patch !== undefined &&
-      (obj.patch = message.patch ? Patch.toJSON(message.patch) : undefined);
-    return obj;
-  },
-
-  fromPartial<I extends Exact<DeepPartial<GameInfo>, I>>(object: I): GameInfo {
-    const message = createBaseGameInfo();
-    message.romName = object.romName ?? "";
-    message.patch =
-      object.patch !== undefined && object.patch !== null
-        ? Patch.fromPartial(object.patch)
-        : undefined;
     return message;
   },
 };
@@ -411,7 +420,7 @@ function createBaseCreateStreamToServerMessage_CreateRequest(): CreateStreamToSe
   return {
     nickname: "",
     gameInfo: undefined,
-    availablePatches: [],
+    availableGames: [],
     settings: undefined,
     saveData: new Uint8Array(),
   };
@@ -428,8 +437,8 @@ export const CreateStreamToServerMessage_CreateRequest = {
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
-    for (const v of message.availablePatches) {
-      Patch.encode(v!, writer.uint32(26).fork()).ldelim();
+    for (const v of message.availableGames) {
+      GameInfo.encode(v!, writer.uint32(26).fork()).ldelim();
     }
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
@@ -457,7 +466,7 @@ export const CreateStreamToServerMessage_CreateRequest = {
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 3:
-          message.availablePatches.push(Patch.decode(reader, reader.uint32()));
+          message.availableGames.push(GameInfo.decode(reader, reader.uint32()));
           break;
         case 4:
           message.settings = Settings.decode(reader, reader.uint32());
@@ -479,8 +488,8 @@ export const CreateStreamToServerMessage_CreateRequest = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
-      availablePatches: Array.isArray(object?.availablePatches)
-        ? object.availablePatches.map((e: any) => Patch.fromJSON(e))
+      availableGames: Array.isArray(object?.availableGames)
+        ? object.availableGames.map((e: any) => GameInfo.fromJSON(e))
         : [],
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
@@ -498,12 +507,12 @@ export const CreateStreamToServerMessage_CreateRequest = {
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
         : undefined);
-    if (message.availablePatches) {
-      obj.availablePatches = message.availablePatches.map((e) =>
-        e ? Patch.toJSON(e) : undefined
+    if (message.availableGames) {
+      obj.availableGames = message.availableGames.map((e) =>
+        e ? GameInfo.toJSON(e) : undefined
       );
     } else {
-      obj.availablePatches = [];
+      obj.availableGames = [];
     }
     message.settings !== undefined &&
       (obj.settings = message.settings
@@ -525,8 +534,8 @@ export const CreateStreamToServerMessage_CreateRequest = {
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
         : undefined;
-    message.availablePatches =
-      object.availablePatches?.map((e) => Patch.fromPartial(e)) || [];
+    message.availableGames =
+      object.availableGames?.map((e) => GameInfo.fromPartial(e)) || [];
     message.settings =
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
@@ -1563,7 +1572,7 @@ export const GetInfoRequest = {
 };
 
 function createBaseGetInfoResponse(): GetInfoResponse {
-  return { gameInfo: undefined, availablePatches: [], settings: undefined };
+  return { gameInfo: undefined, availableGames: [], settings: undefined };
 }
 
 export const GetInfoResponse = {
@@ -1574,8 +1583,8 @@ export const GetInfoResponse = {
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(10).fork()).ldelim();
     }
-    for (const v of message.availablePatches) {
-      Patch.encode(v!, writer.uint32(18).fork()).ldelim();
+    for (const v of message.availableGames) {
+      GameInfo.encode(v!, writer.uint32(18).fork()).ldelim();
     }
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
@@ -1594,7 +1603,7 @@ export const GetInfoResponse = {
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 2:
-          message.availablePatches.push(Patch.decode(reader, reader.uint32()));
+          message.availableGames.push(GameInfo.decode(reader, reader.uint32()));
           break;
         case 3:
           message.settings = Settings.decode(reader, reader.uint32());
@@ -1612,8 +1621,8 @@ export const GetInfoResponse = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
-      availablePatches: Array.isArray(object?.availablePatches)
-        ? object.availablePatches.map((e: any) => Patch.fromJSON(e))
+      availableGames: Array.isArray(object?.availableGames)
+        ? object.availableGames.map((e: any) => GameInfo.fromJSON(e))
         : [],
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
@@ -1627,12 +1636,12 @@ export const GetInfoResponse = {
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
         : undefined);
-    if (message.availablePatches) {
-      obj.availablePatches = message.availablePatches.map((e) =>
-        e ? Patch.toJSON(e) : undefined
+    if (message.availableGames) {
+      obj.availableGames = message.availableGames.map((e) =>
+        e ? GameInfo.toJSON(e) : undefined
       );
     } else {
-      obj.availablePatches = [];
+      obj.availableGames = [];
     }
     message.settings !== undefined &&
       (obj.settings = message.settings
@@ -1649,8 +1658,8 @@ export const GetInfoResponse = {
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
         : undefined;
-    message.availablePatches =
-      object.availablePatches?.map((e) => Patch.fromPartial(e)) || [];
+    message.availableGames =
+      object.availableGames?.map((e) => GameInfo.fromPartial(e)) || [];
     message.settings =
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)

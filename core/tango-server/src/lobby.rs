@@ -12,7 +12,7 @@ struct PendingPlayer {
 
 struct Lobby {
     game_info: tango_protos::lobby::GameInfo,
-    available_patches: Vec<tango_protos::lobby::Patch>,
+    available_games: Vec<tango_protos::lobby::GameInfo>,
     settings: tango_protos::lobby::Settings,
     save_data: Vec<u8>,
     next_opponent_id: u32,
@@ -64,7 +64,7 @@ impl Server {
 
         Some(tango_protos::lobby::GetInfoResponse {
             game_info: Some(lobby.game_info.clone()),
-            available_patches: lobby.available_patches.clone(),
+            available_games: lobby.available_games.clone(),
             settings: Some(lobby.settings.clone()),
         })
     }
@@ -148,7 +148,7 @@ impl Server {
                     Lobby {
                         game_info,
                         settings,
-                        available_patches: create_req.available_patches,
+                        available_games: create_req.available_games,
                         save_data: create_req.save_data,
                         next_opponent_id: 0,
                         pending_players: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),

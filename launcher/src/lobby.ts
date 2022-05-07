@@ -9,7 +9,7 @@ import {
     JoinStreamToServerMessage, Patch, Settings
 } from "./protos/lobby";
 
-export { GameInfo, Settings, GetInfoResponse, Patch };
+export { GameInfo, Settings, GetInfoResponse };
 
 async function* wrapMessageStream(ws: WebSocket) {
   for await (const msg of subscribe.call(ws, "message")) {
@@ -119,7 +119,7 @@ export async function create(
   addr: string,
   nickname: string,
   gameInfo: GameInfo,
-  availablePatches: Patch[],
+  availableGames: GameInfo[],
   settings: Settings,
   saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
@@ -139,7 +139,7 @@ export async function create(
         createReq: {
           nickname,
           gameInfo,
-          availablePatches,
+          availableGames,
           settings,
           saveData,
         },
