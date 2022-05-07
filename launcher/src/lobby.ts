@@ -2,11 +2,12 @@ import { subscribe } from "event-iterator/lib/dom";
 import fetch from "node-fetch";
 
 import {
-    CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
-    JoinStreamToServerMessage, Patch, QueryRequest, QueryResponse, Settings
+    CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, GetInfoRequest,
+    GetInfoResponse, GetSaveDataRequest, GetSaveDataResponse, JoinStreamToClientMessage,
+    JoinStreamToServerMessage, Patch, Settings
 } from "./protos/lobby";
 
-export { GameInfo, Settings, QueryResponse, Patch };
+export { GameInfo, Settings, GetInfoResponse, Patch };
 
 async function* wrapMessageStream(ws: WebSocket) {
   for await (const msg of subscribe.call(ws, "message")) {
@@ -240,9 +241,8 @@ export async function create(
   };
 }
 
-export async function query(
+export async function getInfo(
   addr: string,
-  nickname: string,
   lobbyId: string,
   { signal }: { signal?: AbortSignal } = {}
 ) {
@@ -251,7 +251,7 @@ export async function query(
     headers: {
       "Content-Type": "application/x-protobuf",
     },
-    body: Buffer.from(QueryRequest.encode({ nickname, lobbyId }).finish()),
+    body: Buffer.from(GetInfoRequest.encode({ lobbyId }).finish()),
     signal,
   });
 
@@ -259,5 +259,28 @@ export async function query(
     throw `unexpected status: ${httpResp.status}`;
   }
 
-  return QueryResponse.decode(new Uint8Array(await httpResp.arrayBuffer()));
+  return GetInfoResponse.decode(new Uint8Array(await httpResp.arrayBuffer()));
+}
+
+export async function getSaveData(
+  addr: string,
+  lobbyId: string,
+  { signal }: { signal?: AbortSignal } = {}
+) {
+  const httpResp = await fetch(`${addr}/save_data`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-protobuf",
+    },
+    body: Buffer.from(GetSaveDataRequest.encode({ lobbyId }).finish()),
+    signal,
+  });
+
+  if (httpResp.status != 200) {
+    throw `unexpected status: ${httpResp.status}`;
+  }
+
+  return GetSaveDataResponse.decode(
+    new Uint8Array(await httpResp.arrayBuffer())
+  ).saveData;
 }

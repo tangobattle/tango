@@ -91,15 +91,21 @@ export interface JoinStreamToClientMessage_AcceptIndication {
   sessionId: string;
 }
 
-export interface QueryRequest {
-  nickname: string;
+export interface GetInfoRequest {
   lobbyId: string;
 }
 
-export interface QueryResponse {
+export interface GetInfoResponse {
   gameInfo: GameInfo | undefined;
   availablePatches: Patch[];
   settings: Settings | undefined;
+}
+
+export interface GetSaveDataRequest {
+  lobbyId: string;
+}
+
+export interface GetSaveDataResponse {
   saveData: Uint8Array;
 }
 
@@ -1498,35 +1504,29 @@ export const JoinStreamToClientMessage_AcceptIndication = {
   },
 };
 
-function createBaseQueryRequest(): QueryRequest {
-  return { nickname: "", lobbyId: "" };
+function createBaseGetInfoRequest(): GetInfoRequest {
+  return { lobbyId: "" };
 }
 
-export const QueryRequest = {
+export const GetInfoRequest = {
   encode(
-    message: QueryRequest,
+    message: GetInfoRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.nickname !== "") {
-      writer.uint32(10).string(message.nickname);
-    }
     if (message.lobbyId !== "") {
-      writer.uint32(18).string(message.lobbyId);
+      writer.uint32(10).string(message.lobbyId);
     }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): QueryRequest {
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetInfoRequest {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseQueryRequest();
+    const message = createBaseGetInfoRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.nickname = reader.string();
-          break;
-        case 2:
           message.lobbyId = reader.string();
           break;
         default:
@@ -1537,42 +1537,34 @@ export const QueryRequest = {
     return message;
   },
 
-  fromJSON(object: any): QueryRequest {
+  fromJSON(object: any): GetInfoRequest {
     return {
-      nickname: isSet(object.nickname) ? String(object.nickname) : "",
       lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
     };
   },
 
-  toJSON(message: QueryRequest): unknown {
+  toJSON(message: GetInfoRequest): unknown {
     const obj: any = {};
-    message.nickname !== undefined && (obj.nickname = message.nickname);
     message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<QueryRequest>, I>>(
+  fromPartial<I extends Exact<DeepPartial<GetInfoRequest>, I>>(
     object: I
-  ): QueryRequest {
-    const message = createBaseQueryRequest();
-    message.nickname = object.nickname ?? "";
+  ): GetInfoRequest {
+    const message = createBaseGetInfoRequest();
     message.lobbyId = object.lobbyId ?? "";
     return message;
   },
 };
 
-function createBaseQueryResponse(): QueryResponse {
-  return {
-    gameInfo: undefined,
-    availablePatches: [],
-    settings: undefined,
-    saveData: new Uint8Array(),
-  };
+function createBaseGetInfoResponse(): GetInfoResponse {
+  return { gameInfo: undefined, availablePatches: [], settings: undefined };
 }
 
-export const QueryResponse = {
+export const GetInfoResponse = {
   encode(
-    message: QueryResponse,
+    message: GetInfoResponse,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.gameInfo !== undefined) {
@@ -1584,16 +1576,13 @@ export const QueryResponse = {
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
     }
-    if (message.saveData.length !== 0) {
-      writer.uint32(34).bytes(message.saveData);
-    }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): QueryResponse {
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetInfoResponse {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseQueryResponse();
+    const message = createBaseGetInfoResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1606,9 +1595,6 @@ export const QueryResponse = {
         case 3:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
-        case 4:
-          message.saveData = reader.bytes();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -1617,7 +1603,7 @@ export const QueryResponse = {
     return message;
   },
 
-  fromJSON(object: any): QueryResponse {
+  fromJSON(object: any): GetInfoResponse {
     return {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
@@ -1628,13 +1614,10 @@ export const QueryResponse = {
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
-        : new Uint8Array(),
     };
   },
 
-  toJSON(message: QueryResponse): unknown {
+  toJSON(message: GetInfoResponse): unknown {
     const obj: any = {};
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
@@ -1651,17 +1634,13 @@ export const QueryResponse = {
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
         : undefined);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
-      ));
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<QueryResponse>, I>>(
+  fromPartial<I extends Exact<DeepPartial<GetInfoResponse>, I>>(
     object: I
-  ): QueryResponse {
-    const message = createBaseQueryResponse();
+  ): GetInfoResponse {
+    const message = createBaseGetInfoResponse();
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
@@ -1672,6 +1651,118 @@ export const QueryResponse = {
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
         : undefined;
+    return message;
+  },
+};
+
+function createBaseGetSaveDataRequest(): GetSaveDataRequest {
+  return { lobbyId: "" };
+}
+
+export const GetSaveDataRequest = {
+  encode(
+    message: GetSaveDataRequest,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.lobbyId !== "") {
+      writer.uint32(10).string(message.lobbyId);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetSaveDataRequest {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetSaveDataRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.lobbyId = reader.string();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetSaveDataRequest {
+    return {
+      lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
+    };
+  },
+
+  toJSON(message: GetSaveDataRequest): unknown {
+    const obj: any = {};
+    message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GetSaveDataRequest>, I>>(
+    object: I
+  ): GetSaveDataRequest {
+    const message = createBaseGetSaveDataRequest();
+    message.lobbyId = object.lobbyId ?? "";
+    return message;
+  },
+};
+
+function createBaseGetSaveDataResponse(): GetSaveDataResponse {
+  return { saveData: new Uint8Array() };
+}
+
+export const GetSaveDataResponse = {
+  encode(
+    message: GetSaveDataResponse,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.saveData.length !== 0) {
+      writer.uint32(10).bytes(message.saveData);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetSaveDataResponse {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetSaveDataResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.saveData = reader.bytes();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetSaveDataResponse {
+    return {
+      saveData: isSet(object.saveData)
+        ? bytesFromBase64(object.saveData)
+        : new Uint8Array(),
+    };
+  },
+
+  toJSON(message: GetSaveDataResponse): unknown {
+    const obj: any = {};
+    message.saveData !== undefined &&
+      (obj.saveData = base64FromBytes(
+        message.saveData !== undefined ? message.saveData : new Uint8Array()
+      ));
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GetSaveDataResponse>, I>>(
+    object: I
+  ): GetSaveDataResponse {
+    const message = createBaseGetSaveDataResponse();
     message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },

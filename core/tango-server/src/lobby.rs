@@ -50,7 +50,10 @@ impl Server {
         }
     }
 
-    pub async fn query(&self, lobby_id: &str) -> Option<tango_protos::lobby::QueryResponse> {
+    pub async fn handle_get_info_request(
+        &self,
+        lobby_id: &str,
+    ) -> Option<tango_protos::lobby::GetInfoResponse> {
         let lobbies = self.lobbies.lock().await;
         let lobby = if let Some(lobby) = lobbies.get(lobby_id) {
             lobby
@@ -58,10 +61,25 @@ impl Server {
             return None;
         };
 
-        Some(tango_protos::lobby::QueryResponse {
+        Some(tango_protos::lobby::GetInfoResponse {
             game_info: Some(lobby.game_info.clone()),
             available_patches: lobby.available_patches.clone(),
             settings: Some(lobby.settings.clone()),
+        })
+    }
+
+    pub async fn handle_get_save_data_request(
+        &self,
+        lobby_id: &str,
+    ) -> Option<tango_protos::lobby::GetSaveDataResponse> {
+        let lobbies = self.lobbies.lock().await;
+        let lobby = if let Some(lobby) = lobbies.get(lobby_id) {
+            lobby
+        } else {
+            return None;
+        };
+
+        Some(tango_protos::lobby::GetSaveDataResponse {
             save_data: lobby.save_data.clone(),
         })
     }

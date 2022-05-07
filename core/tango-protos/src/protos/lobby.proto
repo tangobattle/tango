@@ -83,14 +83,14 @@ message JoinStreamToClientMessage {
   }
 }
 
-message QueryRequest {
-  string nickname = 1;
-  string lobby_id = 2;
-}
+message GetInfoRequest { string lobby_id = 1; }
 
-message QueryResponse {
+message GetInfoResponse {
   GameInfo game_info = 1;
   repeated Patch available_patches = 2;
   Settings settings = 3;
-  bytes save_data = 4;
 }
+
+message GetSaveDataRequest { string lobby_id = 1; }
+
+message GetSaveDataResponse { bytes save_data = 1; }
