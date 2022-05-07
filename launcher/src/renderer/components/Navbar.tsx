@@ -1,14 +1,12 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 
-import HomeIcon from "@mui/icons-material/Home";
-import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
-import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
-import LibraryBooksOutlinedIcon from "@mui/icons-material/LibraryBooksOutlined";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
+import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import Badge from "@mui/material/Badge";
 import MuiDrawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
@@ -67,7 +65,7 @@ function NavbarButton({
   );
 }
 
-export type NavbarSelection = "home" | "saves" | "replays" | "settings" | null;
+export type NavbarSelection = "play" | "replays" | "settings" | null;
 
 export default function Navbar({
   selected,
@@ -96,22 +94,13 @@ export default function Navbar({
     <Drawer variant="permanent" open={true}>
       <List>
         <NavbarButton
-          selected={selected == "home"}
+          selected={selected == "play"}
           onClick={() => {
-            onSelect("home");
+            onSelect("play");
           }}
-          title={t("navbar:home")}
-          unselectedIcon={<HomeOutlinedIcon />}
-          selectedIcon={<HomeIcon />}
-        />
-        <NavbarButton
-          selected={selected == "saves"}
-          onClick={() => {
-            onSelect("saves");
-          }}
-          title={t("navbar:saves")}
-          unselectedIcon={<LibraryBooksOutlinedIcon />}
-          selectedIcon={<LibraryBooksIcon />}
+          title={t("navbar:play")}
+          unselectedIcon={<SportsEsportsOutlinedIcon />}
+          selectedIcon={<SportsEsportsIcon />}
         />
         <NavbarButton
           selected={selected == "replays"}

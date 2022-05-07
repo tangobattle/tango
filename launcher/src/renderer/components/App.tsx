@@ -9,9 +9,8 @@ import ThemeProvider from "@mui/system/ThemeProvider";
 import createTheme from "../theme";
 import { ConfigProvider, useConfig } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
-import HomePane from "./panes/HomePane";
+import PlayPane from "./panes/PlayPane";
 import ReplaysPane from "./panes/ReplaysPane";
-import SavesPane from "./panes/SavesPane";
 import SettingsPane from "./panes/SettingsPane";
 import { PatchesProvider } from "./PatchesContext";
 import { ROMsProvider } from "./ROMsContext";
@@ -20,7 +19,7 @@ import { TempDirProvider } from "./TempDirContext";
 import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
 const AppBody = withTranslation()(() => {
-  const [selected, setSelected] = React.useState<NavbarSelection>("home");
+  const [selected, setSelected] = React.useState<NavbarSelection>("play");
 
   const { config } = useConfig();
 
@@ -54,8 +53,7 @@ const AppBody = withTranslation()(() => {
           <ROMsProvider>
             <PatchesProvider>
               <SavesProvider>
-                <HomePane active={selected == "home"} />
-                <SavesPane active={selected == "saves"} />
+                <PlayPane active={selected == "play"} />
                 <ReplaysPane active={selected == "replays"} />
                 <SettingsPane active={selected == "settings"} />
               </SavesProvider>
