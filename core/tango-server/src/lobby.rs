@@ -238,10 +238,12 @@ impl Server {
 
                             pp.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
                                 which:
-                                    Some(tango_protos::lobby::join_stream_to_client_message::Which::AcceptInd(
-                                        tango_protos::lobby::join_stream_to_client_message::AcceptIndication {
-                                            session_id,
-                                            save_data: lobby.save_data.clone(),
+                                    Some(tango_protos::lobby::join_stream_to_client_message::Which::ProposeResp(
+                                        tango_protos::lobby::join_stream_to_client_message::ProposeResponse {
+                                            which: Some(tango_protos::lobby::join_stream_to_client_message::propose_response::Which::Ok(tango_protos::lobby::join_stream_to_client_message::propose_response::Ok{
+                                                session_id,
+                                                save_data: lobby.save_data.clone(),
+                                            })),
                                         }
                                     )),
                             }.encode_to_vec())).await?;
@@ -281,9 +283,11 @@ impl Server {
 
                             pp.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
                                 which:
-                                    Some(tango_protos::lobby::join_stream_to_client_message::Which::DisconnectInd(
-                                        tango_protos::lobby::join_stream_to_client_message::DisconnectIndication {
-                                            reason: tango_protos::lobby::join_stream_to_client_message::disconnect_indication::Reason::Rejected.into(),
+                                    Some(tango_protos::lobby::join_stream_to_client_message::Which::ProposeResp(
+                                        tango_protos::lobby::join_stream_to_client_message::ProposeResponse {
+                                            which: Some(tango_protos::lobby::join_stream_to_client_message::propose_response::Which::Error(tango_protos::lobby::join_stream_to_client_message::propose_response::Error{
+                                                reason: tango_protos::lobby::join_stream_to_client_message::propose_response::error::Reason::Rejected.into(),
+                                            })),
                                         }
                                     )),
                             }.encode_to_vec())).await?;
@@ -506,14 +510,6 @@ impl Server {
                                     }
                                 )),
                         }.encode_to_vec())).await?;
-
-                        pp.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
-                            which:
-                                Some(tango_protos::lobby::join_stream_to_client_message::Which::ProposeResp(
-                                    tango_protos::lobby::join_stream_to_client_message::ProposeResponse { }
-                                )),
-                        }.encode_to_vec())).await?;
-
                     }
                 }
 

@@ -107,11 +107,22 @@ message JoinStreamToClientMessage {
     Info info = 1;
   }
 
-  message ProposeResponse {}
-
-  message AcceptIndication {
-    string session_id = 1;
-    bytes save_data = 2;
+  message ProposeResponse {
+    message Error {
+      enum Reason {
+        UNKNOWN = 0;
+        REJECTED = 1;
+      }
+      Reason reason = 1;
+    }
+    message Ok {
+      string session_id = 1;
+      bytes save_data = 2;
+    }
+    oneof which {
+      Ok ok = 1;
+      Error error = 2;
+    }
   }
 
   message DisconnectIndication {
@@ -128,6 +139,5 @@ message JoinStreamToClientMessage {
     DisconnectIndication disconnect_ind = 1;
     JoinResponse join_resp = 2;
     ProposeResponse propose_resp = 3;
-    AcceptIndication accept_ind = 4;
   }
 }

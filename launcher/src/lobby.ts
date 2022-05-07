@@ -1,15 +1,13 @@
 import { subscribe } from "event-iterator/lib/dom";
-import fetch from "node-fetch";
 import { promisify } from "util";
 import * as zlib from "zlib";
 
 import {
-    CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, GetInfoRequest,
-    GetInfoResponse, GetSaveDataRequest, GetSaveDataResponse, JoinStreamToClientMessage,
-    JoinStreamToClientMessage_JoinResponse_Status, JoinStreamToServerMessage, Settings
+    CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
+    JoinStreamToServerMessage, Settings
 } from "./protos/lobby";
 
-export { GameInfo, Settings, GetInfoResponse };
+export { GameInfo, Settings };
 
 function wrapMessageStream(ws: WebSocket) {
   const stream = (async function* () {
@@ -29,16 +27,19 @@ interface OpponentInfo {
   gameInfo: GameInfo;
 }
 
+interface LobbyJoinHandle {
+  propose(
+    nickname: string,
+    gameInfo: GameInfo,
+    settings: Settings
+  ): Promise<void>;
+}
+
 export async function join(
   addr: string,
-  nickname: string,
   lobbyId: string,
-  gameInfo: GameInfo,
-  saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
 ): Promise<string | null> {
-  saveData = await promisify(zlib.brotliCompress)(saveData);
-
   const ws = new WebSocket(`${addr}/join`);
   if (signal != null) {
     signal.onabort = () => {
@@ -50,11 +51,9 @@ export async function join(
     ws.send(
       JoinStreamToServerMessage.encode({
         joinReq: {
-          nickname,
           lobbyId,
-          gameInfo,
-          saveData,
         },
+        proposeReq: undefined,
       }).finish()
     );
   };
@@ -232,49 +231,4 @@ export async function create(
       }
     },
   };
-}
-
-export async function getInfo(
-  addr: string,
-  lobbyId: string,
-  { signal }: { signal?: AbortSignal } = {}
-) {
-  const httpResp = await fetch(`${addr}/get_info`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-protobuf",
-    },
-    body: Buffer.from(GetInfoRequest.encode({ lobbyId }).finish()),
-    signal,
-  });
-
-  if (httpResp.status != 200) {
-    throw `unexpected status: ${httpResp.status}`;
-  }
-
-  return GetInfoResponse.decode(new Uint8Array(await httpResp.arrayBuffer()));
-}
-
-export async function getSaveData(
-  addr: string,
-  lobbyId: string,
-  { signal }: { signal?: AbortSignal } = {}
-) {
-  const httpResp = await fetch(`${addr}/get_save_data`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-protobuf",
-    },
-    body: Buffer.from(GetSaveDataRequest.encode({ lobbyId }).finish()),
-    signal,
-  });
-
-  if (httpResp.status != 200) {
-    throw `unexpected status: ${httpResp.status}`;
-  }
-
-  return await promisify(zlib.brotliDecompress)(
-    GetSaveDataResponse.decode(new Uint8Array(await httpResp.arrayBuffer()))
-      .saveData
-  );
 }
