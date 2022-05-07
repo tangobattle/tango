@@ -2,20 +2,17 @@ import { open } from "fs/promises";
 
 const REPLAY_VERSION = 0x0f;
 
-export interface ReplayInfo {
-  ts: number;
+export interface GameInfo {
   rom: string;
   patch: {
     name: string;
     version: string;
   } | null;
-  remote: {
-    rom: string;
-    patch: {
-      name: string;
-      version: string;
-    } | null;
-  } | null;
+}
+
+export interface ReplayInfo extends GameInfo {
+  ts: number;
+  remote: (GameInfo & { nickname: string }) | null;
 }
 
 const textDecoder = new TextDecoder("utf-8");

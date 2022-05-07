@@ -8,7 +8,7 @@ message GameInfo {
     string version = 2;
   }
 
-  string rom_name = 1;
+  string rom = 1;
   Patch patch = 2;
 }
 

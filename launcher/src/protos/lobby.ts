@@ -5,7 +5,7 @@ import * as _m0 from "protobufjs/minimal";
 export const protobufPackage = "tango.lobby";
 
 export interface GameInfo {
-  romName: string;
+  rom: string;
   patch: GameInfo_Patch | undefined;
 }
 
@@ -245,8 +245,8 @@ export interface JoinStreamToClientMessage_DisconnectIndication {
 export enum JoinStreamToClientMessage_DisconnectIndication_Reason {
   UNKNOWN = 0,
   START_TIMEOUT = 1,
-  LOBBY_CLOSED = 2,
-  REJECTED = 3,
+  PROPOSE_TIMEOUT = 2,
+  LOBBY_CLOSED = 3,
   UNRECOGNIZED = -1,
 }
 
@@ -261,11 +261,11 @@ export function joinStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
     case "START_TIMEOUT":
       return JoinStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT;
     case 2:
+    case "PROPOSE_TIMEOUT":
+      return JoinStreamToClientMessage_DisconnectIndication_Reason.PROPOSE_TIMEOUT;
+    case 3:
     case "LOBBY_CLOSED":
       return JoinStreamToClientMessage_DisconnectIndication_Reason.LOBBY_CLOSED;
-    case 3:
-    case "REJECTED":
-      return JoinStreamToClientMessage_DisconnectIndication_Reason.REJECTED;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -281,17 +281,17 @@ export function joinStreamToClientMessage_DisconnectIndication_ReasonToJSON(
       return "UNKNOWN";
     case JoinStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT:
       return "START_TIMEOUT";
+    case JoinStreamToClientMessage_DisconnectIndication_Reason.PROPOSE_TIMEOUT:
+      return "PROPOSE_TIMEOUT";
     case JoinStreamToClientMessage_DisconnectIndication_Reason.LOBBY_CLOSED:
       return "LOBBY_CLOSED";
-    case JoinStreamToClientMessage_DisconnectIndication_Reason.REJECTED:
-      return "REJECTED";
     default:
       return "UNKNOWN";
   }
 }
 
 function createBaseGameInfo(): GameInfo {
-  return { romName: "", patch: undefined };
+  return { rom: "", patch: undefined };
 }
 
 export const GameInfo = {
@@ -299,8 +299,8 @@ export const GameInfo = {
     message: GameInfo,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.romName !== "") {
-      writer.uint32(10).string(message.romName);
+    if (message.rom !== "") {
+      writer.uint32(10).string(message.rom);
     }
     if (message.patch !== undefined) {
       GameInfo_Patch.encode(message.patch, writer.uint32(18).fork()).ldelim();
@@ -316,7 +316,7 @@ export const GameInfo = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.romName = reader.string();
+          message.rom = reader.string();
           break;
         case 2:
           message.patch = GameInfo_Patch.decode(reader, reader.uint32());
@@ -331,7 +331,7 @@ export const GameInfo = {
 
   fromJSON(object: any): GameInfo {
     return {
-      romName: isSet(object.romName) ? String(object.romName) : "",
+      rom: isSet(object.rom) ? String(object.rom) : "",
       patch: isSet(object.patch)
         ? GameInfo_Patch.fromJSON(object.patch)
         : undefined,
@@ -340,7 +340,7 @@ export const GameInfo = {
 
   toJSON(message: GameInfo): unknown {
     const obj: any = {};
-    message.romName !== undefined && (obj.romName = message.romName);
+    message.rom !== undefined && (obj.rom = message.rom);
     message.patch !== undefined &&
       (obj.patch = message.patch
         ? GameInfo_Patch.toJSON(message.patch)
@@ -350,7 +350,7 @@ export const GameInfo = {
 
   fromPartial<I extends Exact<DeepPartial<GameInfo>, I>>(object: I): GameInfo {
     const message = createBaseGameInfo();
-    message.romName = object.romName ?? "";
+    message.rom = object.rom ?? "";
     message.patch =
       object.patch !== undefined && object.patch !== null
         ? GameInfo_Patch.fromPartial(object.patch)
