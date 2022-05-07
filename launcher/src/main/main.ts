@@ -119,6 +119,23 @@ function createWindow() {
     shell.openExternal(url);
   });
 
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    (details, callback) => {
+      callback({ requestHeaders: { Origin: "*", ...details.requestHeaders } });
+    }
+  );
+
+  mainWindow.webContents.session.webRequest.onHeadersReceived(
+    (details, callback) => {
+      callback({
+        responseHeaders: {
+          "Access-Control-Allow-Origin": ["*"],
+          ...details.responseHeaders,
+        },
+      });
+    }
+  );
+
   remoteMain.enable(mainWindow.webContents);
   autoUpdater.checkForUpdates();
 }

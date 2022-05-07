@@ -32,7 +32,7 @@ function useCreateLobby() {
 }
 
 export default function BattlePane({ active }: { active: boolean }) {
-  const createLobby = useCreateLobby();
+  const { config } = useConfig();
 
   const lobbies = [];
 

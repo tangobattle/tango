@@ -127,6 +127,7 @@ async fn handle_lobby_query_request(
     let req = tango_protos::lobby::QueryRequest::decode(
         hyper::body::to_bytes(request.into_body()).await?,
     )?;
+    log::debug!("/lobby/query: {:?}", req);
     match lobby_server.query(&req.lobby_id).await {
         Some(resp) => Ok(hyper::Response::builder()
             .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")

@@ -1,11 +1,12 @@
 import { subscribe } from "event-iterator/lib/dom";
+import fetch from "node-fetch";
 
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
     JoinStreamToServerMessage, QueryRequest, QueryResponse, Settings
 } from "./protos/lobby";
 
-export { GameInfo };
+export { GameInfo, Settings, QueryResponse };
 
 async function* wrapMessageStream(ws: WebSocket) {
   for await (const msg of subscribe.call(ws, "message")) {
@@ -20,8 +21,8 @@ interface OpponentInfo {
 }
 
 interface LobbyJoinHandle {
-  getOpponentInfo(): OpponentInfo;
-  wait(): Promise<string | null>;
+  opponentInfo: OpponentInfo;
+  sessionId: Promise<string | null>;
 }
 
 export async function join(
@@ -75,11 +76,9 @@ export async function join(
   };
 
   return {
-    getOpponentInfo() {
-      return opponentInfo;
-    },
+    opponentInfo,
 
-    async wait() {
+    sessionId: (async () => {
       const { value: raw, done } = await stream.next();
       if (done) {
         return null;
@@ -91,13 +90,13 @@ export async function join(
       }
 
       return resp.acceptInd.sessionId;
-    },
+    })(),
   };
 }
 
 interface LobbyCreateHandle {
-  getLobbyId(): string;
-  waitForJoin(): Promise<OpponentInfo | null>;
+  lobbyId: string;
+  nextOpponent(): Promise<OpponentInfo | null>;
   accept(opponentId: string): Promise<string>;
   reject(opponentId: string): Promise<void>;
 }
@@ -147,11 +146,9 @@ export async function create(
   const lobbyId = resp.createResp.lobbyId;
 
   return {
-    getLobbyId() {
-      return lobbyId;
-    },
+    lobbyId,
 
-    async waitForJoin() {
+    async nextOpponent() {
       const { value: raw, done } = await stream.next();
       if (done) {
         return null;
@@ -238,7 +235,7 @@ export async function query(
     headers: {
       "Content-Type": "application/x-protobuf",
     },
-    body: QueryRequest.encode({ identityToken, lobbyId }).finish(),
+    body: Buffer.from(QueryRequest.encode({ identityToken, lobbyId }).finish()),
     signal,
   });
 
