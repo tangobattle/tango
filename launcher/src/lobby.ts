@@ -6,7 +6,7 @@ import {
     JoinStreamToServerMessage, Patch, QueryRequest, QueryResponse, Settings
 } from "./protos/lobby";
 
-export { GameInfo, Settings, QueryResponse };
+export { GameInfo, Settings, QueryResponse, Patch };
 
 async function* wrapMessageStream(ws: WebSocket) {
   for await (const msg of subscribe.call(ws, "message")) {

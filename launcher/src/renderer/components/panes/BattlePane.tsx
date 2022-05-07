@@ -16,6 +16,7 @@ function useCreateLobby() {
 
   return (
     gameInfo: lobby.GameInfo,
+    availablePatches: lobby.Patch[],
     settings: lobby.Settings,
     saveData: Uint8Array,
     options: { signal?: AbortSignal } = {}
@@ -24,6 +25,7 @@ function useCreateLobby() {
       `ws${!config.lobby.insecure ? "s" : ""}://${config.lobby.address}/lobby`,
       "TODO",
       gameInfo,
+      availablePatches,
       settings,
       saveData,
       options
