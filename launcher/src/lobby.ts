@@ -1,5 +1,7 @@
 import { subscribe } from "event-iterator/lib/dom";
 import fetch from "node-fetch";
+import { promisify } from "util";
+import * as zlib from "zlib";
 
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, GetInfoRequest,
@@ -38,6 +40,8 @@ export async function join(
   saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyJoinHandle> {
+  saveData = await promisify(zlib.brotliCompress)(saveData);
+
   const ws = new WebSocket(`${addr}/join`);
   if (signal != null) {
     signal.onabort = () => {
@@ -120,6 +124,8 @@ export async function create(
   saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyCreateHandle> {
+  saveData = await promisify(zlib.brotliCompress)(saveData);
+
   const ws = new WebSocket(`${addr}/create`);
   if (signal != null) {
     signal.onabort = () => {
@@ -183,7 +189,7 @@ export async function create(
           nickname: resp.joinInd.opponentNickname,
           gameInfo: resp.joinInd.gameInfo,
         },
-        saveData: resp.joinInd.saveData,
+        saveData: await promisify(zlib.brotliDecompress)(resp.joinInd.saveData),
       };
     },
 
@@ -280,7 +286,8 @@ export async function getSaveData(
     throw `unexpected status: ${httpResp.status}`;
   }
 
-  return GetSaveDataResponse.decode(
-    new Uint8Array(await httpResp.arrayBuffer())
-  ).saveData;
+  return await promisify(zlib.brotliDecompress)(
+    GetSaveDataResponse.decode(new Uint8Array(await httpResp.arrayBuffer()))
+      .saveData
+  );
 }
