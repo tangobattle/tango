@@ -9,7 +9,7 @@ import ThemeProvider from "@mui/system/ThemeProvider";
 import createTheme from "../theme";
 import { ConfigProvider, useConfig } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
-import BattlePane from "./panes/BattlePane";
+import HomePane from "./panes/HomePane";
 import ReplaysPane from "./panes/ReplaysPane";
 import SavesPane from "./panes/SavesPane";
 import SettingsPane from "./panes/SettingsPane";
@@ -20,7 +20,7 @@ import { TempDirProvider } from "./TempDirContext";
 import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
 const AppBody = withTranslation()(() => {
-  const [selected, setSelected] = React.useState<NavbarSelection>("battle");
+  const [selected, setSelected] = React.useState<NavbarSelection>("home");
 
   const { config } = useConfig();
 
@@ -54,7 +54,7 @@ const AppBody = withTranslation()(() => {
           <ROMsProvider>
             <PatchesProvider>
               <SavesProvider>
-                <BattlePane active={selected == "battle"} />
+                <HomePane active={selected == "home"} />
                 <SavesPane active={selected == "saves"} />
                 <ReplaysPane active={selected == "replays"} />
                 <SettingsPane active={selected == "settings"} />

@@ -1,14 +1,14 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 
+import HomeIcon from "@mui/icons-material/Home";
+import HomeOutlinedIcon from "@mui/icons-material/HomeOutlined";
 import LibraryBooksIcon from "@mui/icons-material/LibraryBooks";
 import LibraryBooksOutlinedIcon from "@mui/icons-material/LibraryBooksOutlined";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
-import SportsMmaIcon from "@mui/icons-material/SportsMma";
-import SportsMmaOutlinedIcon from "@mui/icons-material/SportsMmaOutlined";
 import Badge from "@mui/material/Badge";
 import MuiDrawer from "@mui/material/Drawer";
 import List from "@mui/material/List";
@@ -67,12 +67,7 @@ function NavbarButton({
   );
 }
 
-export type NavbarSelection =
-  | "battle"
-  | "saves"
-  | "replays"
-  | "settings"
-  | null;
+export type NavbarSelection = "home" | "saves" | "replays" | "settings" | null;
 
 export default function Navbar({
   selected,
@@ -101,13 +96,13 @@ export default function Navbar({
     <Drawer variant="permanent" open={true}>
       <List>
         <NavbarButton
-          selected={selected == "battle"}
+          selected={selected == "home"}
           onClick={() => {
-            onSelect("battle");
+            onSelect("home");
           }}
-          title={t("navbar:battle")}
-          unselectedIcon={<SportsMmaOutlinedIcon />}
-          selectedIcon={<SportsMmaIcon />}
+          title={t("navbar:home")}
+          unselectedIcon={<HomeOutlinedIcon />}
+          selectedIcon={<HomeIcon />}
         />
         <NavbarButton
           selected={selected == "saves"}

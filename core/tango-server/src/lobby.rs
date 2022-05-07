@@ -132,7 +132,7 @@ impl Server {
                         available_patches: create_req.available_patches,
                         save_data: create_req.save_data,
                         pending_players: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
-                        creator_nickname: create_req.identity_token,
+                        creator_nickname: create_req.nickname,
                         creator_tx: std::sync::Arc::new(tokio::sync::Mutex::new(tx)),
                     },
                 );
@@ -188,7 +188,6 @@ impl Server {
                                     Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
                                         tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
                                             session_id: session_id.clone(),
-                                            save_data: pp.save_data.clone(),
                                         }
                                     )),
                             }.encode_to_vec())).await?;
@@ -199,7 +198,6 @@ impl Server {
                                     Some(tango_protos::lobby::join_stream_to_client_message::Which::AcceptInd(
                                         tango_protos::lobby::join_stream_to_client_message::AcceptIndication {
                                             session_id,
-                                            save_data: lobby.save_data.clone(),
                                         }
                                     )),
                             }.encode_to_vec())).await?;
@@ -332,8 +330,9 @@ impl Server {
                             Some(tango_protos::lobby::create_stream_to_client_message::Which::JoinInd(
                                 tango_protos::lobby::create_stream_to_client_message::JoinIndication {
                                     opponent_id: generated_opponent_id.clone(),
-                                    opponent_nickname: join_req.identity_token.clone(),
+                                    opponent_nickname: join_req.nickname.clone(),
                                     game_info: Some(game_info),
+                                    save_data: join_req.save_data.clone(),
                                 }
                             )),
                     }.encode_to_vec())).await?;
@@ -346,6 +345,7 @@ impl Server {
                                     opponent_nickname: lobby.creator_nickname.clone(),
                                     game_info: Some(lobby.game_info.clone()),
                                     settings: Some(lobby.settings.clone()),
+                                    save_data: lobby.save_data.clone(),
                                 }
                             )),
                     }.encode_to_vec())).await?;

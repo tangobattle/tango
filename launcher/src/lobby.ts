@@ -18,11 +18,11 @@ interface OpponentInfo {
   id: string;
   nickname: string;
   gameInfo: GameInfo;
+  saveData: Uint8Array;
 }
 
 interface NegotiatedSession {
   sessionId: string;
-  saveData: Uint8Array;
 }
 
 interface LobbyJoinHandle {
@@ -32,7 +32,7 @@ interface LobbyJoinHandle {
 
 export async function join(
   addr: string,
-  identityToken: string,
+  nickname: string,
   lobbyId: string,
   gameInfo: GameInfo,
   saveData: Uint8Array,
@@ -49,7 +49,7 @@ export async function join(
     ws.send(
       JoinStreamToServerMessage.encode({
         joinReq: {
-          identityToken,
+          nickname,
           lobbyId,
           gameInfo,
           saveData,
@@ -78,6 +78,7 @@ export async function join(
     id: resp.joinResp.opponentId,
     nickname: resp.joinResp.opponentNickname,
     gameInfo: resp.joinResp.gameInfo,
+    saveData: resp.joinResp.saveData,
   };
 
   return {
@@ -96,7 +97,6 @@ export async function join(
 
       return {
         sessionId: resp.acceptInd.sessionId,
-        saveData: resp.acceptInd.saveData,
       };
     })(),
   };
@@ -111,7 +111,7 @@ interface LobbyCreateHandle {
 
 export async function create(
   addr: string,
-  identityToken: string,
+  nickname: string,
   gameInfo: GameInfo,
   availablePatches: Patch[],
   settings: Settings,
@@ -129,7 +129,7 @@ export async function create(
     ws.send(
       CreateStreamToServerMessage.encode({
         createReq: {
-          identityToken,
+          nickname,
           gameInfo,
           availablePatches,
           settings,
@@ -179,6 +179,7 @@ export async function create(
         id: resp.joinInd.opponentId,
         nickname: resp.joinInd.opponentNickname,
         gameInfo: resp.joinInd.gameInfo,
+        saveData: resp.joinInd.saveData,
       };
     },
 
@@ -207,7 +208,6 @@ export async function create(
 
       return {
         sessionId: resp.acceptResp.sessionId,
-        saveData: resp.acceptResp.saveData,
       };
     },
 
@@ -239,7 +239,7 @@ export async function create(
 
 export async function query(
   addr: string,
-  identityToken: string,
+  nickname: string,
   lobbyId: string,
   { signal }: { signal?: AbortSignal } = {}
 ) {
@@ -248,7 +248,7 @@ export async function query(
     headers: {
       "Content-Type": "application/x-protobuf",
     },
-    body: Buffer.from(QueryRequest.encode({ identityToken, lobbyId }).finish()),
+    body: Buffer.from(QueryRequest.encode({ nickname, lobbyId }).finish()),
     signal,
   });
 

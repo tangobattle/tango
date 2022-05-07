@@ -16,7 +16,7 @@ message Settings { bool open = 1; }
 
 message CreateStreamToServerMessage {
   message CreateRequest {
-    string identity_token = 1;
+    string nickname = 1;
     GameInfo game_info = 2;
     repeated Patch available_patches = 3;
     Settings settings = 4;
@@ -41,12 +41,10 @@ message CreateStreamToClientMessage {
     string opponent_id = 1;
     string opponent_nickname = 2;
     GameInfo game_info = 3;
+    bytes save_data = 4;
   }
 
-  message AcceptResponse {
-    string session_id = 1;
-    bytes save_data = 2;
-  }
+  message AcceptResponse { string session_id = 1; }
 
   message RejectResponse {}
 
@@ -60,7 +58,7 @@ message CreateStreamToClientMessage {
 
 message JoinStreamToServerMessage {
   message JoinRequest {
-    string identity_token = 1;
+    string nickname = 1;
     string lobby_id = 2;
     GameInfo game_info = 3;
     bytes save_data = 4;
@@ -75,12 +73,10 @@ message JoinStreamToClientMessage {
     string opponent_nickname = 2;
     GameInfo game_info = 3;
     Settings settings = 4;
+    bytes save_data = 5;
   }
 
-  message AcceptIndication {
-    string session_id = 1;
-    bytes save_data = 2;
-  }
+  message AcceptIndication { string session_id = 1; }
 
   oneof which {
     JoinResponse join_resp = 1;
@@ -89,7 +85,7 @@ message JoinStreamToClientMessage {
 }
 
 message QueryRequest {
-  string identity_token = 1;
+  string nickname = 1;
   string lobby_id = 2;
 }
 
