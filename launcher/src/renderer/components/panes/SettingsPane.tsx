@@ -214,6 +214,20 @@ function GeneralTab({ active }: { active: boolean }) {
             width: "500px",
           }}
         >
+          <TextField
+            size="small"
+            fullWidth
+            value={config.nickname}
+            onChange={(e) => {
+              (async () => {
+                saveConfig((config) => ({
+                  ...config,
+                  nickname: e.target.value,
+                }));
+              })();
+            }}
+            label={<Trans i18nKey="settings:nickname" />}
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="language-label">
               <Trans i18nKey="settings:language" />

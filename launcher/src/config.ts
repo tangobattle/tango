@@ -4,6 +4,7 @@ import { readFile, writeFile } from "fs/promises";
 import * as ipc from "./ipc";
 
 export interface Config {
+  nickname: string;
   theme: "dark" | "light";
   language: string | null;
   updateChannel: string;
@@ -18,6 +19,7 @@ export interface Config {
 }
 
 export const DEFAULT: Config = {
+  nickname: "Player T",
   theme: "light",
   language: null,
   updateChannel: "latest",
