@@ -6,7 +6,7 @@ import * as zlib from "zlib";
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, GetInfoRequest,
     GetInfoResponse, GetSaveDataRequest, GetSaveDataResponse, JoinStreamToClientMessage,
-    JoinStreamToServerMessage, Patch, Settings
+    JoinStreamToServerMessage, Settings
 } from "./protos/lobby";
 
 export { GameInfo, Settings, GetInfoResponse };
