@@ -39,7 +39,8 @@ message CreateStreamToClientMessage {
 
   message JoinIndication {
     string opponent_id = 1;
-    GameInfo game_info = 2;
+    string opponent_nickname = 2;
+    GameInfo game_info = 3;
   }
 
   message AcceptResponse {
@@ -71,8 +72,9 @@ message JoinStreamToServerMessage {
 message JoinStreamToClientMessage {
   message JoinResponse {
     string opponent_id = 1;
-    GameInfo game_info = 2;
-    Settings settings = 3;
+    string opponent_nickname = 2;
+    GameInfo game_info = 3;
+    Settings settings = 4;
   }
 
   message AcceptIndication {

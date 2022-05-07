@@ -53,6 +53,7 @@ export interface CreateStreamToClientMessage_CreateResponse {
 
 export interface CreateStreamToClientMessage_JoinIndication {
   opponentId: string;
+  opponentNickname: string;
   gameInfo: GameInfo | undefined;
 }
 
@@ -81,6 +82,7 @@ export interface JoinStreamToClientMessage {
 
 export interface JoinStreamToClientMessage_JoinResponse {
   opponentId: string;
+  opponentNickname: string;
   gameInfo: GameInfo | undefined;
   settings: Settings | undefined;
 }
@@ -857,7 +859,7 @@ export const CreateStreamToClientMessage_CreateResponse = {
 };
 
 function createBaseCreateStreamToClientMessage_JoinIndication(): CreateStreamToClientMessage_JoinIndication {
-  return { opponentId: "", gameInfo: undefined };
+  return { opponentId: "", opponentNickname: "", gameInfo: undefined };
 }
 
 export const CreateStreamToClientMessage_JoinIndication = {
@@ -868,8 +870,11 @@ export const CreateStreamToClientMessage_JoinIndication = {
     if (message.opponentId !== "") {
       writer.uint32(10).string(message.opponentId);
     }
+    if (message.opponentNickname !== "") {
+      writer.uint32(18).string(message.opponentNickname);
+    }
     if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
+      GameInfo.encode(message.gameInfo, writer.uint32(26).fork()).ldelim();
     }
     return writer;
   },
@@ -888,6 +893,9 @@ export const CreateStreamToClientMessage_JoinIndication = {
           message.opponentId = reader.string();
           break;
         case 2:
+          message.opponentNickname = reader.string();
+          break;
+        case 3:
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         default:
@@ -901,6 +909,9 @@ export const CreateStreamToClientMessage_JoinIndication = {
   fromJSON(object: any): CreateStreamToClientMessage_JoinIndication {
     return {
       opponentId: isSet(object.opponentId) ? String(object.opponentId) : "",
+      opponentNickname: isSet(object.opponentNickname)
+        ? String(object.opponentNickname)
+        : "",
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
@@ -910,6 +921,8 @@ export const CreateStreamToClientMessage_JoinIndication = {
   toJSON(message: CreateStreamToClientMessage_JoinIndication): unknown {
     const obj: any = {};
     message.opponentId !== undefined && (obj.opponentId = message.opponentId);
+    message.opponentNickname !== undefined &&
+      (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -922,6 +935,7 @@ export const CreateStreamToClientMessage_JoinIndication = {
   >(object: I): CreateStreamToClientMessage_JoinIndication {
     const message = createBaseCreateStreamToClientMessage_JoinIndication();
     message.opponentId = object.opponentId ?? "";
+    message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
@@ -1321,7 +1335,12 @@ export const JoinStreamToClientMessage = {
 };
 
 function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientMessage_JoinResponse {
-  return { opponentId: "", gameInfo: undefined, settings: undefined };
+  return {
+    opponentId: "",
+    opponentNickname: "",
+    gameInfo: undefined,
+    settings: undefined,
+  };
 }
 
 export const JoinStreamToClientMessage_JoinResponse = {
@@ -1332,11 +1351,14 @@ export const JoinStreamToClientMessage_JoinResponse = {
     if (message.opponentId !== "") {
       writer.uint32(10).string(message.opponentId);
     }
+    if (message.opponentNickname !== "") {
+      writer.uint32(18).string(message.opponentNickname);
+    }
     if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
+      GameInfo.encode(message.gameInfo, writer.uint32(26).fork()).ldelim();
     }
     if (message.settings !== undefined) {
-      Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
+      Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
     }
     return writer;
   },
@@ -1355,9 +1377,12 @@ export const JoinStreamToClientMessage_JoinResponse = {
           message.opponentId = reader.string();
           break;
         case 2:
-          message.gameInfo = GameInfo.decode(reader, reader.uint32());
+          message.opponentNickname = reader.string();
           break;
         case 3:
+          message.gameInfo = GameInfo.decode(reader, reader.uint32());
+          break;
+        case 4:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
         default:
@@ -1371,6 +1396,9 @@ export const JoinStreamToClientMessage_JoinResponse = {
   fromJSON(object: any): JoinStreamToClientMessage_JoinResponse {
     return {
       opponentId: isSet(object.opponentId) ? String(object.opponentId) : "",
+      opponentNickname: isSet(object.opponentNickname)
+        ? String(object.opponentNickname)
+        : "",
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
@@ -1383,6 +1411,8 @@ export const JoinStreamToClientMessage_JoinResponse = {
   toJSON(message: JoinStreamToClientMessage_JoinResponse): unknown {
     const obj: any = {};
     message.opponentId !== undefined && (obj.opponentId = message.opponentId);
+    message.opponentNickname !== undefined &&
+      (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -1399,6 +1429,7 @@ export const JoinStreamToClientMessage_JoinResponse = {
   >(object: I): JoinStreamToClientMessage_JoinResponse {
     const message = createBaseJoinStreamToClientMessage_JoinResponse();
     message.opponentId = object.opponentId ?? "";
+    message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)

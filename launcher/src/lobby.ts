@@ -15,7 +15,8 @@ async function* wrapMessageStream(ws: WebSocket) {
 }
 
 interface OpponentInfo {
-  opponentId: string;
+  id: string;
+  nickname: string;
   gameInfo: GameInfo;
 }
 
@@ -74,7 +75,8 @@ export async function join(
   }
 
   const opponentInfo = {
-    opponentId: resp.joinResp.opponentId,
+    id: resp.joinResp.opponentId,
+    nickname: resp.joinResp.opponentNickname,
     gameInfo: resp.joinResp.gameInfo,
   };
 
@@ -103,8 +105,8 @@ export async function join(
 interface LobbyCreateHandle {
   lobbyId: string;
   nextOpponent(): Promise<OpponentInfo | null>;
-  accept(opponentId: string): Promise<NegotiatedSession>;
-  reject(opponentId: string): Promise<void>;
+  accept(id: string): Promise<NegotiatedSession>;
+  reject(id: string): Promise<void>;
 }
 
 export async function create(
@@ -174,7 +176,8 @@ export async function create(
       }
 
       return {
-        opponentId: resp.joinInd.opponentId,
+        id: resp.joinInd.opponentId,
+        nickname: resp.joinInd.opponentNickname,
         gameInfo: resp.joinInd.gameInfo,
       };
     },

@@ -21,6 +21,7 @@ struct Lobby {
             std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<PendingPlayer>>>,
         >,
     >,
+    creator_nickname: String,
     creator_tx: std::sync::Arc<
         tokio::sync::Mutex<
             futures_util::stream::SplitSink<
@@ -131,6 +132,7 @@ impl Server {
                         available_patches: create_req.available_patches,
                         save_data: create_req.save_data,
                         pending_players: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+                        creator_nickname: create_req.identity_token,
                         creator_tx: std::sync::Arc::new(tokio::sync::Mutex::new(tx)),
                     },
                 );
@@ -330,6 +332,7 @@ impl Server {
                             Some(tango_protos::lobby::create_stream_to_client_message::Which::JoinInd(
                                 tango_protos::lobby::create_stream_to_client_message::JoinIndication {
                                     opponent_id: generated_opponent_id.clone(),
+                                    opponent_nickname: join_req.identity_token.clone(),
                                     game_info: Some(game_info),
                                 }
                             )),
@@ -340,6 +343,7 @@ impl Server {
                             Some(tango_protos::lobby::join_stream_to_client_message::Which::JoinResp(
                                 tango_protos::lobby::join_stream_to_client_message::JoinResponse {
                                     opponent_id: generated_opponent_id.clone(),
+                                    opponent_nickname: lobby.creator_nickname.clone(),
                                     game_info: Some(lobby.game_info.clone()),
                                     settings: Some(lobby.settings.clone()),
                                 }
