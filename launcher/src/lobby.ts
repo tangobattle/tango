@@ -3,7 +3,7 @@ import fetch from "node-fetch";
 
 import {
     CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
-    JoinStreamToServerMessage, QueryRequest, QueryResponse, Settings
+    JoinStreamToServerMessage, Patch, QueryRequest, QueryResponse, Settings
 } from "./protos/lobby";
 
 export { GameInfo, Settings, QueryResponse };
@@ -17,12 +17,16 @@ async function* wrapMessageStream(ws: WebSocket) {
 interface OpponentInfo {
   opponentId: string;
   gameInfo: GameInfo;
+}
+
+interface NegotiatedSession {
+  sessionId: string;
   saveData: Uint8Array;
 }
 
 interface LobbyJoinHandle {
   opponentInfo: OpponentInfo;
-  sessionId: Promise<string | null>;
+  negotiatedSession: Promise<NegotiatedSession | null>;
 }
 
 export async function join(
@@ -72,13 +76,12 @@ export async function join(
   const opponentInfo = {
     opponentId: resp.joinResp.opponentId,
     gameInfo: resp.joinResp.gameInfo,
-    saveData: resp.joinResp.saveData,
   };
 
   return {
     opponentInfo,
 
-    sessionId: (async () => {
+    negotiatedSession: (async () => {
       const { value: raw, done } = await stream.next();
       if (done) {
         return null;
@@ -89,7 +92,10 @@ export async function join(
         throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
       }
 
-      return resp.acceptInd.sessionId;
+      return {
+        sessionId: resp.acceptInd.sessionId,
+        saveData: resp.acceptInd.saveData,
+      };
     })(),
   };
 }
@@ -97,7 +103,7 @@ export async function join(
 interface LobbyCreateHandle {
   lobbyId: string;
   nextOpponent(): Promise<OpponentInfo | null>;
-  accept(opponentId: string): Promise<string>;
+  accept(opponentId: string): Promise<NegotiatedSession>;
   reject(opponentId: string): Promise<void>;
 }
 
@@ -105,6 +111,7 @@ export async function create(
   addr: string,
   identityToken: string,
   gameInfo: GameInfo,
+  availablePatches: Patch[],
   settings: Settings,
   saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
@@ -122,6 +129,7 @@ export async function create(
         createReq: {
           identityToken,
           gameInfo,
+          availablePatches,
           settings,
           saveData,
         },
@@ -168,7 +176,6 @@ export async function create(
       return {
         opponentId: resp.joinInd.opponentId,
         gameInfo: resp.joinInd.gameInfo,
-        saveData: resp.joinInd.saveData,
       };
     },
 
@@ -195,7 +202,10 @@ export async function create(
         )}`;
       }
 
-      return resp.acceptResp.sessionId;
+      return {
+        sessionId: resp.acceptResp.sessionId,
+        saveData: resp.acceptResp.saveData,
+      };
     },
 
     async reject(opponentId: string) {

@@ -4,14 +4,14 @@ import * as _m0 from "protobufjs/minimal";
 
 export const protobufPackage = "tango.lobby";
 
-export interface GameInfo {
-  romName: string;
-  patch: GameInfo_Patch | undefined;
-}
-
-export interface GameInfo_Patch {
+export interface Patch {
   name: string;
   version: string;
+}
+
+export interface GameInfo {
+  romName: string;
+  patch: Patch | undefined;
 }
 
 export interface Settings {
@@ -27,6 +27,7 @@ export interface CreateStreamToServerMessage {
 export interface CreateStreamToServerMessage_CreateRequest {
   identityToken: string;
   gameInfo: GameInfo | undefined;
+  availablePatches: Patch[];
   settings: Settings | undefined;
   saveData: Uint8Array;
 }
@@ -53,11 +54,11 @@ export interface CreateStreamToClientMessage_CreateResponse {
 export interface CreateStreamToClientMessage_JoinIndication {
   opponentId: string;
   gameInfo: GameInfo | undefined;
-  saveData: Uint8Array;
 }
 
 export interface CreateStreamToClientMessage_AcceptResponse {
   sessionId: string;
+  saveData: Uint8Array;
 }
 
 export interface CreateStreamToClientMessage_RejectResponse {}
@@ -82,11 +83,11 @@ export interface JoinStreamToClientMessage_JoinResponse {
   opponentId: string;
   gameInfo: GameInfo | undefined;
   settings: Settings | undefined;
-  saveData: Uint8Array;
 }
 
 export interface JoinStreamToClientMessage_AcceptIndication {
   sessionId: string;
+  saveData: Uint8Array;
 }
 
 export interface QueryRequest {
@@ -96,87 +97,16 @@ export interface QueryRequest {
 
 export interface QueryResponse {
   gameInfo: GameInfo | undefined;
+  availablePatches: Patch[];
   settings: Settings | undefined;
 }
 
-function createBaseGameInfo(): GameInfo {
-  return { romName: "", patch: undefined };
-}
-
-export const GameInfo = {
-  encode(
-    message: GameInfo,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.romName !== "") {
-      writer.uint32(10).string(message.romName);
-    }
-    if (message.patch !== undefined) {
-      GameInfo_Patch.encode(message.patch, writer.uint32(18).fork()).ldelim();
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GameInfo {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGameInfo();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.romName = reader.string();
-          break;
-        case 2:
-          message.patch = GameInfo_Patch.decode(reader, reader.uint32());
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): GameInfo {
-    return {
-      romName: isSet(object.romName) ? String(object.romName) : "",
-      patch: isSet(object.patch)
-        ? GameInfo_Patch.fromJSON(object.patch)
-        : undefined,
-    };
-  },
-
-  toJSON(message: GameInfo): unknown {
-    const obj: any = {};
-    message.romName !== undefined && (obj.romName = message.romName);
-    message.patch !== undefined &&
-      (obj.patch = message.patch
-        ? GameInfo_Patch.toJSON(message.patch)
-        : undefined);
-    return obj;
-  },
-
-  fromPartial<I extends Exact<DeepPartial<GameInfo>, I>>(object: I): GameInfo {
-    const message = createBaseGameInfo();
-    message.romName = object.romName ?? "";
-    message.patch =
-      object.patch !== undefined && object.patch !== null
-        ? GameInfo_Patch.fromPartial(object.patch)
-        : undefined;
-    return message;
-  },
-};
-
-function createBaseGameInfo_Patch(): GameInfo_Patch {
+function createBasePatch(): Patch {
   return { name: "", version: "" };
 }
 
-export const GameInfo_Patch = {
-  encode(
-    message: GameInfo_Patch,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
+export const Patch = {
+  encode(message: Patch, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
     if (message.name !== "") {
       writer.uint32(10).string(message.name);
     }
@@ -186,10 +116,10 @@ export const GameInfo_Patch = {
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): GameInfo_Patch {
+  decode(input: _m0.Reader | Uint8Array, length?: number): Patch {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGameInfo_Patch();
+    const message = createBasePatch();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -207,26 +137,89 @@ export const GameInfo_Patch = {
     return message;
   },
 
-  fromJSON(object: any): GameInfo_Patch {
+  fromJSON(object: any): Patch {
     return {
       name: isSet(object.name) ? String(object.name) : "",
       version: isSet(object.version) ? String(object.version) : "",
     };
   },
 
-  toJSON(message: GameInfo_Patch): unknown {
+  toJSON(message: Patch): unknown {
     const obj: any = {};
     message.name !== undefined && (obj.name = message.name);
     message.version !== undefined && (obj.version = message.version);
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<GameInfo_Patch>, I>>(
-    object: I
-  ): GameInfo_Patch {
-    const message = createBaseGameInfo_Patch();
+  fromPartial<I extends Exact<DeepPartial<Patch>, I>>(object: I): Patch {
+    const message = createBasePatch();
     message.name = object.name ?? "";
     message.version = object.version ?? "";
+    return message;
+  },
+};
+
+function createBaseGameInfo(): GameInfo {
+  return { romName: "", patch: undefined };
+}
+
+export const GameInfo = {
+  encode(
+    message: GameInfo,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.romName !== "") {
+      writer.uint32(10).string(message.romName);
+    }
+    if (message.patch !== undefined) {
+      Patch.encode(message.patch, writer.uint32(18).fork()).ldelim();
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GameInfo {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGameInfo();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.romName = reader.string();
+          break;
+        case 2:
+          message.patch = Patch.decode(reader, reader.uint32());
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GameInfo {
+    return {
+      romName: isSet(object.romName) ? String(object.romName) : "",
+      patch: isSet(object.patch) ? Patch.fromJSON(object.patch) : undefined,
+    };
+  },
+
+  toJSON(message: GameInfo): unknown {
+    const obj: any = {};
+    message.romName !== undefined && (obj.romName = message.romName);
+    message.patch !== undefined &&
+      (obj.patch = message.patch ? Patch.toJSON(message.patch) : undefined);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GameInfo>, I>>(object: I): GameInfo {
+    const message = createBaseGameInfo();
+    message.romName = object.romName ?? "";
+    message.patch =
+      object.patch !== undefined && object.patch !== null
+        ? Patch.fromPartial(object.patch)
+        : undefined;
     return message;
   },
 };
@@ -410,6 +403,7 @@ function createBaseCreateStreamToServerMessage_CreateRequest(): CreateStreamToSe
   return {
     identityToken: "",
     gameInfo: undefined,
+    availablePatches: [],
     settings: undefined,
     saveData: new Uint8Array(),
   };
@@ -426,11 +420,14 @@ export const CreateStreamToServerMessage_CreateRequest = {
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
+    for (const v of message.availablePatches) {
+      Patch.encode(v!, writer.uint32(26).fork()).ldelim();
+    }
     if (message.settings !== undefined) {
-      Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
+      Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
     }
     if (message.saveData.length !== 0) {
-      writer.uint32(34).bytes(message.saveData);
+      writer.uint32(42).bytes(message.saveData);
     }
     return writer;
   },
@@ -452,9 +449,12 @@ export const CreateStreamToServerMessage_CreateRequest = {
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 3:
-          message.settings = Settings.decode(reader, reader.uint32());
+          message.availablePatches.push(Patch.decode(reader, reader.uint32()));
           break;
         case 4:
+          message.settings = Settings.decode(reader, reader.uint32());
+          break;
+        case 5:
           message.saveData = reader.bytes();
           break;
         default:
@@ -473,6 +473,9 @@ export const CreateStreamToServerMessage_CreateRequest = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
+      availablePatches: Array.isArray(object?.availablePatches)
+        ? object.availablePatches.map((e: any) => Patch.fromJSON(e))
+        : [],
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
@@ -490,6 +493,13 @@ export const CreateStreamToServerMessage_CreateRequest = {
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
         : undefined);
+    if (message.availablePatches) {
+      obj.availablePatches = message.availablePatches.map((e) =>
+        e ? Patch.toJSON(e) : undefined
+      );
+    } else {
+      obj.availablePatches = [];
+    }
     message.settings !== undefined &&
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
@@ -510,6 +520,8 @@ export const CreateStreamToServerMessage_CreateRequest = {
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
         : undefined;
+    message.availablePatches =
+      object.availablePatches?.map((e) => Patch.fromPartial(e)) || [];
     message.settings =
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
@@ -845,7 +857,7 @@ export const CreateStreamToClientMessage_CreateResponse = {
 };
 
 function createBaseCreateStreamToClientMessage_JoinIndication(): CreateStreamToClientMessage_JoinIndication {
-  return { opponentId: "", gameInfo: undefined, saveData: new Uint8Array() };
+  return { opponentId: "", gameInfo: undefined };
 }
 
 export const CreateStreamToClientMessage_JoinIndication = {
@@ -858,9 +870,6 @@ export const CreateStreamToClientMessage_JoinIndication = {
     }
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
-    }
-    if (message.saveData.length !== 0) {
-      writer.uint32(26).bytes(message.saveData);
     }
     return writer;
   },
@@ -881,9 +890,6 @@ export const CreateStreamToClientMessage_JoinIndication = {
         case 2:
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
-        case 3:
-          message.saveData = reader.bytes();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -898,9 +904,6 @@ export const CreateStreamToClientMessage_JoinIndication = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
-        : new Uint8Array(),
     };
   },
 
@@ -911,10 +914,6 @@ export const CreateStreamToClientMessage_JoinIndication = {
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
         : undefined);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
-      ));
     return obj;
   },
 
@@ -927,13 +926,12 @@ export const CreateStreamToClientMessage_JoinIndication = {
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
         : undefined;
-    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
 
 function createBaseCreateStreamToClientMessage_AcceptResponse(): CreateStreamToClientMessage_AcceptResponse {
-  return { sessionId: "" };
+  return { sessionId: "", saveData: new Uint8Array() };
 }
 
 export const CreateStreamToClientMessage_AcceptResponse = {
@@ -943,6 +941,9 @@ export const CreateStreamToClientMessage_AcceptResponse = {
   ): _m0.Writer {
     if (message.sessionId !== "") {
       writer.uint32(10).string(message.sessionId);
+    }
+    if (message.saveData.length !== 0) {
+      writer.uint32(18).bytes(message.saveData);
     }
     return writer;
   },
@@ -960,6 +961,9 @@ export const CreateStreamToClientMessage_AcceptResponse = {
         case 1:
           message.sessionId = reader.string();
           break;
+        case 2:
+          message.saveData = reader.bytes();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -971,12 +975,19 @@ export const CreateStreamToClientMessage_AcceptResponse = {
   fromJSON(object: any): CreateStreamToClientMessage_AcceptResponse {
     return {
       sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
+      saveData: isSet(object.saveData)
+        ? bytesFromBase64(object.saveData)
+        : new Uint8Array(),
     };
   },
 
   toJSON(message: CreateStreamToClientMessage_AcceptResponse): unknown {
     const obj: any = {};
     message.sessionId !== undefined && (obj.sessionId = message.sessionId);
+    message.saveData !== undefined &&
+      (obj.saveData = base64FromBytes(
+        message.saveData !== undefined ? message.saveData : new Uint8Array()
+      ));
     return obj;
   },
 
@@ -985,6 +996,7 @@ export const CreateStreamToClientMessage_AcceptResponse = {
   >(object: I): CreateStreamToClientMessage_AcceptResponse {
     const message = createBaseCreateStreamToClientMessage_AcceptResponse();
     message.sessionId = object.sessionId ?? "";
+    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
@@ -1309,12 +1321,7 @@ export const JoinStreamToClientMessage = {
 };
 
 function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientMessage_JoinResponse {
-  return {
-    opponentId: "",
-    gameInfo: undefined,
-    settings: undefined,
-    saveData: new Uint8Array(),
-  };
+  return { opponentId: "", gameInfo: undefined, settings: undefined };
 }
 
 export const JoinStreamToClientMessage_JoinResponse = {
@@ -1330,9 +1337,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
     }
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
-    }
-    if (message.saveData.length !== 0) {
-      writer.uint32(34).bytes(message.saveData);
     }
     return writer;
   },
@@ -1356,9 +1360,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
         case 3:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
-        case 4:
-          message.saveData = reader.bytes();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -1376,9 +1377,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
-        : new Uint8Array(),
     };
   },
 
@@ -1393,10 +1391,6 @@ export const JoinStreamToClientMessage_JoinResponse = {
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
         : undefined);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
-      ));
     return obj;
   },
 
@@ -1413,13 +1407,12 @@ export const JoinStreamToClientMessage_JoinResponse = {
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
         : undefined;
-    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
 
 function createBaseJoinStreamToClientMessage_AcceptIndication(): JoinStreamToClientMessage_AcceptIndication {
-  return { sessionId: "" };
+  return { sessionId: "", saveData: new Uint8Array() };
 }
 
 export const JoinStreamToClientMessage_AcceptIndication = {
@@ -1429,6 +1422,9 @@ export const JoinStreamToClientMessage_AcceptIndication = {
   ): _m0.Writer {
     if (message.sessionId !== "") {
       writer.uint32(10).string(message.sessionId);
+    }
+    if (message.saveData.length !== 0) {
+      writer.uint32(18).bytes(message.saveData);
     }
     return writer;
   },
@@ -1446,6 +1442,9 @@ export const JoinStreamToClientMessage_AcceptIndication = {
         case 1:
           message.sessionId = reader.string();
           break;
+        case 2:
+          message.saveData = reader.bytes();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -1457,12 +1456,19 @@ export const JoinStreamToClientMessage_AcceptIndication = {
   fromJSON(object: any): JoinStreamToClientMessage_AcceptIndication {
     return {
       sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
+      saveData: isSet(object.saveData)
+        ? bytesFromBase64(object.saveData)
+        : new Uint8Array(),
     };
   },
 
   toJSON(message: JoinStreamToClientMessage_AcceptIndication): unknown {
     const obj: any = {};
     message.sessionId !== undefined && (obj.sessionId = message.sessionId);
+    message.saveData !== undefined &&
+      (obj.saveData = base64FromBytes(
+        message.saveData !== undefined ? message.saveData : new Uint8Array()
+      ));
     return obj;
   },
 
@@ -1471,6 +1477,7 @@ export const JoinStreamToClientMessage_AcceptIndication = {
   >(object: I): JoinStreamToClientMessage_AcceptIndication {
     const message = createBaseJoinStreamToClientMessage_AcceptIndication();
     message.sessionId = object.sessionId ?? "";
+    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
@@ -1542,7 +1549,7 @@ export const QueryRequest = {
 };
 
 function createBaseQueryResponse(): QueryResponse {
-  return { gameInfo: undefined, settings: undefined };
+  return { gameInfo: undefined, availablePatches: [], settings: undefined };
 }
 
 export const QueryResponse = {
@@ -1553,8 +1560,11 @@ export const QueryResponse = {
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(10).fork()).ldelim();
     }
+    for (const v of message.availablePatches) {
+      Patch.encode(v!, writer.uint32(18).fork()).ldelim();
+    }
     if (message.settings !== undefined) {
-      Settings.encode(message.settings, writer.uint32(18).fork()).ldelim();
+      Settings.encode(message.settings, writer.uint32(26).fork()).ldelim();
     }
     return writer;
   },
@@ -1570,6 +1580,9 @@ export const QueryResponse = {
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 2:
+          message.availablePatches.push(Patch.decode(reader, reader.uint32()));
+          break;
+        case 3:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
         default:
@@ -1585,6 +1598,9 @@ export const QueryResponse = {
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
+      availablePatches: Array.isArray(object?.availablePatches)
+        ? object.availablePatches.map((e: any) => Patch.fromJSON(e))
+        : [],
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
@@ -1597,6 +1613,13 @@ export const QueryResponse = {
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
         : undefined);
+    if (message.availablePatches) {
+      obj.availablePatches = message.availablePatches.map((e) =>
+        e ? Patch.toJSON(e) : undefined
+      );
+    } else {
+      obj.availablePatches = [];
+    }
     message.settings !== undefined &&
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
@@ -1612,6 +1635,8 @@ export const QueryResponse = {
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
         : undefined;
+    message.availablePatches =
+      object.availablePatches?.map((e) => Patch.fromPartial(e)) || [];
     message.settings =
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
