@@ -246,7 +246,7 @@ export async function getInfo(
   lobbyId: string,
   { signal }: { signal?: AbortSignal } = {}
 ) {
-  const httpResp = await fetch(`${addr}/query`, {
+  const httpResp = await fetch(`${addr}/get_info`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-protobuf",
@@ -267,7 +267,7 @@ export async function getSaveData(
   lobbyId: string,
   { signal }: { signal?: AbortSignal } = {}
 ) {
-  const httpResp = await fetch(`${addr}/save_data`, {
+  const httpResp = await fetch(`${addr}/get_save_data`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-protobuf",
