@@ -33,11 +33,11 @@ export interface CreateStreamToServerMessage_CreateRequest {
 }
 
 export interface CreateStreamToServerMessage_AcceptRequest {
-  opponentId: string;
+  opponentId: number;
 }
 
 export interface CreateStreamToServerMessage_RejectRequest {
-  opponentId: string;
+  opponentId: number;
 }
 
 export interface CreateStreamToClientMessage {
@@ -52,7 +52,7 @@ export interface CreateStreamToClientMessage_CreateResponse {
 }
 
 export interface CreateStreamToClientMessage_JoinIndication {
-  opponentId: string;
+  opponentId: number;
   opponentNickname: string;
   gameInfo: GameInfo | undefined;
   saveData: Uint8Array;
@@ -81,7 +81,7 @@ export interface JoinStreamToClientMessage {
 }
 
 export interface JoinStreamToClientMessage_JoinResponse {
-  opponentId: string;
+  opponentId: number;
   opponentNickname: string;
   gameInfo: GameInfo | undefined;
   settings: Settings | undefined;
@@ -537,7 +537,7 @@ export const CreateStreamToServerMessage_CreateRequest = {
 };
 
 function createBaseCreateStreamToServerMessage_AcceptRequest(): CreateStreamToServerMessage_AcceptRequest {
-  return { opponentId: "" };
+  return { opponentId: 0 };
 }
 
 export const CreateStreamToServerMessage_AcceptRequest = {
@@ -545,8 +545,8 @@ export const CreateStreamToServerMessage_AcceptRequest = {
     message: CreateStreamToServerMessage_AcceptRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== "") {
-      writer.uint32(10).string(message.opponentId);
+    if (message.opponentId !== 0) {
+      writer.uint32(8).uint32(message.opponentId);
     }
     return writer;
   },
@@ -562,7 +562,7 @@ export const CreateStreamToServerMessage_AcceptRequest = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.string();
+          message.opponentId = reader.uint32();
           break;
         default:
           reader.skipType(tag & 7);
@@ -574,13 +574,14 @@ export const CreateStreamToServerMessage_AcceptRequest = {
 
   fromJSON(object: any): CreateStreamToServerMessage_AcceptRequest {
     return {
-      opponentId: isSet(object.opponentId) ? String(object.opponentId) : "",
+      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
     };
   },
 
   toJSON(message: CreateStreamToServerMessage_AcceptRequest): unknown {
     const obj: any = {};
-    message.opponentId !== undefined && (obj.opponentId = message.opponentId);
+    message.opponentId !== undefined &&
+      (obj.opponentId = Math.round(message.opponentId));
     return obj;
   },
 
@@ -588,13 +589,13 @@ export const CreateStreamToServerMessage_AcceptRequest = {
     I extends Exact<DeepPartial<CreateStreamToServerMessage_AcceptRequest>, I>
   >(object: I): CreateStreamToServerMessage_AcceptRequest {
     const message = createBaseCreateStreamToServerMessage_AcceptRequest();
-    message.opponentId = object.opponentId ?? "";
+    message.opponentId = object.opponentId ?? 0;
     return message;
   },
 };
 
 function createBaseCreateStreamToServerMessage_RejectRequest(): CreateStreamToServerMessage_RejectRequest {
-  return { opponentId: "" };
+  return { opponentId: 0 };
 }
 
 export const CreateStreamToServerMessage_RejectRequest = {
@@ -602,8 +603,8 @@ export const CreateStreamToServerMessage_RejectRequest = {
     message: CreateStreamToServerMessage_RejectRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== "") {
-      writer.uint32(10).string(message.opponentId);
+    if (message.opponentId !== 0) {
+      writer.uint32(8).uint32(message.opponentId);
     }
     return writer;
   },
@@ -619,7 +620,7 @@ export const CreateStreamToServerMessage_RejectRequest = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.string();
+          message.opponentId = reader.uint32();
           break;
         default:
           reader.skipType(tag & 7);
@@ -631,13 +632,14 @@ export const CreateStreamToServerMessage_RejectRequest = {
 
   fromJSON(object: any): CreateStreamToServerMessage_RejectRequest {
     return {
-      opponentId: isSet(object.opponentId) ? String(object.opponentId) : "",
+      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
     };
   },
 
   toJSON(message: CreateStreamToServerMessage_RejectRequest): unknown {
     const obj: any = {};
-    message.opponentId !== undefined && (obj.opponentId = message.opponentId);
+    message.opponentId !== undefined &&
+      (obj.opponentId = Math.round(message.opponentId));
     return obj;
   },
 
@@ -645,7 +647,7 @@ export const CreateStreamToServerMessage_RejectRequest = {
     I extends Exact<DeepPartial<CreateStreamToServerMessage_RejectRequest>, I>
   >(object: I): CreateStreamToServerMessage_RejectRequest {
     const message = createBaseCreateStreamToServerMessage_RejectRequest();
-    message.opponentId = object.opponentId ?? "";
+    message.opponentId = object.opponentId ?? 0;
     return message;
   },
 };
@@ -863,7 +865,7 @@ export const CreateStreamToClientMessage_CreateResponse = {
 
 function createBaseCreateStreamToClientMessage_JoinIndication(): CreateStreamToClientMessage_JoinIndication {
   return {
-    opponentId: "",
+    opponentId: 0,
     opponentNickname: "",
     gameInfo: undefined,
     saveData: new Uint8Array(),
@@ -875,8 +877,8 @@ export const CreateStreamToClientMessage_JoinIndication = {
     message: CreateStreamToClientMessage_JoinIndication,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== "") {
-      writer.uint32(10).string(message.opponentId);
+    if (message.opponentId !== 0) {
+      writer.uint32(8).uint32(message.opponentId);
     }
     if (message.opponentNickname !== "") {
       writer.uint32(18).string(message.opponentNickname);
@@ -901,7 +903,7 @@ export const CreateStreamToClientMessage_JoinIndication = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.string();
+          message.opponentId = reader.uint32();
           break;
         case 2:
           message.opponentNickname = reader.string();
@@ -922,7 +924,7 @@ export const CreateStreamToClientMessage_JoinIndication = {
 
   fromJSON(object: any): CreateStreamToClientMessage_JoinIndication {
     return {
-      opponentId: isSet(object.opponentId) ? String(object.opponentId) : "",
+      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
       opponentNickname: isSet(object.opponentNickname)
         ? String(object.opponentNickname)
         : "",
@@ -937,7 +939,8 @@ export const CreateStreamToClientMessage_JoinIndication = {
 
   toJSON(message: CreateStreamToClientMessage_JoinIndication): unknown {
     const obj: any = {};
-    message.opponentId !== undefined && (obj.opponentId = message.opponentId);
+    message.opponentId !== undefined &&
+      (obj.opponentId = Math.round(message.opponentId));
     message.opponentNickname !== undefined &&
       (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
@@ -955,7 +958,7 @@ export const CreateStreamToClientMessage_JoinIndication = {
     I extends Exact<DeepPartial<CreateStreamToClientMessage_JoinIndication>, I>
   >(object: I): CreateStreamToClientMessage_JoinIndication {
     const message = createBaseCreateStreamToClientMessage_JoinIndication();
-    message.opponentId = object.opponentId ?? "";
+    message.opponentId = object.opponentId ?? 0;
     message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
@@ -1341,7 +1344,7 @@ export const JoinStreamToClientMessage = {
 
 function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientMessage_JoinResponse {
   return {
-    opponentId: "",
+    opponentId: 0,
     opponentNickname: "",
     gameInfo: undefined,
     settings: undefined,
@@ -1353,8 +1356,8 @@ export const JoinStreamToClientMessage_JoinResponse = {
     message: JoinStreamToClientMessage_JoinResponse,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== "") {
-      writer.uint32(10).string(message.opponentId);
+    if (message.opponentId !== 0) {
+      writer.uint32(8).uint32(message.opponentId);
     }
     if (message.opponentNickname !== "") {
       writer.uint32(18).string(message.opponentNickname);
@@ -1379,7 +1382,7 @@ export const JoinStreamToClientMessage_JoinResponse = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.string();
+          message.opponentId = reader.uint32();
           break;
         case 2:
           message.opponentNickname = reader.string();
@@ -1400,7 +1403,7 @@ export const JoinStreamToClientMessage_JoinResponse = {
 
   fromJSON(object: any): JoinStreamToClientMessage_JoinResponse {
     return {
-      opponentId: isSet(object.opponentId) ? String(object.opponentId) : "",
+      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
       opponentNickname: isSet(object.opponentNickname)
         ? String(object.opponentNickname)
         : "",
@@ -1415,7 +1418,8 @@ export const JoinStreamToClientMessage_JoinResponse = {
 
   toJSON(message: JoinStreamToClientMessage_JoinResponse): unknown {
     const obj: any = {};
-    message.opponentId !== undefined && (obj.opponentId = message.opponentId);
+    message.opponentId !== undefined &&
+      (obj.opponentId = Math.round(message.opponentId));
     message.opponentNickname !== undefined &&
       (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
@@ -1433,7 +1437,7 @@ export const JoinStreamToClientMessage_JoinResponse = {
     I extends Exact<DeepPartial<JoinStreamToClientMessage_JoinResponse>, I>
   >(object: I): JoinStreamToClientMessage_JoinResponse {
     const message = createBaseJoinStreamToClientMessage_JoinResponse();
-    message.opponentId = object.opponentId ?? "";
+    message.opponentId = object.opponentId ?? 0;
     message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null

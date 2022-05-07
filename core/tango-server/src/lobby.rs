@@ -15,9 +15,10 @@ struct Lobby {
     available_patches: Vec<tango_protos::lobby::Patch>,
     settings: tango_protos::lobby::Settings,
     save_data: Vec<u8>,
+    next_opponent_id: u32,
     pending_players: std::sync::Arc<
         tokio::sync::Mutex<
-            std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<PendingPlayer>>>,
+            std::collections::HashMap<u32, std::sync::Arc<tokio::sync::Mutex<PendingPlayer>>>,
         >,
     >,
     creator_nickname: String,
@@ -149,6 +150,7 @@ impl Server {
                         settings,
                         available_patches: create_req.available_patches,
                         save_data: create_req.save_data,
+                        next_opponent_id: 0,
                         pending_players: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
                         creator_nickname: create_req.nickname,
                         creator_tx: std::sync::Arc::new(tokio::sync::Mutex::new(tx)),
@@ -331,15 +333,16 @@ impl Server {
                     anyhow::bail!("create request was missing game info");
                 };
 
-                let lobbies = lobbies.lock().await;
-                let lobby = match lobbies.get(&join_req.lobby_id) {
+                let mut lobbies = lobbies.lock().await;
+                let lobby = match lobbies.get_mut(&join_req.lobby_id) {
                     Some(lobby) => lobby,
                     None => {
                         anyhow::bail!("no such lobby");
                     }
                 };
 
-                let generated_opponent_id = generate_id();
+                let opponent_id = lobby.next_opponent_id;
+                lobby.next_opponent_id += 1;
                 let (close_sender, close_receiver) = tokio::sync::oneshot::channel();
                 {
                     let mut creator_tx = lobby.creator_tx.lock().await;
@@ -347,7 +350,7 @@ impl Server {
                         which:
                             Some(tango_protos::lobby::create_stream_to_client_message::Which::JoinInd(
                                 tango_protos::lobby::create_stream_to_client_message::JoinIndication {
-                                    opponent_id: generated_opponent_id.clone(),
+                                    opponent_id,
                                     opponent_nickname: join_req.nickname.clone(),
                                     game_info: Some(game_info),
                                     save_data: join_req.save_data.clone(),
@@ -359,7 +362,7 @@ impl Server {
                         which:
                             Some(tango_protos::lobby::join_stream_to_client_message::Which::JoinResp(
                                 tango_protos::lobby::join_stream_to_client_message::JoinResponse {
-                                    opponent_id: generated_opponent_id.clone(),
+                                    opponent_id,
                                     opponent_nickname: lobby.creator_nickname.clone(),
                                     game_info: Some(lobby.game_info.clone()),
                                     settings: Some(lobby.settings.clone()),
@@ -374,11 +377,11 @@ impl Server {
 
                     let mut pending_players = lobby.pending_players.lock().await;
                     pending_players
-                        .insert(generated_opponent_id.clone(), pp);
+                        .insert(opponent_id, pp);
                 }
 
                 *lobby_and_opponent_id.lock().await =
-                    Some((join_req.lobby_id.clone(), generated_opponent_id.clone()));
+                    Some((join_req.lobby_id.clone(), opponent_id));
 
                 close_receiver.await?;
 

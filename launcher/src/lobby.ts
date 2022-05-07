@@ -18,7 +18,7 @@ async function* wrapMessageStream(ws: WebSocket) {
 }
 
 interface OpponentInfo {
-  id: string;
+  id: number;
   nickname: string;
   gameInfo: GameInfo;
 }
@@ -111,8 +111,8 @@ interface LobbyCreateHandle {
     info: OpponentInfo;
     saveData: Uint8Array;
   } | null>;
-  accept(id: string): Promise<NegotiatedSession>;
-  reject(id: string): Promise<void>;
+  accept(id: number): Promise<NegotiatedSession>;
+  reject(id: number): Promise<void>;
 }
 
 export async function create(
@@ -193,7 +193,7 @@ export async function create(
       };
     },
 
-    async accept(opponentId: string) {
+    async accept(opponentId: number) {
       ws.send(
         CreateStreamToServerMessage.encode({
           createReq: undefined,
@@ -221,7 +221,7 @@ export async function create(
       };
     },
 
-    async reject(opponentId: string) {
+    async reject(opponentId: number) {
       ws.send(
         CreateStreamToServerMessage.encode({
           createReq: undefined,

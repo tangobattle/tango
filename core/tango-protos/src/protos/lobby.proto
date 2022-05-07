@@ -23,9 +23,9 @@ message CreateStreamToServerMessage {
     bytes save_data = 5;
   }
 
-  message AcceptRequest { string opponent_id = 1; }
+  message AcceptRequest { uint32 opponent_id = 1; }
 
-  message RejectRequest { string opponent_id = 1; }
+  message RejectRequest { uint32 opponent_id = 1; }
 
   oneof which {
     CreateRequest create_req = 1;
@@ -38,7 +38,7 @@ message CreateStreamToClientMessage {
   message CreateResponse { string lobby_id = 1; }
 
   message JoinIndication {
-    string opponent_id = 1;
+    uint32 opponent_id = 1;
     string opponent_nickname = 2;
     GameInfo game_info = 3;
     bytes save_data = 4;
@@ -69,7 +69,7 @@ message JoinStreamToServerMessage {
 
 message JoinStreamToClientMessage {
   message JoinResponse {
-    string opponent_id = 1;
+    uint32 opponent_id = 1;
     string opponent_nickname = 2;
     GameInfo game_info = 3;
     Settings settings = 4;
