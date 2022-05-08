@@ -29,7 +29,7 @@ interface OpponentInfo {
 
 interface NegotiatedSession {
   sessionId: string;
-  saveData: Uint8Array;
+  opponentSaveData: Uint8Array;
 }
 
 interface LobbyJoinHandle {
@@ -125,8 +125,8 @@ export async function join(
 
       return {
         sessionId: resp.proposeResp.ok.sessionId,
-        saveData: await promisify(zlib.brotliDecompress)(
-          resp.proposeResp.ok.saveData
+        opponentSaveData: await promisify(zlib.brotliDecompress)(
+          resp.proposeResp.ok.opponentSaveData
         ),
       };
     },
@@ -247,8 +247,8 @@ export async function create(
 
       return {
         sessionId: resp.acceptResp.ok.sessionId,
-        saveData: await promisify(zlib.brotliDecompress)(
-          resp.acceptResp.ok.saveData
+        opponentSaveData: await promisify(zlib.brotliDecompress)(
+          resp.acceptResp.ok.opponentSaveData
         ),
       };
     },

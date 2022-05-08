@@ -63,7 +63,7 @@ message CreateStreamToClientMessage {
     }
     message Ok {
       string session_id = 1;
-      bytes save_data = 2;
+      bytes opponent_save_data = 2;
     }
     oneof which {
       Ok ok = 1;
@@ -127,7 +127,7 @@ message JoinStreamToClientMessage {
     }
     message Ok {
       string session_id = 1;
-      bytes save_data = 2;
+      bytes opponent_save_data = 2;
     }
     oneof which {
       Ok ok = 1;

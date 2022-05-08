@@ -225,12 +225,11 @@ impl Server {
                                         tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
                                             which: Some(tango_protos::lobby::create_stream_to_client_message::accept_response::Which::Ok(tango_protos::lobby::create_stream_to_client_message::accept_response::Ok{
                                                 session_id: session_id.clone(),
-                                                save_data: pp_save_data.clone(),
+                                                opponent_save_data: pp_save_data.clone(),
                                             })),
                                         }
                                     )),
                             }.encode_to_vec())).await?;
-
 
                             pp.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
                                 which:
@@ -238,7 +237,7 @@ impl Server {
                                         tango_protos::lobby::join_stream_to_client_message::ProposeResponse {
                                             which: Some(tango_protos::lobby::join_stream_to_client_message::propose_response::Which::Ok(tango_protos::lobby::join_stream_to_client_message::propose_response::Ok{
                                                 session_id,
-                                                save_data: accept_req.save_data,
+                                                opponent_save_data: accept_req.save_data,
                                             })),
                                         }
                                     )),

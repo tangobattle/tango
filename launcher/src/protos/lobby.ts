@@ -144,7 +144,7 @@ export function createStreamToClientMessage_AcceptResponse_Error_ReasonToJSON(
 
 export interface CreateStreamToClientMessage_AcceptResponse_Ok {
   sessionId: string;
-  saveData: Uint8Array;
+  opponentSaveData: Uint8Array;
 }
 
 export interface CreateStreamToClientMessage_RejectResponse {}
@@ -274,7 +274,7 @@ export function joinStreamToClientMessage_ProposeResponse_Error_ReasonToJSON(
 
 export interface JoinStreamToClientMessage_ProposeResponse_Ok {
   sessionId: string;
-  saveData: Uint8Array;
+  opponentSaveData: Uint8Array;
 }
 
 export interface JoinStreamToClientMessage_DisconnectIndication {
@@ -1401,7 +1401,7 @@ export const CreateStreamToClientMessage_AcceptResponse_Error = {
 };
 
 function createBaseCreateStreamToClientMessage_AcceptResponse_Ok(): CreateStreamToClientMessage_AcceptResponse_Ok {
-  return { sessionId: "", saveData: new Uint8Array() };
+  return { sessionId: "", opponentSaveData: new Uint8Array() };
 }
 
 export const CreateStreamToClientMessage_AcceptResponse_Ok = {
@@ -1412,8 +1412,8 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
     if (message.sessionId !== "") {
       writer.uint32(10).string(message.sessionId);
     }
-    if (message.saveData.length !== 0) {
-      writer.uint32(18).bytes(message.saveData);
+    if (message.opponentSaveData.length !== 0) {
+      writer.uint32(18).bytes(message.opponentSaveData);
     }
     return writer;
   },
@@ -1432,7 +1432,7 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
           message.sessionId = reader.string();
           break;
         case 2:
-          message.saveData = reader.bytes();
+          message.opponentSaveData = reader.bytes();
           break;
         default:
           reader.skipType(tag & 7);
@@ -1445,8 +1445,8 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
   fromJSON(object: any): CreateStreamToClientMessage_AcceptResponse_Ok {
     return {
       sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
+      opponentSaveData: isSet(object.opponentSaveData)
+        ? bytesFromBase64(object.opponentSaveData)
         : new Uint8Array(),
     };
   },
@@ -1454,9 +1454,11 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
   toJSON(message: CreateStreamToClientMessage_AcceptResponse_Ok): unknown {
     const obj: any = {};
     message.sessionId !== undefined && (obj.sessionId = message.sessionId);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
+    message.opponentSaveData !== undefined &&
+      (obj.opponentSaveData = base64FromBytes(
+        message.opponentSaveData !== undefined
+          ? message.opponentSaveData
+          : new Uint8Array()
       ));
     return obj;
   },
@@ -1469,7 +1471,7 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
   >(object: I): CreateStreamToClientMessage_AcceptResponse_Ok {
     const message = createBaseCreateStreamToClientMessage_AcceptResponse_Ok();
     message.sessionId = object.sessionId ?? "";
-    message.saveData = object.saveData ?? new Uint8Array();
+    message.opponentSaveData = object.opponentSaveData ?? new Uint8Array();
     return message;
   },
 };
@@ -2317,7 +2319,7 @@ export const JoinStreamToClientMessage_ProposeResponse_Error = {
 };
 
 function createBaseJoinStreamToClientMessage_ProposeResponse_Ok(): JoinStreamToClientMessage_ProposeResponse_Ok {
-  return { sessionId: "", saveData: new Uint8Array() };
+  return { sessionId: "", opponentSaveData: new Uint8Array() };
 }
 
 export const JoinStreamToClientMessage_ProposeResponse_Ok = {
@@ -2328,8 +2330,8 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
     if (message.sessionId !== "") {
       writer.uint32(10).string(message.sessionId);
     }
-    if (message.saveData.length !== 0) {
-      writer.uint32(18).bytes(message.saveData);
+    if (message.opponentSaveData.length !== 0) {
+      writer.uint32(18).bytes(message.opponentSaveData);
     }
     return writer;
   },
@@ -2348,7 +2350,7 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
           message.sessionId = reader.string();
           break;
         case 2:
-          message.saveData = reader.bytes();
+          message.opponentSaveData = reader.bytes();
           break;
         default:
           reader.skipType(tag & 7);
@@ -2361,8 +2363,8 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
   fromJSON(object: any): JoinStreamToClientMessage_ProposeResponse_Ok {
     return {
       sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
+      opponentSaveData: isSet(object.opponentSaveData)
+        ? bytesFromBase64(object.opponentSaveData)
         : new Uint8Array(),
     };
   },
@@ -2370,9 +2372,11 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
   toJSON(message: JoinStreamToClientMessage_ProposeResponse_Ok): unknown {
     const obj: any = {};
     message.sessionId !== undefined && (obj.sessionId = message.sessionId);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
+    message.opponentSaveData !== undefined &&
+      (obj.opponentSaveData = base64FromBytes(
+        message.opponentSaveData !== undefined
+          ? message.opponentSaveData
+          : new Uint8Array()
       ));
     return obj;
   },
@@ -2385,7 +2389,7 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
   >(object: I): JoinStreamToClientMessage_ProposeResponse_Ok {
     const message = createBaseJoinStreamToClientMessage_ProposeResponse_Ok();
     message.sessionId = object.sessionId ?? "";
-    message.saveData = object.saveData ?? new Uint8Array();
+    message.opponentSaveData = object.opponentSaveData ?? new Uint8Array();
     return message;
   },
 };
