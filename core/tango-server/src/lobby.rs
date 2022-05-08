@@ -177,21 +177,16 @@ impl Server {
                                 anyhow::bail!("no such lobby");
                             };
 
-                            let opponent = {
-                                if let Some(opponent) = lobby.opponent.as_mut() {
-                                    opponent
-                                } else {
-                                    anyhow::bail!("no such opponent");
-                                }
+                            let opponent = if let Some(opponent) = lobby.opponent.as_mut() {
+                                opponent
+                            } else {
+                                anyhow::bail!("no such opponent");
                             };
 
-                            let opponent_save_data = match &opponent.save_data {
-                                None => {
-                                    anyhow::bail!("no save data");
-                                },
-                                Some(save_data) => {
-                                    save_data.clone()
-                                },
+                            let opponent_save_data = if let Some(opponent_save_data) = opponent.save_data.as_ref() {
+                                opponent_save_data.clone()
+                            } else {
+                                anyhow::bail!("no save data");
                             };
 
                             let session_id = generate_id();
@@ -285,19 +280,18 @@ impl Server {
                 let (close_tx, close_rx) = tokio::sync::oneshot::channel();
                 {
                     let mut lobbies = lobbies.lock().await;
-                    let lobby = match lobbies.get_mut(&lobby_id) {
-                        Some(lobby) => lobby,
-                        None => {
-                            tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
-                                which:
-                                    Some(tango_protos::lobby::join_stream_to_client_message::Which::JoinResp(
-                                        tango_protos::lobby::join_stream_to_client_message::JoinResponse {
-                                            info: None,
-                                        }
-                                    )),
-                            }.encode_to_vec())).await?;
-                            anyhow::bail!("no such lobby");
-                        }
+                    let lobby = if let Some(lobby) = lobbies.get_mut(&lobby_id) {
+                        lobby
+                    } else {
+                        tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
+                            which:
+                                Some(tango_protos::lobby::join_stream_to_client_message::Which::JoinResp(
+                                    tango_protos::lobby::join_stream_to_client_message::JoinResponse {
+                                        info: None,
+                                    }
+                                )),
+                        }.encode_to_vec())).await?;
+                        anyhow::bail!("no such lobby");
                     };
 
                     tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
@@ -345,18 +339,16 @@ impl Server {
                         },
                         Err(_) => {
                             let mut lobbies = lobbies.lock().await;
-                            let lobby = match lobbies.get_mut(&lobby_id) {
-                                Some(lobby) => lobby,
-                                None => {
-                                    anyhow::bail!("no such lobby");
-                                }
+                            let lobby = if let Some(lobby) = lobbies.get_mut(&lobby_id) {
+                                lobby
+                            } else {
+                                anyhow::bail!("no such lobby");
                             };
 
-                            let opponent = match lobby.opponent.as_mut() {
-                                Some(opponent) => opponent,
-                                None => {
-                                    anyhow::bail!("no such player");
-                                }
+                            let opponent = if let Some(opponent) = lobby.opponent.as_mut() {
+                                opponent
+                            } else {
+                                anyhow::bail!("no such opponent");
                             };
 
                             opponent.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
@@ -382,18 +374,16 @@ impl Server {
 
                 {
                     let mut lobbies = lobbies.lock().await;
-                    let lobby = match lobbies.get_mut(&lobby_id) {
-                        Some(lobby) => lobby,
-                        None => {
-                            anyhow::bail!("no such lobby");
-                        }
+                    let lobby = if let Some(lobby) = lobbies.get_mut(&lobby_id) {
+                        lobby
+                    } else {
+                        anyhow::bail!("no such lobby");
                     };
 
-                    let opponent = match lobby.opponent.as_mut() {
-                        Some(opponent) => opponent,
-                        None => {
-                            anyhow::bail!("no such player");
-                        }
+                    let opponent = if let Some(opponent) = lobby.opponent.as_mut() {
+                        opponent
+                    } else {
+                        anyhow::bail!("no such opponent");
                     };
 
                     opponent.save_data = Some(propose_req.save_data);
