@@ -362,17 +362,15 @@ impl Server {
             let opponent_nickname = opponent.nickname.clone();
 
             opponent.save_data = Some(propose_req.save_data);
-            {
-                lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
-                    which:
-                        Some(tango_protos::lobby::create_stream_to_client_message::Which::ProposeInd(
-                            tango_protos::lobby::create_stream_to_client_message::ProposeIndication {
-                                opponent_nickname,
-                                game_info: propose_req.game_info,
-                            }
-                        )),
-                }.encode_to_vec())).await?;
-            }
+            lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
+                which:
+                    Some(tango_protos::lobby::create_stream_to_client_message::Which::ProposeInd(
+                        tango_protos::lobby::create_stream_to_client_message::ProposeIndication {
+                            opponent_nickname,
+                            game_info: propose_req.game_info,
+                        }
+                    )),
+            }.encode_to_vec())).await?;
         }
 
         Ok(())
