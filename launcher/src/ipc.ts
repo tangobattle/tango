@@ -51,11 +51,20 @@ export class Core extends EventEmitter {
       this.proc.kill();
     });
 
-    this.proc.stderr.on("data", (data) => {
-      this.emit("stderr", data.toString());
-    });
+    (async () => {
+      for await (const data of this!.proc.stderr) {
+        for (const line of data.toString().split(/\n/g)) {
+          if (line == "") {
+            continue;
+          }
+          // eslint-disable-next-line no-console
+          console.info("core:", line);
+        }
+        this!.emit("stderr", data);
+      }
+    })();
 
-    this.proc.stderr.on("error", (err) => {
+    this.proc.on("error", (err) => {
       this.emit("error", err);
     });
 
@@ -67,8 +76,8 @@ export class Core extends EventEmitter {
     });
   }
 
-  private async _rawWrite(buf: Buffer) {
-    const r = Readable.from(buf);
+  private async _rawWrite(buf: Uint8Array) {
+    const r = Readable.from(Buffer.from(buf));
     r.pipe(this.proc.stdin, { end: false });
     await once(r, "end");
   }
@@ -91,14 +100,14 @@ export class Core extends EventEmitter {
       chunks.push(chunk);
       n -= chunk.length;
     }
-    return Buffer.concat(chunks);
+    return new Uint8Array(Buffer.concat(chunks));
   }
 
-  private async _writeLengthDelimited(buf: Buffer) {
+  private async _writeLengthDelimited(buf: Uint8Array) {
     const header = Buffer.alloc(4);
     const dv = new DataView(new Uint8Array(header).buffer);
     dv.setUint32(0, buf.length, true);
-    await this._rawWrite(Buffer.from(dv.buffer));
+    await this._rawWrite(new Uint8Array(dv.buffer));
     await this._rawWrite(buf);
   }
 
@@ -113,9 +122,7 @@ export class Core extends EventEmitter {
   }
 
   public async send(p: ToCoreMessage) {
-    await this._writeLengthDelimited(
-      Buffer.from(ToCoreMessage.encode(p).finish())
-    );
+    await this._writeLengthDelimited(ToCoreMessage.encode(p).finish());
   }
 
   public async receive() {

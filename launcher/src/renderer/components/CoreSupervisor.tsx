@@ -83,7 +83,7 @@ export function CoreSupervisor({
         configRef.current.keymapping,
         configRef.current.signalingConnectAddr,
         configRef.current.iceServers,
-        sessionId,
+        "aaa",
         {
           env: {
             WGPU_BACKEND:
@@ -134,6 +134,23 @@ export function CoreSupervisor({
         ) {
           break;
         }
+      }
+
+      let i = 0;
+      while (i <= 0xff) {
+        await core.send({
+          startReq: undefined,
+          smuggleReq: { data: new Uint8Array([i]) },
+        });
+        const resp = await core.receive();
+        console.log("RESP", resp);
+        if (resp?.smuggleInd == null) {
+          throw "Aaaa";
+        }
+        if (resp.smuggleInd.data[0] != i) {
+          throw "aaa";
+        }
+        i++;
       }
 
       await core.send({

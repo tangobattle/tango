@@ -10,10 +10,11 @@ message GameInfo {
 }
 
 message SetSettings {
-  uint32 match_type = 1;
-  GameInfo game_info = 2;
-  repeated GameInfo available_games = 3;
-  uint32 input_delay = 4;
+  string nickname = 1;
+  uint32 match_type = 2;
+  GameInfo game_info = 3;
+  repeated GameInfo available_games = 4;
+  uint32 input_delay = 5;
 }
 
 message Commit { bytes commitment = 1; }

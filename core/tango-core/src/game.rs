@@ -23,7 +23,7 @@ pub struct Keymapping {
 pub struct Game {
     rt: tokio::runtime::Runtime,
     gui: gui::Gui,
-    ipc_client: ipc::Client,
+    ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
     _audio_device: cpal::Device,
@@ -44,7 +44,7 @@ enum UserEvent {
 impl Game {
     pub fn new(
         rt: tokio::runtime::Runtime,
-        ipc_client: ipc::Client,
+        ipc_sender: ipc::Sender,
         window_title: String,
         keymapping: Keymapping,
         rom_path: std::path::PathBuf,
@@ -258,7 +258,7 @@ impl Game {
         Ok(Game {
             rt,
             gui,
-            ipc_client,
+            ipc_sender,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
             keymapping,
@@ -275,7 +275,7 @@ impl Game {
 
     pub fn run(mut self) -> anyhow::Result<()> {
         self.rt.block_on(async {
-            self.ipc_client
+            self.ipc_sender
                 .send(tango_protos::ipc::FromCoreMessage {
                     which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
                         tango_protos::ipc::from_core_message::StateIndication {

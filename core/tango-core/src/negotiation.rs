@@ -38,7 +38,7 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 pub async fn negotiate(
-    ipc_client: &mut ipc::Client,
+    ipc_sender: &mut ipc::Sender,
     session_id: &str,
     signaling_connect_addr: &str,
     ice_servers: &[String],
@@ -50,7 +50,7 @@ pub async fn negotiate(
     Error,
 > {
     log::info!("negotiating match, session_id = {}", session_id);
-    ipc_client
+    ipc_sender
         .send(tango_protos::ipc::FromCoreMessage {
             which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
                 tango_protos::ipc::from_core_message::StateIndication {
@@ -99,7 +99,7 @@ pub async fn negotiate(
         peer_conn.remote_description().expect("remote sdp").sdp
     );
 
-    ipc_client
+    ipc_sender
         .send(tango_protos::ipc::FromCoreMessage {
             which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
                 tango_protos::ipc::from_core_message::StateIndication {
@@ -143,7 +143,7 @@ pub async fn negotiate(
         return Err(Error::ProtocolVersionMismatch);
     }
 
-    ipc_client
+    ipc_sender
         .send(tango_protos::ipc::FromCoreMessage {
             which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
                 tango_protos::ipc::from_core_message::StateIndication {
