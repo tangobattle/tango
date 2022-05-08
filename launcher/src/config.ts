@@ -22,10 +22,7 @@ export interface Config {
   wgpuBackend: string | null;
   rustLogFilter: string;
   keymapping: Keymapping;
-  lobby: {
-    address: string;
-    insecure: boolean;
-  };
+  signalingConnectAddr: string;
   iceServers: string[];
 }
 
@@ -48,10 +45,7 @@ export const DEFAULT: Config = {
     select: "Back",
     start: "Return",
   },
-  lobby: {
-    address: "lobby.tangobattle.com",
-    insecure: false,
-  },
+  signalingConnectAddr: "ws://mm.tangobattle.com/",
   iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",

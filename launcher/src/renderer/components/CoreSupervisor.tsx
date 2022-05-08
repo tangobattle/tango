@@ -22,7 +22,7 @@ export function CoreSupervisor({
   romName,
   patch,
   savePath,
-  matchSettings,
+  sessionId,
   windowTitle,
   incarnation,
   onExit,
@@ -30,13 +30,7 @@ export function CoreSupervisor({
   romName: string;
   patch: { name: string; version: string } | null;
   savePath: string;
-  matchSettings: {
-    sessionID: string;
-    replaysPath: string;
-    replayInfo: ReplayInfo;
-    inputDelay: number;
-    matchType: number;
-  } | null;
+  sessionId: string | null;
   incarnation: number;
   windowTitle: string;
   onExit: () => void;
@@ -59,7 +53,6 @@ export function CoreSupervisor({
     onExitRef.current = onExit;
   }, [onExit]);
 
-  const [state, setState] = React.useState<ipc.State | null>(null);
   const [stderr, setStderr] = React.useState<string[]>([]);
   const [exitLingering, setExitLingering] = React.useState(false);
 
@@ -82,28 +75,10 @@ export function CoreSupervisor({
       }
 
       const core = new ipc.Core(
-        {
-          window_title: windowTitle,
-          rom_path: outROMPath,
-          save_path: savePath,
-          keymapping: configRef.current.keymapping,
-          match_settings:
-            matchSettings == null
-              ? null
-              : {
-                  shadow_rom_path: outROMPath,
-                  shadow_save_path: savePath,
-                  session_id: matchSettings.sessionID,
-                  input_delay: matchSettings.inputDelay,
-                  match_type: matchSettings.matchType,
-                  signaling_connect_addr: `ws${
-                    !configRef.current.lobby.insecure ? "s" : ""
-                  }://${configRef.current.lobby.address}/signaling`,
-                  ice_servers: configRef.current.iceServers,
-                  replays_path: matchSettings.replaysPath,
-                  replay_metadata: JSON.stringify(matchSettings.replayInfo),
-                },
-        },
+        configRef.current.keymapping,
+        configRef.current.signalingConnectAddr,
+        configRef.current.iceServers,
+        sessionId,
         {
           env: {
             WGPU_BACKEND:
@@ -116,6 +91,17 @@ export function CoreSupervisor({
           signal: abortControllerRef.current.signal,
         }
       );
+      console.log(await core.receive());
+      await core.send({
+        startReq: {
+          windowTitle,
+          romPath,
+          savePath,
+          settings: undefined,
+        },
+        smuggleReq: undefined,
+      });
+
       core.on("exit", (exitStatus) => {
         setStderr((stderr) => {
           stderr.push(`\nexited with ${JSON.stringify(exitStatus)}\n`);
@@ -126,9 +112,6 @@ export function CoreSupervisor({
         } else {
           setExitLingering(true);
         }
-      });
-      core.on("state", (state) => {
-        setState(state);
       });
       core.on("stderr", (buf) => {
         setStderr((stderr) => {
@@ -150,7 +133,7 @@ export function CoreSupervisor({
     patchPath,
     outROMPath,
     windowTitle,
-    matchSettings,
+    sessionId,
     incarnation,
   ]);
 
@@ -197,7 +180,7 @@ export function CoreSupervisor({
                   size="2rem"
                 />
                 <Typography>
-                  {state == null ? (
+                  {/* {state == null ? (
                     <Trans i18nKey="supervisor:status.starting" />
                   ) : state == "Running" ? (
                     <Trans i18nKey="supervisor:status.running" />
@@ -205,7 +188,7 @@ export function CoreSupervisor({
                     <Trans i18nKey="supervisor:status.waiting" />
                   ) : state == "Connecting" ? (
                     <Trans i18nKey="supervisor:status.connecting" />
-                  ) : null}
+                  ) : null} */}
                 </Typography>
               </Stack>
               <Stack direction="row" justifyContent="flex-end">

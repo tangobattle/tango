@@ -1,8 +1,11 @@
-import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { ChildProcessWithoutNullStreams } from "child_process";
 import { once } from "events";
 import { EventEmitter, Readable } from "stream";
 
+import { app } from "@electron/remote";
+
 import { Keymapping } from "./config";
+import { spawn } from "./process";
 import { FromCoreMessage, ToCoreMessage } from "./protos/ipc";
 
 export interface MatchSettings {
@@ -21,25 +24,26 @@ export class Core extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams;
 
   constructor(
-    corePath: string,
     keymapping: Keymapping,
-    signalingServerAddr: string,
+    signalingConnectAddr: string,
     iceServers: string[],
     sessionId: string | null,
-    { signal }: { signal?: AbortSignal } = {}
+    { signal, env }: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}
   ) {
     super();
 
     this.proc = spawn(
-      corePath,
+      app,
+      "tango-core",
       [
         ["--keymapping", JSON.stringify(keymapping)],
-        ["--signaling-server-addr", signalingServerAddr],
-        ["--ice-servers", ...iceServers],
+        ["--signaling-connect-addr", signalingConnectAddr],
+        ...iceServers.map((iceServer) => ["--ice-servers", iceServer]),
         sessionId != null ? ["--session-id", sessionId] : [],
       ].flat(),
       {
         signal,
+        env,
       }
     );
 
@@ -49,6 +53,10 @@ export class Core extends EventEmitter {
 
     this.proc.stderr.on("data", (data) => {
       this.emit("stderr", data.toString());
+    });
+
+    this.proc.stderr.on("error", (err) => {
+      this.emit("error", err);
     });
 
     this.proc.addListener("exit", () => {
@@ -104,13 +112,13 @@ export class Core extends EventEmitter {
     return await this._rawRead(len);
   }
 
-  public async write(p: ToCoreMessage) {
+  public async send(p: ToCoreMessage) {
     await this._writeLengthDelimited(
       Buffer.from(ToCoreMessage.encode(p).finish())
     );
   }
 
-  public async read() {
+  public async receive() {
     const buf = await this._readLengthDelimited();
     if (buf == null) {
       return null;
@@ -122,4 +130,5 @@ export class Core extends EventEmitter {
 export declare interface Core {
   on(event: "exit", listener: (exitStatus: ExitStatus) => void): this;
   on(event: "stderr", listener: (chunk: string) => void): this;
+  on(event: "error", listener: (err: Error) => void): this;
 }

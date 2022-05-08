@@ -6,16 +6,19 @@ export const protobufPackage = "tango.ipc";
 
 export interface FromCoreMessage {
   stateInd: FromCoreMessage_StateIndication | undefined;
-  tunnelDataInd: FromCoreMessage_TunnelDataIndication | undefined;
+  smuggleInd: FromCoreMessage_SmuggleIndication | undefined;
 }
 
-export interface FromCoreMessage_StateIndication {}
+export interface FromCoreMessage_StateIndication {
+  state: FromCoreMessage_StateIndication_State;
+}
 
 export enum FromCoreMessage_StateIndication_State {
   UNKNOWN = 0,
   RUNNING = 1,
   WAITING = 2,
   CONNECTING = 3,
+  READY_TO_START = 4,
   UNRECOGNIZED = -1,
 }
 
@@ -35,6 +38,9 @@ export function fromCoreMessage_StateIndication_StateFromJSON(
     case 3:
     case "CONNECTING":
       return FromCoreMessage_StateIndication_State.CONNECTING;
+    case 4:
+    case "READY_TO_START":
+      return FromCoreMessage_StateIndication_State.READY_TO_START;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -54,18 +60,20 @@ export function fromCoreMessage_StateIndication_StateToJSON(
       return "WAITING";
     case FromCoreMessage_StateIndication_State.CONNECTING:
       return "CONNECTING";
+    case FromCoreMessage_StateIndication_State.READY_TO_START:
+      return "READY_TO_START";
     default:
       return "UNKNOWN";
   }
 }
 
-export interface FromCoreMessage_TunnelDataIndication {
+export interface FromCoreMessage_SmuggleIndication {
   data: Uint8Array;
 }
 
 export interface ToCoreMessage {
   startReq: ToCoreMessage_StartRequest | undefined;
-  tunnelDataReq: ToCoreMessage_TunnelDataRequest | undefined;
+  smuggleReq: ToCoreMessage_SmuggleRequest | undefined;
 }
 
 export interface ToCoreMessage_StartRequest {
@@ -82,14 +90,15 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   matchType: number;
   replaysPath: string;
   replayMetadata: string;
+  rngSeed: Uint8Array;
 }
 
-export interface ToCoreMessage_TunnelDataRequest {
+export interface ToCoreMessage_SmuggleRequest {
   data: Uint8Array;
 }
 
 function createBaseFromCoreMessage(): FromCoreMessage {
-  return { stateInd: undefined, tunnelDataInd: undefined };
+  return { stateInd: undefined, smuggleInd: undefined };
 }
 
 export const FromCoreMessage = {
@@ -103,9 +112,9 @@ export const FromCoreMessage = {
         writer.uint32(10).fork()
       ).ldelim();
     }
-    if (message.tunnelDataInd !== undefined) {
-      FromCoreMessage_TunnelDataIndication.encode(
-        message.tunnelDataInd,
+    if (message.smuggleInd !== undefined) {
+      FromCoreMessage_SmuggleIndication.encode(
+        message.smuggleInd,
         writer.uint32(18).fork()
       ).ldelim();
     }
@@ -126,7 +135,7 @@ export const FromCoreMessage = {
           );
           break;
         case 2:
-          message.tunnelDataInd = FromCoreMessage_TunnelDataIndication.decode(
+          message.smuggleInd = FromCoreMessage_SmuggleIndication.decode(
             reader,
             reader.uint32()
           );
@@ -144,8 +153,8 @@ export const FromCoreMessage = {
       stateInd: isSet(object.stateInd)
         ? FromCoreMessage_StateIndication.fromJSON(object.stateInd)
         : undefined,
-      tunnelDataInd: isSet(object.tunnelDataInd)
-        ? FromCoreMessage_TunnelDataIndication.fromJSON(object.tunnelDataInd)
+      smuggleInd: isSet(object.smuggleInd)
+        ? FromCoreMessage_SmuggleIndication.fromJSON(object.smuggleInd)
         : undefined,
     };
   },
@@ -156,9 +165,9 @@ export const FromCoreMessage = {
       (obj.stateInd = message.stateInd
         ? FromCoreMessage_StateIndication.toJSON(message.stateInd)
         : undefined);
-    message.tunnelDataInd !== undefined &&
-      (obj.tunnelDataInd = message.tunnelDataInd
-        ? FromCoreMessage_TunnelDataIndication.toJSON(message.tunnelDataInd)
+    message.smuggleInd !== undefined &&
+      (obj.smuggleInd = message.smuggleInd
+        ? FromCoreMessage_SmuggleIndication.toJSON(message.smuggleInd)
         : undefined);
     return obj;
   },
@@ -171,23 +180,26 @@ export const FromCoreMessage = {
       object.stateInd !== undefined && object.stateInd !== null
         ? FromCoreMessage_StateIndication.fromPartial(object.stateInd)
         : undefined;
-    message.tunnelDataInd =
-      object.tunnelDataInd !== undefined && object.tunnelDataInd !== null
-        ? FromCoreMessage_TunnelDataIndication.fromPartial(object.tunnelDataInd)
+    message.smuggleInd =
+      object.smuggleInd !== undefined && object.smuggleInd !== null
+        ? FromCoreMessage_SmuggleIndication.fromPartial(object.smuggleInd)
         : undefined;
     return message;
   },
 };
 
 function createBaseFromCoreMessage_StateIndication(): FromCoreMessage_StateIndication {
-  return {};
+  return { state: 0 };
 }
 
 export const FromCoreMessage_StateIndication = {
   encode(
-    _: FromCoreMessage_StateIndication,
+    message: FromCoreMessage_StateIndication,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
+    if (message.state !== 0) {
+      writer.uint32(8).int32(message.state);
+    }
     return writer;
   },
 
@@ -201,6 +213,9 @@ export const FromCoreMessage_StateIndication = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
+        case 1:
+          message.state = reader.int32() as any;
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -209,30 +224,37 @@ export const FromCoreMessage_StateIndication = {
     return message;
   },
 
-  fromJSON(_: any): FromCoreMessage_StateIndication {
-    return {};
+  fromJSON(object: any): FromCoreMessage_StateIndication {
+    return {
+      state: isSet(object.state)
+        ? fromCoreMessage_StateIndication_StateFromJSON(object.state)
+        : 0,
+    };
   },
 
-  toJSON(_: FromCoreMessage_StateIndication): unknown {
+  toJSON(message: FromCoreMessage_StateIndication): unknown {
     const obj: any = {};
+    message.state !== undefined &&
+      (obj.state = fromCoreMessage_StateIndication_StateToJSON(message.state));
     return obj;
   },
 
   fromPartial<I extends Exact<DeepPartial<FromCoreMessage_StateIndication>, I>>(
-    _: I
+    object: I
   ): FromCoreMessage_StateIndication {
     const message = createBaseFromCoreMessage_StateIndication();
+    message.state = object.state ?? 0;
     return message;
   },
 };
 
-function createBaseFromCoreMessage_TunnelDataIndication(): FromCoreMessage_TunnelDataIndication {
+function createBaseFromCoreMessage_SmuggleIndication(): FromCoreMessage_SmuggleIndication {
   return { data: new Uint8Array() };
 }
 
-export const FromCoreMessage_TunnelDataIndication = {
+export const FromCoreMessage_SmuggleIndication = {
   encode(
-    message: FromCoreMessage_TunnelDataIndication,
+    message: FromCoreMessage_SmuggleIndication,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.data.length !== 0) {
@@ -244,10 +266,10 @@ export const FromCoreMessage_TunnelDataIndication = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): FromCoreMessage_TunnelDataIndication {
+  ): FromCoreMessage_SmuggleIndication {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseFromCoreMessage_TunnelDataIndication();
+    const message = createBaseFromCoreMessage_SmuggleIndication();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -262,7 +284,7 @@ export const FromCoreMessage_TunnelDataIndication = {
     return message;
   },
 
-  fromJSON(object: any): FromCoreMessage_TunnelDataIndication {
+  fromJSON(object: any): FromCoreMessage_SmuggleIndication {
     return {
       data: isSet(object.data)
         ? bytesFromBase64(object.data)
@@ -270,7 +292,7 @@ export const FromCoreMessage_TunnelDataIndication = {
     };
   },
 
-  toJSON(message: FromCoreMessage_TunnelDataIndication): unknown {
+  toJSON(message: FromCoreMessage_SmuggleIndication): unknown {
     const obj: any = {};
     message.data !== undefined &&
       (obj.data = base64FromBytes(
@@ -280,16 +302,16 @@ export const FromCoreMessage_TunnelDataIndication = {
   },
 
   fromPartial<
-    I extends Exact<DeepPartial<FromCoreMessage_TunnelDataIndication>, I>
-  >(object: I): FromCoreMessage_TunnelDataIndication {
-    const message = createBaseFromCoreMessage_TunnelDataIndication();
+    I extends Exact<DeepPartial<FromCoreMessage_SmuggleIndication>, I>
+  >(object: I): FromCoreMessage_SmuggleIndication {
+    const message = createBaseFromCoreMessage_SmuggleIndication();
     message.data = object.data ?? new Uint8Array();
     return message;
   },
 };
 
 function createBaseToCoreMessage(): ToCoreMessage {
-  return { startReq: undefined, tunnelDataReq: undefined };
+  return { startReq: undefined, smuggleReq: undefined };
 }
 
 export const ToCoreMessage = {
@@ -303,9 +325,9 @@ export const ToCoreMessage = {
         writer.uint32(10).fork()
       ).ldelim();
     }
-    if (message.tunnelDataReq !== undefined) {
-      ToCoreMessage_TunnelDataRequest.encode(
-        message.tunnelDataReq,
+    if (message.smuggleReq !== undefined) {
+      ToCoreMessage_SmuggleRequest.encode(
+        message.smuggleReq,
         writer.uint32(18).fork()
       ).ldelim();
     }
@@ -326,7 +348,7 @@ export const ToCoreMessage = {
           );
           break;
         case 2:
-          message.tunnelDataReq = ToCoreMessage_TunnelDataRequest.decode(
+          message.smuggleReq = ToCoreMessage_SmuggleRequest.decode(
             reader,
             reader.uint32()
           );
@@ -344,8 +366,8 @@ export const ToCoreMessage = {
       startReq: isSet(object.startReq)
         ? ToCoreMessage_StartRequest.fromJSON(object.startReq)
         : undefined,
-      tunnelDataReq: isSet(object.tunnelDataReq)
-        ? ToCoreMessage_TunnelDataRequest.fromJSON(object.tunnelDataReq)
+      smuggleReq: isSet(object.smuggleReq)
+        ? ToCoreMessage_SmuggleRequest.fromJSON(object.smuggleReq)
         : undefined,
     };
   },
@@ -356,9 +378,9 @@ export const ToCoreMessage = {
       (obj.startReq = message.startReq
         ? ToCoreMessage_StartRequest.toJSON(message.startReq)
         : undefined);
-    message.tunnelDataReq !== undefined &&
-      (obj.tunnelDataReq = message.tunnelDataReq
-        ? ToCoreMessage_TunnelDataRequest.toJSON(message.tunnelDataReq)
+    message.smuggleReq !== undefined &&
+      (obj.smuggleReq = message.smuggleReq
+        ? ToCoreMessage_SmuggleRequest.toJSON(message.smuggleReq)
         : undefined);
     return obj;
   },
@@ -371,9 +393,9 @@ export const ToCoreMessage = {
       object.startReq !== undefined && object.startReq !== null
         ? ToCoreMessage_StartRequest.fromPartial(object.startReq)
         : undefined;
-    message.tunnelDataReq =
-      object.tunnelDataReq !== undefined && object.tunnelDataReq !== null
-        ? ToCoreMessage_TunnelDataRequest.fromPartial(object.tunnelDataReq)
+    message.smuggleReq =
+      object.smuggleReq !== undefined && object.smuggleReq !== null
+        ? ToCoreMessage_SmuggleRequest.fromPartial(object.smuggleReq)
         : undefined;
     return message;
   },
@@ -486,6 +508,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     matchType: 0,
     replaysPath: "",
     replayMetadata: "",
+    rngSeed: new Uint8Array(),
   };
 }
 
@@ -511,6 +534,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     }
     if (message.replayMetadata !== "") {
       writer.uint32(50).string(message.replayMetadata);
+    }
+    if (message.rngSeed.length !== 0) {
+      writer.uint32(58).bytes(message.rngSeed);
     }
     return writer;
   },
@@ -543,6 +569,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         case 6:
           message.replayMetadata = reader.string();
           break;
+        case 7:
+          message.rngSeed = reader.bytes();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -565,6 +594,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       replayMetadata: isSet(object.replayMetadata)
         ? String(object.replayMetadata)
         : "",
+      rngSeed: isSet(object.rngSeed)
+        ? bytesFromBase64(object.rngSeed)
+        : new Uint8Array(),
     };
   },
 
@@ -582,6 +614,10 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       (obj.replaysPath = message.replaysPath);
     message.replayMetadata !== undefined &&
       (obj.replayMetadata = message.replayMetadata);
+    message.rngSeed !== undefined &&
+      (obj.rngSeed = base64FromBytes(
+        message.rngSeed !== undefined ? message.rngSeed : new Uint8Array()
+      ));
     return obj;
   },
 
@@ -595,17 +631,18 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.matchType = object.matchType ?? 0;
     message.replaysPath = object.replaysPath ?? "";
     message.replayMetadata = object.replayMetadata ?? "";
+    message.rngSeed = object.rngSeed ?? new Uint8Array();
     return message;
   },
 };
 
-function createBaseToCoreMessage_TunnelDataRequest(): ToCoreMessage_TunnelDataRequest {
+function createBaseToCoreMessage_SmuggleRequest(): ToCoreMessage_SmuggleRequest {
   return { data: new Uint8Array() };
 }
 
-export const ToCoreMessage_TunnelDataRequest = {
+export const ToCoreMessage_SmuggleRequest = {
   encode(
-    message: ToCoreMessage_TunnelDataRequest,
+    message: ToCoreMessage_SmuggleRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.data.length !== 0) {
@@ -617,10 +654,10 @@ export const ToCoreMessage_TunnelDataRequest = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): ToCoreMessage_TunnelDataRequest {
+  ): ToCoreMessage_SmuggleRequest {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseToCoreMessage_TunnelDataRequest();
+    const message = createBaseToCoreMessage_SmuggleRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -635,7 +672,7 @@ export const ToCoreMessage_TunnelDataRequest = {
     return message;
   },
 
-  fromJSON(object: any): ToCoreMessage_TunnelDataRequest {
+  fromJSON(object: any): ToCoreMessage_SmuggleRequest {
     return {
       data: isSet(object.data)
         ? bytesFromBase64(object.data)
@@ -643,7 +680,7 @@ export const ToCoreMessage_TunnelDataRequest = {
     };
   },
 
-  toJSON(message: ToCoreMessage_TunnelDataRequest): unknown {
+  toJSON(message: ToCoreMessage_SmuggleRequest): unknown {
     const obj: any = {};
     message.data !== undefined &&
       (obj.data = base64FromBytes(
@@ -652,10 +689,10 @@ export const ToCoreMessage_TunnelDataRequest = {
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<ToCoreMessage_TunnelDataRequest>, I>>(
+  fromPartial<I extends Exact<DeepPartial<ToCoreMessage_SmuggleRequest>, I>>(
     object: I
-  ): ToCoreMessage_TunnelDataRequest {
-    const message = createBaseToCoreMessage_TunnelDataRequest();
+  ): ToCoreMessage_SmuggleRequest {
+    const message = createBaseToCoreMessage_SmuggleRequest();
     message.data = object.data ?? new Uint8Array();
     return message;
   },

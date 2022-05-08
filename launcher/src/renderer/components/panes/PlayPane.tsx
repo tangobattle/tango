@@ -393,7 +393,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                     ? { name: patchName!, version: patchVersion }
                     : null
                 }
-                matchSettings={null}
+                sessionId={null}
                 savePath={path.join(getSavesPath(app), saveName!)}
                 windowTitle={`${
                   KNOWN_ROMS[saves[saveName!].romName].title[
