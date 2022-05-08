@@ -96,28 +96,44 @@ export interface CreateStreamToClientMessage_AcceptResponse {
 
 export interface CreateStreamToClientMessage_TimeoutIndication {}
 
-export interface JoinRequest {
+export interface JoinStreamToServerMessage {
+  joinReq: JoinStreamToServerMessage_JoinRequest | undefined;
+  proposeReq: JoinStreamToServerMessage_ProposeRequest | undefined;
+}
+
+export interface JoinStreamToServerMessage_JoinRequest {
   lobbyId: string;
   nickname: string;
+}
+
+export interface JoinStreamToServerMessage_ProposeRequest {
   gameInfo: GameInfo | undefined;
   saveData: Uint8Array;
 }
 
-export interface JoinResponse {
-  sessionId: string;
-  opponentSaveData: Uint8Array;
+export interface JoinStreamToClientMessage {
+  timeoutInd: JoinStreamToClientMessage_TimeoutIndication | undefined;
+  joinResp: JoinStreamToClientMessage_JoinResponse | undefined;
+  proposeResp: JoinStreamToClientMessage_ProposeResponse | undefined;
 }
 
-export interface GetInfoRequest {
-  lobbyId: string;
+export interface JoinStreamToClientMessage_JoinResponse {
+  info: JoinStreamToClientMessage_JoinResponse_Info | undefined;
 }
 
-export interface GetInfoResponse {
-  creatorNickname: string;
+export interface JoinStreamToClientMessage_JoinResponse_Info {
+  opponentNickname: string;
   gameInfo: GameInfo | undefined;
   availableGames: GameInfo[];
   settings: Settings | undefined;
 }
+
+export interface JoinStreamToClientMessage_ProposeResponse {
+  sessionId: string;
+  opponentSaveData: Uint8Array;
+}
+
+export interface JoinStreamToClientMessage_TimeoutIndication {}
 
 function createBaseGameInfo(): GameInfo {
   return { rom: "", patch: undefined };
@@ -1014,18 +1030,109 @@ export const CreateStreamToClientMessage_TimeoutIndication = {
   },
 };
 
-function createBaseJoinRequest(): JoinRequest {
-  return {
-    lobbyId: "",
-    nickname: "",
-    gameInfo: undefined,
-    saveData: new Uint8Array(),
-  };
+function createBaseJoinStreamToServerMessage(): JoinStreamToServerMessage {
+  return { joinReq: undefined, proposeReq: undefined };
 }
 
-export const JoinRequest = {
+export const JoinStreamToServerMessage = {
   encode(
-    message: JoinRequest,
+    message: JoinStreamToServerMessage,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.joinReq !== undefined) {
+      JoinStreamToServerMessage_JoinRequest.encode(
+        message.joinReq,
+        writer.uint32(10).fork()
+      ).ldelim();
+    }
+    if (message.proposeReq !== undefined) {
+      JoinStreamToServerMessage_ProposeRequest.encode(
+        message.proposeReq,
+        writer.uint32(18).fork()
+      ).ldelim();
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToServerMessage {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseJoinStreamToServerMessage();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.joinReq = JoinStreamToServerMessage_JoinRequest.decode(
+            reader,
+            reader.uint32()
+          );
+          break;
+        case 2:
+          message.proposeReq = JoinStreamToServerMessage_ProposeRequest.decode(
+            reader,
+            reader.uint32()
+          );
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): JoinStreamToServerMessage {
+    return {
+      joinReq: isSet(object.joinReq)
+        ? JoinStreamToServerMessage_JoinRequest.fromJSON(object.joinReq)
+        : undefined,
+      proposeReq: isSet(object.proposeReq)
+        ? JoinStreamToServerMessage_ProposeRequest.fromJSON(object.proposeReq)
+        : undefined,
+    };
+  },
+
+  toJSON(message: JoinStreamToServerMessage): unknown {
+    const obj: any = {};
+    message.joinReq !== undefined &&
+      (obj.joinReq = message.joinReq
+        ? JoinStreamToServerMessage_JoinRequest.toJSON(message.joinReq)
+        : undefined);
+    message.proposeReq !== undefined &&
+      (obj.proposeReq = message.proposeReq
+        ? JoinStreamToServerMessage_ProposeRequest.toJSON(message.proposeReq)
+        : undefined);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<JoinStreamToServerMessage>, I>>(
+    object: I
+  ): JoinStreamToServerMessage {
+    const message = createBaseJoinStreamToServerMessage();
+    message.joinReq =
+      object.joinReq !== undefined && object.joinReq !== null
+        ? JoinStreamToServerMessage_JoinRequest.fromPartial(object.joinReq)
+        : undefined;
+    message.proposeReq =
+      object.proposeReq !== undefined && object.proposeReq !== null
+        ? JoinStreamToServerMessage_ProposeRequest.fromPartial(
+            object.proposeReq
+          )
+        : undefined;
+    return message;
+  },
+};
+
+function createBaseJoinStreamToServerMessage_JoinRequest(): JoinStreamToServerMessage_JoinRequest {
+  return { lobbyId: "", nickname: "" };
+}
+
+export const JoinStreamToServerMessage_JoinRequest = {
+  encode(
+    message: JoinStreamToServerMessage_JoinRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.lobbyId !== "") {
@@ -1034,19 +1141,16 @@ export const JoinRequest = {
     if (message.nickname !== "") {
       writer.uint32(18).string(message.nickname);
     }
-    if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(26).fork()).ldelim();
-    }
-    if (message.saveData.length !== 0) {
-      writer.uint32(34).bytes(message.saveData);
-    }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): JoinRequest {
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToServerMessage_JoinRequest {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseJoinRequest();
+    const message = createBaseJoinStreamToServerMessage_JoinRequest();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1056,10 +1160,70 @@ export const JoinRequest = {
         case 2:
           message.nickname = reader.string();
           break;
-        case 3:
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): JoinStreamToServerMessage_JoinRequest {
+    return {
+      lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
+      nickname: isSet(object.nickname) ? String(object.nickname) : "",
+    };
+  },
+
+  toJSON(message: JoinStreamToServerMessage_JoinRequest): unknown {
+    const obj: any = {};
+    message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
+    message.nickname !== undefined && (obj.nickname = message.nickname);
+    return obj;
+  },
+
+  fromPartial<
+    I extends Exact<DeepPartial<JoinStreamToServerMessage_JoinRequest>, I>
+  >(object: I): JoinStreamToServerMessage_JoinRequest {
+    const message = createBaseJoinStreamToServerMessage_JoinRequest();
+    message.lobbyId = object.lobbyId ?? "";
+    message.nickname = object.nickname ?? "";
+    return message;
+  },
+};
+
+function createBaseJoinStreamToServerMessage_ProposeRequest(): JoinStreamToServerMessage_ProposeRequest {
+  return { gameInfo: undefined, saveData: new Uint8Array() };
+}
+
+export const JoinStreamToServerMessage_ProposeRequest = {
+  encode(
+    message: JoinStreamToServerMessage_ProposeRequest,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.gameInfo !== undefined) {
+      GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
+    }
+    if (message.saveData.length !== 0) {
+      writer.uint32(26).bytes(message.saveData);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToServerMessage_ProposeRequest {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseJoinStreamToServerMessage_ProposeRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 2:
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
-        case 4:
+        case 3:
           message.saveData = reader.bytes();
           break;
         default:
@@ -1070,10 +1234,8 @@ export const JoinRequest = {
     return message;
   },
 
-  fromJSON(object: any): JoinRequest {
+  fromJSON(object: any): JoinStreamToServerMessage_ProposeRequest {
     return {
-      lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
-      nickname: isSet(object.nickname) ? String(object.nickname) : "",
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
@@ -1083,10 +1245,8 @@ export const JoinRequest = {
     };
   },
 
-  toJSON(message: JoinRequest): unknown {
+  toJSON(message: JoinStreamToServerMessage_ProposeRequest): unknown {
     const obj: any = {};
-    message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
-    message.nickname !== undefined && (obj.nickname = message.nickname);
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -1098,12 +1258,10 @@ export const JoinRequest = {
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<JoinRequest>, I>>(
-    object: I
-  ): JoinRequest {
-    const message = createBaseJoinRequest();
-    message.lobbyId = object.lobbyId ?? "";
-    message.nickname = object.nickname ?? "";
+  fromPartial<
+    I extends Exact<DeepPartial<JoinStreamToServerMessage_ProposeRequest>, I>
+  >(object: I): JoinStreamToServerMessage_ProposeRequest {
+    const message = createBaseJoinStreamToServerMessage_ProposeRequest();
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
@@ -1113,36 +1271,65 @@ export const JoinRequest = {
   },
 };
 
-function createBaseJoinResponse(): JoinResponse {
-  return { sessionId: "", opponentSaveData: new Uint8Array() };
+function createBaseJoinStreamToClientMessage(): JoinStreamToClientMessage {
+  return { timeoutInd: undefined, joinResp: undefined, proposeResp: undefined };
 }
 
-export const JoinResponse = {
+export const JoinStreamToClientMessage = {
   encode(
-    message: JoinResponse,
+    message: JoinStreamToClientMessage,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.sessionId !== "") {
-      writer.uint32(10).string(message.sessionId);
+    if (message.timeoutInd !== undefined) {
+      JoinStreamToClientMessage_TimeoutIndication.encode(
+        message.timeoutInd,
+        writer.uint32(10).fork()
+      ).ldelim();
     }
-    if (message.opponentSaveData.length !== 0) {
-      writer.uint32(18).bytes(message.opponentSaveData);
+    if (message.joinResp !== undefined) {
+      JoinStreamToClientMessage_JoinResponse.encode(
+        message.joinResp,
+        writer.uint32(18).fork()
+      ).ldelim();
+    }
+    if (message.proposeResp !== undefined) {
+      JoinStreamToClientMessage_ProposeResponse.encode(
+        message.proposeResp,
+        writer.uint32(26).fork()
+      ).ldelim();
     }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): JoinResponse {
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToClientMessage {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseJoinResponse();
+    const message = createBaseJoinStreamToClientMessage();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.sessionId = reader.string();
+          message.timeoutInd =
+            JoinStreamToClientMessage_TimeoutIndication.decode(
+              reader,
+              reader.uint32()
+            );
           break;
         case 2:
-          message.opponentSaveData = reader.bytes();
+          message.joinResp = JoinStreamToClientMessage_JoinResponse.decode(
+            reader,
+            reader.uint32()
+          );
+          break;
+        case 3:
+          message.proposeResp =
+            JoinStreamToClientMessage_ProposeResponse.decode(
+              reader,
+              reader.uint32()
+            );
           break;
         default:
           reader.skipType(tag & 7);
@@ -1152,61 +1339,96 @@ export const JoinResponse = {
     return message;
   },
 
-  fromJSON(object: any): JoinResponse {
+  fromJSON(object: any): JoinStreamToClientMessage {
     return {
-      sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
-      opponentSaveData: isSet(object.opponentSaveData)
-        ? bytesFromBase64(object.opponentSaveData)
-        : new Uint8Array(),
+      timeoutInd: isSet(object.timeoutInd)
+        ? JoinStreamToClientMessage_TimeoutIndication.fromJSON(
+            object.timeoutInd
+          )
+        : undefined,
+      joinResp: isSet(object.joinResp)
+        ? JoinStreamToClientMessage_JoinResponse.fromJSON(object.joinResp)
+        : undefined,
+      proposeResp: isSet(object.proposeResp)
+        ? JoinStreamToClientMessage_ProposeResponse.fromJSON(object.proposeResp)
+        : undefined,
     };
   },
 
-  toJSON(message: JoinResponse): unknown {
+  toJSON(message: JoinStreamToClientMessage): unknown {
     const obj: any = {};
-    message.sessionId !== undefined && (obj.sessionId = message.sessionId);
-    message.opponentSaveData !== undefined &&
-      (obj.opponentSaveData = base64FromBytes(
-        message.opponentSaveData !== undefined
-          ? message.opponentSaveData
-          : new Uint8Array()
-      ));
+    message.timeoutInd !== undefined &&
+      (obj.timeoutInd = message.timeoutInd
+        ? JoinStreamToClientMessage_TimeoutIndication.toJSON(message.timeoutInd)
+        : undefined);
+    message.joinResp !== undefined &&
+      (obj.joinResp = message.joinResp
+        ? JoinStreamToClientMessage_JoinResponse.toJSON(message.joinResp)
+        : undefined);
+    message.proposeResp !== undefined &&
+      (obj.proposeResp = message.proposeResp
+        ? JoinStreamToClientMessage_ProposeResponse.toJSON(message.proposeResp)
+        : undefined);
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<JoinResponse>, I>>(
+  fromPartial<I extends Exact<DeepPartial<JoinStreamToClientMessage>, I>>(
     object: I
-  ): JoinResponse {
-    const message = createBaseJoinResponse();
-    message.sessionId = object.sessionId ?? "";
-    message.opponentSaveData = object.opponentSaveData ?? new Uint8Array();
+  ): JoinStreamToClientMessage {
+    const message = createBaseJoinStreamToClientMessage();
+    message.timeoutInd =
+      object.timeoutInd !== undefined && object.timeoutInd !== null
+        ? JoinStreamToClientMessage_TimeoutIndication.fromPartial(
+            object.timeoutInd
+          )
+        : undefined;
+    message.joinResp =
+      object.joinResp !== undefined && object.joinResp !== null
+        ? JoinStreamToClientMessage_JoinResponse.fromPartial(object.joinResp)
+        : undefined;
+    message.proposeResp =
+      object.proposeResp !== undefined && object.proposeResp !== null
+        ? JoinStreamToClientMessage_ProposeResponse.fromPartial(
+            object.proposeResp
+          )
+        : undefined;
     return message;
   },
 };
 
-function createBaseGetInfoRequest(): GetInfoRequest {
-  return { lobbyId: "" };
+function createBaseJoinStreamToClientMessage_JoinResponse(): JoinStreamToClientMessage_JoinResponse {
+  return { info: undefined };
 }
 
-export const GetInfoRequest = {
+export const JoinStreamToClientMessage_JoinResponse = {
   encode(
-    message: GetInfoRequest,
+    message: JoinStreamToClientMessage_JoinResponse,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.lobbyId !== "") {
-      writer.uint32(10).string(message.lobbyId);
+    if (message.info !== undefined) {
+      JoinStreamToClientMessage_JoinResponse_Info.encode(
+        message.info,
+        writer.uint32(10).fork()
+      ).ldelim();
     }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetInfoRequest {
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToClientMessage_JoinResponse {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetInfoRequest();
+    const message = createBaseJoinStreamToClientMessage_JoinResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.lobbyId = reader.string();
+          message.info = JoinStreamToClientMessage_JoinResponse_Info.decode(
+            reader,
+            reader.uint32()
+          );
           break;
         default:
           reader.skipType(tag & 7);
@@ -1216,43 +1438,51 @@ export const GetInfoRequest = {
     return message;
   },
 
-  fromJSON(object: any): GetInfoRequest {
+  fromJSON(object: any): JoinStreamToClientMessage_JoinResponse {
     return {
-      lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
+      info: isSet(object.info)
+        ? JoinStreamToClientMessage_JoinResponse_Info.fromJSON(object.info)
+        : undefined,
     };
   },
 
-  toJSON(message: GetInfoRequest): unknown {
+  toJSON(message: JoinStreamToClientMessage_JoinResponse): unknown {
     const obj: any = {};
-    message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
+    message.info !== undefined &&
+      (obj.info = message.info
+        ? JoinStreamToClientMessage_JoinResponse_Info.toJSON(message.info)
+        : undefined);
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<GetInfoRequest>, I>>(
-    object: I
-  ): GetInfoRequest {
-    const message = createBaseGetInfoRequest();
-    message.lobbyId = object.lobbyId ?? "";
+  fromPartial<
+    I extends Exact<DeepPartial<JoinStreamToClientMessage_JoinResponse>, I>
+  >(object: I): JoinStreamToClientMessage_JoinResponse {
+    const message = createBaseJoinStreamToClientMessage_JoinResponse();
+    message.info =
+      object.info !== undefined && object.info !== null
+        ? JoinStreamToClientMessage_JoinResponse_Info.fromPartial(object.info)
+        : undefined;
     return message;
   },
 };
 
-function createBaseGetInfoResponse(): GetInfoResponse {
+function createBaseJoinStreamToClientMessage_JoinResponse_Info(): JoinStreamToClientMessage_JoinResponse_Info {
   return {
-    creatorNickname: "",
+    opponentNickname: "",
     gameInfo: undefined,
     availableGames: [],
     settings: undefined,
   };
 }
 
-export const GetInfoResponse = {
+export const JoinStreamToClientMessage_JoinResponse_Info = {
   encode(
-    message: GetInfoResponse,
+    message: JoinStreamToClientMessage_JoinResponse_Info,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.creatorNickname !== "") {
-      writer.uint32(10).string(message.creatorNickname);
+    if (message.opponentNickname !== "") {
+      writer.uint32(10).string(message.opponentNickname);
     }
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
@@ -1266,15 +1496,18 @@ export const GetInfoResponse = {
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetInfoResponse {
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToClientMessage_JoinResponse_Info {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetInfoResponse();
+    const message = createBaseJoinStreamToClientMessage_JoinResponse_Info();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.creatorNickname = reader.string();
+          message.opponentNickname = reader.string();
           break;
         case 2:
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
@@ -1293,10 +1526,10 @@ export const GetInfoResponse = {
     return message;
   },
 
-  fromJSON(object: any): GetInfoResponse {
+  fromJSON(object: any): JoinStreamToClientMessage_JoinResponse_Info {
     return {
-      creatorNickname: isSet(object.creatorNickname)
-        ? String(object.creatorNickname)
+      opponentNickname: isSet(object.opponentNickname)
+        ? String(object.opponentNickname)
         : "",
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
@@ -1310,10 +1543,10 @@ export const GetInfoResponse = {
     };
   },
 
-  toJSON(message: GetInfoResponse): unknown {
+  toJSON(message: JoinStreamToClientMessage_JoinResponse_Info): unknown {
     const obj: any = {};
-    message.creatorNickname !== undefined &&
-      (obj.creatorNickname = message.creatorNickname);
+    message.opponentNickname !== undefined &&
+      (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -1332,11 +1565,11 @@ export const GetInfoResponse = {
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<GetInfoResponse>, I>>(
-    object: I
-  ): GetInfoResponse {
-    const message = createBaseGetInfoResponse();
-    message.creatorNickname = object.creatorNickname ?? "";
+  fromPartial<
+    I extends Exact<DeepPartial<JoinStreamToClientMessage_JoinResponse_Info>, I>
+  >(object: I): JoinStreamToClientMessage_JoinResponse_Info {
+    const message = createBaseJoinStreamToClientMessage_JoinResponse_Info();
+    message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
@@ -1347,6 +1580,126 @@ export const GetInfoResponse = {
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
         : undefined;
+    return message;
+  },
+};
+
+function createBaseJoinStreamToClientMessage_ProposeResponse(): JoinStreamToClientMessage_ProposeResponse {
+  return { sessionId: "", opponentSaveData: new Uint8Array() };
+}
+
+export const JoinStreamToClientMessage_ProposeResponse = {
+  encode(
+    message: JoinStreamToClientMessage_ProposeResponse,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.sessionId !== "") {
+      writer.uint32(10).string(message.sessionId);
+    }
+    if (message.opponentSaveData.length !== 0) {
+      writer.uint32(18).bytes(message.opponentSaveData);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToClientMessage_ProposeResponse {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseJoinStreamToClientMessage_ProposeResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.sessionId = reader.string();
+          break;
+        case 2:
+          message.opponentSaveData = reader.bytes();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): JoinStreamToClientMessage_ProposeResponse {
+    return {
+      sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
+      opponentSaveData: isSet(object.opponentSaveData)
+        ? bytesFromBase64(object.opponentSaveData)
+        : new Uint8Array(),
+    };
+  },
+
+  toJSON(message: JoinStreamToClientMessage_ProposeResponse): unknown {
+    const obj: any = {};
+    message.sessionId !== undefined && (obj.sessionId = message.sessionId);
+    message.opponentSaveData !== undefined &&
+      (obj.opponentSaveData = base64FromBytes(
+        message.opponentSaveData !== undefined
+          ? message.opponentSaveData
+          : new Uint8Array()
+      ));
+    return obj;
+  },
+
+  fromPartial<
+    I extends Exact<DeepPartial<JoinStreamToClientMessage_ProposeResponse>, I>
+  >(object: I): JoinStreamToClientMessage_ProposeResponse {
+    const message = createBaseJoinStreamToClientMessage_ProposeResponse();
+    message.sessionId = object.sessionId ?? "";
+    message.opponentSaveData = object.opponentSaveData ?? new Uint8Array();
+    return message;
+  },
+};
+
+function createBaseJoinStreamToClientMessage_TimeoutIndication(): JoinStreamToClientMessage_TimeoutIndication {
+  return {};
+}
+
+export const JoinStreamToClientMessage_TimeoutIndication = {
+  encode(
+    _: JoinStreamToClientMessage_TimeoutIndication,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): JoinStreamToClientMessage_TimeoutIndication {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseJoinStreamToClientMessage_TimeoutIndication();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(_: any): JoinStreamToClientMessage_TimeoutIndication {
+    return {};
+  },
+
+  toJSON(_: JoinStreamToClientMessage_TimeoutIndication): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  fromPartial<
+    I extends Exact<DeepPartial<JoinStreamToClientMessage_TimeoutIndication>, I>
+  >(_: I): JoinStreamToClientMessage_TimeoutIndication {
+    const message = createBaseJoinStreamToClientMessage_TimeoutIndication();
     return message;
   },
 };
