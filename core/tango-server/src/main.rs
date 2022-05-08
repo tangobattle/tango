@@ -1,6 +1,7 @@
 mod lobby;
 mod signaling;
 use envconfig::Envconfig;
+use prost::Message;
 use routerify::ext::RequestExt;
 
 #[derive(Envconfig)]
@@ -85,38 +86,41 @@ async fn handle_lobby_create_request(
 }
 
 async fn handle_lobby_join_request(
-    mut request: hyper::Request<hyper::Body>,
+    request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    if !hyper_tungstenite::is_upgrade_request(&request) {
-        return Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::BAD_REQUEST)
-            .body("Bad request".into())?);
-    }
-
-    let (response, websocket) = hyper_tungstenite::upgrade(
-        &mut request,
-        Some(tungstenite::protocol::WebSocketConfig {
-            max_message_size: Some(4 * 1024 * 1024),
-            max_frame_size: Some(1 * 1024 * 1024),
-            ..Default::default()
-        }),
-    )?;
-
     let lobby_server = request.data::<State>().unwrap().lobby_server.clone();
-    tokio::spawn(async move {
-        let websocket = match websocket.await {
-            Ok(websocket) => websocket,
-            Err(e) => {
-                log::error!("error in websocket connection: {}", e);
-                return;
-            }
-        };
-        if let Err(e) = lobby_server.handle_join_stream(websocket).await {
-            log::error!("error in websocket connection: {}", e);
-        }
-    });
+    let req = tango_protos::lobby::JoinRequest::decode(
+        hyper::body::to_bytes(request.into_body()).await?,
+    )?;
+    log::debug!("/lobby/join: {:?}", req);
+    match lobby_server.handle_join_request(req).await {
+        Ok(resp) => Ok(hyper::Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")
+            .body(resp.encode_to_vec().into())?),
+        Err(lobby::Error::HTTPStatus(status)) => Ok(hyper::Response::builder()
+            .status(status)
+            .body(status.as_str().to_owned().into())?),
+        Err(e) => Err(e.into()),
+    }
+}
 
-    Ok(response)
+async fn handle_lobby_get_info_request(
+    request: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    let lobby_server = request.data::<State>().unwrap().lobby_server.clone();
+    let req = tango_protos::lobby::GetInfoRequest::decode(
+        hyper::body::to_bytes(request.into_body()).await?,
+    )?;
+    log::debug!("/lobby/get_info: {:?}", req);
+    match lobby_server.handle_get_info_request(req).await {
+        Ok(resp) => Ok(hyper::Response::builder()
+            .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")
+            .body(resp.encode_to_vec().into())?),
+        Err(lobby::Error::HTTPStatus(status)) => Ok(hyper::Response::builder()
+            .status(status)
+            .body(status.as_str().to_owned().into())?),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
@@ -127,7 +131,8 @@ fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
         })
         .get("/signaling", handle_signaling_request)
         .get("/lobby/create", handle_lobby_create_request)
-        .get("/lobby/join", handle_lobby_join_request)
+        .post("/lobby/join", handle_lobby_join_request)
+        .post("/lobby/get_info", handle_lobby_get_info_request)
         .build()
         .unwrap()
 }
