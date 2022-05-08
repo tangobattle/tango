@@ -28,10 +28,12 @@ message CreateStreamToServerMessage {
     GameInfo game_info = 2;
     repeated GameInfo available_games = 3;
     Settings settings = 4;
-    bytes save_data = 5;
   }
 
-  message AcceptRequest { uint32 opponent_id = 1; }
+  message AcceptRequest {
+    uint32 opponent_id = 1;
+    bytes save_data = 2;
+  }
 
   message RejectRequest { uint32 opponent_id = 1; }
 

@@ -15,7 +15,6 @@ struct Lobby {
     game_info: tango_protos::lobby::GameInfo,
     available_games: Vec<tango_protos::lobby::GameInfo>,
     settings: tango_protos::lobby::Settings,
-    save_data: Vec<u8>,
     next_opponent_id: u32,
     pending_players: std::collections::HashMap<u32, PendingPlayer>,
     creator_nickname: String,
@@ -122,7 +121,6 @@ impl Server {
                         game_info,
                         settings,
                         available_games: create_req.available_games,
-                        save_data: create_req.save_data,
                         next_opponent_id: 0,
                         pending_players: std::collections::HashMap::new(),
                         creator_nickname: create_req.nickname,
@@ -240,7 +238,7 @@ impl Server {
                                         tango_protos::lobby::join_stream_to_client_message::ProposeResponse {
                                             which: Some(tango_protos::lobby::join_stream_to_client_message::propose_response::Which::Ok(tango_protos::lobby::join_stream_to_client_message::propose_response::Ok{
                                                 session_id,
-                                                save_data: lobby.save_data.clone(),
+                                                save_data: accept_req.save_data,
                                             })),
                                         }
                                     )),

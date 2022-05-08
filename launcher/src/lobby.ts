@@ -136,7 +136,7 @@ export async function join(
 interface LobbyCreateHandle {
   lobbyId: string;
   nextOpponent(): Promise<OpponentInfo | null>;
-  accept(id: number): Promise<NegotiatedSession | null>;
+  accept(id: number, saveData: Uint8Array): Promise<NegotiatedSession | null>;
   reject(id: number): Promise<void>;
 }
 
@@ -146,11 +146,8 @@ export async function create(
   gameInfo: GameInfo,
   availableGames: GameInfo[],
   settings: Settings,
-  saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyCreateHandle> {
-  saveData = await promisify(zlib.brotliCompress)(saveData);
-
   const ws = new WebSocket(`${addr}/create`);
   if (signal != null) {
     signal.onabort = () => {
@@ -166,7 +163,6 @@ export async function create(
           gameInfo,
           availableGames,
           settings,
-          saveData,
         },
         acceptReq: undefined,
         rejectReq: undefined,
@@ -217,12 +213,13 @@ export async function create(
       };
     },
 
-    async accept(opponentId: number) {
+    async accept(opponentId: number, saveData: Uint8Array) {
       ws.send(
         CreateStreamToServerMessage.encode({
           createReq: undefined,
           acceptReq: {
             opponentId,
+            saveData: await promisify(zlib.brotliCompress)(saveData),
           },
           rejectReq: undefined,
         }).finish()

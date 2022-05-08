@@ -68,11 +68,11 @@ export interface CreateStreamToServerMessage_CreateRequest {
   gameInfo: GameInfo | undefined;
   availableGames: GameInfo[];
   settings: Settings | undefined;
-  saveData: Uint8Array;
 }
 
 export interface CreateStreamToServerMessage_AcceptRequest {
   opponentId: number;
+  saveData: Uint8Array;
 }
 
 export interface CreateStreamToServerMessage_RejectRequest {
@@ -654,7 +654,6 @@ function createBaseCreateStreamToServerMessage_CreateRequest(): CreateStreamToSe
     gameInfo: undefined,
     availableGames: [],
     settings: undefined,
-    saveData: new Uint8Array(),
   };
 }
 
@@ -674,9 +673,6 @@ export const CreateStreamToServerMessage_CreateRequest = {
     }
     if (message.settings !== undefined) {
       Settings.encode(message.settings, writer.uint32(34).fork()).ldelim();
-    }
-    if (message.saveData.length !== 0) {
-      writer.uint32(42).bytes(message.saveData);
     }
     return writer;
   },
@@ -703,9 +699,6 @@ export const CreateStreamToServerMessage_CreateRequest = {
         case 4:
           message.settings = Settings.decode(reader, reader.uint32());
           break;
-        case 5:
-          message.saveData = reader.bytes();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -726,9 +719,6 @@ export const CreateStreamToServerMessage_CreateRequest = {
       settings: isSet(object.settings)
         ? Settings.fromJSON(object.settings)
         : undefined,
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
-        : new Uint8Array(),
     };
   },
 
@@ -750,10 +740,6 @@ export const CreateStreamToServerMessage_CreateRequest = {
       (obj.settings = message.settings
         ? Settings.toJSON(message.settings)
         : undefined);
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
-      ));
     return obj;
   },
 
@@ -772,13 +758,12 @@ export const CreateStreamToServerMessage_CreateRequest = {
       object.settings !== undefined && object.settings !== null
         ? Settings.fromPartial(object.settings)
         : undefined;
-    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
 
 function createBaseCreateStreamToServerMessage_AcceptRequest(): CreateStreamToServerMessage_AcceptRequest {
-  return { opponentId: 0 };
+  return { opponentId: 0, saveData: new Uint8Array() };
 }
 
 export const CreateStreamToServerMessage_AcceptRequest = {
@@ -788,6 +773,9 @@ export const CreateStreamToServerMessage_AcceptRequest = {
   ): _m0.Writer {
     if (message.opponentId !== 0) {
       writer.uint32(8).uint32(message.opponentId);
+    }
+    if (message.saveData.length !== 0) {
+      writer.uint32(18).bytes(message.saveData);
     }
     return writer;
   },
@@ -805,6 +793,9 @@ export const CreateStreamToServerMessage_AcceptRequest = {
         case 1:
           message.opponentId = reader.uint32();
           break;
+        case 2:
+          message.saveData = reader.bytes();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -816,6 +807,9 @@ export const CreateStreamToServerMessage_AcceptRequest = {
   fromJSON(object: any): CreateStreamToServerMessage_AcceptRequest {
     return {
       opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
+      saveData: isSet(object.saveData)
+        ? bytesFromBase64(object.saveData)
+        : new Uint8Array(),
     };
   },
 
@@ -823,6 +817,10 @@ export const CreateStreamToServerMessage_AcceptRequest = {
     const obj: any = {};
     message.opponentId !== undefined &&
       (obj.opponentId = Math.round(message.opponentId));
+    message.saveData !== undefined &&
+      (obj.saveData = base64FromBytes(
+        message.saveData !== undefined ? message.saveData : new Uint8Array()
+      ));
     return obj;
   },
 
@@ -831,6 +829,7 @@ export const CreateStreamToServerMessage_AcceptRequest = {
   >(object: I): CreateStreamToServerMessage_AcceptRequest {
     const message = createBaseCreateStreamToServerMessage_AcceptRequest();
     message.opponentId = object.opponentId ?? 0;
+    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };
