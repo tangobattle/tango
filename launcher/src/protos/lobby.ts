@@ -16,6 +16,39 @@ export interface GameInfo_Patch {
 
 export interface Settings {
   open: boolean;
+  matchType: Settings_MatchType;
+}
+
+export enum Settings_MatchType {
+  SINGLE = 0,
+  TRIPLE = 1,
+  UNRECOGNIZED = -1,
+}
+
+export function settings_MatchTypeFromJSON(object: any): Settings_MatchType {
+  switch (object) {
+    case 0:
+    case "SINGLE":
+      return Settings_MatchType.SINGLE;
+    case 1:
+    case "TRIPLE":
+      return Settings_MatchType.TRIPLE;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return Settings_MatchType.UNRECOGNIZED;
+  }
+}
+
+export function settings_MatchTypeToJSON(object: Settings_MatchType): string {
+  switch (object) {
+    case Settings_MatchType.SINGLE:
+      return "SINGLE";
+    case Settings_MatchType.TRIPLE:
+      return "TRIPLE";
+    default:
+      return "UNKNOWN";
+  }
 }
 
 export interface CreateStreamToServerMessage {
@@ -423,7 +456,7 @@ export const GameInfo_Patch = {
 };
 
 function createBaseSettings(): Settings {
-  return { open: false };
+  return { open: false, matchType: 0 };
 }
 
 export const Settings = {
@@ -433,6 +466,9 @@ export const Settings = {
   ): _m0.Writer {
     if (message.open === true) {
       writer.uint32(8).bool(message.open);
+    }
+    if (message.matchType !== 0) {
+      writer.uint32(16).int32(message.matchType);
     }
     return writer;
   },
@@ -447,6 +483,9 @@ export const Settings = {
         case 1:
           message.open = reader.bool();
           break;
+        case 2:
+          message.matchType = reader.int32() as any;
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -458,18 +497,24 @@ export const Settings = {
   fromJSON(object: any): Settings {
     return {
       open: isSet(object.open) ? Boolean(object.open) : false,
+      matchType: isSet(object.matchType)
+        ? settings_MatchTypeFromJSON(object.matchType)
+        : 0,
     };
   },
 
   toJSON(message: Settings): unknown {
     const obj: any = {};
     message.open !== undefined && (obj.open = message.open);
+    message.matchType !== undefined &&
+      (obj.matchType = settings_MatchTypeToJSON(message.matchType));
     return obj;
   },
 
   fromPartial<I extends Exact<DeepPartial<Settings>, I>>(object: I): Settings {
     const message = createBaseSettings();
     message.open = object.open ?? false;
+    message.matchType = object.matchType ?? 0;
     return message;
   },
 };

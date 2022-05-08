@@ -12,7 +12,14 @@ message GameInfo {
   Patch patch = 2;
 }
 
-message Settings { bool open = 1; }
+message Settings {
+  bool open = 1;
+  enum MatchType {
+    SINGLE = 0;
+    TRIPLE = 1;
+  }
+  MatchType match_type = 2;
+}
 
 message CreateStreamToServerMessage {
   message CreateRequest {
