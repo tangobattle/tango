@@ -3,8 +3,8 @@ import { promisify } from "util";
 import * as zlib from "zlib";
 
 import {
-    CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, GetInfoRequest,
-    GetInfoResponse, JoinRequest, JoinResponse, Settings
+    CreateStreamToClientMessage, CreateStreamToServerMessage, GameInfo, JoinStreamToClientMessage,
+    JoinStreamToServerMessage, Settings
 } from "./protos/lobby";
 
 export { GameInfo, Settings };
@@ -17,9 +17,6 @@ function wrapMessageStream(ws: WebSocket) {
   })();
   ws.onclose = () => {
     stream.return();
-  };
-  ws.onerror = (e) => {
-    stream.throw((e as any).code);
   };
   return stream;
 }
@@ -34,38 +31,96 @@ interface NegotiatedSession {
   opponentSaveData: Uint8Array;
 }
 
+interface LobbyJoinHandle {
+  creatorNickname: string;
+  gameInfo: GameInfo;
+  availableGames: GameInfo[];
+  settings: Settings;
+  propose(
+    gameInfo: GameInfo,
+    saveData: Uint8Array
+  ): Promise<NegotiatedSession | null>;
+}
+
 export async function join(
   addr: string,
   lobbyId: string,
   nickname: string,
-  gameInfo: GameInfo,
-  saveData: Uint8Array,
   { signal }: { signal?: AbortSignal } = {}
-): Promise<NegotiatedSession | null> {
-  const httpResp = await fetch(`${addr}/join`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-protobuf",
-    },
-    body: Buffer.from(
-      JoinRequest.encode({ lobbyId, nickname, gameInfo, saveData }).finish()
-    ),
-    signal,
-  });
+): Promise<LobbyJoinHandle | null> {
+  const ws = new WebSocket(`${addr}/join`);
+  if (signal != null) {
+    signal.onabort = () => {
+      ws.close();
+    };
+  }
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => {
+    ws.send(
+      JoinStreamToServerMessage.encode({
+        joinReq: {
+          lobbyId,
+          nickname,
+        },
+        proposeReq: undefined,
+      }).finish()
+    );
+  };
+  const stream = wrapMessageStream(ws);
 
-  if (httpResp.status != 200) {
-    throw `unexpected status: ${httpResp.status}`;
+  const { value: raw, done } = await stream.next();
+  if (done) {
+    throw "stream ended early";
+  }
+  const resp = JoinStreamToClientMessage.decode(new Uint8Array(raw));
+  if (resp.joinResp == null) {
+    throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
   }
 
-  const resp = JoinResponse.decode(
-    new Uint8Array(await httpResp.arrayBuffer())
-  );
+  if (resp.joinResp.info == null) {
+    return null;
+  }
+
+  if (resp.joinResp.info.gameInfo == null) {
+    throw "join response missing game_info";
+  }
+
+  if (resp.joinResp.info.settings == null) {
+    throw "join response missing settings";
+  }
 
   return {
-    sessionId: resp.sessionId,
-    opponentSaveData: await promisify(zlib.brotliDecompress)(
-      resp.opponentSaveData
-    ),
+    creatorNickname: resp.joinResp.info.opponentNickname,
+    gameInfo: resp.joinResp.info.gameInfo,
+    availableGames: resp.joinResp.info.availableGames,
+    settings: resp.joinResp.info.settings,
+    async propose(gameInfo: GameInfo, saveData: Uint8Array) {
+      ws.send(
+        JoinStreamToServerMessage.encode({
+          joinReq: undefined,
+          proposeReq: {
+            gameInfo,
+            saveData: await promisify(zlib.brotliCompress)(saveData),
+          },
+        }).finish()
+      );
+
+      const { value: raw, done } = await stream.next();
+      if (done) {
+        throw "stream ended early";
+      }
+      const resp = JoinStreamToClientMessage.decode(new Uint8Array(raw));
+      if (resp.proposeResp == null) {
+        throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
+      }
+
+      return {
+        sessionId: resp.proposeResp.sessionId,
+        opponentSaveData: await promisify(zlib.brotliDecompress)(
+          resp.proposeResp.opponentSaveData
+        ),
+      };
+    },
   };
 }
 
@@ -171,25 +226,4 @@ export async function create(
       };
     },
   };
-}
-
-export async function getInfo(
-  addr: string,
-  lobbyId: string,
-  { signal }: { signal?: AbortSignal } = {}
-) {
-  const httpResp = await fetch(`${addr}/query`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-protobuf",
-    },
-    body: Buffer.from(GetInfoRequest.encode({ lobbyId }).finish()),
-    signal,
-  });
-
-  if (httpResp.status != 200) {
-    throw `unexpected status: ${httpResp.status}`;
-  }
-
-  return GetInfoResponse.decode(new Uint8Array(await httpResp.arrayBuffer()));
 }
