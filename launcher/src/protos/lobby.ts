@@ -60,7 +60,6 @@ export function settings_MatchTypeToJSON(object: Settings_MatchType): string {
 export interface CreateStreamToServerMessage {
   createReq: CreateStreamToServerMessage_CreateRequest | undefined;
   acceptReq: CreateStreamToServerMessage_AcceptRequest | undefined;
-  rejectReq: CreateStreamToServerMessage_RejectRequest | undefined;
 }
 
 export interface CreateStreamToServerMessage_CreateRequest {
@@ -71,20 +70,14 @@ export interface CreateStreamToServerMessage_CreateRequest {
 }
 
 export interface CreateStreamToServerMessage_AcceptRequest {
-  opponentId: number;
   saveData: Uint8Array;
 }
 
-export interface CreateStreamToServerMessage_RejectRequest {
-  opponentId: number;
-}
-
 export interface CreateStreamToClientMessage {
-  disconnectInd: CreateStreamToClientMessage_DisconnectIndication | undefined;
+  timeoutInd: CreateStreamToClientMessage_TimeoutIndication | undefined;
   createResp: CreateStreamToClientMessage_CreateResponse | undefined;
   proposeInd: CreateStreamToClientMessage_ProposeIndication | undefined;
   acceptResp: CreateStreamToClientMessage_AcceptResponse | undefined;
-  rejectResp: CreateStreamToClientMessage_RejectResponse | undefined;
 }
 
 export interface CreateStreamToClientMessage_CreateResponse {
@@ -92,7 +85,6 @@ export interface CreateStreamToClientMessage_CreateResponse {
 }
 
 export interface CreateStreamToClientMessage_ProposeIndication {
-  opponentId: number;
   opponentNickname: string;
   gameInfo: GameInfo | undefined;
 }
@@ -147,53 +139,7 @@ export interface CreateStreamToClientMessage_AcceptResponse_Ok {
   opponentSaveData: Uint8Array;
 }
 
-export interface CreateStreamToClientMessage_RejectResponse {}
-
-export interface CreateStreamToClientMessage_DisconnectIndication {
-  reason: CreateStreamToClientMessage_DisconnectIndication_Reason;
-}
-
-export enum CreateStreamToClientMessage_DisconnectIndication_Reason {
-  UNKNOWN = 0,
-  START_TIMEOUT = 1,
-  WAIT_TIMEOUT = 2,
-  UNRECOGNIZED = -1,
-}
-
-export function createStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
-  object: any
-): CreateStreamToClientMessage_DisconnectIndication_Reason {
-  switch (object) {
-    case 0:
-    case "UNKNOWN":
-      return CreateStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN;
-    case 1:
-    case "START_TIMEOUT":
-      return CreateStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT;
-    case 2:
-    case "WAIT_TIMEOUT":
-      return CreateStreamToClientMessage_DisconnectIndication_Reason.WAIT_TIMEOUT;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return CreateStreamToClientMessage_DisconnectIndication_Reason.UNRECOGNIZED;
-  }
-}
-
-export function createStreamToClientMessage_DisconnectIndication_ReasonToJSON(
-  object: CreateStreamToClientMessage_DisconnectIndication_Reason
-): string {
-  switch (object) {
-    case CreateStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN:
-      return "UNKNOWN";
-    case CreateStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT:
-      return "START_TIMEOUT";
-    case CreateStreamToClientMessage_DisconnectIndication_Reason.WAIT_TIMEOUT:
-      return "WAIT_TIMEOUT";
-    default:
-      return "UNKNOWN";
-  }
-}
+export interface CreateStreamToClientMessage_TimeoutIndication {}
 
 export interface JoinStreamToServerMessage {
   joinReq: JoinStreamToServerMessage_JoinRequest | undefined;
@@ -202,16 +148,16 @@ export interface JoinStreamToServerMessage {
 
 export interface JoinStreamToServerMessage_JoinRequest {
   lobbyId: string;
+  nickname: string;
 }
 
 export interface JoinStreamToServerMessage_ProposeRequest {
-  nickname: string;
   gameInfo: GameInfo | undefined;
   saveData: Uint8Array;
 }
 
 export interface JoinStreamToClientMessage {
-  disconnectInd: JoinStreamToClientMessage_DisconnectIndication | undefined;
+  timeoutInd: JoinStreamToClientMessage_TimeoutIndication | undefined;
   joinResp: JoinStreamToClientMessage_JoinResponse | undefined;
   proposeResp: JoinStreamToClientMessage_ProposeResponse | undefined;
 }
@@ -228,106 +174,11 @@ export interface JoinStreamToClientMessage_JoinResponse_Info {
 }
 
 export interface JoinStreamToClientMessage_ProposeResponse {
-  ok: JoinStreamToClientMessage_ProposeResponse_Ok | undefined;
-  error: JoinStreamToClientMessage_ProposeResponse_Error | undefined;
-}
-
-export interface JoinStreamToClientMessage_ProposeResponse_Error {
-  reason: JoinStreamToClientMessage_ProposeResponse_Error_Reason;
-}
-
-export enum JoinStreamToClientMessage_ProposeResponse_Error_Reason {
-  UNKNOWN = 0,
-  REJECTED = 1,
-  UNRECOGNIZED = -1,
-}
-
-export function joinStreamToClientMessage_ProposeResponse_Error_ReasonFromJSON(
-  object: any
-): JoinStreamToClientMessage_ProposeResponse_Error_Reason {
-  switch (object) {
-    case 0:
-    case "UNKNOWN":
-      return JoinStreamToClientMessage_ProposeResponse_Error_Reason.UNKNOWN;
-    case 1:
-    case "REJECTED":
-      return JoinStreamToClientMessage_ProposeResponse_Error_Reason.REJECTED;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return JoinStreamToClientMessage_ProposeResponse_Error_Reason.UNRECOGNIZED;
-  }
-}
-
-export function joinStreamToClientMessage_ProposeResponse_Error_ReasonToJSON(
-  object: JoinStreamToClientMessage_ProposeResponse_Error_Reason
-): string {
-  switch (object) {
-    case JoinStreamToClientMessage_ProposeResponse_Error_Reason.UNKNOWN:
-      return "UNKNOWN";
-    case JoinStreamToClientMessage_ProposeResponse_Error_Reason.REJECTED:
-      return "REJECTED";
-    default:
-      return "UNKNOWN";
-  }
-}
-
-export interface JoinStreamToClientMessage_ProposeResponse_Ok {
   sessionId: string;
   opponentSaveData: Uint8Array;
 }
 
-export interface JoinStreamToClientMessage_DisconnectIndication {
-  reason: JoinStreamToClientMessage_DisconnectIndication_Reason;
-}
-
-export enum JoinStreamToClientMessage_DisconnectIndication_Reason {
-  UNKNOWN = 0,
-  START_TIMEOUT = 1,
-  PROPOSE_TIMEOUT = 2,
-  LOBBY_CLOSED = 3,
-  UNRECOGNIZED = -1,
-}
-
-export function joinStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
-  object: any
-): JoinStreamToClientMessage_DisconnectIndication_Reason {
-  switch (object) {
-    case 0:
-    case "UNKNOWN":
-      return JoinStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN;
-    case 1:
-    case "START_TIMEOUT":
-      return JoinStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT;
-    case 2:
-    case "PROPOSE_TIMEOUT":
-      return JoinStreamToClientMessage_DisconnectIndication_Reason.PROPOSE_TIMEOUT;
-    case 3:
-    case "LOBBY_CLOSED":
-      return JoinStreamToClientMessage_DisconnectIndication_Reason.LOBBY_CLOSED;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return JoinStreamToClientMessage_DisconnectIndication_Reason.UNRECOGNIZED;
-  }
-}
-
-export function joinStreamToClientMessage_DisconnectIndication_ReasonToJSON(
-  object: JoinStreamToClientMessage_DisconnectIndication_Reason
-): string {
-  switch (object) {
-    case JoinStreamToClientMessage_DisconnectIndication_Reason.UNKNOWN:
-      return "UNKNOWN";
-    case JoinStreamToClientMessage_DisconnectIndication_Reason.START_TIMEOUT:
-      return "START_TIMEOUT";
-    case JoinStreamToClientMessage_DisconnectIndication_Reason.PROPOSE_TIMEOUT:
-      return "PROPOSE_TIMEOUT";
-    case JoinStreamToClientMessage_DisconnectIndication_Reason.LOBBY_CLOSED:
-      return "LOBBY_CLOSED";
-    default:
-      return "UNKNOWN";
-  }
-}
+export interface JoinStreamToClientMessage_TimeoutIndication {}
 
 function createBaseGameInfo(): GameInfo {
   return { rom: "", patch: undefined };
@@ -526,7 +377,7 @@ export const Settings = {
 };
 
 function createBaseCreateStreamToServerMessage(): CreateStreamToServerMessage {
-  return { createReq: undefined, acceptReq: undefined, rejectReq: undefined };
+  return { createReq: undefined, acceptReq: undefined };
 }
 
 export const CreateStreamToServerMessage = {
@@ -544,12 +395,6 @@ export const CreateStreamToServerMessage = {
       CreateStreamToServerMessage_AcceptRequest.encode(
         message.acceptReq,
         writer.uint32(18).fork()
-      ).ldelim();
-    }
-    if (message.rejectReq !== undefined) {
-      CreateStreamToServerMessage_RejectRequest.encode(
-        message.rejectReq,
-        writer.uint32(26).fork()
       ).ldelim();
     }
     return writer;
@@ -577,12 +422,6 @@ export const CreateStreamToServerMessage = {
             reader.uint32()
           );
           break;
-        case 3:
-          message.rejectReq = CreateStreamToServerMessage_RejectRequest.decode(
-            reader,
-            reader.uint32()
-          );
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -599,9 +438,6 @@ export const CreateStreamToServerMessage = {
       acceptReq: isSet(object.acceptReq)
         ? CreateStreamToServerMessage_AcceptRequest.fromJSON(object.acceptReq)
         : undefined,
-      rejectReq: isSet(object.rejectReq)
-        ? CreateStreamToServerMessage_RejectRequest.fromJSON(object.rejectReq)
-        : undefined,
     };
   },
 
@@ -614,10 +450,6 @@ export const CreateStreamToServerMessage = {
     message.acceptReq !== undefined &&
       (obj.acceptReq = message.acceptReq
         ? CreateStreamToServerMessage_AcceptRequest.toJSON(message.acceptReq)
-        : undefined);
-    message.rejectReq !== undefined &&
-      (obj.rejectReq = message.rejectReq
-        ? CreateStreamToServerMessage_RejectRequest.toJSON(message.rejectReq)
         : undefined);
     return obj;
   },
@@ -636,12 +468,6 @@ export const CreateStreamToServerMessage = {
       object.acceptReq !== undefined && object.acceptReq !== null
         ? CreateStreamToServerMessage_AcceptRequest.fromPartial(
             object.acceptReq
-          )
-        : undefined;
-    message.rejectReq =
-      object.rejectReq !== undefined && object.rejectReq !== null
-        ? CreateStreamToServerMessage_RejectRequest.fromPartial(
-            object.rejectReq
           )
         : undefined;
     return message;
@@ -763,7 +589,7 @@ export const CreateStreamToServerMessage_CreateRequest = {
 };
 
 function createBaseCreateStreamToServerMessage_AcceptRequest(): CreateStreamToServerMessage_AcceptRequest {
-  return { opponentId: 0, saveData: new Uint8Array() };
+  return { saveData: new Uint8Array() };
 }
 
 export const CreateStreamToServerMessage_AcceptRequest = {
@@ -771,11 +597,8 @@ export const CreateStreamToServerMessage_AcceptRequest = {
     message: CreateStreamToServerMessage_AcceptRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== 0) {
-      writer.uint32(8).uint32(message.opponentId);
-    }
     if (message.saveData.length !== 0) {
-      writer.uint32(18).bytes(message.saveData);
+      writer.uint32(10).bytes(message.saveData);
     }
     return writer;
   },
@@ -791,9 +614,6 @@ export const CreateStreamToServerMessage_AcceptRequest = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.uint32();
-          break;
-        case 2:
           message.saveData = reader.bytes();
           break;
         default:
@@ -806,7 +626,6 @@ export const CreateStreamToServerMessage_AcceptRequest = {
 
   fromJSON(object: any): CreateStreamToServerMessage_AcceptRequest {
     return {
-      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
       saveData: isSet(object.saveData)
         ? bytesFromBase64(object.saveData)
         : new Uint8Array(),
@@ -815,8 +634,6 @@ export const CreateStreamToServerMessage_AcceptRequest = {
 
   toJSON(message: CreateStreamToServerMessage_AcceptRequest): unknown {
     const obj: any = {};
-    message.opponentId !== undefined &&
-      (obj.opponentId = Math.round(message.opponentId));
     message.saveData !== undefined &&
       (obj.saveData = base64FromBytes(
         message.saveData !== undefined ? message.saveData : new Uint8Array()
@@ -828,77 +645,17 @@ export const CreateStreamToServerMessage_AcceptRequest = {
     I extends Exact<DeepPartial<CreateStreamToServerMessage_AcceptRequest>, I>
   >(object: I): CreateStreamToServerMessage_AcceptRequest {
     const message = createBaseCreateStreamToServerMessage_AcceptRequest();
-    message.opponentId = object.opponentId ?? 0;
     message.saveData = object.saveData ?? new Uint8Array();
-    return message;
-  },
-};
-
-function createBaseCreateStreamToServerMessage_RejectRequest(): CreateStreamToServerMessage_RejectRequest {
-  return { opponentId: 0 };
-}
-
-export const CreateStreamToServerMessage_RejectRequest = {
-  encode(
-    message: CreateStreamToServerMessage_RejectRequest,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.opponentId !== 0) {
-      writer.uint32(8).uint32(message.opponentId);
-    }
-    return writer;
-  },
-
-  decode(
-    input: _m0.Reader | Uint8Array,
-    length?: number
-  ): CreateStreamToServerMessage_RejectRequest {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseCreateStreamToServerMessage_RejectRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.opponentId = reader.uint32();
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): CreateStreamToServerMessage_RejectRequest {
-    return {
-      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
-    };
-  },
-
-  toJSON(message: CreateStreamToServerMessage_RejectRequest): unknown {
-    const obj: any = {};
-    message.opponentId !== undefined &&
-      (obj.opponentId = Math.round(message.opponentId));
-    return obj;
-  },
-
-  fromPartial<
-    I extends Exact<DeepPartial<CreateStreamToServerMessage_RejectRequest>, I>
-  >(object: I): CreateStreamToServerMessage_RejectRequest {
-    const message = createBaseCreateStreamToServerMessage_RejectRequest();
-    message.opponentId = object.opponentId ?? 0;
     return message;
   },
 };
 
 function createBaseCreateStreamToClientMessage(): CreateStreamToClientMessage {
   return {
-    disconnectInd: undefined,
+    timeoutInd: undefined,
     createResp: undefined,
     proposeInd: undefined,
     acceptResp: undefined,
-    rejectResp: undefined,
   };
 }
 
@@ -907,9 +664,9 @@ export const CreateStreamToClientMessage = {
     message: CreateStreamToClientMessage,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.disconnectInd !== undefined) {
-      CreateStreamToClientMessage_DisconnectIndication.encode(
-        message.disconnectInd,
+    if (message.timeoutInd !== undefined) {
+      CreateStreamToClientMessage_TimeoutIndication.encode(
+        message.timeoutInd,
         writer.uint32(10).fork()
       ).ldelim();
     }
@@ -931,12 +688,6 @@ export const CreateStreamToClientMessage = {
         writer.uint32(34).fork()
       ).ldelim();
     }
-    if (message.rejectResp !== undefined) {
-      CreateStreamToClientMessage_RejectResponse.encode(
-        message.rejectResp,
-        writer.uint32(42).fork()
-      ).ldelim();
-    }
     return writer;
   },
 
@@ -951,8 +702,8 @@ export const CreateStreamToClientMessage = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.disconnectInd =
-            CreateStreamToClientMessage_DisconnectIndication.decode(
+          message.timeoutInd =
+            CreateStreamToClientMessage_TimeoutIndication.decode(
               reader,
               reader.uint32()
             );
@@ -978,13 +729,6 @@ export const CreateStreamToClientMessage = {
               reader.uint32()
             );
           break;
-        case 5:
-          message.rejectResp =
-            CreateStreamToClientMessage_RejectResponse.decode(
-              reader,
-              reader.uint32()
-            );
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -995,9 +739,9 @@ export const CreateStreamToClientMessage = {
 
   fromJSON(object: any): CreateStreamToClientMessage {
     return {
-      disconnectInd: isSet(object.disconnectInd)
-        ? CreateStreamToClientMessage_DisconnectIndication.fromJSON(
-            object.disconnectInd
+      timeoutInd: isSet(object.timeoutInd)
+        ? CreateStreamToClientMessage_TimeoutIndication.fromJSON(
+            object.timeoutInd
           )
         : undefined,
       createResp: isSet(object.createResp)
@@ -1011,18 +755,15 @@ export const CreateStreamToClientMessage = {
       acceptResp: isSet(object.acceptResp)
         ? CreateStreamToClientMessage_AcceptResponse.fromJSON(object.acceptResp)
         : undefined,
-      rejectResp: isSet(object.rejectResp)
-        ? CreateStreamToClientMessage_RejectResponse.fromJSON(object.rejectResp)
-        : undefined,
     };
   },
 
   toJSON(message: CreateStreamToClientMessage): unknown {
     const obj: any = {};
-    message.disconnectInd !== undefined &&
-      (obj.disconnectInd = message.disconnectInd
-        ? CreateStreamToClientMessage_DisconnectIndication.toJSON(
-            message.disconnectInd
+    message.timeoutInd !== undefined &&
+      (obj.timeoutInd = message.timeoutInd
+        ? CreateStreamToClientMessage_TimeoutIndication.toJSON(
+            message.timeoutInd
           )
         : undefined);
     message.createResp !== undefined &&
@@ -1039,10 +780,6 @@ export const CreateStreamToClientMessage = {
       (obj.acceptResp = message.acceptResp
         ? CreateStreamToClientMessage_AcceptResponse.toJSON(message.acceptResp)
         : undefined);
-    message.rejectResp !== undefined &&
-      (obj.rejectResp = message.rejectResp
-        ? CreateStreamToClientMessage_RejectResponse.toJSON(message.rejectResp)
-        : undefined);
     return obj;
   },
 
@@ -1050,10 +787,10 @@ export const CreateStreamToClientMessage = {
     object: I
   ): CreateStreamToClientMessage {
     const message = createBaseCreateStreamToClientMessage();
-    message.disconnectInd =
-      object.disconnectInd !== undefined && object.disconnectInd !== null
-        ? CreateStreamToClientMessage_DisconnectIndication.fromPartial(
-            object.disconnectInd
+    message.timeoutInd =
+      object.timeoutInd !== undefined && object.timeoutInd !== null
+        ? CreateStreamToClientMessage_TimeoutIndication.fromPartial(
+            object.timeoutInd
           )
         : undefined;
     message.createResp =
@@ -1072,12 +809,6 @@ export const CreateStreamToClientMessage = {
       object.acceptResp !== undefined && object.acceptResp !== null
         ? CreateStreamToClientMessage_AcceptResponse.fromPartial(
             object.acceptResp
-          )
-        : undefined;
-    message.rejectResp =
-      object.rejectResp !== undefined && object.rejectResp !== null
-        ? CreateStreamToClientMessage_RejectResponse.fromPartial(
-            object.rejectResp
           )
         : undefined;
     return message;
@@ -1142,7 +873,7 @@ export const CreateStreamToClientMessage_CreateResponse = {
 };
 
 function createBaseCreateStreamToClientMessage_ProposeIndication(): CreateStreamToClientMessage_ProposeIndication {
-  return { opponentId: 0, opponentNickname: "", gameInfo: undefined };
+  return { opponentNickname: "", gameInfo: undefined };
 }
 
 export const CreateStreamToClientMessage_ProposeIndication = {
@@ -1150,14 +881,11 @@ export const CreateStreamToClientMessage_ProposeIndication = {
     message: CreateStreamToClientMessage_ProposeIndication,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.opponentId !== 0) {
-      writer.uint32(8).uint32(message.opponentId);
-    }
     if (message.opponentNickname !== "") {
-      writer.uint32(18).string(message.opponentNickname);
+      writer.uint32(10).string(message.opponentNickname);
     }
     if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(26).fork()).ldelim();
+      GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
     return writer;
   },
@@ -1173,12 +901,9 @@ export const CreateStreamToClientMessage_ProposeIndication = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.opponentId = reader.uint32();
-          break;
-        case 2:
           message.opponentNickname = reader.string();
           break;
-        case 3:
+        case 2:
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         default:
@@ -1191,7 +916,6 @@ export const CreateStreamToClientMessage_ProposeIndication = {
 
   fromJSON(object: any): CreateStreamToClientMessage_ProposeIndication {
     return {
-      opponentId: isSet(object.opponentId) ? Number(object.opponentId) : 0,
       opponentNickname: isSet(object.opponentNickname)
         ? String(object.opponentNickname)
         : "",
@@ -1203,8 +927,6 @@ export const CreateStreamToClientMessage_ProposeIndication = {
 
   toJSON(message: CreateStreamToClientMessage_ProposeIndication): unknown {
     const obj: any = {};
-    message.opponentId !== undefined &&
-      (obj.opponentId = Math.round(message.opponentId));
     message.opponentNickname !== undefined &&
       (obj.opponentNickname = message.opponentNickname);
     message.gameInfo !== undefined &&
@@ -1221,7 +943,6 @@ export const CreateStreamToClientMessage_ProposeIndication = {
     >
   >(object: I): CreateStreamToClientMessage_ProposeIndication {
     const message = createBaseCreateStreamToClientMessage_ProposeIndication();
-    message.opponentId = object.opponentId ?? 0;
     message.opponentNickname = object.opponentNickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
@@ -1476,13 +1197,13 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
   },
 };
 
-function createBaseCreateStreamToClientMessage_RejectResponse(): CreateStreamToClientMessage_RejectResponse {
+function createBaseCreateStreamToClientMessage_TimeoutIndication(): CreateStreamToClientMessage_TimeoutIndication {
   return {};
 }
 
-export const CreateStreamToClientMessage_RejectResponse = {
+export const CreateStreamToClientMessage_TimeoutIndication = {
   encode(
-    _: CreateStreamToClientMessage_RejectResponse,
+    _: CreateStreamToClientMessage_TimeoutIndication,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     return writer;
@@ -1491,10 +1212,10 @@ export const CreateStreamToClientMessage_RejectResponse = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): CreateStreamToClientMessage_RejectResponse {
+  ): CreateStreamToClientMessage_TimeoutIndication {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseCreateStreamToClientMessage_RejectResponse();
+    const message = createBaseCreateStreamToClientMessage_TimeoutIndication();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1506,89 +1227,22 @@ export const CreateStreamToClientMessage_RejectResponse = {
     return message;
   },
 
-  fromJSON(_: any): CreateStreamToClientMessage_RejectResponse {
+  fromJSON(_: any): CreateStreamToClientMessage_TimeoutIndication {
     return {};
   },
 
-  toJSON(_: CreateStreamToClientMessage_RejectResponse): unknown {
+  toJSON(_: CreateStreamToClientMessage_TimeoutIndication): unknown {
     const obj: any = {};
-    return obj;
-  },
-
-  fromPartial<
-    I extends Exact<DeepPartial<CreateStreamToClientMessage_RejectResponse>, I>
-  >(_: I): CreateStreamToClientMessage_RejectResponse {
-    const message = createBaseCreateStreamToClientMessage_RejectResponse();
-    return message;
-  },
-};
-
-function createBaseCreateStreamToClientMessage_DisconnectIndication(): CreateStreamToClientMessage_DisconnectIndication {
-  return { reason: 0 };
-}
-
-export const CreateStreamToClientMessage_DisconnectIndication = {
-  encode(
-    message: CreateStreamToClientMessage_DisconnectIndication,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.reason !== 0) {
-      writer.uint32(8).int32(message.reason);
-    }
-    return writer;
-  },
-
-  decode(
-    input: _m0.Reader | Uint8Array,
-    length?: number
-  ): CreateStreamToClientMessage_DisconnectIndication {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message =
-      createBaseCreateStreamToClientMessage_DisconnectIndication();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.reason = reader.int32() as any;
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): CreateStreamToClientMessage_DisconnectIndication {
-    return {
-      reason: isSet(object.reason)
-        ? createStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
-            object.reason
-          )
-        : 0,
-    };
-  },
-
-  toJSON(message: CreateStreamToClientMessage_DisconnectIndication): unknown {
-    const obj: any = {};
-    message.reason !== undefined &&
-      (obj.reason =
-        createStreamToClientMessage_DisconnectIndication_ReasonToJSON(
-          message.reason
-        ));
     return obj;
   },
 
   fromPartial<
     I extends Exact<
-      DeepPartial<CreateStreamToClientMessage_DisconnectIndication>,
+      DeepPartial<CreateStreamToClientMessage_TimeoutIndication>,
       I
     >
-  >(object: I): CreateStreamToClientMessage_DisconnectIndication {
-    const message =
-      createBaseCreateStreamToClientMessage_DisconnectIndication();
-    message.reason = object.reason ?? 0;
+  >(_: I): CreateStreamToClientMessage_TimeoutIndication {
+    const message = createBaseCreateStreamToClientMessage_TimeoutIndication();
     return message;
   },
 };
@@ -1690,7 +1344,7 @@ export const JoinStreamToServerMessage = {
 };
 
 function createBaseJoinStreamToServerMessage_JoinRequest(): JoinStreamToServerMessage_JoinRequest {
-  return { lobbyId: "" };
+  return { lobbyId: "", nickname: "" };
 }
 
 export const JoinStreamToServerMessage_JoinRequest = {
@@ -1700,6 +1354,9 @@ export const JoinStreamToServerMessage_JoinRequest = {
   ): _m0.Writer {
     if (message.lobbyId !== "") {
       writer.uint32(10).string(message.lobbyId);
+    }
+    if (message.nickname !== "") {
+      writer.uint32(18).string(message.nickname);
     }
     return writer;
   },
@@ -1717,6 +1374,9 @@ export const JoinStreamToServerMessage_JoinRequest = {
         case 1:
           message.lobbyId = reader.string();
           break;
+        case 2:
+          message.nickname = reader.string();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -1728,12 +1388,14 @@ export const JoinStreamToServerMessage_JoinRequest = {
   fromJSON(object: any): JoinStreamToServerMessage_JoinRequest {
     return {
       lobbyId: isSet(object.lobbyId) ? String(object.lobbyId) : "",
+      nickname: isSet(object.nickname) ? String(object.nickname) : "",
     };
   },
 
   toJSON(message: JoinStreamToServerMessage_JoinRequest): unknown {
     const obj: any = {};
     message.lobbyId !== undefined && (obj.lobbyId = message.lobbyId);
+    message.nickname !== undefined && (obj.nickname = message.nickname);
     return obj;
   },
 
@@ -1742,12 +1404,13 @@ export const JoinStreamToServerMessage_JoinRequest = {
   >(object: I): JoinStreamToServerMessage_JoinRequest {
     const message = createBaseJoinStreamToServerMessage_JoinRequest();
     message.lobbyId = object.lobbyId ?? "";
+    message.nickname = object.nickname ?? "";
     return message;
   },
 };
 
 function createBaseJoinStreamToServerMessage_ProposeRequest(): JoinStreamToServerMessage_ProposeRequest {
-  return { nickname: "", gameInfo: undefined, saveData: new Uint8Array() };
+  return { gameInfo: undefined, saveData: new Uint8Array() };
 }
 
 export const JoinStreamToServerMessage_ProposeRequest = {
@@ -1755,9 +1418,6 @@ export const JoinStreamToServerMessage_ProposeRequest = {
     message: JoinStreamToServerMessage_ProposeRequest,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.nickname !== "") {
-      writer.uint32(10).string(message.nickname);
-    }
     if (message.gameInfo !== undefined) {
       GameInfo.encode(message.gameInfo, writer.uint32(18).fork()).ldelim();
     }
@@ -1777,9 +1437,6 @@ export const JoinStreamToServerMessage_ProposeRequest = {
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
-        case 1:
-          message.nickname = reader.string();
-          break;
         case 2:
           message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
@@ -1796,7 +1453,6 @@ export const JoinStreamToServerMessage_ProposeRequest = {
 
   fromJSON(object: any): JoinStreamToServerMessage_ProposeRequest {
     return {
-      nickname: isSet(object.nickname) ? String(object.nickname) : "",
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
@@ -1808,7 +1464,6 @@ export const JoinStreamToServerMessage_ProposeRequest = {
 
   toJSON(message: JoinStreamToServerMessage_ProposeRequest): unknown {
     const obj: any = {};
-    message.nickname !== undefined && (obj.nickname = message.nickname);
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -1824,7 +1479,6 @@ export const JoinStreamToServerMessage_ProposeRequest = {
     I extends Exact<DeepPartial<JoinStreamToServerMessage_ProposeRequest>, I>
   >(object: I): JoinStreamToServerMessage_ProposeRequest {
     const message = createBaseJoinStreamToServerMessage_ProposeRequest();
-    message.nickname = object.nickname ?? "";
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)
@@ -1835,11 +1489,7 @@ export const JoinStreamToServerMessage_ProposeRequest = {
 };
 
 function createBaseJoinStreamToClientMessage(): JoinStreamToClientMessage {
-  return {
-    disconnectInd: undefined,
-    joinResp: undefined,
-    proposeResp: undefined,
-  };
+  return { timeoutInd: undefined, joinResp: undefined, proposeResp: undefined };
 }
 
 export const JoinStreamToClientMessage = {
@@ -1847,9 +1497,9 @@ export const JoinStreamToClientMessage = {
     message: JoinStreamToClientMessage,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.disconnectInd !== undefined) {
-      JoinStreamToClientMessage_DisconnectIndication.encode(
-        message.disconnectInd,
+    if (message.timeoutInd !== undefined) {
+      JoinStreamToClientMessage_TimeoutIndication.encode(
+        message.timeoutInd,
         writer.uint32(10).fork()
       ).ldelim();
     }
@@ -1879,8 +1529,8 @@ export const JoinStreamToClientMessage = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.disconnectInd =
-            JoinStreamToClientMessage_DisconnectIndication.decode(
+          message.timeoutInd =
+            JoinStreamToClientMessage_TimeoutIndication.decode(
               reader,
               reader.uint32()
             );
@@ -1908,9 +1558,9 @@ export const JoinStreamToClientMessage = {
 
   fromJSON(object: any): JoinStreamToClientMessage {
     return {
-      disconnectInd: isSet(object.disconnectInd)
-        ? JoinStreamToClientMessage_DisconnectIndication.fromJSON(
-            object.disconnectInd
+      timeoutInd: isSet(object.timeoutInd)
+        ? JoinStreamToClientMessage_TimeoutIndication.fromJSON(
+            object.timeoutInd
           )
         : undefined,
       joinResp: isSet(object.joinResp)
@@ -1924,11 +1574,9 @@ export const JoinStreamToClientMessage = {
 
   toJSON(message: JoinStreamToClientMessage): unknown {
     const obj: any = {};
-    message.disconnectInd !== undefined &&
-      (obj.disconnectInd = message.disconnectInd
-        ? JoinStreamToClientMessage_DisconnectIndication.toJSON(
-            message.disconnectInd
-          )
+    message.timeoutInd !== undefined &&
+      (obj.timeoutInd = message.timeoutInd
+        ? JoinStreamToClientMessage_TimeoutIndication.toJSON(message.timeoutInd)
         : undefined);
     message.joinResp !== undefined &&
       (obj.joinResp = message.joinResp
@@ -1945,10 +1593,10 @@ export const JoinStreamToClientMessage = {
     object: I
   ): JoinStreamToClientMessage {
     const message = createBaseJoinStreamToClientMessage();
-    message.disconnectInd =
-      object.disconnectInd !== undefined && object.disconnectInd !== null
-        ? JoinStreamToClientMessage_DisconnectIndication.fromPartial(
-            object.disconnectInd
+    message.timeoutInd =
+      object.timeoutInd !== undefined && object.timeoutInd !== null
+        ? JoinStreamToClientMessage_TimeoutIndication.fromPartial(
+            object.timeoutInd
           )
         : undefined;
     message.joinResp =
@@ -2154,177 +1802,12 @@ export const JoinStreamToClientMessage_JoinResponse_Info = {
 };
 
 function createBaseJoinStreamToClientMessage_ProposeResponse(): JoinStreamToClientMessage_ProposeResponse {
-  return { ok: undefined, error: undefined };
+  return { sessionId: "", opponentSaveData: new Uint8Array() };
 }
 
 export const JoinStreamToClientMessage_ProposeResponse = {
   encode(
     message: JoinStreamToClientMessage_ProposeResponse,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.ok !== undefined) {
-      JoinStreamToClientMessage_ProposeResponse_Ok.encode(
-        message.ok,
-        writer.uint32(10).fork()
-      ).ldelim();
-    }
-    if (message.error !== undefined) {
-      JoinStreamToClientMessage_ProposeResponse_Error.encode(
-        message.error,
-        writer.uint32(18).fork()
-      ).ldelim();
-    }
-    return writer;
-  },
-
-  decode(
-    input: _m0.Reader | Uint8Array,
-    length?: number
-  ): JoinStreamToClientMessage_ProposeResponse {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseJoinStreamToClientMessage_ProposeResponse();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.ok = JoinStreamToClientMessage_ProposeResponse_Ok.decode(
-            reader,
-            reader.uint32()
-          );
-          break;
-        case 2:
-          message.error =
-            JoinStreamToClientMessage_ProposeResponse_Error.decode(
-              reader,
-              reader.uint32()
-            );
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): JoinStreamToClientMessage_ProposeResponse {
-    return {
-      ok: isSet(object.ok)
-        ? JoinStreamToClientMessage_ProposeResponse_Ok.fromJSON(object.ok)
-        : undefined,
-      error: isSet(object.error)
-        ? JoinStreamToClientMessage_ProposeResponse_Error.fromJSON(object.error)
-        : undefined,
-    };
-  },
-
-  toJSON(message: JoinStreamToClientMessage_ProposeResponse): unknown {
-    const obj: any = {};
-    message.ok !== undefined &&
-      (obj.ok = message.ok
-        ? JoinStreamToClientMessage_ProposeResponse_Ok.toJSON(message.ok)
-        : undefined);
-    message.error !== undefined &&
-      (obj.error = message.error
-        ? JoinStreamToClientMessage_ProposeResponse_Error.toJSON(message.error)
-        : undefined);
-    return obj;
-  },
-
-  fromPartial<
-    I extends Exact<DeepPartial<JoinStreamToClientMessage_ProposeResponse>, I>
-  >(object: I): JoinStreamToClientMessage_ProposeResponse {
-    const message = createBaseJoinStreamToClientMessage_ProposeResponse();
-    message.ok =
-      object.ok !== undefined && object.ok !== null
-        ? JoinStreamToClientMessage_ProposeResponse_Ok.fromPartial(object.ok)
-        : undefined;
-    message.error =
-      object.error !== undefined && object.error !== null
-        ? JoinStreamToClientMessage_ProposeResponse_Error.fromPartial(
-            object.error
-          )
-        : undefined;
-    return message;
-  },
-};
-
-function createBaseJoinStreamToClientMessage_ProposeResponse_Error(): JoinStreamToClientMessage_ProposeResponse_Error {
-  return { reason: 0 };
-}
-
-export const JoinStreamToClientMessage_ProposeResponse_Error = {
-  encode(
-    message: JoinStreamToClientMessage_ProposeResponse_Error,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.reason !== 0) {
-      writer.uint32(8).int32(message.reason);
-    }
-    return writer;
-  },
-
-  decode(
-    input: _m0.Reader | Uint8Array,
-    length?: number
-  ): JoinStreamToClientMessage_ProposeResponse_Error {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseJoinStreamToClientMessage_ProposeResponse_Error();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.reason = reader.int32() as any;
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): JoinStreamToClientMessage_ProposeResponse_Error {
-    return {
-      reason: isSet(object.reason)
-        ? joinStreamToClientMessage_ProposeResponse_Error_ReasonFromJSON(
-            object.reason
-          )
-        : 0,
-    };
-  },
-
-  toJSON(message: JoinStreamToClientMessage_ProposeResponse_Error): unknown {
-    const obj: any = {};
-    message.reason !== undefined &&
-      (obj.reason =
-        joinStreamToClientMessage_ProposeResponse_Error_ReasonToJSON(
-          message.reason
-        ));
-    return obj;
-  },
-
-  fromPartial<
-    I extends Exact<
-      DeepPartial<JoinStreamToClientMessage_ProposeResponse_Error>,
-      I
-    >
-  >(object: I): JoinStreamToClientMessage_ProposeResponse_Error {
-    const message = createBaseJoinStreamToClientMessage_ProposeResponse_Error();
-    message.reason = object.reason ?? 0;
-    return message;
-  },
-};
-
-function createBaseJoinStreamToClientMessage_ProposeResponse_Ok(): JoinStreamToClientMessage_ProposeResponse_Ok {
-  return { sessionId: "", opponentSaveData: new Uint8Array() };
-}
-
-export const JoinStreamToClientMessage_ProposeResponse_Ok = {
-  encode(
-    message: JoinStreamToClientMessage_ProposeResponse_Ok,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.sessionId !== "") {
@@ -2339,10 +1822,10 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): JoinStreamToClientMessage_ProposeResponse_Ok {
+  ): JoinStreamToClientMessage_ProposeResponse {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseJoinStreamToClientMessage_ProposeResponse_Ok();
+    const message = createBaseJoinStreamToClientMessage_ProposeResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -2360,7 +1843,7 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
     return message;
   },
 
-  fromJSON(object: any): JoinStreamToClientMessage_ProposeResponse_Ok {
+  fromJSON(object: any): JoinStreamToClientMessage_ProposeResponse {
     return {
       sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
       opponentSaveData: isSet(object.opponentSaveData)
@@ -2369,7 +1852,7 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
     };
   },
 
-  toJSON(message: JoinStreamToClientMessage_ProposeResponse_Ok): unknown {
+  toJSON(message: JoinStreamToClientMessage_ProposeResponse): unknown {
     const obj: any = {};
     message.sessionId !== undefined && (obj.sessionId = message.sessionId);
     message.opponentSaveData !== undefined &&
@@ -2382,46 +1865,37 @@ export const JoinStreamToClientMessage_ProposeResponse_Ok = {
   },
 
   fromPartial<
-    I extends Exact<
-      DeepPartial<JoinStreamToClientMessage_ProposeResponse_Ok>,
-      I
-    >
-  >(object: I): JoinStreamToClientMessage_ProposeResponse_Ok {
-    const message = createBaseJoinStreamToClientMessage_ProposeResponse_Ok();
+    I extends Exact<DeepPartial<JoinStreamToClientMessage_ProposeResponse>, I>
+  >(object: I): JoinStreamToClientMessage_ProposeResponse {
+    const message = createBaseJoinStreamToClientMessage_ProposeResponse();
     message.sessionId = object.sessionId ?? "";
     message.opponentSaveData = object.opponentSaveData ?? new Uint8Array();
     return message;
   },
 };
 
-function createBaseJoinStreamToClientMessage_DisconnectIndication(): JoinStreamToClientMessage_DisconnectIndication {
-  return { reason: 0 };
+function createBaseJoinStreamToClientMessage_TimeoutIndication(): JoinStreamToClientMessage_TimeoutIndication {
+  return {};
 }
 
-export const JoinStreamToClientMessage_DisconnectIndication = {
+export const JoinStreamToClientMessage_TimeoutIndication = {
   encode(
-    message: JoinStreamToClientMessage_DisconnectIndication,
+    _: JoinStreamToClientMessage_TimeoutIndication,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.reason !== 0) {
-      writer.uint32(8).int32(message.reason);
-    }
     return writer;
   },
 
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): JoinStreamToClientMessage_DisconnectIndication {
+  ): JoinStreamToClientMessage_TimeoutIndication {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseJoinStreamToClientMessage_DisconnectIndication();
+    const message = createBaseJoinStreamToClientMessage_TimeoutIndication();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
-        case 1:
-          message.reason = reader.int32() as any;
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -2430,33 +1904,19 @@ export const JoinStreamToClientMessage_DisconnectIndication = {
     return message;
   },
 
-  fromJSON(object: any): JoinStreamToClientMessage_DisconnectIndication {
-    return {
-      reason: isSet(object.reason)
-        ? joinStreamToClientMessage_DisconnectIndication_ReasonFromJSON(
-            object.reason
-          )
-        : 0,
-    };
+  fromJSON(_: any): JoinStreamToClientMessage_TimeoutIndication {
+    return {};
   },
 
-  toJSON(message: JoinStreamToClientMessage_DisconnectIndication): unknown {
+  toJSON(_: JoinStreamToClientMessage_TimeoutIndication): unknown {
     const obj: any = {};
-    message.reason !== undefined &&
-      (obj.reason = joinStreamToClientMessage_DisconnectIndication_ReasonToJSON(
-        message.reason
-      ));
     return obj;
   },
 
   fromPartial<
-    I extends Exact<
-      DeepPartial<JoinStreamToClientMessage_DisconnectIndication>,
-      I
-    >
-  >(object: I): JoinStreamToClientMessage_DisconnectIndication {
-    const message = createBaseJoinStreamToClientMessage_DisconnectIndication();
-    message.reason = object.reason ?? 0;
+    I extends Exact<DeepPartial<JoinStreamToClientMessage_TimeoutIndication>, I>
+  >(_: I): JoinStreamToClientMessage_TimeoutIndication {
+    const message = createBaseJoinStreamToClientMessage_TimeoutIndication();
     return message;
   },
 };

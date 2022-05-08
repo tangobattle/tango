@@ -30,17 +30,11 @@ message CreateStreamToServerMessage {
     Settings settings = 4;
   }
 
-  message AcceptRequest {
-    uint32 opponent_id = 1;
-    bytes save_data = 2;
-  }
-
-  message RejectRequest { uint32 opponent_id = 1; }
+  message AcceptRequest { bytes save_data = 1; }
 
   oneof which {
     CreateRequest create_req = 1;
     AcceptRequest accept_req = 2;
-    RejectRequest reject_req = 3;
   }
 }
 
@@ -48,9 +42,8 @@ message CreateStreamToClientMessage {
   message CreateResponse { string lobby_id = 1; }
 
   message ProposeIndication {
-    uint32 opponent_id = 1;
-    string opponent_nickname = 2;
-    GameInfo game_info = 3;
+    string opponent_nickname = 1;
+    GameInfo game_info = 2;
   }
 
   message AcceptResponse {
@@ -71,31 +64,23 @@ message CreateStreamToClientMessage {
     }
   }
 
-  message RejectResponse {}
-
-  message DisconnectIndication {
-    enum Reason {
-      UNKNOWN = 0;
-      START_TIMEOUT = 1;
-      WAIT_TIMEOUT = 2;
-    }
-    Reason reason = 1;
-  }
+  message TimeoutIndication {}
 
   oneof which {
-    DisconnectIndication disconnect_ind = 1;
+    TimeoutIndication timeout_ind = 1;
     CreateResponse create_resp = 2;
     ProposeIndication propose_ind = 3;
     AcceptResponse accept_resp = 4;
-    RejectResponse reject_resp = 5;
   }
 }
 
 message JoinStreamToServerMessage {
-  message JoinRequest { string lobby_id = 1; }
+  message JoinRequest {
+    string lobby_id = 1;
+    string nickname = 2;
+  }
 
   message ProposeRequest {
-    string nickname = 1;
     GameInfo game_info = 2;
     bytes save_data = 3;
   }
@@ -118,35 +103,14 @@ message JoinStreamToClientMessage {
   }
 
   message ProposeResponse {
-    message Error {
-      enum Reason {
-        UNKNOWN = 0;
-        REJECTED = 1;
-      }
-      Reason reason = 1;
-    }
-    message Ok {
-      string session_id = 1;
-      bytes opponent_save_data = 2;
-    }
-    oneof which {
-      Ok ok = 1;
-      Error error = 2;
-    }
+    string session_id = 1;
+    bytes opponent_save_data = 2;
   }
 
-  message DisconnectIndication {
-    enum Reason {
-      UNKNOWN = 0;
-      START_TIMEOUT = 1;
-      PROPOSE_TIMEOUT = 2;
-      LOBBY_CLOSED = 3;
-    }
-    Reason reason = 1;
-  }
+  message TimeoutIndication {}
 
   oneof which {
-    DisconnectIndication disconnect_ind = 1;
+    TimeoutIndication timeout_ind = 1;
     JoinResponse join_resp = 2;
     ProposeResponse propose_resp = 3;
   }
