@@ -12,6 +12,7 @@ import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
+import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { ReplayInfo } from "../../replay";
 import { usePatchPath, useROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
@@ -53,6 +54,10 @@ export function CoreSupervisor({
     onExitRef.current = onExit;
   }, [onExit]);
 
+  const [state, setState] =
+    React.useState<FromCoreMessage_StateIndication_State>(
+      FromCoreMessage_StateIndication_State.UNKNOWN
+    );
   const [stderr, setStderr] = React.useState<string[]>([]);
   const [exitLingering, setExitLingering] = React.useState(false);
 
@@ -91,17 +96,6 @@ export function CoreSupervisor({
           signal: abortControllerRef.current.signal,
         }
       );
-      console.log(await core.receive());
-      await core.send({
-        startReq: {
-          windowTitle,
-          romPath,
-          savePath,
-          settings: undefined,
-        },
-        smuggleReq: undefined,
-      });
-
       core.on("exit", (exitStatus) => {
         setStderr((stderr) => {
           stderr.push(`\nexited with ${JSON.stringify(exitStatus)}\n`);
@@ -126,6 +120,43 @@ export function CoreSupervisor({
         });
         setExitLingering(true);
       });
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const p = await core.receive();
+        if (p == null || p.stateInd == null) {
+          return;
+        }
+        setState(p.stateInd.state);
+        if (
+          p.stateInd.state ==
+          FromCoreMessage_StateIndication_State.READY_TO_START
+        ) {
+          break;
+        }
+      }
+
+      await core.send({
+        startReq: {
+          windowTitle,
+          romPath,
+          savePath,
+          settings: undefined,
+        },
+        smuggleReq: undefined,
+      });
+
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const p = await core.receive();
+        if (p == null || p.stateInd == null) {
+          return;
+        }
+        setState(p.stateInd.state);
+        if (p.stateInd.state == FromCoreMessage_StateIndication_State.RUNNING) {
+          break;
+        }
+      }
     })();
   }, [
     romPath,
@@ -180,15 +211,18 @@ export function CoreSupervisor({
                   size="2rem"
                 />
                 <Typography>
-                  {/* {state == null ? (
+                  {state == FromCoreMessage_StateIndication_State.UNKNOWN ? (
                     <Trans i18nKey="supervisor:status.starting" />
-                  ) : state == "Running" ? (
+                  ) : state == FromCoreMessage_StateIndication_State.RUNNING ? (
                     <Trans i18nKey="supervisor:status.running" />
-                  ) : state == "Waiting" ? (
+                  ) : state == FromCoreMessage_StateIndication_State.WAITING ? (
                     <Trans i18nKey="supervisor:status.waiting" />
-                  ) : state == "Connecting" ? (
+                  ) : state ==
+                      FromCoreMessage_StateIndication_State.CONNECTING ||
+                    state ==
+                      FromCoreMessage_StateIndication_State.READY_TO_START ? (
                     <Trans i18nKey="supervisor:status.connecting" />
-                  ) : null} */}
+                  ) : null}
                 </Typography>
               </Stack>
               <Stack direction="row" justifyContent="flex-end">

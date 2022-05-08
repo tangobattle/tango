@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+message GameInfo {
+  message Patch {
+    string name = 1;
+    string version = 2;
+  }
+  string rom = 1;
+  Patch patch = 2;
+}
+
+message SetSettings {
+  uint32 match_type = 1;
+  GameInfo game_info = 2;
+  repeated GameInfo available_games = 3;
+  uint32 input_delay = 4;
+}
+
+message Commit { bytes commitment = 1; }
+
+message Reveal {
+  bytes save_data = 1;
+  bytes rng_nonce = 2;
+}
+
+message Message {
+  oneof which {
+    SetSettings set_settings = 1;
+    Commit commit = 2;
+    Reveal reveal = 3;
+  }
+}
