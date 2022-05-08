@@ -61,44 +61,23 @@ message CreateStreamToClientMessage {
   }
 }
 
-message JoinStreamToServerMessage {
-  message JoinRequest {
-    string lobby_id = 1;
-    string nickname = 2;
-  }
-
-  message ProposeRequest {
-    GameInfo game_info = 2;
-    bytes save_data = 3;
-  }
-
-  oneof which {
-    JoinRequest join_req = 1;
-    ProposeRequest propose_req = 2;
-  }
+message JoinRequest {
+  string lobby_id = 1;
+  string nickname = 2;
+  GameInfo game_info = 3;
+  bytes save_data = 4;
 }
 
-message JoinStreamToClientMessage {
-  message JoinResponse {
-    message Info {
-      string opponent_nickname = 1;
-      GameInfo game_info = 2;
-      repeated GameInfo available_games = 3;
-      Settings settings = 4;
-    }
-    Info info = 1;
-  }
+message JoinResponse {
+  string session_id = 1;
+  bytes opponent_save_data = 2;
+}
 
-  message ProposeResponse {
-    string session_id = 1;
-    bytes opponent_save_data = 2;
-  }
+message GetInfoRequest { string lobby_id = 1; }
 
-  message TimeoutIndication {}
-
-  oneof which {
-    TimeoutIndication timeout_ind = 1;
-    JoinResponse join_resp = 2;
-    ProposeResponse propose_resp = 3;
-  }
+message GetInfoResponse {
+  string creator_nickname = 1;
+  GameInfo game_info = 2;
+  repeated GameInfo available_games = 3;
+  Settings settings = 4;
 }
