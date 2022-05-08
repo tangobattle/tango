@@ -1,6 +1,7 @@
-use crate::{audio, battle, facade, gui, hooks, ipc, negotiation, tps};
+use crate::{audio, battle, facade, gui, hooks, ipc, tps};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
+use rand::SeedableRng;
 use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
@@ -42,12 +43,13 @@ enum UserEvent {
 
 impl Game {
     pub fn new(
-        mut ipc_client: ipc::Client,
+        rt: tokio::runtime::Runtime,
+        ipc_client: ipc::Client,
         window_title: String,
         keymapping: Keymapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
-        match_settings: Option<battle::Settings>,
+        match_init: Option<battle::MatchInit>,
     ) -> Result<Game, anyhow::Error> {
         let audio_device = cpal::default_host()
             .default_output_device()
@@ -57,26 +59,7 @@ impl Game {
             audio_device.supported_output_configs()?.collect::<Vec<_>>()
         );
 
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()?;
-
         let handle = rt.handle().clone();
-
-        let negotiation = if let Some(match_settings) = match_settings.as_ref() {
-            Some(handle.block_on(async {
-                negotiation::negotiate(
-                    &mut ipc_client,
-                    &match_settings.session_id,
-                    &match_settings.signaling_connect_addr,
-                    &match_settings.ice_servers,
-                    match_settings.input_delay,
-                )
-                .await
-            })?)
-        } else {
-            None
-        };
 
         let event_loop = Some(winit::event_loop::EventLoop::with_user_event());
 
@@ -142,7 +125,7 @@ impl Game {
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
-        if let Some(_) = match_settings {
+        if let Some(_) = match_init {
             core.set_traps(hooks.primary_traps(
                 handle.clone(),
                 joyflags.clone(),
@@ -158,28 +141,32 @@ impl Game {
             audio_supported_config.sample_rate(),
         ));
 
-        if let Some(match_settings) = match_settings {
-            let negotiation = negotiation.unwrap();
-
-            let _ = std::fs::create_dir_all(&match_settings.replays_path);
+        if let Some(match_init) = match_init {
+            let _ = std::fs::create_dir_all(&match_init.settings.replays_path);
 
             let match_ = match_.clone();
             handle.block_on(async {
-                let is_offerer = negotiation.peer_conn.local_description().unwrap().sdp_type
+                let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
                     == datachannel_wrapper::SdpType::Offer;
+                let rng_seed = match_init
+                    .settings
+                    .rng_seed
+                    .clone()
+                    .try_into()
+                    .expect("rng seed");
                 *match_.lock().await = Some(
                     battle::Match::new(
                         audio_supported_config.clone(),
                         rom_path.clone(),
                         hooks,
                         audio_mux.clone(),
-                        negotiation.peer_conn,
-                        negotiation.dc,
-                        negotiation.rng,
+                        match_init.peer_conn,
+                        match_init.dc,
+                        rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                         is_offerer,
                         thread.handle(),
-                        negotiation.input_delay,
-                        match_settings,
+                        match_init.settings.input_delay,
+                        match_init.settings,
                     )
                     .expect("new match"),
                 );
@@ -289,7 +276,15 @@ impl Game {
     pub fn run(mut self) -> anyhow::Result<()> {
         self.rt.block_on(async {
             self.ipc_client
-                .send_notification(ipc::Notification::State(ipc::State::Running))
+                .send(tango_protos::ipc::FromCoreMessage {
+                    which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
+                        tango_protos::ipc::from_core_message::StateIndication {
+                            state:
+                                tango_protos::ipc::from_core_message::state_indication::State::Running
+                                    .into(),
+                        },
+                    )),
+                })
                 .await?;
             anyhow::Result::<()>::Ok(())
         })?;

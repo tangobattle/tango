@@ -17,7 +17,7 @@ lazy_static! {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub enum Packet {
     Hello(Hello),
-    Hola(Hola),
+    Smuggle(Smuggle),
     Input(Input),
 }
 
@@ -34,13 +34,11 @@ impl Packet {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Hello {
     pub protocol_version: u8,
-    pub rng_commitment: Vec<u8>,
-    pub input_delay: u32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Hola {
-    pub rng_nonce: Vec<u8>,
+pub struct Smuggle {
+    pub data: Vec<u8>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

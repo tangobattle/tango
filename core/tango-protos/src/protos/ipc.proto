@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package tango.ipc;
+
+message FromCoreMessage {
+  message StateIndication {
+    enum State {
+      UNKNOWN = 0;
+      RUNNING = 1;
+      WAITING = 2;
+      CONNECTING = 3;
+      READY_TO_START = 4;
+    }
+    State state = 1;
+  }
+  message SmuggleIndication { bytes data = 1; }
+
+  oneof which {
+    StateIndication state_ind = 1;
+    SmuggleIndication smuggle_ind = 2;
+  }
+}
+
+message ToCoreMessage {
+  message StartRequest {
+    string window_title = 1;
+    string rom_path = 2;
+    string save_path = 3;
+
+    message MatchSettings {
+      string shadow_save_path = 1;
+      string shadow_rom_path = 2;
+      uint32 input_delay = 3;
+      uint32 match_type = 4;
+      string replays_path = 5;
+      string replay_metadata = 6;
+      bytes rng_seed = 7;
+    }
+
+    MatchSettings settings = 4;
+  }
+
+  message SmuggleRequest { bytes data = 1; }
+
+  oneof which {
+    StartRequest start_req = 1;
+    SmuggleRequest smuggle_req = 2;
+  }
+}

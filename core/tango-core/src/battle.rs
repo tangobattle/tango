@@ -10,17 +10,20 @@ use crate::replay;
 use crate::shadow;
 use crate::transport;
 
-#[derive(Clone, Debug)]
+pub struct MatchInit {
+    pub dc: datachannel_wrapper::DataChannel,
+    pub peer_conn: datachannel_wrapper::PeerConnection,
+    pub settings: Settings,
+}
+
 pub struct Settings {
-    pub ice_servers: Vec<String>,
-    pub signaling_connect_addr: String,
-    pub session_id: String,
     pub replays_path: std::path::PathBuf,
     pub shadow_save_path: std::path::PathBuf,
     pub shadow_rom_path: std::path::PathBuf,
     pub replay_metadata: Vec<u8>,
     pub match_type: u16,
     pub input_delay: u32,
+    pub rng_seed: Vec<u8>,
 }
 
 pub struct RoundState {

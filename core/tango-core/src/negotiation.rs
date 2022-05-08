@@ -1,26 +1,9 @@
 use crate::{ipc, protocol, signaling};
-use rand::Rng;
-use rand::SeedableRng;
-use sha3::digest::ExtendableOutput;
-use std::io::Read;
-use std::io::Write;
-use subtle::ConstantTimeEq;
-
-pub struct Negotiation {
-    pub dc: datachannel_wrapper::DataChannel,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
-    pub rng: rand_pcg::Mcg128Xsl64,
-    pub input_delay: u32,
-}
 
 #[derive(Debug)]
 pub enum Error {
     ExpectedHello,
-    ExpectedHola,
-    IdenticalCommitment,
     ProtocolVersionMismatch,
-    MatchTypeMismatch,
-    InvalidCommitment,
     Other(anyhow::Error),
 }
 
@@ -46,11 +29,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Error::ExpectedHello => write!(f, "expected hello"),
-            Error::ExpectedHola => write!(f, "expected hola"),
-            Error::IdenticalCommitment => write!(f, "identical commitment"),
             Error::ProtocolVersionMismatch => write!(f, "protocol version mismatch"),
-            Error::MatchTypeMismatch => write!(f, "match type mismatch"),
-            Error::InvalidCommitment => write!(f, "invalid commitment"),
             Error::Other(e) => write!(f, "other error: {}", e),
         }
     }
@@ -58,29 +37,28 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-fn make_rng_commitment(nonce: &[u8]) -> std::io::Result<[u8; 32]> {
-    let mut shake128 = sha3::Shake128::default();
-    shake128.write_all(b"syncrand:nonce:")?;
-    shake128.write_all(nonce)?;
-
-    let mut commitment = [0u8; 32];
-    shake128
-        .finalize_xof()
-        .read_exact(commitment.as_mut_slice())?;
-
-    Ok(commitment)
-}
-
 pub async fn negotiate(
     ipc_client: &mut ipc::Client,
     session_id: &str,
     signaling_connect_addr: &str,
     ice_servers: &[String],
-    input_delay: u32,
-) -> Result<Negotiation, Error> {
+) -> Result<
+    (
+        datachannel_wrapper::DataChannel,
+        datachannel_wrapper::PeerConnection,
+    ),
+    Error,
+> {
     log::info!("negotiating match, session_id = {}", session_id);
     ipc_client
-        .send_notification(ipc::Notification::State(ipc::State::Waiting))
+        .send(tango_protos::ipc::FromCoreMessage {
+            which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
+                tango_protos::ipc::from_core_message::StateIndication {
+                    state: tango_protos::ipc::from_core_message::state_indication::State::Waiting
+                        .into(),
+                },
+            )),
+        })
         .await?;
 
     let (mut peer_conn, signal_receiver) =
@@ -122,20 +100,21 @@ pub async fn negotiate(
     );
 
     ipc_client
-        .send_notification(ipc::Notification::State(ipc::State::Connecting))
+        .send(tango_protos::ipc::FromCoreMessage {
+            which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
+                tango_protos::ipc::from_core_message::StateIndication {
+                    state:
+                        tango_protos::ipc::from_core_message::state_indication::State::Connecting
+                            .into(),
+                },
+            )),
+        })
         .await?;
-    let mut nonce = [0u8; 16];
-    rand::rngs::OsRng {}.fill(&mut nonce);
-    let commitment = make_rng_commitment(&nonce)?;
-
-    log::info!("our nonce={:?}, commitment={:?}", nonce, commitment);
 
     dc_tx
         .send(
             protocol::Packet::Hello(protocol::Hello {
                 protocol_version: protocol::VERSION,
-                rng_commitment: commitment.to_vec(),
-                input_delay,
             })
             .serialize()
             .expect("serialize")
@@ -160,63 +139,21 @@ pub async fn negotiate(
         }
     };
 
-    log::info!("their hello={:?}", hello);
-
-    if commitment.ct_eq(hello.rng_commitment.as_slice()).into() {
-        return Err(Error::IdenticalCommitment);
-    }
-
     if hello.protocol_version != protocol::VERSION {
         return Err(Error::ProtocolVersionMismatch);
     }
 
-    dc_tx
-        .send(
-            protocol::Packet::Hola(protocol::Hola {
-                rng_nonce: nonce.to_vec(),
-            })
-            .serialize()
-            .expect("serialize")
-            .as_slice(),
-        )
+    ipc_client
+        .send(tango_protos::ipc::FromCoreMessage {
+            which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
+                tango_protos::ipc::from_core_message::StateIndication {
+                    state:
+                        tango_protos::ipc::from_core_message::state_indication::State::ReadyToStart
+                            .into(),
+                },
+            )),
+        })
         .await?;
 
-    let hola = match protocol::Packet::deserialize(
-        match dc_rx.receive().await {
-            Some(d) => d,
-            None => {
-                return Err(Error::ExpectedHola);
-            }
-        }
-        .as_slice(),
-    )
-    .map_err(|_| Error::ExpectedHola)?
-    {
-        protocol::Packet::Hola(hola) => hola,
-        _ => {
-            return Err(Error::ExpectedHola);
-        }
-    };
-
-    log::info!("their hola={:?}", hola);
-
-    if !bool::from(make_rng_commitment(&hola.rng_nonce)?.ct_eq(hello.rng_commitment.as_slice())) {
-        return Err(Error::InvalidCommitment);
-    }
-
-    log::info!("connection ok!");
-
-    let seed = hola
-        .rng_nonce
-        .iter()
-        .zip(nonce.iter())
-        .map(|(&x1, &x2)| x1 ^ x2)
-        .collect::<Vec<u8>>();
-
-    Ok(Negotiation {
-        dc: dc_rx.unsplit(dc_tx),
-        peer_conn,
-        rng: rand_pcg::Mcg128Xsl64::from_seed(seed.try_into().expect("rng seed")),
-        input_delay: hello.input_delay,
-    })
+    Ok((dc_rx.unsplit(dc_tx), peer_conn))
 }

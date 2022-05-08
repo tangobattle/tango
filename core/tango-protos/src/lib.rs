@@ -2,6 +2,6 @@ pub mod signaling {
     include!(concat!(env!("OUT_DIR"), "/tango.signaling.rs"));
 }
 
-pub mod lobby {
-    include!(concat!(env!("OUT_DIR"), "/tango.lobby.rs"));
+pub mod ipc {
+    include!(concat!(env!("OUT_DIR"), "/tango.ipc.rs"));
 }

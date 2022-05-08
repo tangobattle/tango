@@ -1,7 +1,18 @@
 import { readFileSync, writeFileSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 
-import * as ipc from "./ipc";
+export interface Keymapping {
+  up: string;
+  down: string;
+  left: string;
+  right: string;
+  a: string;
+  b: string;
+  l: string;
+  r: string;
+  select: string;
+  start: string;
+}
 
 export interface Config {
   nickname: string;
@@ -10,7 +21,7 @@ export interface Config {
   updateChannel: string;
   wgpuBackend: string | null;
   rustLogFilter: string;
-  keymapping: ipc.Args["keymapping"];
+  keymapping: Keymapping;
   lobby: {
     address: string;
     insecure: boolean;
