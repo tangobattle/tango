@@ -83,7 +83,7 @@ export function CoreSupervisor({
         configRef.current.keymapping,
         configRef.current.signalingConnectAddr,
         configRef.current.iceServers,
-        "aaa",
+        null,
         {
           env: {
             WGPU_BACKEND:
@@ -134,23 +134,6 @@ export function CoreSupervisor({
         ) {
           break;
         }
-      }
-
-      let i = 0;
-      while (i <= 0xff) {
-        await core.send({
-          startReq: undefined,
-          smuggleReq: { data: new Uint8Array([i]) },
-        });
-        const resp = await core.receive();
-        console.log("RESP", resp);
-        if (resp?.smuggleInd == null) {
-          throw "Aaaa";
-        }
-        if (resp.smuggleInd.data[0] != i) {
-          throw "aaa";
-        }
-        i++;
       }
 
       await core.send({
@@ -229,7 +212,7 @@ export function CoreSupervisor({
                 />
                 <Typography>
                   {state == FromCoreMessage_StateIndication_State.UNKNOWN ? (
-                    <Trans i18nKey="supervisor:status.starting" />
+                    <Trans i18nKey="supervisor:status.unknown" />
                   ) : state == FromCoreMessage_StateIndication_State.RUNNING ? (
                     <Trans i18nKey="supervisor:status.running" />
                   ) : state == FromCoreMessage_StateIndication_State.WAITING ? (
@@ -238,7 +221,7 @@ export function CoreSupervisor({
                       FromCoreMessage_StateIndication_State.CONNECTING ||
                     state ==
                       FromCoreMessage_StateIndication_State.READY_TO_START ? (
-                    <Trans i18nKey="supervisor:status.connecting" />
+                    <Trans i18nKey="supervisor:status.ready-to-start" />
                   ) : null}
                 </Typography>
               </Stack>
