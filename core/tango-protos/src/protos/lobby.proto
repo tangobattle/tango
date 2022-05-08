@@ -15,8 +15,9 @@ message GameInfo {
 message Settings {
   bool open = 1;
   enum MatchType {
-    SINGLE = 0;
-    TRIPLE = 1;
+    UNKNOWN = 0;
+    SINGLE = 1;
+    TRIPLE = 2;
   }
   MatchType match_type = 2;
 }

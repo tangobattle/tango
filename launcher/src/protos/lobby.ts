@@ -20,17 +20,21 @@ export interface Settings {
 }
 
 export enum Settings_MatchType {
-  SINGLE = 0,
-  TRIPLE = 1,
+  UNKNOWN = 0,
+  SINGLE = 1,
+  TRIPLE = 2,
   UNRECOGNIZED = -1,
 }
 
 export function settings_MatchTypeFromJSON(object: any): Settings_MatchType {
   switch (object) {
     case 0:
+    case "UNKNOWN":
+      return Settings_MatchType.UNKNOWN;
+    case 1:
     case "SINGLE":
       return Settings_MatchType.SINGLE;
-    case 1:
+    case 2:
     case "TRIPLE":
       return Settings_MatchType.TRIPLE;
     case -1:
@@ -42,6 +46,8 @@ export function settings_MatchTypeFromJSON(object: any): Settings_MatchType {
 
 export function settings_MatchTypeToJSON(object: Settings_MatchType): string {
   switch (object) {
+    case Settings_MatchType.UNKNOWN:
+      return "UNKNOWN";
     case Settings_MatchType.SINGLE:
       return "SINGLE";
     case Settings_MatchType.TRIPLE:
