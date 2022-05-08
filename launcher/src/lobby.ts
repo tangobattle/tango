@@ -22,7 +22,6 @@ function wrapMessageStream(ws: WebSocket) {
 }
 
 interface OpponentInfo {
-  id: number;
   nickname: string;
   gameInfo: GameInfo;
 }
@@ -38,7 +37,6 @@ interface LobbyJoinHandle {
   availableGames: GameInfo[];
   settings: Settings;
   propose(
-    nickname: string,
     gameInfo: GameInfo,
     saveData: Uint8Array
   ): Promise<NegotiatedSession | null>;
@@ -47,6 +45,7 @@ interface LobbyJoinHandle {
 export async function join(
   addr: string,
   lobbyId: string,
+  nickname: string,
   { signal }: { signal?: AbortSignal } = {}
 ): Promise<LobbyJoinHandle | null> {
   const ws = new WebSocket(`${addr}/join`);
@@ -61,6 +60,7 @@ export async function join(
       JoinStreamToServerMessage.encode({
         joinReq: {
           lobbyId,
+          nickname,
         },
         proposeReq: undefined,
       }).finish()
@@ -94,12 +94,11 @@ export async function join(
     gameInfo: resp.joinResp.info.gameInfo,
     availableGames: resp.joinResp.info.availableGames,
     settings: resp.joinResp.info.settings,
-    async propose(nickname: string, gameInfo: GameInfo, saveData: Uint8Array) {
+    async propose(gameInfo: GameInfo, saveData: Uint8Array) {
       ws.send(
         JoinStreamToServerMessage.encode({
           joinReq: undefined,
           proposeReq: {
-            nickname,
             gameInfo,
             saveData: await promisify(zlib.brotliCompress)(saveData),
           },
@@ -115,18 +114,10 @@ export async function join(
         throw `unexpected response: ${JoinStreamToClientMessage.toJSON(resp)}`;
       }
 
-      if (resp.proposeResp.error != null) {
-        return null;
-      }
-
-      if (resp.proposeResp.ok == null) {
-        throw "propose response missing ook";
-      }
-
       return {
-        sessionId: resp.proposeResp.ok.sessionId,
+        sessionId: resp.proposeResp.sessionId,
         opponentSaveData: await promisify(zlib.brotliDecompress)(
-          resp.proposeResp.ok.opponentSaveData
+          resp.proposeResp.opponentSaveData
         ),
       };
     },
@@ -135,9 +126,8 @@ export async function join(
 
 interface LobbyCreateHandle {
   lobbyId: string;
-  nextOpponent(): Promise<OpponentInfo | null>;
-  accept(id: number, saveData: Uint8Array): Promise<NegotiatedSession | null>;
-  reject(id: number): Promise<void>;
+  waitForOpponent(): Promise<OpponentInfo | null>;
+  accept(saveData: Uint8Array): Promise<NegotiatedSession | null>;
 }
 
 export async function create(
@@ -165,7 +155,6 @@ export async function create(
           settings,
         },
         acceptReq: undefined,
-        rejectReq: undefined,
       }).finish()
     );
   };
@@ -184,18 +173,13 @@ export async function create(
   return {
     lobbyId,
 
-    async nextOpponent() {
+    async waitForOpponent() {
       const { value: raw, done } = await stream.next();
       if (done) {
         return null;
       }
 
       const resp = CreateStreamToClientMessage.decode(new Uint8Array(raw));
-      if (resp.disconnectInd != null) {
-        // TODO: Have a better message here.
-        throw `disconnected: ${CreateStreamToClientMessage.toJSON(resp)}`;
-      }
-
       if (resp.proposeInd == null) {
         throw `unexpected response: ${CreateStreamToClientMessage.toJSON(
           resp
@@ -207,21 +191,18 @@ export async function create(
       }
 
       return {
-        id: resp.proposeInd.opponentId,
         nickname: resp.proposeInd.opponentNickname,
         gameInfo: resp.proposeInd.gameInfo,
       };
     },
 
-    async accept(opponentId: number, saveData: Uint8Array) {
+    async accept(saveData: Uint8Array) {
       ws.send(
         CreateStreamToServerMessage.encode({
           createReq: undefined,
           acceptReq: {
-            opponentId,
             saveData: await promisify(zlib.brotliCompress)(saveData),
           },
-          rejectReq: undefined,
         }).finish()
       );
 
@@ -237,44 +218,12 @@ export async function create(
         )}`;
       }
 
-      if (resp.acceptResp.error != null) {
-        return null;
-      }
-
-      if (resp.acceptResp.ok == null) {
-        throw "propose response missing ook";
-      }
-
       return {
-        sessionId: resp.acceptResp.ok.sessionId,
+        sessionId: resp.acceptResp.sessionId,
         opponentSaveData: await promisify(zlib.brotliDecompress)(
-          resp.acceptResp.ok.opponentSaveData
+          resp.acceptResp.opponentSaveData
         ),
       };
-    },
-
-    async reject(opponentId: number) {
-      ws.send(
-        CreateStreamToServerMessage.encode({
-          createReq: undefined,
-          acceptReq: undefined,
-          rejectReq: {
-            opponentId,
-          },
-        }).finish()
-      );
-
-      const { value: raw, done } = await stream.next();
-      if (done) {
-        throw "stream ended early";
-      }
-
-      const resp = CreateStreamToClientMessage.decode(new Uint8Array(raw));
-      if (resp.rejectResp == null) {
-        throw `unexpected response: ${CreateStreamToClientMessage.toJSON(
-          resp
-        )}`;
-      }
     },
   };
 }

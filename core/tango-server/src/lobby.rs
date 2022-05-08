@@ -181,32 +181,12 @@ impl Server {
                                 if let Some(opponent) = lobby.opponent.as_mut() {
                                     opponent
                                 } else {
-                                    lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
-                                        which:
-                                            Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
-                                                tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
-                                                    which: Some(tango_protos::lobby::create_stream_to_client_message::accept_response::Which::Error(tango_protos::lobby::create_stream_to_client_message::accept_response::Error{
-                                                        reason: tango_protos::lobby::create_stream_to_client_message::accept_response::error::Reason::NoSuchOpponent.into(),
-                                                    })),
-                                                }
-                                            )),
-                                    }.encode_to_vec())).await?;
                                     anyhow::bail!("no such opponent");
                                 }
                             };
 
                             let opponent_save_data = match &opponent.save_data {
                                 None => {
-                                    lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
-                                        which:
-                                            Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
-                                                tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
-                                                    which: Some(tango_protos::lobby::create_stream_to_client_message::accept_response::Which::Error(tango_protos::lobby::create_stream_to_client_message::accept_response::Error{
-                                                        reason: tango_protos::lobby::create_stream_to_client_message::accept_response::error::Reason::NoSuchOpponent.into(),
-                                                    })),
-                                                }
-                                            )),
-                                    }.encode_to_vec())).await?;
                                     anyhow::bail!("no save data");
                                 },
                                 Some(save_data) => {
@@ -220,10 +200,8 @@ impl Server {
                                 which:
                                     Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
                                         tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
-                                            which: Some(tango_protos::lobby::create_stream_to_client_message::accept_response::Which::Ok(tango_protos::lobby::create_stream_to_client_message::accept_response::Ok{
-                                                session_id: session_id.clone(),
-                                                opponent_save_data,
-                                            })),
+                                            session_id: session_id.clone(),
+                                            opponent_save_data,
                                         }
                                     )),
                             }.encode_to_vec())).await?;

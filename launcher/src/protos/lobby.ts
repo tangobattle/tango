@@ -90,51 +90,6 @@ export interface CreateStreamToClientMessage_ProposeIndication {
 }
 
 export interface CreateStreamToClientMessage_AcceptResponse {
-  ok: CreateStreamToClientMessage_AcceptResponse_Ok | undefined;
-  error: CreateStreamToClientMessage_AcceptResponse_Error | undefined;
-}
-
-export interface CreateStreamToClientMessage_AcceptResponse_Error {
-  reason: CreateStreamToClientMessage_AcceptResponse_Error_Reason;
-}
-
-export enum CreateStreamToClientMessage_AcceptResponse_Error_Reason {
-  UNKNOWN = 0,
-  NO_SUCH_OPPONENT = 1,
-  UNRECOGNIZED = -1,
-}
-
-export function createStreamToClientMessage_AcceptResponse_Error_ReasonFromJSON(
-  object: any
-): CreateStreamToClientMessage_AcceptResponse_Error_Reason {
-  switch (object) {
-    case 0:
-    case "UNKNOWN":
-      return CreateStreamToClientMessage_AcceptResponse_Error_Reason.UNKNOWN;
-    case 1:
-    case "NO_SUCH_OPPONENT":
-      return CreateStreamToClientMessage_AcceptResponse_Error_Reason.NO_SUCH_OPPONENT;
-    case -1:
-    case "UNRECOGNIZED":
-    default:
-      return CreateStreamToClientMessage_AcceptResponse_Error_Reason.UNRECOGNIZED;
-  }
-}
-
-export function createStreamToClientMessage_AcceptResponse_Error_ReasonToJSON(
-  object: CreateStreamToClientMessage_AcceptResponse_Error_Reason
-): string {
-  switch (object) {
-    case CreateStreamToClientMessage_AcceptResponse_Error_Reason.UNKNOWN:
-      return "UNKNOWN";
-    case CreateStreamToClientMessage_AcceptResponse_Error_Reason.NO_SUCH_OPPONENT:
-      return "NO_SUCH_OPPONENT";
-    default:
-      return "UNKNOWN";
-  }
-}
-
-export interface CreateStreamToClientMessage_AcceptResponse_Ok {
   sessionId: string;
   opponentSaveData: Uint8Array;
 }
@@ -953,181 +908,12 @@ export const CreateStreamToClientMessage_ProposeIndication = {
 };
 
 function createBaseCreateStreamToClientMessage_AcceptResponse(): CreateStreamToClientMessage_AcceptResponse {
-  return { ok: undefined, error: undefined };
+  return { sessionId: "", opponentSaveData: new Uint8Array() };
 }
 
 export const CreateStreamToClientMessage_AcceptResponse = {
   encode(
     message: CreateStreamToClientMessage_AcceptResponse,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.ok !== undefined) {
-      CreateStreamToClientMessage_AcceptResponse_Ok.encode(
-        message.ok,
-        writer.uint32(10).fork()
-      ).ldelim();
-    }
-    if (message.error !== undefined) {
-      CreateStreamToClientMessage_AcceptResponse_Error.encode(
-        message.error,
-        writer.uint32(18).fork()
-      ).ldelim();
-    }
-    return writer;
-  },
-
-  decode(
-    input: _m0.Reader | Uint8Array,
-    length?: number
-  ): CreateStreamToClientMessage_AcceptResponse {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseCreateStreamToClientMessage_AcceptResponse();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.ok = CreateStreamToClientMessage_AcceptResponse_Ok.decode(
-            reader,
-            reader.uint32()
-          );
-          break;
-        case 2:
-          message.error =
-            CreateStreamToClientMessage_AcceptResponse_Error.decode(
-              reader,
-              reader.uint32()
-            );
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): CreateStreamToClientMessage_AcceptResponse {
-    return {
-      ok: isSet(object.ok)
-        ? CreateStreamToClientMessage_AcceptResponse_Ok.fromJSON(object.ok)
-        : undefined,
-      error: isSet(object.error)
-        ? CreateStreamToClientMessage_AcceptResponse_Error.fromJSON(
-            object.error
-          )
-        : undefined,
-    };
-  },
-
-  toJSON(message: CreateStreamToClientMessage_AcceptResponse): unknown {
-    const obj: any = {};
-    message.ok !== undefined &&
-      (obj.ok = message.ok
-        ? CreateStreamToClientMessage_AcceptResponse_Ok.toJSON(message.ok)
-        : undefined);
-    message.error !== undefined &&
-      (obj.error = message.error
-        ? CreateStreamToClientMessage_AcceptResponse_Error.toJSON(message.error)
-        : undefined);
-    return obj;
-  },
-
-  fromPartial<
-    I extends Exact<DeepPartial<CreateStreamToClientMessage_AcceptResponse>, I>
-  >(object: I): CreateStreamToClientMessage_AcceptResponse {
-    const message = createBaseCreateStreamToClientMessage_AcceptResponse();
-    message.ok =
-      object.ok !== undefined && object.ok !== null
-        ? CreateStreamToClientMessage_AcceptResponse_Ok.fromPartial(object.ok)
-        : undefined;
-    message.error =
-      object.error !== undefined && object.error !== null
-        ? CreateStreamToClientMessage_AcceptResponse_Error.fromPartial(
-            object.error
-          )
-        : undefined;
-    return message;
-  },
-};
-
-function createBaseCreateStreamToClientMessage_AcceptResponse_Error(): CreateStreamToClientMessage_AcceptResponse_Error {
-  return { reason: 0 };
-}
-
-export const CreateStreamToClientMessage_AcceptResponse_Error = {
-  encode(
-    message: CreateStreamToClientMessage_AcceptResponse_Error,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.reason !== 0) {
-      writer.uint32(8).int32(message.reason);
-    }
-    return writer;
-  },
-
-  decode(
-    input: _m0.Reader | Uint8Array,
-    length?: number
-  ): CreateStreamToClientMessage_AcceptResponse_Error {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message =
-      createBaseCreateStreamToClientMessage_AcceptResponse_Error();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.reason = reader.int32() as any;
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): CreateStreamToClientMessage_AcceptResponse_Error {
-    return {
-      reason: isSet(object.reason)
-        ? createStreamToClientMessage_AcceptResponse_Error_ReasonFromJSON(
-            object.reason
-          )
-        : 0,
-    };
-  },
-
-  toJSON(message: CreateStreamToClientMessage_AcceptResponse_Error): unknown {
-    const obj: any = {};
-    message.reason !== undefined &&
-      (obj.reason =
-        createStreamToClientMessage_AcceptResponse_Error_ReasonToJSON(
-          message.reason
-        ));
-    return obj;
-  },
-
-  fromPartial<
-    I extends Exact<
-      DeepPartial<CreateStreamToClientMessage_AcceptResponse_Error>,
-      I
-    >
-  >(object: I): CreateStreamToClientMessage_AcceptResponse_Error {
-    const message =
-      createBaseCreateStreamToClientMessage_AcceptResponse_Error();
-    message.reason = object.reason ?? 0;
-    return message;
-  },
-};
-
-function createBaseCreateStreamToClientMessage_AcceptResponse_Ok(): CreateStreamToClientMessage_AcceptResponse_Ok {
-  return { sessionId: "", opponentSaveData: new Uint8Array() };
-}
-
-export const CreateStreamToClientMessage_AcceptResponse_Ok = {
-  encode(
-    message: CreateStreamToClientMessage_AcceptResponse_Ok,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.sessionId !== "") {
@@ -1142,10 +928,10 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): CreateStreamToClientMessage_AcceptResponse_Ok {
+  ): CreateStreamToClientMessage_AcceptResponse {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseCreateStreamToClientMessage_AcceptResponse_Ok();
+    const message = createBaseCreateStreamToClientMessage_AcceptResponse();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -1163,7 +949,7 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
     return message;
   },
 
-  fromJSON(object: any): CreateStreamToClientMessage_AcceptResponse_Ok {
+  fromJSON(object: any): CreateStreamToClientMessage_AcceptResponse {
     return {
       sessionId: isSet(object.sessionId) ? String(object.sessionId) : "",
       opponentSaveData: isSet(object.opponentSaveData)
@@ -1172,7 +958,7 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
     };
   },
 
-  toJSON(message: CreateStreamToClientMessage_AcceptResponse_Ok): unknown {
+  toJSON(message: CreateStreamToClientMessage_AcceptResponse): unknown {
     const obj: any = {};
     message.sessionId !== undefined && (obj.sessionId = message.sessionId);
     message.opponentSaveData !== undefined &&
@@ -1185,12 +971,9 @@ export const CreateStreamToClientMessage_AcceptResponse_Ok = {
   },
 
   fromPartial<
-    I extends Exact<
-      DeepPartial<CreateStreamToClientMessage_AcceptResponse_Ok>,
-      I
-    >
-  >(object: I): CreateStreamToClientMessage_AcceptResponse_Ok {
-    const message = createBaseCreateStreamToClientMessage_AcceptResponse_Ok();
+    I extends Exact<DeepPartial<CreateStreamToClientMessage_AcceptResponse>, I>
+  >(object: I): CreateStreamToClientMessage_AcceptResponse {
+    const message = createBaseCreateStreamToClientMessage_AcceptResponse();
     message.sessionId = object.sessionId ?? "";
     message.opponentSaveData = object.opponentSaveData ?? new Uint8Array();
     return message;
