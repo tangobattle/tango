@@ -132,80 +132,82 @@ impl Server {
 
                 *lobby_id_for_cleanup.lock().await = Some(lobby_id.clone());
 
-                {
-                    const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60 * 5);
-                    let msg = tokio::select! {
-                        _ = close_rx => {
-                            anyhow::bail!("lobby closed");
+                const WAIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60 * 5);
+                let msg = tokio::select! {
+                    _ = close_rx => {
+                        anyhow::bail!("lobby closed");
+                    },
+                    r = tokio::time::timeout(WAIT_TIMEOUT, rx.try_next()) => match r {
+                        Ok(msg) => match msg? {
+                            Some(tungstenite::Message::Binary(d)) => {
+                                tango_protos::lobby::CreateStreamToServerMessage::decode(
+                                    bytes::Bytes::from(d),
+                                )?
+                            }
+                            m => {
+                                anyhow::bail!("unexpected message: {:?}", m);
+                            }
                         },
-                        r = tokio::time::timeout(WAIT_TIMEOUT, rx.try_next()) => match r {
-                            Ok(msg) => match msg? {
-                                Some(tungstenite::Message::Binary(d)) => {
-                                    tango_protos::lobby::CreateStreamToServerMessage::decode(
-                                        bytes::Bytes::from(d),
-                                    )?
-                                }
-                                m => {
-                                    anyhow::bail!("unexpected message: {:?}", m);
-                                }
-                            },
-                            Err(_) => {
-                                let mut lobby = lobby.lock().await;
-                                lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
-                                    which:
-                                        Some(tango_protos::lobby::create_stream_to_client_message::Which::TimeoutInd(
-                                            tango_protos::lobby::create_stream_to_client_message::TimeoutIndication { }
-                                        )),
-                                }.encode_to_vec())).await?;
-                                anyhow::bail!("wait timed out");
-                            },
-                        }
-                    };
-
-                    match msg {
-                        tango_protos::lobby::CreateStreamToServerMessage {
-                            which:
-                                Some(tango_protos::lobby::create_stream_to_server_message::Which::AcceptReq(
-                                    accept_req,
-                                )),
-                        } => {
+                        Err(_) => {
                             let mut lobby = lobby.lock().await;
-                            let mut opponent = lobby.opponent.take();
-
-                            let opponent = if let Some(opponent) = opponent.as_mut() {
-                                opponent
-                            } else {
-                                anyhow::bail!("no such opponent");
-                            };
-
-                            let opponent_save_data = if let Some(opponent_save_data) = &opponent.save_data {
-                                opponent_save_data.clone()
-                            } else {
-                                anyhow::bail!("no such opponent");
-                            };
-
-                            let session_id = generate_id();
-
                             lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
-                                which: Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
-                                    tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
-                                        session_id: session_id.clone(),
-                                        opponent_save_data,
-                                    }
-                                )),
+                                which:
+                                    Some(tango_protos::lobby::create_stream_to_client_message::Which::TimeoutInd(
+                                        tango_protos::lobby::create_stream_to_client_message::TimeoutIndication { }
+                                    )),
                             }.encode_to_vec())).await?;
-
-                            opponent.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
-                                which: Some(tango_protos::lobby::join_stream_to_client_message::Which::ProposeResp(
-                                    tango_protos::lobby::join_stream_to_client_message::ProposeResponse {
-                                        session_id: session_id.clone(),
-                                        opponent_save_data: accept_req.save_data,
-                                    }
-                                )),
-                            }.encode_to_vec())).await?;
+                            anyhow::bail!("wait timed out");
                         },
-                        m => anyhow::bail!("unexpected message: {:?}", m),
+                    }
+                };
+
+                let accept_req = match msg {
+                    tango_protos::lobby::CreateStreamToServerMessage {
+                        which:
+                            Some(tango_protos::lobby::create_stream_to_server_message::Which::AcceptReq(
+                                accept_req,
+                            )),
+                    } => {
+                        accept_req
+                    },
+                    m => anyhow::bail!("unexpected message: {:?}", m),
+                };
+
+                {
+                    let mut lobby = lobby.lock().await;
+                    let mut opponent = lobby.opponent.take();
+
+                    let opponent = if let Some(opponent) = opponent.as_mut() {
+                        opponent
+                    } else {
+                        anyhow::bail!("no such opponent");
                     };
+
+                    let opponent_save_data = if let Some(opponent_save_data) = &opponent.save_data {
+                        opponent_save_data.clone()
+                    } else {
+                        anyhow::bail!("no such opponent");
+                    };
+
+                    let session_id = generate_id();
+
+                    lobby.creator_tx.send(tungstenite::Message::Binary(tango_protos::lobby::CreateStreamToClientMessage {
+                        which: Some(tango_protos::lobby::create_stream_to_client_message::Which::AcceptResp(
+                            tango_protos::lobby::create_stream_to_client_message::AcceptResponse {
+                                session_id: session_id.clone(),
+                                opponent_save_data,
+                            }
+                        )),
+                    }.encode_to_vec())).await?;
+
+                    opponent.tx.send(tungstenite::Message::Binary(tango_protos::lobby::JoinStreamToClientMessage {
+                        which: Some(tango_protos::lobby::join_stream_to_client_message::Which::ProposeResp(
+                            tango_protos::lobby::join_stream_to_client_message::ProposeResponse {
+                                session_id: session_id.clone(),
+                                opponent_save_data: accept_req.save_data,
+                            }
+                        )),
+                    }.encode_to_vec())).await?;
                 }
 
                 Ok(())
