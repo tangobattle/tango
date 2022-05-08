@@ -18,6 +18,9 @@ function wrapMessageStream(ws: WebSocket) {
   ws.onclose = () => {
     stream.return();
   };
+  ws.onerror = (e) => {
+    stream.throw((e as any).code);
+  };
   return stream;
 }
 
