@@ -165,7 +165,6 @@ impl Game {
                         rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                         is_offerer,
                         thread.handle(),
-                        match_init.settings.input_delay,
                         match_init.settings,
                     )
                     .expect("new match"),

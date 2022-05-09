@@ -31,10 +31,11 @@ message ToCoreMessage {
       string shadow_save_path = 1;
       string shadow_rom_path = 2;
       uint32 input_delay = 3;
-      uint32 match_type = 4;
-      string replays_path = 5;
-      bytes replay_metadata = 6;
-      bytes rng_seed = 7;
+      uint32 shadow_input_delay = 4;
+      uint32 match_type = 5;
+      string replays_path = 6;
+      bytes replay_metadata = 7;
+      bytes rng_seed = 8;
     }
 
     MatchSettings settings = 4;

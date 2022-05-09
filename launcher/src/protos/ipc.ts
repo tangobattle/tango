@@ -87,6 +87,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   shadowSavePath: string;
   shadowRomPath: string;
   inputDelay: number;
+  shadowInputDelay: number;
   matchType: number;
   replaysPath: string;
   replayMetadata: Uint8Array;
@@ -505,6 +506,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     shadowSavePath: "",
     shadowRomPath: "",
     inputDelay: 0,
+    shadowInputDelay: 0,
     matchType: 0,
     replaysPath: "",
     replayMetadata: new Uint8Array(),
@@ -526,17 +528,20 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     if (message.inputDelay !== 0) {
       writer.uint32(24).uint32(message.inputDelay);
     }
+    if (message.shadowInputDelay !== 0) {
+      writer.uint32(32).uint32(message.shadowInputDelay);
+    }
     if (message.matchType !== 0) {
-      writer.uint32(32).uint32(message.matchType);
+      writer.uint32(40).uint32(message.matchType);
     }
     if (message.replaysPath !== "") {
-      writer.uint32(42).string(message.replaysPath);
+      writer.uint32(50).string(message.replaysPath);
     }
     if (message.replayMetadata.length !== 0) {
-      writer.uint32(50).bytes(message.replayMetadata);
+      writer.uint32(58).bytes(message.replayMetadata);
     }
     if (message.rngSeed.length !== 0) {
-      writer.uint32(58).bytes(message.rngSeed);
+      writer.uint32(66).bytes(message.rngSeed);
     }
     return writer;
   },
@@ -561,15 +566,18 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
           message.inputDelay = reader.uint32();
           break;
         case 4:
-          message.matchType = reader.uint32();
+          message.shadowInputDelay = reader.uint32();
           break;
         case 5:
-          message.replaysPath = reader.string();
+          message.matchType = reader.uint32();
           break;
         case 6:
-          message.replayMetadata = reader.bytes();
+          message.replaysPath = reader.string();
           break;
         case 7:
+          message.replayMetadata = reader.bytes();
+          break;
+        case 8:
           message.rngSeed = reader.bytes();
           break;
         default:
@@ -589,6 +597,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         ? String(object.shadowRomPath)
         : "",
       inputDelay: isSet(object.inputDelay) ? Number(object.inputDelay) : 0,
+      shadowInputDelay: isSet(object.shadowInputDelay)
+        ? Number(object.shadowInputDelay)
+        : 0,
       matchType: isSet(object.matchType) ? Number(object.matchType) : 0,
       replaysPath: isSet(object.replaysPath) ? String(object.replaysPath) : "",
       replayMetadata: isSet(object.replayMetadata)
@@ -608,6 +619,8 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       (obj.shadowRomPath = message.shadowRomPath);
     message.inputDelay !== undefined &&
       (obj.inputDelay = Math.round(message.inputDelay));
+    message.shadowInputDelay !== undefined &&
+      (obj.shadowInputDelay = Math.round(message.shadowInputDelay));
     message.matchType !== undefined &&
       (obj.matchType = Math.round(message.matchType));
     message.replaysPath !== undefined &&
@@ -632,6 +645,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.shadowSavePath = object.shadowSavePath ?? "";
     message.shadowRomPath = object.shadowRomPath ?? "";
     message.inputDelay = object.inputDelay ?? 0;
+    message.shadowInputDelay = object.shadowInputDelay ?? 0;
     message.matchType = object.matchType ?? 0;
     message.replaysPath = object.replaysPath ?? "";
     message.replayMetadata = object.replayMetadata ?? new Uint8Array();

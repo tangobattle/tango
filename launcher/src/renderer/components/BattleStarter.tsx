@@ -652,8 +652,8 @@ export default function BattleStarter({
                 rngSeed[i] ^= remoteState.nonce[i];
               }
 
-              const ownGameInfo =
-                pendingStatesRef.current!.own!.settings.gameInfo!;
+              const ownGameSettings = pendingStatesRef.current!.own!.settings;
+              const ownGameInfo = ownGameSettings.gameInfo!;
 
               const outOwnROMPath = path.join(
                 tempDir,
@@ -671,8 +671,9 @@ export default function BattleStarter({
                 outOwnROMPath
               );
 
-              const opponentGameInfo =
-                pendingStatesRef.current!.opponent!.settings.gameInfo!;
+              const opponentGameSettings =
+                pendingStatesRef.current!.opponent!.settings;
+              const opponentGameInfo = opponentGameSettings.gameInfo!;
 
               const outOpponentROMPath = path.join(
                 tempDir,
@@ -688,7 +689,24 @@ export default function BattleStarter({
                 outOpponentROMPath
               );
 
-              console.log(outOwnROMPath, outOpponentROMPath);
+              await core.send({
+                smuggleReq: undefined,
+                startReq: {
+                  romPath: outOwnROMPath,
+                  savePath: path.join(getSavesPath(app), saveName!),
+                  windowTitle: getGameTitle(gameInfo!),
+                  settings: {
+                    shadowSavePath: "TODO",
+                    shadowRomPath: outOpponentROMPath,
+                    inputDelay: ownGameSettings.inputDelay,
+                    shadowInputDelay: opponentGameSettings.inputDelay,
+                    matchType: ownGameSettings.matchType,
+                    replaysPath: "TODO",
+                    replayMetadata: new Uint8Array([]),
+                    rngSeed,
+                  },
+                },
+              });
             }
 
             // eslint-disable-next-line no-constant-condition

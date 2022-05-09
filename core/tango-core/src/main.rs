@@ -144,6 +144,7 @@ fn main() -> Result<(), anyhow::Error> {
                     shadow_rom_path: settings.shadow_rom_path.into(),
                     match_type: settings.match_type as u16,
                     input_delay: settings.input_delay,
+                    shadow_input_delay: settings.shadow_input_delay,
                     rng_seed: settings.rng_seed,
                 },
             }),

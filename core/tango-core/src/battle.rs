@@ -23,6 +23,7 @@ pub struct Settings {
     pub replay_metadata: Vec<u8>,
     pub match_type: u16,
     pub input_delay: u32,
+    pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
 }
 
@@ -72,7 +73,6 @@ pub struct Match {
     audio_mux: audio::mux_stream::MuxStream,
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
-    remote_delay: u32,
 }
 
 #[derive(Debug)]
@@ -155,7 +155,6 @@ impl Match {
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
-        remote_delay: u32,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
@@ -192,7 +191,6 @@ impl Match {
             primary_thread_handle,
             round_started_tx,
             round_started_rx: tokio::sync::Mutex::new(round_started_rx),
-            remote_delay,
         });
         Ok(match_)
     }
@@ -381,7 +379,7 @@ impl Match {
             local_immediate_input_queue: std::collections::VecDeque::with_capacity(
                 MAX_QUEUE_LENGTH,
             ),
-            remote_delay: self.remote_delay,
+            remote_delay: self.settings.shadow_input_delay,
             is_accepting_input: false,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
