@@ -1,23 +1,18 @@
 import { timingSafeEqual } from "crypto";
-import { readFile } from "fs/promises";
+import * as datefns from "date-fns";
+import { readFile, writeFile } from "fs/promises";
 import { isEqual } from "lodash-es";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { usePrevious } from "react-use";
 import useStateRef from "react-usestateref";
-import semver from "semver";
 import { SHAKE } from "sha3";
 import { promisify } from "util";
 import { brotliCompress, brotliDecompress } from "zlib";
 
-import { app, shell } from "@electron/remote";
-import { ConnectingAirportsOutlined } from "@mui/icons-material";
-import CheckIcon from "@mui/icons-material/Check";
+import { app } from "@electron/remote";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SportsMmaIcon from "@mui/icons-material/SportsMma";
 import StopIcon from "@mui/icons-material/Stop";
@@ -28,13 +23,8 @@ import Checkbox from "@mui/material/Checkbox";
 import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
-import FormControl from "@mui/material/FormControl";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
-import IconButton from "@mui/material/IconButton";
-import InputLabel from "@mui/material/InputLabel";
-import ListItemText from "@mui/material/ListItemText";
-import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
@@ -49,17 +39,14 @@ import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
-import { getBasePath, getPatchesPath, getROMsPath, getSavesPath } from "../../paths";
+import { getReplaysPath, getSavesPath } from "../../paths";
 import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import { KNOWN_ROMS } from "../../rom";
-import { Editor } from "../../saveedit/bn6";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { usePatches } from "./PatchesContext";
-import { useROMs } from "./ROMsContext";
 import { useSaves } from "./SavesContext";
-import SaveViewer from "./SaveViewer";
 import { useTempDir } from "./TempDirContext";
 
 const MATCH_TYPES = ["single", "triple"];
@@ -170,7 +157,7 @@ export default function BattleStarter({
   patch: { name: string; version: string } | null;
   onExit: () => void;
   onReadyChange: (ready: boolean) => void;
-  onOpponentSettingsChange: (settings: SetSettings) => void;
+  onOpponentSettingsChange: (settings: SetSettings | null) => void;
 }) {
   const { saves } = useSaves();
 
@@ -689,23 +676,36 @@ export default function BattleStarter({
                 outOpponentROMPath
               );
 
+              const prefix = `${datefns.format(
+                Date.now(),
+                "yyyyMMddHHmmmmss"
+              )}-vs-${opponentGameSettings.nickname}-${linkCode}`;
+
+              const shadowSavePath = path.join(tempDir, prefix + ".sav");
+              await writeFile(shadowSavePath, remoteSaveData);
+
+              const startReq = {
+                romPath: outOwnROMPath,
+                savePath: path.join(getSavesPath(app), saveName!),
+                windowTitle: getGameTitle(gameInfo!),
+                settings: {
+                  shadowSavePath,
+                  shadowRomPath: outOpponentROMPath,
+                  inputDelay: ownGameSettings.inputDelay,
+                  shadowInputDelay: opponentGameSettings.inputDelay,
+                  matchType: ownGameSettings.matchType,
+                  replaysPath: path.join(getReplaysPath(app), prefix),
+                  replayMetadata: new Uint8Array([]), // TODO
+                  rngSeed,
+                },
+              };
+
+              // eslint-disable-next-line no-console
+              console.info("issuing start request", startReq);
+
               await core.send({
                 smuggleReq: undefined,
-                startReq: {
-                  romPath: outOwnROMPath,
-                  savePath: path.join(getSavesPath(app), saveName!),
-                  windowTitle: getGameTitle(gameInfo!),
-                  settings: {
-                    shadowSavePath: "TODO",
-                    shadowRomPath: outOpponentROMPath,
-                    inputDelay: ownGameSettings.inputDelay,
-                    shadowInputDelay: opponentGameSettings.inputDelay,
-                    matchType: ownGameSettings.matchType,
-                    replaysPath: "TODO",
-                    replayMetadata: new Uint8Array([]),
-                    rngSeed,
-                  },
-                },
+                startReq,
               });
             }
 
@@ -728,6 +728,8 @@ export default function BattleStarter({
               if (abortController != null) {
                 abortController.abort();
               }
+              onReadyChange(false);
+              onOpponentSettingsChange(null);
               setPendingStates(null);
               onExit();
             });

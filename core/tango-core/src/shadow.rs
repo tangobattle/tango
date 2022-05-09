@@ -192,7 +192,7 @@ impl State {
 impl Shadow {
     pub fn new(
         rom_path: &std::path::Path,
-        shadow_save_path: &std::path::Path,
+        save_path: &std::path::Path,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         match_type: u16,
         is_offerer: bool,
@@ -204,7 +204,7 @@ impl Shadow {
         core.as_mut().load_rom(rom_vf)?;
 
         let save_vf = mgba::vfile::VFile::open(
-            &shadow_save_path,
+            &save_path,
             mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
         )?;
         core.as_mut().load_save(save_vf)?;
