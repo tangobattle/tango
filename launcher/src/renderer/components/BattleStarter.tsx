@@ -563,7 +563,7 @@ export default function BattleStarter({
                   },
                   own: {
                     ...pendingStates!.own!,
-                    commitment: null,
+                    negotiatedState: null,
                   },
                 }));
 
