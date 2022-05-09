@@ -5,8 +5,11 @@ import { app } from "@electron/remote";
 import { getPatchesPath, getROMsPath } from "../paths";
 import { useROMs } from "./components/ROMsContext";
 
-export function useROMPath(romName: string) {
+export function useROMPath(romName: string | null) {
   const { roms } = useROMs();
+  if (romName == null) {
+    return null;
+  }
   return path.join(getROMsPath(app), roms[romName]);
 }
 

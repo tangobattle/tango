@@ -9,6 +9,7 @@
   "save-file": "Save file",
   "patch.authors": "Authors",
   "patch.version": "Version",
+  "match-type": "Match type",
   "match-type.single": "Single",
   "match-type.triple": "Triple",
   "rescan": "Rescan",
@@ -30,5 +31,6 @@
   "navicust.color.blue": "blue",
   "navicust.color.white": "white",
   "ready": "I'm ready!",
-  "cancel": "Cancel"
+  "stop": "Stop",
+  "no-game-info": "Not selected"
 }

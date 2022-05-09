@@ -5,13 +5,14 @@ import { Trans, useTranslation } from "react-i18next";
 import semver from "semver";
 
 import { app, shell } from "@electron/remote";
+import { ConnectingAirportsOutlined } from "@mui/icons-material";
 import CheckIcon from "@mui/icons-material/Check";
-import CloseIcon from "@mui/icons-material/Close";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SportsMmaIcon from "@mui/icons-material/SportsMma";
+import StopIcon from "@mui/icons-material/Stop";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -37,10 +38,16 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import * as ipc from "../../ipc";
 import { getBasePath, getSavesPath } from "../../paths";
-import { ToCoreMessage_StartRequest_MatchSettings } from "../../protos/ipc";
+import {
+    FromCoreMessage_StateIndication_State, ToCoreMessage_StartRequest_MatchSettings
+} from "../../protos/ipc";
+import { GameInfo, Message, SetSettings } from "../../protos/lobby";
 import { KNOWN_ROMS } from "../../rom";
 import { Editor } from "../../saveedit/bn6";
+import { useROMPath } from "../hooks";
+import { useConfig } from "./ConfigContext";
 import { CoreSupervisor } from "./CoreSupervisor";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
@@ -49,19 +56,140 @@ import SaveViewer from "./SaveViewer";
 
 const MATCH_TYPES = ["single", "triple"];
 
-export default function BattleStarter() {
+function defaultMatchSettings(
+  nickname: string,
+  gameInfo: GameInfo | null
+): SetSettings {
+  return {
+    nickname,
+    inputDelay: 3,
+    matchType: 1,
+    gameInfo: gameInfo ?? undefined,
+    availableGames: [],
+  };
+}
+
+function useGameTitle(gameInfo: GameInfo | null) {
+  const { patches } = usePatches();
+  const { i18n } = useTranslation();
+
+  if (gameInfo == null) {
+    return null;
+  }
+
+  return `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]}
+      ${
+        gameInfo.patch != null
+          ? ` + ${patches[gameInfo.patch.name].title} v${
+              gameInfo.patch.version
+            }`
+          : ""
+      }`;
+}
+
+interface PendingState {
+  settings: SetSettings;
+  ready: boolean;
+}
+
+export default function BattleStarter({
+  saveName,
+  patch,
+}: {
+  saveName: string | null;
+  patch: { name: string; version: string } | null;
+}) {
+  const { saves } = useSaves();
+
+  const { config } = useConfig();
+  const configRef = React.useRef(config);
+
+  // TODO: Figure out how to abort the core.
+  const [abortController, setAbortController] =
+    React.useState<AbortController | null>(null);
+
   const [linkCode, setLinkCode] = React.useState("");
-  const [matchSettings, setMatchSettings] =
-    React.useState<ToCoreMessage_StartRequest_MatchSettings | null>({});
-  const [startedState, setStartedState] = React.useState<{
-    linkCode: string | null;
+  const [pendingStates, setPendingStates] = React.useState<{
+    core: ipc.Core;
+    own: PendingState | null;
+    opponent: PendingState | null;
   } | null>(null);
-  const [incarnation, setIncarnation] = React.useState(0);
-  const [uncollapsed, setUncollapsed] = React.useState(false);
+
+  React.useEffect(() => {
+    if (pendingStates == null) {
+      setAbortController(null);
+    }
+  }, [pendingStates]);
+
+  const gameInfo = React.useMemo(
+    () =>
+      saveName != null
+        ? {
+            rom: saves[saveName].romName,
+            patch: patch ?? undefined,
+          }
+        : null ?? undefined,
+    [saveName, saves, patch]
+  );
+
+  React.useEffect(() => {
+    setPendingStates((pendingStates) =>
+      pendingStates != null && pendingStates.own != null
+        ? {
+            ...pendingStates,
+            own: {
+              ...pendingStates.own,
+              settings: {
+                ...pendingStates.own.settings,
+                gameInfo,
+              },
+            },
+          }
+        : pendingStates
+    );
+  }, [gameInfo]);
+
+  const myPendingSettings = pendingStates?.own?.settings;
+  const ready = pendingStates?.own?.ready ?? false;
+
+  React.useEffect(() => {
+    if (myPendingSettings == null) {
+      return;
+    }
+    pendingStates!.core.send({
+      smuggleReq: {
+        data: Message.encode({
+          setSettings: myPendingSettings,
+          commit: undefined,
+          uncommit: undefined,
+          chunk: undefined,
+          goodbye: undefined,
+        }).finish(),
+      },
+      startReq: undefined,
+    });
+  }, [myPendingSettings, pendingStates]);
+
+  React.useEffect(() => {
+    // TODO: Send state changes.
+  }, [myPendingSettings, ready]);
+
+  const ownGameTitle = useGameTitle(gameInfo ?? null);
+  const opponentGameTitle = useGameTitle(
+    pendingStates?.opponent?.settings.gameInfo ?? null
+  );
+
+  const ownROMPath = useROMPath(gameInfo?.rom ?? null);
 
   return (
     <Stack>
-      <Collapse in={uncollapsed}>
+      <Collapse
+        in={
+          pendingStates != null &&
+          pendingStates.own != null &&
+          pendingStates.opponent != null
+        }
+      >
         <Divider />
         <Box
           sx={{
@@ -73,11 +201,11 @@ export default function BattleStarter() {
             <TableHead>
               <TableRow>
                 <TableCell></TableCell>
-                <TableCell sx={{ width: "30%", fontWeight: "bold" }}>
+                <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                   You
                 </TableCell>
-                <TableCell sx={{ width: "30%", fontWeight: "bold" }}>
-                  Opponent
+                <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
+                  {pendingStates?.opponent?.settings.nickname ?? ""}
                 </TableCell>
               </TableRow>
             </TableHead>
@@ -86,27 +214,33 @@ export default function BattleStarter() {
                 <TableCell component="th" sx={{ fontWeight: "bold" }}>
                   Game
                 </TableCell>
-                <TableCell>Mega Man Battle Network 4: Blue Moon</TableCell>
-                <TableCell>Mega Man Battle Network 4: Red Sun</TableCell>
+                <TableCell>{ownGameTitle}</TableCell>
+                <TableCell>{opponentGameTitle}</TableCell>
               </TableRow>
               <TableRow>
                 <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                  Match type
+                  <Trans i18nKey="play:match-type" />
                 </TableCell>
                 <TableCell>
                   <Select
                     variant="standard"
                     size="small"
-                    value={matchSettings!.matchType}
+                    value={pendingStates?.own?.settings.matchType ?? 0}
                     onChange={(e) => {
-                      setMatchSettings((ms) => ({
-                        ...(ms as any),
-                        matchType: e.target.value,
+                      setPendingStates((pendingStates) => ({
+                        ...pendingStates!,
+                        own: {
+                          ...pendingStates!.own!,
+                          settings: {
+                            ...pendingStates!.own!.settings,
+                            matchType: e.target.value as number,
+                          },
+                        },
                       }));
                     }}
                     disabled={false}
                   >
-                    {MATCH_TYPES.map((v, k) => (
+                    {MATCH_TYPES.map((_v, k) => (
                       <MenuItem key={k} value={k}>
                         {k == 0 ? (
                           <Trans i18nKey="play:match-type.single" />
@@ -117,20 +251,37 @@ export default function BattleStarter() {
                     ))}
                   </Select>
                 </TableCell>
-                <TableCell>Triple</TableCell>
+                <TableCell>
+                  {pendingStates?.opponent?.settings.matchType ?? 0}
+                </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                  Input delay
+                  <Trans i18nKey="play:input-delay" />
                 </TableCell>
                 <TableCell>
                   <TextField
                     variant="standard"
                     type="number"
+                    value={pendingStates?.own?.settings.inputDelay ?? 0}
+                    onChange={(e) => {
+                      setPendingStates((pendingStates) => ({
+                        ...pendingStates!,
+                        own: {
+                          ...pendingStates!.own!,
+                          settings: {
+                            ...pendingStates!.own!.settings,
+                            inputDelay: parseInt(e.target.value),
+                          },
+                        },
+                      }));
+                    }}
                     InputProps={{ inputProps: { min: 3, max: 10 } }}
                   />
                 </TableCell>
-                <TableCell>3</TableCell>
+                <TableCell>
+                  {pendingStates?.opponent?.settings.inputDelay ?? 0}
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -146,12 +297,124 @@ export default function BattleStarter() {
         component="form"
         onSubmit={(e: any) => {
           e.preventDefault();
-          setUncollapsed(true);
+
+          const abortController = new AbortController();
+          setAbortController(abortController);
+
+          const core = new ipc.Core(
+            configRef.current.keymapping,
+            configRef.current.signalingConnectAddr,
+            configRef.current.iceServers,
+            linkCode != "" ? linkCode : null,
+            {
+              env: {
+                WGPU_BACKEND:
+                  configRef.current.wgpuBackend != null
+                    ? configRef.current.wgpuBackend
+                    : undefined,
+                RUST_LOG: configRef.current.rustLogFilter,
+                RUST_BACKTRACE: "1",
+              },
+              signal: abortController.signal,
+            }
+          );
+
+          setPendingStates({
+            core,
+            own: null,
+            opponent: null,
+          });
+
+          (async () => {
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              const msg = await core.receive();
+              if (msg == null) {
+                throw "unexpected eof from core";
+              }
+              if (
+                msg.stateInd != null &&
+                msg.stateInd.state ==
+                  FromCoreMessage_StateIndication_State.READY_TO_START
+              ) {
+                break;
+              }
+            }
+
+            if (linkCode == "") {
+              await core.send({
+                smuggleReq: undefined,
+                startReq: {
+                  romPath: ownROMPath!,
+                  savePath: "TODO",
+                  windowTitle: ownGameTitle!,
+                  settings: undefined,
+                },
+              });
+            } else {
+              const myPendingSettings = defaultMatchSettings(
+                config.nickname,
+                gameInfo!
+              );
+              setPendingStates((pendingStates) => ({
+                ...pendingStates!,
+                opponent: null,
+                own: { ready: false, settings: myPendingSettings },
+              }));
+              await core.send({
+                smuggleReq: {
+                  data: Message.encode({
+                    setSettings: myPendingSettings,
+                    commit: undefined,
+                    uncommit: undefined,
+                    chunk: undefined,
+                    goodbye: undefined,
+                  }).finish(),
+                },
+                startReq: undefined,
+              });
+
+              // eslint-disable-next-line no-constant-condition
+              while (true) {
+                const msg = await core.receive();
+                if (msg == null) {
+                  throw "expected ipc message";
+                }
+
+                if (msg.smuggleInd == null) {
+                  throw "expected smuggle indication";
+                }
+
+                const lobbyMsg = Message.decode(msg.smuggleInd.data);
+                if (lobbyMsg.setSettings == null) {
+                  throw "expected lobby set settings";
+                }
+
+                setPendingStates((pendingStates) => ({
+                  ...pendingStates!,
+                  opponent: { ready: false, settings: lobbyMsg.setSettings! },
+                }));
+              }
+            }
+
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              const msg = await core.receive();
+              if (msg == null) {
+                break;
+              }
+            }
+
+            setPendingStates(null);
+            setAbortController(null);
+          })().catch((e) => {
+            console.error(e);
+          });
         }}
       >
         <Box flexGrow={1} flexShrink={0}>
           <TextField
-            disabled={uncollapsed}
+            disabled={pendingStates != null}
             size="small"
             label={<Trans i18nKey={"play:link-code"} />}
             value={linkCode}
@@ -164,20 +427,21 @@ export default function BattleStarter() {
               );
             }}
             InputProps={{
-              endAdornment: uncollapsed ? (
-                <CircularProgress size="1rem" color="inherit" />
-              ) : null,
+              endAdornment:
+                pendingStates != null ? (
+                  <CircularProgress size="1rem" color="inherit" />
+                ) : null,
             }}
             fullWidth
           />
         </Box>
 
-        {!uncollapsed ? (
+        {pendingStates == null ? (
           <Button
             type="submit"
             variant="contained"
             startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
-            disabled={false}
+            disabled={pendingStates != null || ownROMPath == null}
           >
             {linkCode != "" ? (
               <Trans i18nKey="play:fight" />
@@ -187,19 +451,43 @@ export default function BattleStarter() {
           </Button>
         ) : (
           <>
-            <FormGroup>
-              <FormControlLabel
-                control={<Checkbox />}
-                label={<Trans i18nKey={"play:ready"} />}
-              />
-            </FormGroup>
+            {pendingStates.own != null && pendingStates.opponent != null ? (
+              <>
+                <FormGroup>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        value={pendingStates.own.ready}
+                        onChange={(_e, v) => {
+                          setPendingStates((pendingStates) => ({
+                            ...pendingStates!,
+                            own: {
+                              ...pendingStates!.own!,
+                              ready: v,
+                            },
+                          }));
+                        }}
+                      />
+                    }
+                    label={<Trans i18nKey={"play:ready"} />}
+                  />
+                </FormGroup>
+              </>
+            ) : null}
             <Button
               color="error"
               variant="contained"
-              startIcon={<CloseIcon />}
+              startIcon={<StopIcon />}
+              onClick={() => {
+                setPendingStates(null);
+                if (abortController != null) {
+                  abortController.abort();
+                }
+                setAbortController(null);
+              }}
               disabled={false}
             >
-              <Trans i18nKey="play:cancel" />
+              <Trans i18nKey="play:stop" />
             </Button>
           </>
         )}

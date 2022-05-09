@@ -67,7 +67,7 @@ export default function ReplaydumpSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        await makeROM(romPath, patchPath || null, outROMPath);
+        await makeROM(romPath!, patchPath || null, outROMPath);
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());

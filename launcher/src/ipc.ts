@@ -1,3 +1,4 @@
+import { Mutex } from "async-mutex";
 import { ChildProcessWithoutNullStreams } from "child_process";
 import { once } from "events";
 import { EventEmitter, Readable } from "stream";
@@ -22,6 +23,8 @@ export interface ExitStatus {
 
 export class Core extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams;
+  private sendMutex: Mutex;
+  private receiveMutex: Mutex;
 
   constructor(
     keymapping: Keymapping,
@@ -31,6 +34,9 @@ export class Core extends EventEmitter {
     { signal, env }: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}
   ) {
     super();
+
+    this.sendMutex = new Mutex();
+    this.receiveMutex = new Mutex();
 
     this.proc = spawn(
       app,
@@ -122,15 +128,25 @@ export class Core extends EventEmitter {
   }
 
   public async send(p: ToCoreMessage) {
-    await this._writeLengthDelimited(ToCoreMessage.encode(p).finish());
+    const release = await this.sendMutex.acquire();
+    try {
+      await this._writeLengthDelimited(ToCoreMessage.encode(p).finish());
+    } finally {
+      release();
+    }
   }
 
   public async receive() {
-    const buf = await this._readLengthDelimited();
-    if (buf == null) {
-      return null;
+    const release = await this.receiveMutex.acquire();
+    try {
+      const buf = await this._readLengthDelimited();
+      if (buf == null) {
+        return null;
+      }
+      return FromCoreMessage.decode(new Uint8Array(buf));
+    } finally {
+      release();
     }
-    return FromCoreMessage.decode(new Uint8Array(buf));
   }
 }
 

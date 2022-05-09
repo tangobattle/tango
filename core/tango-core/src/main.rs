@@ -138,7 +138,7 @@ fn main() -> Result<(), anyhow::Error> {
                 dc,
                 peer_conn,
                 settings: tango_core::battle::Settings {
-                    replay_metadata: settings.replay_metadata.into(),
+                    replay_metadata: settings.replay_metadata,
                     replays_path: settings.replays_path.into(),
                     shadow_save_path: settings.shadow_save_path.into(),
                     shadow_rom_path: settings.shadow_rom_path.into(),

@@ -58,7 +58,7 @@ export default function ReplayviewSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        await makeROM(romPath, patchPath, outROMPath);
+        await makeROM(romPath!, patchPath, outROMPath);
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());

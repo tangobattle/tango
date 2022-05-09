@@ -89,7 +89,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   inputDelay: number;
   matchType: number;
   replaysPath: string;
-  replayMetadata: string;
+  replayMetadata: Uint8Array;
   rngSeed: Uint8Array;
 }
 
@@ -507,7 +507,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     inputDelay: 0,
     matchType: 0,
     replaysPath: "",
-    replayMetadata: "",
+    replayMetadata: new Uint8Array(),
     rngSeed: new Uint8Array(),
   };
 }
@@ -532,8 +532,8 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     if (message.replaysPath !== "") {
       writer.uint32(42).string(message.replaysPath);
     }
-    if (message.replayMetadata !== "") {
-      writer.uint32(50).string(message.replayMetadata);
+    if (message.replayMetadata.length !== 0) {
+      writer.uint32(50).bytes(message.replayMetadata);
     }
     if (message.rngSeed.length !== 0) {
       writer.uint32(58).bytes(message.rngSeed);
@@ -567,7 +567,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
           message.replaysPath = reader.string();
           break;
         case 6:
-          message.replayMetadata = reader.string();
+          message.replayMetadata = reader.bytes();
           break;
         case 7:
           message.rngSeed = reader.bytes();
@@ -592,8 +592,8 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       matchType: isSet(object.matchType) ? Number(object.matchType) : 0,
       replaysPath: isSet(object.replaysPath) ? String(object.replaysPath) : "",
       replayMetadata: isSet(object.replayMetadata)
-        ? String(object.replayMetadata)
-        : "",
+        ? bytesFromBase64(object.replayMetadata)
+        : new Uint8Array(),
       rngSeed: isSet(object.rngSeed)
         ? bytesFromBase64(object.rngSeed)
         : new Uint8Array(),
@@ -613,7 +613,11 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.replaysPath !== undefined &&
       (obj.replaysPath = message.replaysPath);
     message.replayMetadata !== undefined &&
-      (obj.replayMetadata = message.replayMetadata);
+      (obj.replayMetadata = base64FromBytes(
+        message.replayMetadata !== undefined
+          ? message.replayMetadata
+          : new Uint8Array()
+      ));
     message.rngSeed !== undefined &&
       (obj.rngSeed = base64FromBytes(
         message.rngSeed !== undefined ? message.rngSeed : new Uint8Array()
@@ -630,7 +634,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.inputDelay = object.inputDelay ?? 0;
     message.matchType = object.matchType ?? 0;
     message.replaysPath = object.replaysPath ?? "";
-    message.replayMetadata = object.replayMetadata ?? "";
+    message.replayMetadata = object.replayMetadata ?? new Uint8Array();
     message.rngSeed = object.rngSeed ?? new Uint8Array();
     return message;
   },

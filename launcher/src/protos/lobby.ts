@@ -24,17 +24,28 @@ export interface SetSettings {
 
 export interface Commit {
   commitment: Uint8Array;
+  numChunks: number;
 }
 
-export interface Reveal {
-  saveData: Uint8Array;
-  rngNonce: Uint8Array;
+export interface Uncommit {}
+
+export interface Chunk {
+  chunk: Uint8Array;
 }
+
+export interface Goodbye {}
 
 export interface Message {
   setSettings: SetSettings | undefined;
   commit: Commit | undefined;
-  reveal: Reveal | undefined;
+  uncommit: Uncommit | undefined;
+  chunk: Chunk | undefined;
+  goodbye: Goodbye | undefined;
+}
+
+export interface State {
+  nonce: Uint8Array;
+  saveData: Uint8Array;
 }
 
 function createBaseGameInfo(): GameInfo {
@@ -285,7 +296,7 @@ export const SetSettings = {
 };
 
 function createBaseCommit(): Commit {
-  return { commitment: new Uint8Array() };
+  return { commitment: new Uint8Array(), numChunks: 0 };
 }
 
 export const Commit = {
@@ -295,6 +306,9 @@ export const Commit = {
   ): _m0.Writer {
     if (message.commitment.length !== 0) {
       writer.uint32(10).bytes(message.commitment);
+    }
+    if (message.numChunks !== 0) {
+      writer.uint32(16).uint32(message.numChunks);
     }
     return writer;
   },
@@ -309,6 +323,9 @@ export const Commit = {
         case 1:
           message.commitment = reader.bytes();
           break;
+        case 2:
+          message.numChunks = reader.uint32();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -322,6 +339,7 @@ export const Commit = {
       commitment: isSet(object.commitment)
         ? bytesFromBase64(object.commitment)
         : new Uint8Array(),
+      numChunks: isSet(object.numChunks) ? Number(object.numChunks) : 0,
     };
   },
 
@@ -331,46 +349,79 @@ export const Commit = {
       (obj.commitment = base64FromBytes(
         message.commitment !== undefined ? message.commitment : new Uint8Array()
       ));
+    message.numChunks !== undefined &&
+      (obj.numChunks = Math.round(message.numChunks));
     return obj;
   },
 
   fromPartial<I extends Exact<DeepPartial<Commit>, I>>(object: I): Commit {
     const message = createBaseCommit();
     message.commitment = object.commitment ?? new Uint8Array();
+    message.numChunks = object.numChunks ?? 0;
     return message;
   },
 };
 
-function createBaseReveal(): Reveal {
-  return { saveData: new Uint8Array(), rngNonce: new Uint8Array() };
+function createBaseUncommit(): Uncommit {
+  return {};
 }
 
-export const Reveal = {
-  encode(
-    message: Reveal,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    if (message.saveData.length !== 0) {
-      writer.uint32(10).bytes(message.saveData);
+export const Uncommit = {
+  encode(_: Uncommit, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): Uncommit {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseUncommit();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
     }
-    if (message.rngNonce.length !== 0) {
-      writer.uint32(18).bytes(message.rngNonce);
+    return message;
+  },
+
+  fromJSON(_: any): Uncommit {
+    return {};
+  },
+
+  toJSON(_: Uncommit): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<Uncommit>, I>>(_: I): Uncommit {
+    const message = createBaseUncommit();
+    return message;
+  },
+};
+
+function createBaseChunk(): Chunk {
+  return { chunk: new Uint8Array() };
+}
+
+export const Chunk = {
+  encode(message: Chunk, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.chunk.length !== 0) {
+      writer.uint32(10).bytes(message.chunk);
     }
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): Reveal {
+  decode(input: _m0.Reader | Uint8Array, length?: number): Chunk {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseReveal();
+    const message = createBaseChunk();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.saveData = reader.bytes();
-          break;
-        case 2:
-          message.rngNonce = reader.bytes();
+          message.chunk = reader.bytes();
           break;
         default:
           reader.skipType(tag & 7);
@@ -380,40 +431,77 @@ export const Reveal = {
     return message;
   },
 
-  fromJSON(object: any): Reveal {
+  fromJSON(object: any): Chunk {
     return {
-      saveData: isSet(object.saveData)
-        ? bytesFromBase64(object.saveData)
-        : new Uint8Array(),
-      rngNonce: isSet(object.rngNonce)
-        ? bytesFromBase64(object.rngNonce)
+      chunk: isSet(object.chunk)
+        ? bytesFromBase64(object.chunk)
         : new Uint8Array(),
     };
   },
 
-  toJSON(message: Reveal): unknown {
+  toJSON(message: Chunk): unknown {
     const obj: any = {};
-    message.saveData !== undefined &&
-      (obj.saveData = base64FromBytes(
-        message.saveData !== undefined ? message.saveData : new Uint8Array()
-      ));
-    message.rngNonce !== undefined &&
-      (obj.rngNonce = base64FromBytes(
-        message.rngNonce !== undefined ? message.rngNonce : new Uint8Array()
+    message.chunk !== undefined &&
+      (obj.chunk = base64FromBytes(
+        message.chunk !== undefined ? message.chunk : new Uint8Array()
       ));
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<Reveal>, I>>(object: I): Reveal {
-    const message = createBaseReveal();
-    message.saveData = object.saveData ?? new Uint8Array();
-    message.rngNonce = object.rngNonce ?? new Uint8Array();
+  fromPartial<I extends Exact<DeepPartial<Chunk>, I>>(object: I): Chunk {
+    const message = createBaseChunk();
+    message.chunk = object.chunk ?? new Uint8Array();
+    return message;
+  },
+};
+
+function createBaseGoodbye(): Goodbye {
+  return {};
+}
+
+export const Goodbye = {
+  encode(_: Goodbye, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): Goodbye {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGoodbye();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(_: any): Goodbye {
+    return {};
+  },
+
+  toJSON(_: Goodbye): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<Goodbye>, I>>(_: I): Goodbye {
+    const message = createBaseGoodbye();
     return message;
   },
 };
 
 function createBaseMessage(): Message {
-  return { setSettings: undefined, commit: undefined, reveal: undefined };
+  return {
+    setSettings: undefined,
+    commit: undefined,
+    uncommit: undefined,
+    chunk: undefined,
+    goodbye: undefined,
+  };
 }
 
 export const Message = {
@@ -430,8 +518,14 @@ export const Message = {
     if (message.commit !== undefined) {
       Commit.encode(message.commit, writer.uint32(18).fork()).ldelim();
     }
-    if (message.reveal !== undefined) {
-      Reveal.encode(message.reveal, writer.uint32(26).fork()).ldelim();
+    if (message.uncommit !== undefined) {
+      Uncommit.encode(message.uncommit, writer.uint32(26).fork()).ldelim();
+    }
+    if (message.chunk !== undefined) {
+      Chunk.encode(message.chunk, writer.uint32(34).fork()).ldelim();
+    }
+    if (message.goodbye !== undefined) {
+      Goodbye.encode(message.goodbye, writer.uint32(42).fork()).ldelim();
     }
     return writer;
   },
@@ -450,7 +544,13 @@ export const Message = {
           message.commit = Commit.decode(reader, reader.uint32());
           break;
         case 3:
-          message.reveal = Reveal.decode(reader, reader.uint32());
+          message.uncommit = Uncommit.decode(reader, reader.uint32());
+          break;
+        case 4:
+          message.chunk = Chunk.decode(reader, reader.uint32());
+          break;
+        case 5:
+          message.goodbye = Goodbye.decode(reader, reader.uint32());
           break;
         default:
           reader.skipType(tag & 7);
@@ -466,7 +566,13 @@ export const Message = {
         ? SetSettings.fromJSON(object.setSettings)
         : undefined,
       commit: isSet(object.commit) ? Commit.fromJSON(object.commit) : undefined,
-      reveal: isSet(object.reveal) ? Reveal.fromJSON(object.reveal) : undefined,
+      uncommit: isSet(object.uncommit)
+        ? Uncommit.fromJSON(object.uncommit)
+        : undefined,
+      chunk: isSet(object.chunk) ? Chunk.fromJSON(object.chunk) : undefined,
+      goodbye: isSet(object.goodbye)
+        ? Goodbye.fromJSON(object.goodbye)
+        : undefined,
     };
   },
 
@@ -478,8 +584,16 @@ export const Message = {
         : undefined);
     message.commit !== undefined &&
       (obj.commit = message.commit ? Commit.toJSON(message.commit) : undefined);
-    message.reveal !== undefined &&
-      (obj.reveal = message.reveal ? Reveal.toJSON(message.reveal) : undefined);
+    message.uncommit !== undefined &&
+      (obj.uncommit = message.uncommit
+        ? Uncommit.toJSON(message.uncommit)
+        : undefined);
+    message.chunk !== undefined &&
+      (obj.chunk = message.chunk ? Chunk.toJSON(message.chunk) : undefined);
+    message.goodbye !== undefined &&
+      (obj.goodbye = message.goodbye
+        ? Goodbye.toJSON(message.goodbye)
+        : undefined);
     return obj;
   },
 
@@ -493,10 +607,86 @@ export const Message = {
       object.commit !== undefined && object.commit !== null
         ? Commit.fromPartial(object.commit)
         : undefined;
-    message.reveal =
-      object.reveal !== undefined && object.reveal !== null
-        ? Reveal.fromPartial(object.reveal)
+    message.uncommit =
+      object.uncommit !== undefined && object.uncommit !== null
+        ? Uncommit.fromPartial(object.uncommit)
         : undefined;
+    message.chunk =
+      object.chunk !== undefined && object.chunk !== null
+        ? Chunk.fromPartial(object.chunk)
+        : undefined;
+    message.goodbye =
+      object.goodbye !== undefined && object.goodbye !== null
+        ? Goodbye.fromPartial(object.goodbye)
+        : undefined;
+    return message;
+  },
+};
+
+function createBaseState(): State {
+  return { nonce: new Uint8Array(), saveData: new Uint8Array() };
+}
+
+export const State = {
+  encode(message: State, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+    if (message.nonce.length !== 0) {
+      writer.uint32(10).bytes(message.nonce);
+    }
+    if (message.saveData.length !== 0) {
+      writer.uint32(18).bytes(message.saveData);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): State {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseState();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.nonce = reader.bytes();
+          break;
+        case 2:
+          message.saveData = reader.bytes();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): State {
+    return {
+      nonce: isSet(object.nonce)
+        ? bytesFromBase64(object.nonce)
+        : new Uint8Array(),
+      saveData: isSet(object.saveData)
+        ? bytesFromBase64(object.saveData)
+        : new Uint8Array(),
+    };
+  },
+
+  toJSON(message: State): unknown {
+    const obj: any = {};
+    message.nonce !== undefined &&
+      (obj.nonce = base64FromBytes(
+        message.nonce !== undefined ? message.nonce : new Uint8Array()
+      ));
+    message.saveData !== undefined &&
+      (obj.saveData = base64FromBytes(
+        message.saveData !== undefined ? message.saveData : new Uint8Array()
+      ));
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<State>, I>>(object: I): State {
+    const message = createBaseState();
+    message.nonce = object.nonce ?? new Uint8Array();
+    message.saveData = object.saveData ?? new Uint8Array();
     return message;
   },
 };

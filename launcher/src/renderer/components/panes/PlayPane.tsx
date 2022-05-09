@@ -71,7 +71,6 @@ export default function SavesPane({ active }: { active: boolean }) {
   const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
 
   const [saveName_, setSaveName] = React.useState<string | null>(null);
-  const [started, setStarted] = React.useState(false);
   const [incarnation, setIncarnation] = React.useState(0);
 
   const saveName =
@@ -134,7 +133,7 @@ export default function SavesPane({ active }: { active: boolean }) {
         display: active ? "flex" : "none",
       }}
     >
-      <Stack sx={{ flexGrow: 1, width: 0 }} spacing={1}>
+      <Stack sx={{ flexGrow: 1, width: 0 }}>
         <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
           <Stack spacing={1} flexGrow={0} flexShrink={0} direction="row">
             <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
@@ -323,7 +322,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                     disabled={saveName == null || patchName == null}
                     size="small"
                     value={patchVersion || ""}
-                    label={<Trans i18nKey="saves:play-version" />}
+                    label={<Trans i18nKey="play:patch-version" />}
                     onChange={(e) => {
                       setPatchVersion(e.target.value);
                     }}
@@ -368,7 +367,17 @@ export default function SavesPane({ active }: { active: boolean }) {
             </Stack>
           </Box>
         )}
-        <BattleStarter />
+        <BattleStarter
+          saveName={saveName}
+          patch={
+            patchVersion != null
+              ? {
+                  name: patchName!,
+                  version: patchVersion,
+                }
+              : null
+          }
+        />
       </Stack>
     </Box>
   );

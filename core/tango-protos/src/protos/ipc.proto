@@ -33,7 +33,7 @@ message ToCoreMessage {
       uint32 input_delay = 3;
       uint32 match_type = 4;
       string replays_path = 5;
-      string replay_metadata = 6;
+      bytes replay_metadata = 6;
       bytes rng_seed = 7;
     }
 
