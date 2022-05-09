@@ -193,7 +193,6 @@ impl Shadow {
     pub fn new(
         rom_path: &std::path::Path,
         save_path: &std::path::Path,
-        hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         match_type: u16,
         is_offerer: bool,
         won_last_round: bool,
@@ -212,6 +211,8 @@ impl Shadow {
         core.as_mut().load_save(save_vf)?;
 
         let state = State::new(match_type, is_offerer, rng, won_last_round);
+
+        let hooks = hooks::HOOKS.get(&core.as_ref().game_title()).unwrap();
 
         core.set_traps(hooks.shadow_traps(state.clone()));
         core.as_mut().reset();

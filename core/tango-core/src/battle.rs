@@ -165,7 +165,6 @@ impl Match {
             shadow: std::sync::Arc::new(tokio::sync::Mutex::new(shadow::Shadow::new(
                 &settings.shadow_rom_path,
                 &settings.shadow_save_path,
-                hooks,
                 settings.match_type,
                 is_offerer,
                 won_last_round,
