@@ -45,7 +45,7 @@ export const DEFAULT: Config = {
     select: "Back",
     start: "Return",
   },
-  signalingConnectAddr: "ws://mm.tangobattle.com/",
+  signalingConnectAddr: "wss://mm.tangobattle.com",
   iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",
