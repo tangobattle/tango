@@ -477,7 +477,9 @@ export default function BattleStarter({
             type="submit"
             variant="contained"
             startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
-            disabled={pendingStates != null || ownROMPath == null}
+            disabled={
+              pendingStates != null || (linkCode == "" && ownROMPath == null)
+            }
           >
             {linkCode != "" ? (
               <Trans i18nKey="play:fight" />
