@@ -98,10 +98,12 @@ export default function BattleStarter({
   saveName,
   patch,
   onExit,
+  onReadyChange,
 }: {
   saveName: string | null;
   patch: { name: string; version: string } | null;
   onExit: () => void;
+  onReadyChange: (ready: boolean) => void;
 }) {
   const { saves } = useSaves();
 
@@ -144,6 +146,10 @@ export default function BattleStarter({
                 gameInfo,
               },
             },
+            opponent: {
+              ...pendingStates!.opponent!,
+              commitment: null,
+            },
           }
         : pendingStates
     );
@@ -169,6 +175,10 @@ export default function BattleStarter({
       startReq: undefined,
     });
   }, [myPendingSettings, core]);
+
+  React.useEffect(() => {
+    onReadyChange(myPendingState?.commitment != null);
+  }, [myPendingState, onReadyChange]);
 
   const ownGameTitle = useGameTitle(gameInfo ?? null);
   const opponentGameTitle = useGameTitle(
@@ -228,6 +238,7 @@ export default function BattleStarter({
                     variant="standard"
                     size="small"
                     value={pendingStates?.own?.settings.matchType ?? 0}
+                    disabled={pendingStates?.own?.commitment != null}
                     onChange={(e) => {
                       setPendingStates((pendingStates) => ({
                         ...pendingStates!,
@@ -238,9 +249,12 @@ export default function BattleStarter({
                             matchType: e.target.value as number,
                           },
                         },
+                        opponent: {
+                          ...pendingStates!.opponent!,
+                          commitment: null,
+                        },
                       }));
                     }}
-                    disabled={false}
                   >
                     {MATCH_TYPES.map((_v, k) => (
                       <MenuItem key={k} value={k}>
@@ -270,6 +284,7 @@ export default function BattleStarter({
                     variant="standard"
                     type="number"
                     value={pendingStates?.own?.settings.inputDelay ?? 0}
+                    disabled={pendingStates?.own?.commitment != null}
                     onChange={(e) => {
                       setPendingStates((pendingStates) => ({
                         ...pendingStates!,
@@ -279,6 +294,10 @@ export default function BattleStarter({
                             ...pendingStates!.own!.settings,
                             inputDelay: parseInt(e.target.value),
                           },
+                        },
+                        opponent: {
+                          ...pendingStates!.opponent!,
+                          commitment: null,
                         },
                       }));
                     }}
@@ -531,6 +550,8 @@ export default function BattleStarter({
                         checked={pendingStates.own.commitment != null}
                         disabled={
                           saveName == null ||
+                          pendingStates.own.settings.matchType !=
+                            pendingStates.opponent.settings.matchType ||
                           changingCommitment ||
                           (pendingStates.own.commitment != null &&
                             pendingStates.opponent.commitment != null)

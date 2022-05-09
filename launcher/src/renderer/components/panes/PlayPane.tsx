@@ -69,6 +69,7 @@ export default function SavesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
 
   const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
+  const [battleReady, setBattleReady] = React.useState(false);
 
   const [saveName_, setSaveName] = React.useState<string | null>(null);
   const [incarnation, setIncarnation] = React.useState(0);
@@ -157,6 +158,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 labelId="select-save-label"
                 label={<Trans i18nKey="play:select-save" />}
                 value={saveName ?? ""}
+                disabled={battleReady}
                 renderValue={(v) => {
                   if (v == "") {
                     return null;
@@ -379,6 +381,9 @@ export default function SavesPane({ active }: { active: boolean }) {
           }
           onExit={() => {
             setIncarnation((incarnation) => incarnation + 1);
+          }}
+          onReadyChange={(ready) => {
+            setBattleReady(ready);
           }}
         />
       </Stack>
