@@ -19,6 +19,7 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SportsMmaIcon from "@mui/icons-material/SportsMma";
 import StopIcon from "@mui/icons-material/Stop";
+import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -351,7 +352,21 @@ export default function BattleStarter({
                         ) : null}
                       </MenuItem>
                     ))}
-                  </Select>
+                  </Select>{" "}
+                  {pendingStates?.opponent?.settings.matchType !=
+                  pendingStates?.own?.settings.matchType ? (
+                    <Tooltip
+                      title={<Trans i18nKey="play:mismatching-match-type" />}
+                    >
+                      <WarningIcon
+                        color="warning"
+                        sx={{
+                          fontSize: "1em",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    </Tooltip>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   {pendingStates?.opponent?.settings.matchType == 0 ? (
