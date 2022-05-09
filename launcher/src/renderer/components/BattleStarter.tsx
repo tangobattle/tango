@@ -54,7 +54,7 @@ import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import { KNOWN_ROMS } from "../../rom";
 import { Editor } from "../../saveedit/bn6";
-import { useROMPath } from "../hooks";
+import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
@@ -89,16 +89,6 @@ function useGetGameTitle() {
       }`,
     [patches, i18n]
   );
-}
-
-export function useGetROMPath() {
-  const { roms } = useROMs();
-  return (romName: string) => path.join(getROMsPath(app), roms[romName]);
-}
-
-export function useGetPatchPath() {
-  return (patch: { name: string; version: string }) =>
-    path.join(getPatchesPath(app), patch.name, `v${patch.version}.bps`);
 }
 
 function gameInfoMatches(g: GameInfo | null, h: GameInfo) {

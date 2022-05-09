@@ -14,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import { makeROM } from "../../game";
 import { getBinPath } from "../../paths";
 import { spawn } from "../../process";
-import { usePatchPath, useROMPath } from "../hooks";
+import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { CopyButton } from "./CopyButton";
 import { useTempDir } from "./TempDirContext";
@@ -37,8 +37,11 @@ export default function ReplaydumpSupervisor({
 
   const configRef = React.useRef(config);
 
-  const romPath = useROMPath(romName);
-  const patchPath = usePatchPath(patch ?? null);
+  const getROMPath = useGetROMPath();
+  const getPatchPath = useGetPatchPath();
+
+  const romPath = getROMPath(romName);
+  const patchPath = patch != null ? getPatchPath(patch) : null;
 
   const outROMPath = path.join(
     tempDir,
