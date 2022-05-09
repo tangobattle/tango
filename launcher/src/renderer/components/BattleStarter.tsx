@@ -47,8 +47,9 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
-import { getBasePath, getSavesPath } from "../../paths";
+import { getBasePath, getPatchesPath, getROMsPath, getSavesPath } from "../../paths";
 import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import { KNOWN_ROMS } from "../../rom";
@@ -59,6 +60,7 @@ import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
 import { useSaves } from "./SavesContext";
 import SaveViewer from "./SaveViewer";
+import { useTempDir } from "./TempDirContext";
 
 const MATCH_TYPES = ["single", "triple"];
 
@@ -87,6 +89,16 @@ function useGetGameTitle() {
       }`,
     [patches, i18n]
   );
+}
+
+export function useGetROMPath() {
+  const { roms } = useROMs();
+  return (romName: string) => path.join(getROMsPath(app), roms[romName]);
+}
+
+export function useGetPatchPath() {
+  return (patch: { name: string; version: string }) =>
+    path.join(getPatchesPath(app), patch.name, `v${patch.version}.bps`);
 }
 
 function gameInfoMatches(g: GameInfo | null, h: GameInfo) {
@@ -173,6 +185,10 @@ export default function BattleStarter({
   const { saves } = useSaves();
 
   const { config } = useConfig();
+  const { tempDir } = useTempDir();
+  const getROMPath = useGetROMPath();
+  const getPatchPath = useGetPatchPath();
+
   const configRef = React.useRef(config);
 
   const getAvailableGames = useGetAvailableGames();
@@ -235,7 +251,7 @@ export default function BattleStarter({
         startReq: undefined,
       });
     },
-    [pendingStates]
+    [pendingStates, setPendingStates]
   );
 
   React.useEffect(() => {
@@ -265,8 +281,6 @@ export default function BattleStarter({
   }, [myPendingState, onReadyChange]);
 
   const getGameTitle = useGetGameTitle();
-
-  const ownROMPath = useROMPath(gameInfo?.rom ?? null);
 
   return (
     <Stack>
@@ -471,10 +485,24 @@ export default function BattleStarter({
 
             if (linkCode == "") {
               // No link code to worry about, just start the game with no settings.
+              const outROMPath = path.join(
+                tempDir,
+                `${gameInfo!.rom}${
+                  gameInfo!.patch != null
+                    ? `+${gameInfo!.patch.name}-v${gameInfo!.patch.version}`
+                    : ""
+                }.gba`
+              );
+              await makeROM(
+                getROMPath(gameInfo!.rom),
+                gameInfo!.patch != null ? getPatchPath(gameInfo!.patch) : null,
+                outROMPath
+              );
+
               await core.send({
                 smuggleReq: undefined,
                 startReq: {
-                  romPath: ownROMPath!,
+                  romPath: outROMPath,
                   savePath: path.join(getSavesPath(app), saveName!),
                   windowTitle: getGameTitle(gameInfo!),
                   settings: undefined,
@@ -634,7 +662,43 @@ export default function BattleStarter({
                 rngSeed[i] ^= remoteState.nonce[i];
               }
 
-              // TODO: The rest!
+              const ownGameInfo =
+                pendingStatesRef.current!.own!.settings.gameInfo!;
+
+              const outOwnROMPath = path.join(
+                tempDir,
+                `${ownGameInfo.rom}${
+                  ownGameInfo.patch != null
+                    ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
+                    : ""
+                }.gba`
+              );
+              await makeROM(
+                getROMPath(ownGameInfo.rom),
+                ownGameInfo.patch != null
+                  ? getPatchPath(ownGameInfo.patch)
+                  : null,
+                outOwnROMPath
+              );
+
+              const opponentGameInfo =
+                pendingStatesRef.current!.opponent!.settings.gameInfo!;
+
+              const outOpponentROMPath = path.join(
+                tempDir,
+                `${opponentGameInfo.rom}${
+                  opponentGameInfo.patch != null
+                    ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
+                    : ""
+                }.gba`
+              );
+              await makeROM(
+                getROMPath(gameInfo!.rom),
+                gameInfo!.patch != null ? getPatchPath(gameInfo!.patch) : null,
+                outOpponentROMPath
+              );
+
+              console.log(outOwnROMPath, outOpponentROMPath);
             }
 
             // eslint-disable-next-line no-constant-condition
@@ -716,7 +780,7 @@ export default function BattleStarter({
             variant="contained"
             startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
             disabled={
-              pendingStates != null || (linkCode == "" && ownROMPath == null)
+              pendingStates != null || (linkCode == "" && gameInfo == null)
             }
           >
             {linkCode != "" ? (
