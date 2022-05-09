@@ -52,7 +52,7 @@ fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
         .data(State {
             signaling_server: std::sync::Arc::new(signaling::Server::new()),
         })
-        .get("/signaling", handle_signaling_request)
+        .get("/", handle_signaling_request)
         .build()
         .unwrap()
 }

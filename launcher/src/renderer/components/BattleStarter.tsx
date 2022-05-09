@@ -1,7 +1,9 @@
 import { readFile } from "fs/promises";
+import { isEqual } from "lodash-es";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { usePrevious } from "react-use";
 import semver from "semver";
 import { SHAKE } from "sha3";
 import { promisify } from "util";
@@ -56,8 +58,6 @@ import { useSaves } from "./SavesContext";
 import SaveViewer from "./SaveViewer";
 
 const MATCH_TYPES = ["single", "triple"];
-
-// TODO: Figure out why readying up with patches doesn't work.
 
 function defaultMatchSettings(nickname: string): SetSettings {
   return {
@@ -196,49 +196,58 @@ export default function BattleStarter({
     [saveName, saves, patch]
   );
 
+  const previousGameInfo = usePrevious(gameInfo);
+
+  const changeLocalPendingState = React.useCallback(
+    (settings: SetSettings) => {
+      setPendingStates((pendingStates) => ({
+        ...pendingStates!,
+        own: {
+          ...pendingStates!.own!,
+          settings,
+        },
+        opponent: {
+          ...pendingStates!.opponent!,
+          commitment: null,
+        },
+      }));
+
+      pendingStates!.core.send({
+        smuggleReq: {
+          data: Message.encode({
+            setSettings: settings,
+            commit: undefined,
+            uncommit: undefined,
+            chunk: undefined,
+          }).finish(),
+        },
+        startReq: undefined,
+      });
+    },
+    [pendingStates]
+  );
+
   React.useEffect(() => {
-    setPendingStates((pendingStates) =>
-      pendingStates != null && pendingStates.own != null
-        ? {
-            ...pendingStates,
-            own: {
-              ...pendingStates.own,
-              settings: {
-                ...pendingStates.own.settings,
-                gameInfo,
-                availableGames:
-                  gameInfo != null ? getAvailableGames(gameInfo) : [],
-              },
-            },
-            opponent: {
-              ...pendingStates!.opponent!,
-              commitment: null,
-            },
-          }
-        : pendingStates
-    );
-  }, [getAvailableGames, gameInfo]);
+    if (
+      pendingStates != null &&
+      pendingStates.own != null &&
+      !isEqual(gameInfo, previousGameInfo)
+    ) {
+      changeLocalPendingState({
+        ...pendingStates.own.settings,
+        gameInfo,
+        availableGames: gameInfo != null ? getAvailableGames(gameInfo) : [],
+      });
+    }
+  }, [
+    gameInfo,
+    previousGameInfo,
+    changeLocalPendingState,
+    getAvailableGames,
+    pendingStates,
+  ]);
 
   const myPendingState = pendingStates?.own;
-  const myPendingSettings = myPendingState?.settings;
-  const core = pendingStates?.core ?? null;
-
-  React.useEffect(() => {
-    if (myPendingSettings == null || core == null) {
-      return;
-    }
-    core.send({
-      smuggleReq: {
-        data: Message.encode({
-          setSettings: myPendingSettings,
-          commit: undefined,
-          uncommit: undefined,
-          chunk: undefined,
-        }).finish(),
-      },
-      startReq: undefined,
-    });
-  }, [myPendingSettings, core]);
 
   React.useEffect(() => {
     onReadyChange(myPendingState?.commitment != null);
@@ -327,20 +336,10 @@ export default function BattleStarter({
                     value={pendingStates?.own?.settings.matchType ?? 0}
                     disabled={pendingStates?.own?.commitment != null}
                     onChange={(e) => {
-                      setPendingStates((pendingStates) => ({
-                        ...pendingStates!,
-                        own: {
-                          ...pendingStates!.own!,
-                          settings: {
-                            ...pendingStates!.own!.settings,
-                            matchType: e.target.value as number,
-                          },
-                        },
-                        opponent: {
-                          ...pendingStates!.opponent!,
-                          commitment: null,
-                        },
-                      }));
+                      changeLocalPendingState({
+                        ...pendingStates!.own!.settings,
+                        matchType: e.target.value as number,
+                      });
                     }}
                   >
                     {MATCH_TYPES.map((_v, k) => (
@@ -373,20 +372,10 @@ export default function BattleStarter({
                     value={pendingStates?.own?.settings.inputDelay ?? 0}
                     disabled={pendingStates?.own?.commitment != null}
                     onChange={(e) => {
-                      setPendingStates((pendingStates) => ({
-                        ...pendingStates!,
-                        own: {
-                          ...pendingStates!.own!,
-                          settings: {
-                            ...pendingStates!.own!.settings,
-                            inputDelay: parseInt(e.target.value),
-                          },
-                        },
-                        opponent: {
-                          ...pendingStates!.opponent!,
-                          commitment: null,
-                        },
-                      }));
+                      changeLocalPendingState({
+                        ...pendingStates!.own!.settings,
+                        inputDelay: parseInt(e.target.value),
+                      });
                     }}
                     InputProps={{ inputProps: { min: 3, max: 10 } }}
                   />
