@@ -3,6 +3,9 @@ import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import semver from "semver";
+import { SHAKE } from "sha3";
+import { promisify } from "util";
+import { brotliCompress } from "zlib";
 
 import { app, shell } from "@electron/remote";
 import { ConnectingAirportsOutlined } from "@mui/icons-material";
@@ -43,7 +46,7 @@ import { getBasePath, getSavesPath } from "../../paths";
 import {
     FromCoreMessage_StateIndication_State, ToCoreMessage_StartRequest_MatchSettings
 } from "../../protos/ipc";
-import { GameInfo, Message, SetSettings } from "../../protos/lobby";
+import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import { KNOWN_ROMS } from "../../rom";
 import { Editor } from "../../saveedit/bn6";
 import { useROMPath } from "../hooks";
@@ -88,7 +91,7 @@ function useGameTitle(gameInfo: GameInfo | null) {
 
 interface PendingState {
   settings: SetSettings;
-  ready: boolean;
+  commitment: Uint8Array | null;
 }
 
 export default function BattleStarter({
@@ -116,6 +119,7 @@ export default function BattleStarter({
     own: PendingState | null;
     opponent: PendingState | null;
   } | null>(null);
+  const [changingCommitment, setChangingCommitment] = React.useState(false);
 
   const gameInfo = React.useMemo(
     () =>
@@ -145,14 +149,15 @@ export default function BattleStarter({
     );
   }, [gameInfo]);
 
-  const myPendingSettings = pendingStates?.own?.settings;
-  const ready = pendingStates?.own?.ready ?? false;
+  const myPendingState = pendingStates?.own;
+  const myPendingSettings = myPendingState?.settings;
+  const core = pendingStates?.core ?? null;
 
   React.useEffect(() => {
-    if (myPendingSettings == null) {
+    if (myPendingSettings == null || core == null) {
       return;
     }
-    pendingStates!.core.send({
+    core.send({
       smuggleReq: {
         data: Message.encode({
           setSettings: myPendingSettings,
@@ -163,11 +168,7 @@ export default function BattleStarter({
       },
       startReq: undefined,
     });
-  }, [myPendingSettings, pendingStates]);
-
-  React.useEffect(() => {
-    // TODO: Send state changes.
-  }, [myPendingSettings, ready]);
+  }, [myPendingSettings, core]);
 
   const ownGameTitle = useGameTitle(gameInfo ?? null);
   const opponentGameTitle = useGameTitle(
@@ -209,8 +210,14 @@ export default function BattleStarter({
                 <TableCell component="th" sx={{ fontWeight: "bold" }}>
                   <Trans i18nKey="play:game" />
                 </TableCell>
-                <TableCell>{ownGameTitle}</TableCell>
-                <TableCell>{opponentGameTitle}</TableCell>
+                <TableCell>
+                  {ownGameTitle ?? <Trans i18nKey="play:no-game-selected" />}
+                </TableCell>
+                <TableCell>
+                  {opponentGameTitle ?? (
+                    <Trans i18nKey="play:no-game-selected" />
+                  )}
+                </TableCell>
               </TableRow>
               <TableRow>
                 <TableCell component="th" sx={{ fontWeight: "bold" }}>
@@ -362,7 +369,7 @@ export default function BattleStarter({
               setPendingStates((pendingStates) => ({
                 ...pendingStates!,
                 opponent: null,
-                own: { ready: false, settings: myPendingSettings },
+                own: { commitment: null, settings: myPendingSettings },
               }));
               await core.send({
                 smuggleReq: {
@@ -388,13 +395,39 @@ export default function BattleStarter({
                 }
 
                 const lobbyMsg = Message.decode(msg.smuggleInd.data);
+                if (lobbyMsg.uncommit != null) {
+                  setPendingStates((pendingStates) => ({
+                    ...pendingStates!,
+                    opponent: { ...pendingStates!.opponent!, commitment: null },
+                  }));
+                  continue;
+                }
+
+                if (lobbyMsg.commit != null) {
+                  setPendingStates((pendingStates) => ({
+                    ...pendingStates!,
+                    opponent: {
+                      ...pendingStates!.opponent!,
+                      commitment: lobbyMsg.commit!.commitment,
+                    },
+                  }));
+                  continue;
+                }
+
                 if (lobbyMsg.setSettings == null) {
                   throw "expected lobby set settings";
                 }
 
                 setPendingStates((pendingStates) => ({
                   ...pendingStates!,
-                  opponent: { ready: false, settings: lobbyMsg.setSettings! },
+                  opponent: {
+                    commitment: null,
+                    settings: lobbyMsg.setSettings!,
+                  },
+                  own: {
+                    ...pendingStates!.own!,
+                    commitment: null,
+                  },
                 }));
               }
             }
@@ -495,15 +528,83 @@ export default function BattleStarter({
                   <FormControlLabel
                     control={
                       <Checkbox
-                        value={pendingStates.own.ready}
+                        checked={pendingStates.own.commitment != null}
+                        disabled={
+                          saveName == null ||
+                          changingCommitment ||
+                          (pendingStates.own.commitment != null &&
+                            pendingStates.opponent.commitment != null)
+                        }
+                        indeterminate={changingCommitment}
                         onChange={(_e, v) => {
-                          setPendingStates((pendingStates) => ({
-                            ...pendingStates!,
-                            own: {
-                              ...pendingStates!.own!,
-                              ready: v,
-                            },
-                          }));
+                          setChangingCommitment(true);
+                          (async () => {
+                            let commitment: Uint8Array | null = null;
+
+                            if (v) {
+                              const saveData = await readFile(
+                                path.join(getSavesPath(app), saveName!)
+                              );
+                              const nonce = crypto.getRandomValues(
+                                new Uint8Array(16)
+                              );
+
+                              const state = {
+                                nonce,
+                                saveData: await promisify(brotliCompress)(
+                                  saveData
+                                ),
+                              };
+
+                              const shake128 = new SHAKE(128);
+                              shake128.update(Buffer.from("tango:state:"));
+                              shake128.update(
+                                Buffer.from(
+                                  NegotiatedState.encode(state).finish()
+                                )
+                              );
+
+                              commitment = new Uint8Array(shake128.digest());
+                            }
+
+                            if (commitment != null) {
+                              await pendingStates.core.send({
+                                smuggleReq: {
+                                  data: Message.encode({
+                                    setSettings: undefined,
+                                    commit: {
+                                      commitment,
+                                      numChunks: 0, // TODO
+                                    },
+                                    uncommit: undefined,
+                                    chunk: undefined,
+                                  }).finish(),
+                                },
+                                startReq: undefined,
+                              });
+                            } else {
+                              await pendingStates.core.send({
+                                smuggleReq: {
+                                  data: Message.encode({
+                                    setSettings: undefined,
+                                    commit: undefined,
+                                    uncommit: {},
+                                    chunk: undefined,
+                                  }).finish(),
+                                },
+                                startReq: undefined,
+                              });
+                            }
+
+                            setPendingStates((pendingStates) => ({
+                              ...pendingStates!,
+                              own: {
+                                ...pendingStates!.own!,
+                                commitment,
+                              },
+                            }));
+                            setChangingCommitment(false);
+                          })();
                         }}
                       />
                     }

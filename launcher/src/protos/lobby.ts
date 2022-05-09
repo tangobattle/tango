@@ -40,7 +40,7 @@ export interface Message {
   chunk: Chunk | undefined;
 }
 
-export interface State {
+export interface NegotiatedState {
   nonce: Uint8Array;
   saveData: Uint8Array;
 }
@@ -563,12 +563,15 @@ export const Message = {
   },
 };
 
-function createBaseState(): State {
+function createBaseNegotiatedState(): NegotiatedState {
   return { nonce: new Uint8Array(), saveData: new Uint8Array() };
 }
 
-export const State = {
-  encode(message: State, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
+export const NegotiatedState = {
+  encode(
+    message: NegotiatedState,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
     if (message.nonce.length !== 0) {
       writer.uint32(10).bytes(message.nonce);
     }
@@ -578,10 +581,10 @@ export const State = {
     return writer;
   },
 
-  decode(input: _m0.Reader | Uint8Array, length?: number): State {
+  decode(input: _m0.Reader | Uint8Array, length?: number): NegotiatedState {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseState();
+    const message = createBaseNegotiatedState();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -599,7 +602,7 @@ export const State = {
     return message;
   },
 
-  fromJSON(object: any): State {
+  fromJSON(object: any): NegotiatedState {
     return {
       nonce: isSet(object.nonce)
         ? bytesFromBase64(object.nonce)
@@ -610,7 +613,7 @@ export const State = {
     };
   },
 
-  toJSON(message: State): unknown {
+  toJSON(message: NegotiatedState): unknown {
     const obj: any = {};
     message.nonce !== undefined &&
       (obj.nonce = base64FromBytes(
@@ -623,8 +626,10 @@ export const State = {
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<State>, I>>(object: I): State {
-    const message = createBaseState();
+  fromPartial<I extends Exact<DeepPartial<NegotiatedState>, I>>(
+    object: I
+  ): NegotiatedState {
+    const message = createBaseNegotiatedState();
     message.nonce = object.nonce ?? new Uint8Array();
     message.saveData = object.saveData ?? new Uint8Array();
     return message;
