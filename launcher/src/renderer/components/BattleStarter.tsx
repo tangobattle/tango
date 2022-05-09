@@ -10,6 +10,7 @@ import { brotliCompress } from "zlib";
 import { app, shell } from "@electron/remote";
 import { ConnectingAirportsOutlined } from "@mui/icons-material";
 import CheckIcon from "@mui/icons-material/Check";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -56,6 +57,8 @@ import SaveViewer from "./SaveViewer";
 
 const MATCH_TYPES = ["single", "triple"];
 
+// TODO: Figure out why readying up with patches doesn't work.
+
 function defaultMatchSettings(nickname: string): SetSettings {
   return {
     nickname,
@@ -81,6 +84,26 @@ function useGetGameTitle() {
       }`,
     [patches, i18n]
   );
+}
+
+function gameInfoMatches(g: GameInfo | null, h: GameInfo) {
+  if (g == null) {
+    return false;
+  }
+
+  if (g.rom != h.rom) {
+    return false;
+  }
+
+  if ((g.patch == null) != (h.patch == null)) {
+    return false;
+  }
+
+  if (g.patch == null && h.patch == null) {
+    return true;
+  }
+
+  return g.patch!.name == h.patch!.name && g.patch!.version == h.patch!.version;
 }
 
 function useGetAvailableGames() {
@@ -134,11 +157,13 @@ export default function BattleStarter({
   patch,
   onExit,
   onReadyChange,
+  onOpponentSettingsChange,
 }: {
   saveName: string | null;
   patch: { name: string; version: string } | null;
   onExit: () => void;
   onReadyChange: (ready: boolean) => void;
+  onOpponentSettingsChange: (settings: SetSettings) => void;
 }) {
   const { saves } = useSaves();
 
@@ -244,10 +269,30 @@ export default function BattleStarter({
               <TableRow>
                 <TableCell></TableCell>
                 <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                  <Trans i18nKey="play:own-side" />
+                  <Trans i18nKey="play:own-side" />{" "}
+                  {pendingStates?.own?.commitment != null ? (
+                    <CheckCircleIcon
+                      color="success"
+                      sx={{
+                        fontSize: "1em",
+                        marginLeft: "4px",
+                        verticalAlign: "middle",
+                      }}
+                    />
+                  ) : null}
                 </TableCell>
                 <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                  {pendingStates?.opponent?.settings.nickname ?? ""}
+                  {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
+                  {pendingStates?.opponent?.commitment != null ? (
+                    <CheckCircleIcon
+                      color="success"
+                      sx={{
+                        fontSize: "1em",
+                        marginLeft: "4px",
+                        verticalAlign: "middle",
+                      }}
+                    />
+                  ) : null}
                 </TableCell>
               </TableRow>
             </TableHead>
@@ -479,8 +524,6 @@ export default function BattleStarter({
                   throw "expected lobby set settings";
                 }
 
-                console.log(lobbyMsg.setSettings);
-
                 setPendingStates((pendingStates) => ({
                   ...pendingStates!,
                   opponent: {
@@ -492,6 +535,8 @@ export default function BattleStarter({
                     commitment: null,
                   },
                 }));
+
+                onOpponentSettingsChange(lobbyMsg.setSettings);
               }
             }
 
@@ -596,6 +641,13 @@ export default function BattleStarter({
                           saveName == null ||
                           pendingStates.own.settings.matchType !=
                             pendingStates.opponent.settings.matchType ||
+                          !pendingStates.opponent.settings.availableGames.some(
+                            (g) =>
+                              gameInfoMatches(
+                                pendingStates.own!.settings.gameInfo ?? null,
+                                g
+                              )
+                          ) ||
                           changingCommitment ||
                           (pendingStates.own.commitment != null &&
                             pendingStates.opponent.commitment != null)

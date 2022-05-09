@@ -10,6 +10,7 @@ import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
+import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Collapse from "@mui/material/Collapse";
 import FormControl from "@mui/material/FormControl";
@@ -24,6 +25,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { getBasePath, getSavesPath } from "../../../paths";
+import { SetSettings } from "../../../protos/lobby";
 import { KNOWN_ROMS } from "../../../rom";
 import { Editor } from "../../../saveedit/bn6";
 import BattleStarter from "../BattleStarter";
@@ -73,6 +75,9 @@ export default function SavesPane({ active }: { active: boolean }) {
 
   const [saveName_, setSaveName] = React.useState<string | null>(null);
   const [incarnation, setIncarnation] = React.useState(0);
+  const [opponentSettings, setOpponentSettings] =
+    React.useState<SetSettings | null>(null);
+  const availableGames = opponentSettings?.availableGames ?? [];
 
   const saveName =
     saveName_ != null && Object.prototype.hasOwnProperty.call(saves, saveName_)
@@ -165,6 +170,22 @@ export default function SavesPane({ active }: { active: boolean }) {
                   }
                   return (
                     <>
+                      {availableGames.length > 0 &&
+                      !availableGames.some((g) => g.rom == saves[v].romName) ? (
+                        // TODO: Distinguish between unsupported vs incompatible.
+                        <Tooltip
+                          title={<Trans i18nKey="play:unsupported-game" />}
+                        >
+                          <WarningIcon
+                            color="warning"
+                            sx={{
+                              fontSize: "1em",
+                              marginRight: "8px",
+                              verticalAlign: "middle",
+                            }}
+                          />
+                        </Tooltip>
+                      ) : null}
                       {v}{" "}
                       <small>
                         {
@@ -198,6 +219,22 @@ export default function SavesPane({ active }: { active: boolean }) {
                     ...saveNames.map((v) => {
                       return (
                         <MenuItem key={v} value={v}>
+                          {availableGames.length > 0 &&
+                          !availableGames.some((g) => g.rom == romName) ? (
+                            // TODO: Distinguish between unsupported vs incompatible.
+                            <Tooltip
+                              title={<Trans i18nKey="play:unsupported-game" />}
+                            >
+                              <WarningIcon
+                                color="warning"
+                                sx={{
+                                  fontSize: "1em",
+                                  marginRight: "8px",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </Tooltip>
+                          ) : null}{" "}
                           {v}
                         </MenuItem>
                       );
@@ -246,30 +283,148 @@ export default function SavesPane({ active }: { active: boolean }) {
               spacing={1}
               sx={{ px: 1, mt: 1 }}
             >
-              <Box flexGrow={5} flexShrink={0}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="game-label">
-                    <Trans i18nKey="play:patch-name" />
-                  </InputLabel>
-                  <Select
-                    labelId="game-label"
-                    disabled={saveName == null}
-                    size="small"
-                    value={JSON.stringify(patchName)}
-                    label={<Trans i18nKey="play:patch-name" />}
-                    onChange={(e) => {
-                      setPatchName(JSON.parse(e.target.value));
-                      setPatchVersion(null);
-                    }}
-                    renderValue={(v) => {
-                      const patchName = JSON.parse(v);
-                      if (patchName == null) {
-                        return <Trans i18nKey="play:unpatched" />;
-                      }
+              <FormControl fullWidth size="small" sx={{ width: "250%" }}>
+                <InputLabel id="game-label">
+                  <Trans i18nKey="play:patch-name" />
+                </InputLabel>
+                <Select
+                  labelId="game-label"
+                  disabled={saveName == null || battleReady}
+                  size="small"
+                  value={JSON.stringify(patchName)}
+                  label={<Trans i18nKey="play:patch-name" />}
+                  onChange={(e) => {
+                    setPatchName(JSON.parse(e.target.value));
+                    setPatchVersion(null);
+                  }}
+                  renderValue={(v) => {
+                    const patchName = JSON.parse(v);
+                    if (patchName == null) {
                       return (
                         <>
-                          {patches[patchName].title}{" "}
-                          <small>
+                          {availableGames.length > 0 &&
+                          !availableGames.some(
+                            (g) =>
+                              save != null &&
+                              g.rom == save.romName &&
+                              g.patch == null
+                          ) ? (
+                            // TODO: Distinguish between unsupported vs incompatible.
+                            <Tooltip
+                              title={<Trans i18nKey="play:unsupported-game" />}
+                            >
+                              <WarningIcon
+                                color="warning"
+                                sx={{
+                                  fontSize: "1em",
+                                  marginRight: "8px",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </Tooltip>
+                          ) : null}{" "}
+                          <Trans i18nKey="play:unpatched" />
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        {availableGames.length > 0 &&
+                        !availableGames.some(
+                          (g) =>
+                            save != null &&
+                            g.rom == save.romName &&
+                            g.patch != null &&
+                            g.patch.name == patchName
+                        ) ? (
+                          // TODO: Distinguish between unsupported vs incompatible.
+                          <Tooltip
+                            title={<Trans i18nKey="play:unsupported-game" />}
+                          >
+                            <WarningIcon
+                              color="warning"
+                              sx={{
+                                fontSize: "1em",
+                                marginRight: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            />
+                          </Tooltip>
+                        ) : null}{" "}
+                        {patches[patchName].title}{" "}
+                        <small>
+                          <Trans
+                            i18nKey="play:patch-byline"
+                            values={{
+                              authors: listFormatter.format(
+                                patches[patchName].authors.flatMap(({ name }) =>
+                                  name != null ? [name] : []
+                                )
+                              ),
+                            }}
+                          />
+                        </small>
+                      </>
+                    );
+                  }}
+                  fullWidth
+                >
+                  <MenuItem value="null">
+                    {availableGames.length > 0 &&
+                    !availableGames.some(
+                      (g) =>
+                        save != null && g.rom == save.romName && g.patch == null
+                    ) ? (
+                      // TODO: Distinguish between unsupported vs incompatible.
+                      <Tooltip
+                        title={<Trans i18nKey="play:unsupported-game" />}
+                      >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            marginRight: "8px",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : null}{" "}
+                    <Trans i18nKey="play:unpatched" />
+                  </MenuItem>
+                  {eligiblePatchNames.map((patchName) => {
+                    const v = JSON.stringify(patchName);
+                    return (
+                      <MenuItem key={v} value={v}>
+                        <ListItemText
+                          primary={
+                            <>
+                              {availableGames.length > 0 &&
+                              !availableGames.some(
+                                (g) =>
+                                  save != null &&
+                                  g.rom == save.romName &&
+                                  g.patch != null &&
+                                  g.patch.name == patchName
+                              ) ? (
+                                <Tooltip
+                                  title={
+                                    <Trans i18nKey="play:unsupported-game" />
+                                  }
+                                >
+                                  <WarningIcon
+                                    color="warning"
+                                    sx={{
+                                      fontSize: "1em",
+                                      marginRight: "8px",
+                                      verticalAlign: "middle",
+                                    }}
+                                  />
+                                </Tooltip>
+                              ) : null}{" "}
+                              {patches[patchName].title}
+                            </>
+                          }
+                          secondary={
                             <Trans
                               i18nKey="play:patch-byline"
                               values={{
@@ -280,68 +435,65 @@ export default function SavesPane({ active }: { active: boolean }) {
                                 ),
                               }}
                             />
-                          </small>
-                        </>
-                      );
-                    }}
-                    fullWidth
-                  >
-                    <MenuItem value="null">
-                      <Trans i18nKey="play:unpatched" />
-                    </MenuItem>
-                    {eligiblePatchNames.map((patchName) => {
-                      const v = JSON.stringify(patchName);
-                      return (
-                        <MenuItem key={v} value={v}>
-                          <ListItemText
-                            primary={patches[patchName].title}
-                            secondary={
-                              <Trans
-                                i18nKey="play:patch-byline"
-                                values={{
-                                  authors: listFormatter.format(
-                                    patches[patchName].authors.flatMap(
-                                      ({ name }) => (name != null ? [name] : [])
-                                    )
-                                  ),
-                                }}
-                              />
-                            }
-                          />
-                        </MenuItem>
-                      );
-                    })}
-                  </Select>
-                </FormControl>
-              </Box>
-              <Box flexGrow={1} flexShrink={0}>
-                <FormControl fullWidth size="small">
-                  <InputLabel id="patch-version-label">
-                    <Trans i18nKey="play:patch-version" />
-                  </InputLabel>
-                  <Select
-                    labelId="patch-version-label"
-                    disabled={saveName == null || patchName == null}
-                    size="small"
-                    value={patchVersion || ""}
-                    label={<Trans i18nKey="play:patch-version" />}
-                    onChange={(e) => {
-                      setPatchVersion(e.target.value);
-                    }}
-                    fullWidth
-                  >
-                    {patchVersions != null
-                      ? patchVersions.map((version) => {
-                          return (
-                            <MenuItem key={version} value={version}>
-                              {version}
-                            </MenuItem>
-                          );
-                        })
-                      : []}
-                  </Select>
-                </FormControl>
-              </Box>
+                          }
+                        />
+                      </MenuItem>
+                    );
+                  })}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel id="patch-version-label">
+                  <Trans i18nKey="play:patch-version" />
+                </InputLabel>
+                <Select
+                  labelId="patch-version-label"
+                  disabled={
+                    saveName == null || patchName == null || battleReady
+                  }
+                  size="small"
+                  value={patchVersion || ""}
+                  label={<Trans i18nKey="play:patch-version" />}
+                  onChange={(e) => {
+                    setPatchVersion(e.target.value);
+                  }}
+                  fullWidth
+                >
+                  {patchVersions != null
+                    ? patchVersions.map((version) => {
+                        return (
+                          <MenuItem key={version} value={version}>
+                            {availableGames.length > 0 &&
+                            !availableGames.some(
+                              (g) =>
+                                save != null &&
+                                g.rom == save.romName &&
+                                g.patch != null &&
+                                g.patch.name == patchName &&
+                                g.patch.version == version
+                            ) ? (
+                              <Tooltip
+                                title={
+                                  <Trans i18nKey="play:unsupported-game" />
+                                }
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : null}{" "}
+                            {version}
+                          </MenuItem>
+                        );
+                      })
+                    : []}
+                </Select>
+              </FormControl>
             </Stack>
           </Collapse>
         </Box>
@@ -384,6 +536,9 @@ export default function SavesPane({ active }: { active: boolean }) {
           }}
           onReadyChange={(ready) => {
             setBattleReady(ready);
+          }}
+          onOpponentSettingsChange={(settings) => {
+            setOpponentSettings(settings);
           }}
         />
       </Stack>
