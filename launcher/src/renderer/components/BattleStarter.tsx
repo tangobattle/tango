@@ -681,7 +681,9 @@ export default function BattleStarter({
               const prefix = `${datefns.format(
                 Date.now(),
                 "yyyyMMddHHmmmmss"
-              )}-vs-${opponentGameSettings.nickname}-${linkCode}`;
+              )}-vs-${encodeURIComponent(
+                opponentGameSettings.nickname
+              )}-${linkCode}`;
 
               const shadowSavePath = path.join(tempDir, prefix + ".sav");
               await writeFile(shadowSavePath, remoteSaveData);
