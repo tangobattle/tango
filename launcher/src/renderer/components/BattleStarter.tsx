@@ -43,9 +43,7 @@ import Typography from "@mui/material/Typography";
 
 import * as ipc from "../../ipc";
 import { getBasePath, getSavesPath } from "../../paths";
-import {
-    FromCoreMessage_StateIndication_State, ToCoreMessage_StartRequest_MatchSettings
-} from "../../protos/ipc";
+import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import { KNOWN_ROMS } from "../../rom";
 import { Editor } from "../../saveedit/bn6";
@@ -58,35 +56,72 @@ import SaveViewer from "./SaveViewer";
 
 const MATCH_TYPES = ["single", "triple"];
 
-function defaultMatchSettings(
-  nickname: string,
-  gameInfo: GameInfo | null
-): SetSettings {
+function defaultMatchSettings(nickname: string): SetSettings {
   return {
     nickname,
     inputDelay: 3,
     matchType: 1,
-    gameInfo: gameInfo ?? undefined,
+    gameInfo: undefined,
     availableGames: [],
   };
 }
 
-function useGameTitle(gameInfo: GameInfo | null) {
+function useGetGameTitle() {
   const { patches } = usePatches();
   const { i18n } = useTranslation();
 
-  if (gameInfo == null) {
-    return null;
-  }
-
-  return `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]}
-      ${
+  return React.useCallback(
+    (gameInfo: GameInfo) =>
+      `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]} ${
         gameInfo.patch != null
           ? ` + ${patches[gameInfo.patch.name].title} v${
               gameInfo.patch.version
             }`
           : ""
-      }`;
+      }`,
+    [patches, i18n]
+  );
+}
+
+function useGetAvailableGames() {
+  const { patches } = usePatches();
+  return React.useCallback(
+    (gameInfo: GameInfo) => {
+      let netplayCompatibility = KNOWN_ROMS[gameInfo.rom].netplayCompatibility;
+      if (gameInfo.patch != null) {
+        netplayCompatibility =
+          patches[gameInfo.patch.name].versions[gameInfo.patch.version]
+            .netplayCompatibility;
+      }
+
+      return Array.from(
+        (function* () {
+          for (const romName of Object.keys(KNOWN_ROMS)) {
+            const rom = KNOWN_ROMS[romName];
+            if (rom.netplayCompatibility == netplayCompatibility) {
+              yield { rom: romName, patch: undefined };
+            }
+          }
+
+          for (const patchName of Object.keys(patches)) {
+            const patch = patches[patchName];
+            for (const version of Object.keys(patch.versions)) {
+              if (
+                patch.versions[version].netplayCompatibility ==
+                netplayCompatibility
+              ) {
+                yield {
+                  rom: patch.forROM,
+                  patch: { name: patchName, version },
+                };
+              }
+            }
+          }
+        })()
+      );
+    },
+    [patches]
+  );
 }
 
 interface PendingState {
@@ -109,6 +144,8 @@ export default function BattleStarter({
 
   const { config } = useConfig();
   const configRef = React.useRef(config);
+
+  const getAvailableGames = useGetAvailableGames();
 
   const [linkCode, setLinkCode] = React.useState("");
   const [state, setState] =
@@ -144,6 +181,8 @@ export default function BattleStarter({
               settings: {
                 ...pendingStates.own.settings,
                 gameInfo,
+                availableGames:
+                  gameInfo != null ? getAvailableGames(gameInfo) : [],
               },
             },
             opponent: {
@@ -153,7 +192,7 @@ export default function BattleStarter({
           }
         : pendingStates
     );
-  }, [gameInfo]);
+  }, [getAvailableGames, gameInfo]);
 
   const myPendingState = pendingStates?.own;
   const myPendingSettings = myPendingState?.settings;
@@ -180,10 +219,7 @@ export default function BattleStarter({
     onReadyChange(myPendingState?.commitment != null);
   }, [myPendingState, onReadyChange]);
 
-  const ownGameTitle = useGameTitle(gameInfo ?? null);
-  const opponentGameTitle = useGameTitle(
-    pendingStates?.opponent?.settings.gameInfo ?? null
-  );
+  const getGameTitle = useGetGameTitle();
 
   const ownROMPath = useROMPath(gameInfo?.rom ?? null);
 
@@ -221,10 +257,16 @@ export default function BattleStarter({
                   <Trans i18nKey="play:game" />
                 </TableCell>
                 <TableCell>
-                  {ownGameTitle ?? <Trans i18nKey="play:no-game-selected" />}
+                  {gameInfo != null ? (
+                    getGameTitle(gameInfo)
+                  ) : (
+                    <Trans i18nKey="play:no-game-selected" />
+                  )}
                 </TableCell>
                 <TableCell>
-                  {opponentGameTitle ?? (
+                  {pendingStates?.opponent?.settings.gameInfo != null ? (
+                    getGameTitle(pendingStates?.opponent?.settings.gameInfo)
+                  ) : (
                     <Trans i18nKey="play:no-game-selected" />
                   )}
                 </TableCell>
@@ -375,16 +417,16 @@ export default function BattleStarter({
                 startReq: {
                   romPath: ownROMPath!,
                   savePath: path.join(getSavesPath(app), saveName!),
-                  windowTitle: ownGameTitle!,
+                  windowTitle: getGameTitle(gameInfo!),
                   settings: undefined,
                 },
               });
             } else {
               // Need to negotiate settings with the opponent.
-              const myPendingSettings = defaultMatchSettings(
-                config.nickname,
-                gameInfo!
-              );
+              const myPendingSettings = defaultMatchSettings(config.nickname);
+              myPendingSettings.gameInfo = gameInfo;
+              myPendingSettings.availableGames =
+                gameInfo != null ? getAvailableGames(gameInfo) : [];
               setPendingStates((pendingStates) => ({
                 ...pendingStates!,
                 opponent: null,
@@ -436,6 +478,8 @@ export default function BattleStarter({
                 if (lobbyMsg.setSettings == null) {
                   throw "expected lobby set settings";
                 }
+
+                console.log(lobbyMsg.setSettings);
 
                 setPendingStates((pendingStates) => ({
                   ...pendingStates!,
