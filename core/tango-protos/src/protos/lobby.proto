@@ -17,17 +17,25 @@ message SetSettings {
   uint32 input_delay = 5;
 }
 
-message Commit { bytes commitment = 1; }
-
-message Reveal {
-  bytes save_data = 1;
-  bytes rng_nonce = 2;
+message Commit {
+  bytes commitment = 1;
+  uint32 num_chunks = 2;
 }
+
+message Chunk { bytes chunk = 1; }
+
+message Goodbye {}
 
 message Message {
   oneof which {
     SetSettings set_settings = 1;
     Commit commit = 2;
-    Reveal reveal = 3;
+    Chunk chunk = 3;
+    Goodbye goodbye = 4;
   }
+}
+
+message State {
+  bytes nonce = 1;
+  bytes save_data = 2;
 }

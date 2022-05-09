@@ -8,11 +8,9 @@ import { app, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
 import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
@@ -28,7 +26,7 @@ import Typography from "@mui/material/Typography";
 import { getBasePath, getSavesPath } from "../../../paths";
 import { KNOWN_ROMS } from "../../../rom";
 import { Editor } from "../../../saveedit/bn6";
-import { CoreSupervisor } from "../CoreSupervisor";
+import BattleStarter from "../BattleStarter";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
 import { useSaves } from "../SavesContext";
@@ -370,44 +368,7 @@ export default function SavesPane({ active }: { active: boolean }) {
             </Stack>
           </Box>
         )}
-        <Stack sx={{ px: 1 }}>
-          <Box sx={{ alignSelf: "flex-end" }}>
-            <Button
-              disabled={saveName == null}
-              color="primary"
-              size="medium"
-              variant="contained"
-              onClick={() => {
-                setStarted(true);
-              }}
-              startIcon={<PlayArrowIcon />}
-            >
-              <Trans i18nKey="play:play" />
-            </Button>
-            {started ? (
-              <CoreSupervisor
-                incarnation={incarnation}
-                romName={saves[saveName!].romName}
-                patch={
-                  patchVersion != null
-                    ? { name: patchName!, version: patchVersion }
-                    : null
-                }
-                sessionId={null}
-                savePath={path.join(getSavesPath(app), saveName!)}
-                windowTitle={`${
-                  KNOWN_ROMS[saves[saveName!].romName].title[
-                    i18n.resolvedLanguage
-                  ]
-                }${patchVersion != null ? ` + ${patchInfo!.title}` : ""}`}
-                onExit={() => {
-                  setStarted(false);
-                  setIncarnation((incarnation) => incarnation + 1);
-                }}
-              />
-            ) : null}
-          </Box>
-        </Stack>
+        <BattleStarter />
       </Stack>
     </Box>
   );
