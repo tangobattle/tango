@@ -109,6 +109,8 @@ impl Game {
         let rom_vf = mgba::vfile::VFile::open(&rom_path, mgba::vfile::flags::O_RDONLY)?;
         core.as_mut().load_rom(rom_vf)?;
 
+        log::info!("loaded game: {}", core.as_ref().game_title());
+
         let save_vf = mgba::vfile::VFile::open(
             &save_path,
             mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
@@ -411,7 +413,7 @@ impl Game {
                             .expect("render pixels");
                         self.fps_counter.lock().mark();
                     }
-                    winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {}
+                    winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
                     _ => {}
                 }
             });

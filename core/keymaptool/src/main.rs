@@ -222,7 +222,7 @@ fn main() -> anyhow::Result<()> {
                         _ => {}
                     };
                 }
-                winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {}
+                winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
                 _ => {}
             };
         });

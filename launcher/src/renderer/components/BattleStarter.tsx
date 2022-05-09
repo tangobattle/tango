@@ -671,8 +671,10 @@ export default function BattleStarter({
                 }.gba`
               );
               await makeROM(
-                getROMPath(gameInfo!.rom),
-                gameInfo!.patch != null ? getPatchPath(gameInfo!.patch) : null,
+                getROMPath(opponentGameInfo.rom),
+                opponentGameInfo.patch != null
+                  ? getPatchPath(opponentGameInfo.patch)
+                  : null,
                 outOpponentROMPath
               );
 
