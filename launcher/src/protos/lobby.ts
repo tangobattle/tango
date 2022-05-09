@@ -33,14 +33,11 @@ export interface Chunk {
   chunk: Uint8Array;
 }
 
-export interface Goodbye {}
-
 export interface Message {
   setSettings: SetSettings | undefined;
   commit: Commit | undefined;
   uncommit: Uncommit | undefined;
   chunk: Chunk | undefined;
-  goodbye: Goodbye | undefined;
 }
 
 export interface State {
@@ -455,52 +452,12 @@ export const Chunk = {
   },
 };
 
-function createBaseGoodbye(): Goodbye {
-  return {};
-}
-
-export const Goodbye = {
-  encode(_: Goodbye, writer: _m0.Writer = _m0.Writer.create()): _m0.Writer {
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): Goodbye {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGoodbye();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(_: any): Goodbye {
-    return {};
-  },
-
-  toJSON(_: Goodbye): unknown {
-    const obj: any = {};
-    return obj;
-  },
-
-  fromPartial<I extends Exact<DeepPartial<Goodbye>, I>>(_: I): Goodbye {
-    const message = createBaseGoodbye();
-    return message;
-  },
-};
-
 function createBaseMessage(): Message {
   return {
     setSettings: undefined,
     commit: undefined,
     uncommit: undefined,
     chunk: undefined,
-    goodbye: undefined,
   };
 }
 
@@ -524,9 +481,6 @@ export const Message = {
     if (message.chunk !== undefined) {
       Chunk.encode(message.chunk, writer.uint32(34).fork()).ldelim();
     }
-    if (message.goodbye !== undefined) {
-      Goodbye.encode(message.goodbye, writer.uint32(42).fork()).ldelim();
-    }
     return writer;
   },
 
@@ -549,9 +503,6 @@ export const Message = {
         case 4:
           message.chunk = Chunk.decode(reader, reader.uint32());
           break;
-        case 5:
-          message.goodbye = Goodbye.decode(reader, reader.uint32());
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -570,9 +521,6 @@ export const Message = {
         ? Uncommit.fromJSON(object.uncommit)
         : undefined,
       chunk: isSet(object.chunk) ? Chunk.fromJSON(object.chunk) : undefined,
-      goodbye: isSet(object.goodbye)
-        ? Goodbye.fromJSON(object.goodbye)
-        : undefined,
     };
   },
 
@@ -590,10 +538,6 @@ export const Message = {
         : undefined);
     message.chunk !== undefined &&
       (obj.chunk = message.chunk ? Chunk.toJSON(message.chunk) : undefined);
-    message.goodbye !== undefined &&
-      (obj.goodbye = message.goodbye
-        ? Goodbye.toJSON(message.goodbye)
-        : undefined);
     return obj;
   },
 
@@ -614,10 +558,6 @@ export const Message = {
     message.chunk =
       object.chunk !== undefined && object.chunk !== null
         ? Chunk.fromPartial(object.chunk)
-        : undefined;
-    message.goodbye =
-      object.goodbye !== undefined && object.goodbye !== null
-        ? Goodbye.fromPartial(object.goodbye)
         : undefined;
     return message;
   },

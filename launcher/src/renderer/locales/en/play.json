@@ -32,5 +32,7 @@
   "navicust.color.white": "white",
   "ready": "I'm ready!",
   "stop": "Stop",
-  "no-game-info": "Not selected"
+  "no-game-info": "Not selected",
+  "own-side": "You",
+  "game": "Game"
 }

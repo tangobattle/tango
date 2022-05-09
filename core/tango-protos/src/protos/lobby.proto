@@ -26,15 +26,12 @@ message Uncommit {}
 
 message Chunk { bytes chunk = 1; }
 
-message Goodbye {}
-
 message Message {
   oneof which {
     SetSettings set_settings = 1;
     Commit commit = 2;
     Uncommit uncommit = 3;
     Chunk chunk = 4;
-    Goodbye goodbye = 5;
   }
 }
 

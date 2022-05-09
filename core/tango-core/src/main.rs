@@ -96,7 +96,7 @@ fn main() -> Result<(), anyhow::Error> {
                     which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
                         tango_protos::ipc::from_core_message::StateIndication {
                             state:
-                                tango_protos::ipc::from_core_message::state_indication::State::ReadyToStart
+                                tango_protos::ipc::from_core_message::state_indication::State::Starting
                                     .into(),
                         },
                     )),

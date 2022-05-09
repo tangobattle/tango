@@ -147,9 +147,8 @@ pub async fn negotiate(
         .send(tango_protos::ipc::FromCoreMessage {
             which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
                 tango_protos::ipc::from_core_message::StateIndication {
-                    state:
-                        tango_protos::ipc::from_core_message::state_indication::State::ReadyToStart
-                            .into(),
+                    state: tango_protos::ipc::from_core_message::state_indication::State::Starting
+                        .into(),
                 },
             )),
         })

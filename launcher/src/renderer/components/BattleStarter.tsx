@@ -48,7 +48,6 @@ import { KNOWN_ROMS } from "../../rom";
 import { Editor } from "../../saveedit/bn6";
 import { useROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
-import { CoreSupervisor } from "./CoreSupervisor";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
 import { useSaves } from "./SavesContext";
@@ -95,31 +94,28 @@ interface PendingState {
 export default function BattleStarter({
   saveName,
   patch,
+  onExit,
 }: {
   saveName: string | null;
   patch: { name: string; version: string } | null;
+  onExit: () => void;
 }) {
   const { saves } = useSaves();
 
   const { config } = useConfig();
   const configRef = React.useRef(config);
 
-  // TODO: Figure out how to abort the core.
-  const [abortController, setAbortController] =
-    React.useState<AbortController | null>(null);
-
   const [linkCode, setLinkCode] = React.useState("");
+  const [state, setState] =
+    React.useState<FromCoreMessage_StateIndication_State>(
+      FromCoreMessage_StateIndication_State.UNKNOWN
+    );
   const [pendingStates, setPendingStates] = React.useState<{
     core: ipc.Core;
+    abortController: AbortController;
     own: PendingState | null;
     opponent: PendingState | null;
   } | null>(null);
-
-  React.useEffect(() => {
-    if (pendingStates == null) {
-      setAbortController(null);
-    }
-  }, [pendingStates]);
 
   const gameInfo = React.useMemo(
     () =>
@@ -163,7 +159,6 @@ export default function BattleStarter({
           commit: undefined,
           uncommit: undefined,
           chunk: undefined,
-          goodbye: undefined,
         }).finish(),
       },
       startReq: undefined,
@@ -202,7 +197,7 @@ export default function BattleStarter({
               <TableRow>
                 <TableCell></TableCell>
                 <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                  You
+                  <Trans i18nKey="play:own-side" />
                 </TableCell>
                 <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                   {pendingStates?.opponent?.settings.nickname ?? ""}
@@ -212,7 +207,7 @@ export default function BattleStarter({
             <TableBody>
               <TableRow>
                 <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                  Game
+                  <Trans i18nKey="play:game" />
                 </TableCell>
                 <TableCell>{ownGameTitle}</TableCell>
                 <TableCell>{opponentGameTitle}</TableCell>
@@ -252,7 +247,11 @@ export default function BattleStarter({
                   </Select>
                 </TableCell>
                 <TableCell>
-                  {pendingStates?.opponent?.settings.matchType ?? 0}
+                  {pendingStates?.opponent?.settings.matchType == 0 ? (
+                    <Trans i18nKey="play:match-type.single" />
+                  ) : pendingStates?.opponent?.settings.matchType == 1 ? (
+                    <Trans i18nKey="play:match-type.triple" />
+                  ) : null}
                 </TableCell>
               </TableRow>
               <TableRow>
@@ -299,7 +298,6 @@ export default function BattleStarter({
           e.preventDefault();
 
           const abortController = new AbortController();
-          setAbortController(abortController);
 
           const core = new ipc.Core(
             configRef.current.keymapping,
@@ -321,6 +319,7 @@ export default function BattleStarter({
 
           setPendingStates({
             core,
+            abortController,
             own: null,
             opponent: null,
           });
@@ -332,26 +331,30 @@ export default function BattleStarter({
               if (msg == null) {
                 throw "unexpected eof from core";
               }
-              if (
-                msg.stateInd != null &&
-                msg.stateInd.state ==
-                  FromCoreMessage_StateIndication_State.READY_TO_START
-              ) {
-                break;
+              if (msg.stateInd != null) {
+                setState(msg.stateInd.state);
+                if (
+                  msg.stateInd.state ==
+                  FromCoreMessage_StateIndication_State.STARTING
+                ) {
+                  break;
+                }
               }
             }
 
             if (linkCode == "") {
+              // No link code to worry about, just start the game with no settings.
               await core.send({
                 smuggleReq: undefined,
                 startReq: {
                   romPath: ownROMPath!,
-                  savePath: "TODO",
+                  savePath: path.join(getSavesPath(app), saveName!),
                   windowTitle: ownGameTitle!,
                   settings: undefined,
                 },
               });
             } else {
+              // Need to negotiate settings with the opponent.
               const myPendingSettings = defaultMatchSettings(
                 config.nickname,
                 gameInfo!
@@ -368,7 +371,6 @@ export default function BattleStarter({
                     commit: undefined,
                     uncommit: undefined,
                     chunk: undefined,
-                    goodbye: undefined,
                   }).finish(),
                 },
                 startReq: undefined,
@@ -378,7 +380,7 @@ export default function BattleStarter({
               while (true) {
                 const msg = await core.receive();
                 if (msg == null) {
-                  throw "expected ipc message";
+                  return;
                 }
 
                 if (msg.smuggleInd == null) {
@@ -403,13 +405,22 @@ export default function BattleStarter({
               if (msg == null) {
                 break;
               }
-            }
 
-            setPendingStates(null);
-            setAbortController(null);
-          })().catch((e) => {
-            console.error(e);
-          });
+              if (msg.stateInd != null) {
+                setState(msg.stateInd.state);
+              }
+            }
+          })()
+            .catch((e) => {
+              console.error(e);
+            })
+            .finally(() => {
+              if (abortController != null) {
+                abortController.abort();
+              }
+              setPendingStates(null);
+              onExit();
+            });
         }}
       >
         <Box flexGrow={1} flexShrink={0}>
@@ -429,7 +440,32 @@ export default function BattleStarter({
             InputProps={{
               endAdornment:
                 pendingStates != null ? (
-                  <CircularProgress size="1rem" color="inherit" />
+                  <Stack
+                    spacing={1}
+                    direction="row"
+                    sx={{ alignItems: "center" }}
+                  >
+                    <Typography sx={{ whiteSpace: "nowrap" }}>
+                      {state ==
+                      FromCoreMessage_StateIndication_State.RUNNING ? (
+                        <Trans i18nKey="supervisor:status.running" />
+                      ) : state ==
+                        FromCoreMessage_StateIndication_State.WAITING ? (
+                        <Trans i18nKey="supervisor:status.waiting" />
+                      ) : state ==
+                        FromCoreMessage_StateIndication_State.CONNECTING ? (
+                        <Trans i18nKey="supervisor:status.connecting" />
+                      ) : state ==
+                        FromCoreMessage_StateIndication_State.STARTING ? (
+                        pendingStates.own != null ? null : (
+                          <Trans i18nKey="supervisor:status.starting" />
+                        )
+                      ) : (
+                        <Trans i18nKey="supervisor:status.unknown" />
+                      )}
+                    </Typography>
+                    <CircularProgress size="1rem" color="inherit" />
+                  </Stack>
                 ) : null,
             }}
             fullWidth
@@ -479,11 +515,7 @@ export default function BattleStarter({
               variant="contained"
               startIcon={<StopIcon />}
               onClick={() => {
-                setPendingStates(null);
-                if (abortController != null) {
-                  abortController.abort();
-                }
-                setAbortController(null);
+                pendingStates.abortController.abort();
               }}
               disabled={false}
             >

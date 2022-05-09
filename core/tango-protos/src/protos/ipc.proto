@@ -9,7 +9,7 @@ message FromCoreMessage {
       RUNNING = 1;
       WAITING = 2;
       CONNECTING = 3;
-      READY_TO_START = 4;
+      STARTING = 4;
     }
     State state = 1;
   }

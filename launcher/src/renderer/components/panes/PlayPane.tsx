@@ -377,6 +377,9 @@ export default function SavesPane({ active }: { active: boolean }) {
                 }
               : null
           }
+          onExit={() => {
+            setIncarnation((incarnation) => incarnation + 1);
+          }}
         />
       </Stack>
     </Box>

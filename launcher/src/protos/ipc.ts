@@ -18,7 +18,7 @@ export enum FromCoreMessage_StateIndication_State {
   RUNNING = 1,
   WAITING = 2,
   CONNECTING = 3,
-  READY_TO_START = 4,
+  STARTING = 4,
   UNRECOGNIZED = -1,
 }
 
@@ -39,8 +39,8 @@ export function fromCoreMessage_StateIndication_StateFromJSON(
     case "CONNECTING":
       return FromCoreMessage_StateIndication_State.CONNECTING;
     case 4:
-    case "READY_TO_START":
-      return FromCoreMessage_StateIndication_State.READY_TO_START;
+    case "STARTING":
+      return FromCoreMessage_StateIndication_State.STARTING;
     case -1:
     case "UNRECOGNIZED":
     default:
@@ -60,8 +60,8 @@ export function fromCoreMessage_StateIndication_StateToJSON(
       return "WAITING";
     case FromCoreMessage_StateIndication_State.CONNECTING:
       return "CONNECTING";
-    case FromCoreMessage_StateIndication_State.READY_TO_START:
-      return "READY_TO_START";
+    case FromCoreMessage_StateIndication_State.STARTING:
+      return "STARTING";
     default:
       return "UNKNOWN";
   }
