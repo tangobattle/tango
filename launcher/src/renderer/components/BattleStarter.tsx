@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { readFile } from "fs/promises";
 import { isEqual } from "lodash-es";
 import path from "path";
@@ -8,7 +9,7 @@ import useStateRef from "react-usestateref";
 import semver from "semver";
 import { SHAKE } from "sha3";
 import { promisify } from "util";
-import { brotliCompress } from "zlib";
+import { brotliCompress, brotliDecompress } from "zlib";
 
 import { app, shell } from "@electron/remote";
 import { ConnectingAirportsOutlined } from "@mui/icons-material";
@@ -147,6 +148,13 @@ function useGetAvailableGames() {
     },
     [patches]
   );
+}
+
+function makeCommitment(s: Uint8Array): Uint8Array {
+  const shake128 = new SHAKE(128);
+  shake128.update(Buffer.from("tango:state:"));
+  shake128.update(Buffer.from(s));
+  return new Uint8Array(shake128.digest());
 }
 
 export default function BattleStarter({
@@ -495,6 +503,8 @@ export default function BattleStarter({
                 startReq: undefined,
               });
 
+              const remoteChunks = [];
+
               // eslint-disable-next-line no-constant-condition
               while (true) {
                 const msg = await core.receive();
@@ -532,7 +542,7 @@ export default function BattleStarter({
                 }
 
                 if (lobbyMsg.chunk != null) {
-                  console.log("chunky!");
+                  remoteChunks.push(lobbyMsg.chunk.chunk);
                   break;
                 }
 
@@ -555,17 +565,76 @@ export default function BattleStarter({
                 onOpponentSettingsChange(lobbyMsg.setSettings);
               }
 
-              await core.send({
-                smuggleReq: {
-                  data: Message.encode({
-                    setSettings: undefined,
-                    commit: undefined,
-                    uncommit: undefined,
-                    chunk: { chunk: new Uint8Array([1, 2, 3, 4]) },
-                  }).finish(),
-                },
-                startReq: undefined,
-              });
+              const localMarshaledState = NegotiatedState.encode(
+                pendingStatesRef.current!.own!.negotiatedState!
+              ).finish();
+
+              const CHUNK_SIZE = 32 * 1024;
+
+              const CHUNKS_REQUIRED = 5;
+              for (let i = 0; i < CHUNKS_REQUIRED; i++) {
+                await core.send({
+                  smuggleReq: {
+                    data: Message.encode({
+                      setSettings: undefined,
+                      commit: undefined,
+                      uncommit: undefined,
+                      chunk: {
+                        chunk: localMarshaledState.subarray(
+                          i * CHUNK_SIZE,
+                          (i + 1) * CHUNK_SIZE
+                        ),
+                      },
+                    }).finish(),
+                  },
+                  startReq: undefined,
+                });
+
+                if (remoteChunks.length < CHUNKS_REQUIRED) {
+                  const msg = await core.receive();
+                  if (msg == null) {
+                    throw "expected ipc message";
+                  }
+
+                  if (msg.smuggleInd == null) {
+                    throw "expected smuggle indication";
+                  }
+
+                  const lobbyMsg = Message.decode(msg.smuggleInd.data);
+                  if (lobbyMsg.chunk == null) {
+                    throw "expected chunk";
+                  }
+
+                  remoteChunks.push(lobbyMsg.chunk.chunk);
+                }
+              }
+
+              const remoteMarshaledState = new Uint8Array(
+                Buffer.concat(remoteChunks)
+              );
+              const remoteCommitment = makeCommitment(remoteMarshaledState);
+
+              if (
+                !timingSafeEqual(
+                  remoteCommitment,
+                  pendingStatesRef.current!.opponent!.commitment!
+                )
+              ) {
+                throw "commitment mismatch";
+              }
+
+              const remoteState = NegotiatedState.decode(remoteMarshaledState);
+              const remoteSaveData = await promisify(brotliDecompress)(
+                remoteState.saveData
+              );
+
+              const rngSeed =
+                pendingStatesRef.current!.own!.negotiatedState!.nonce.slice();
+              for (let i = 0; i < rngSeed.length; i++) {
+                rngSeed[i] ^= remoteState.nonce[i];
+              }
+
+              // TODO: The rest!
             }
 
             // eslint-disable-next-line no-constant-condition
@@ -702,17 +771,13 @@ export default function BattleStarter({
                                 ),
                               };
 
-                              const shake128 = new SHAKE(128);
-                              shake128.update(Buffer.from("tango:state:"));
-                              shake128.update(
+                              commitment = makeCommitment(
                                 Buffer.from(
                                   NegotiatedState.encode(
                                     negotiatedState
                                   ).finish()
                                 )
                               );
-
-                              commitment = new Uint8Array(shake128.digest());
                             }
 
                             if (commitment != null) {
