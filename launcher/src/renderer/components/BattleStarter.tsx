@@ -695,7 +695,6 @@ export default function BattleStarter({
                                     setSettings: undefined,
                                     commit: {
                                       commitment,
-                                      numChunks: 0, // TODO
                                     },
                                     uncommit: undefined,
                                     chunk: undefined,

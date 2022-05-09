@@ -24,7 +24,6 @@ export interface SetSettings {
 
 export interface Commit {
   commitment: Uint8Array;
-  numChunks: number;
 }
 
 export interface Uncommit {}
@@ -293,7 +292,7 @@ export const SetSettings = {
 };
 
 function createBaseCommit(): Commit {
-  return { commitment: new Uint8Array(), numChunks: 0 };
+  return { commitment: new Uint8Array() };
 }
 
 export const Commit = {
@@ -303,9 +302,6 @@ export const Commit = {
   ): _m0.Writer {
     if (message.commitment.length !== 0) {
       writer.uint32(10).bytes(message.commitment);
-    }
-    if (message.numChunks !== 0) {
-      writer.uint32(16).uint32(message.numChunks);
     }
     return writer;
   },
@@ -320,9 +316,6 @@ export const Commit = {
         case 1:
           message.commitment = reader.bytes();
           break;
-        case 2:
-          message.numChunks = reader.uint32();
-          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -336,7 +329,6 @@ export const Commit = {
       commitment: isSet(object.commitment)
         ? bytesFromBase64(object.commitment)
         : new Uint8Array(),
-      numChunks: isSet(object.numChunks) ? Number(object.numChunks) : 0,
     };
   },
 
@@ -346,15 +338,12 @@ export const Commit = {
       (obj.commitment = base64FromBytes(
         message.commitment !== undefined ? message.commitment : new Uint8Array()
       ));
-    message.numChunks !== undefined &&
-      (obj.numChunks = Math.round(message.numChunks));
     return obj;
   },
 
   fromPartial<I extends Exact<DeepPartial<Commit>, I>>(object: I): Commit {
     const message = createBaseCommit();
     message.commitment = object.commitment ?? new Uint8Array();
-    message.numChunks = object.numChunks ?? 0;
     return message;
   },
 };

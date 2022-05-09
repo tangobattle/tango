@@ -17,10 +17,7 @@ message SetSettings {
   uint32 input_delay = 5;
 }
 
-message Commit {
-  bytes commitment = 1;
-  uint32 num_chunks = 2;
-}
+message Commit { bytes commitment = 1; }
 
 message Uncommit {}
 
