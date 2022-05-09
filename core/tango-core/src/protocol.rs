@@ -11,7 +11,7 @@ lazy_static! {
         bincode::config::Bounded,
     > = bincode::DefaultOptions::new()
         .with_fixint_encoding()
-        .with_limit(128 * 1024);
+        .with_limit(64 * 1024);
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
