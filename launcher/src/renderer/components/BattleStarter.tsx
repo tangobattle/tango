@@ -4,6 +4,7 @@ import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { usePrevious } from "react-use";
+import useStateRef from "react-usestateref";
 import semver from "semver";
 import { SHAKE } from "sha3";
 import { promisify } from "util";
@@ -148,11 +149,6 @@ function useGetAvailableGames() {
   );
 }
 
-interface PendingState {
-  settings: SetSettings;
-  commitment: Uint8Array | null;
-}
-
 export default function BattleStarter({
   saveName,
   patch,
@@ -178,11 +174,17 @@ export default function BattleStarter({
     React.useState<FromCoreMessage_StateIndication_State>(
       FromCoreMessage_StateIndication_State.UNKNOWN
     );
-  const [pendingStates, setPendingStates] = React.useState<{
+  const [pendingStates, setPendingStates, pendingStatesRef] = useStateRef<{
     core: ipc.Core;
     abortController: AbortController;
-    own: PendingState | null;
-    opponent: PendingState | null;
+    own: {
+      settings: SetSettings;
+      negotiatedState: NegotiatedState | null;
+    } | null;
+    opponent: {
+      settings: SetSettings;
+      commitment: Uint8Array | null;
+    } | null;
   } | null>(null);
   const [changingCommitment, setChangingCommitment] = React.useState(false);
 
@@ -251,7 +253,7 @@ export default function BattleStarter({
   const myPendingState = pendingStates?.own;
 
   React.useEffect(() => {
-    onReadyChange(myPendingState?.commitment != null);
+    onReadyChange(myPendingState?.negotiatedState != null);
   }, [myPendingState, onReadyChange]);
 
   const getGameTitle = useGetGameTitle();
@@ -280,7 +282,7 @@ export default function BattleStarter({
                 <TableCell></TableCell>
                 <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                   <Trans i18nKey="play:own-side" />{" "}
-                  {pendingStates?.own?.commitment != null ? (
+                  {pendingStates?.own?.negotiatedState != null ? (
                     <CheckCircleIcon
                       color="success"
                       sx={{
@@ -335,7 +337,7 @@ export default function BattleStarter({
                     variant="standard"
                     size="small"
                     value={pendingStates?.own?.settings.matchType ?? 0}
-                    disabled={pendingStates?.own?.commitment != null}
+                    disabled={pendingStates?.own?.negotiatedState != null}
                     onChange={(e) => {
                       changeLocalPendingState({
                         ...pendingStates!.own!.settings,
@@ -385,7 +387,7 @@ export default function BattleStarter({
                     variant="standard"
                     type="number"
                     value={pendingStates?.own?.settings.inputDelay ?? 0}
-                    disabled={pendingStates?.own?.commitment != null}
+                    disabled={pendingStates?.own?.negotiatedState != null}
                     onChange={(e) => {
                       changeLocalPendingState({
                         ...pendingStates!.own!.settings,
@@ -479,7 +481,7 @@ export default function BattleStarter({
               setPendingStates((pendingStates) => ({
                 ...pendingStates!,
                 opponent: null,
-                own: { commitment: null, settings: myPendingSettings },
+                own: { negotiatedState: null, settings: myPendingSettings },
               }));
               await core.send({
                 smuggleReq: {
@@ -497,7 +499,7 @@ export default function BattleStarter({
               while (true) {
                 const msg = await core.receive();
                 if (msg == null) {
-                  return;
+                  throw "expected ipc message";
                 }
 
                 if (msg.smuggleInd == null) {
@@ -521,7 +523,17 @@ export default function BattleStarter({
                       commitment: lobbyMsg.commit!.commitment,
                     },
                   }));
+
+                  if (pendingStatesRef.current!.own!.negotiatedState != null) {
+                    break;
+                  }
+
                   continue;
+                }
+
+                if (lobbyMsg.chunk != null) {
+                  console.log("chunky!");
+                  break;
                 }
 
                 if (lobbyMsg.setSettings == null) {
@@ -542,6 +554,18 @@ export default function BattleStarter({
 
                 onOpponentSettingsChange(lobbyMsg.setSettings);
               }
+
+              await core.send({
+                smuggleReq: {
+                  data: Message.encode({
+                    setSettings: undefined,
+                    commit: undefined,
+                    uncommit: undefined,
+                    chunk: { chunk: new Uint8Array([1, 2, 3, 4]) },
+                  }).finish(),
+                },
+                startReq: undefined,
+              });
             }
 
             // eslint-disable-next-line no-constant-condition
@@ -640,7 +664,7 @@ export default function BattleStarter({
                   <FormControlLabel
                     control={
                       <Checkbox
-                        checked={pendingStates.own.commitment != null}
+                        checked={pendingStates.own.negotiatedState != null}
                         disabled={
                           saveName == null ||
                           pendingStates.own.settings.matchType !=
@@ -653,7 +677,7 @@ export default function BattleStarter({
                               )
                           ) ||
                           changingCommitment ||
-                          (pendingStates.own.commitment != null &&
+                          (pendingStates.own.negotiatedState != null &&
                             pendingStates.opponent.commitment != null)
                         }
                         indeterminate={changingCommitment}
@@ -661,6 +685,7 @@ export default function BattleStarter({
                           setChangingCommitment(true);
                           (async () => {
                             let commitment: Uint8Array | null = null;
+                            let negotiatedState: NegotiatedState | null = null;
 
                             if (v) {
                               const saveData = await readFile(
@@ -670,7 +695,7 @@ export default function BattleStarter({
                                 new Uint8Array(16)
                               );
 
-                              const state = {
+                              negotiatedState = {
                                 nonce,
                                 saveData: await promisify(brotliCompress)(
                                   saveData
@@ -681,7 +706,9 @@ export default function BattleStarter({
                               shake128.update(Buffer.from("tango:state:"));
                               shake128.update(
                                 Buffer.from(
-                                  NegotiatedState.encode(state).finish()
+                                  NegotiatedState.encode(
+                                    negotiatedState
+                                  ).finish()
                                 )
                               );
 
@@ -720,7 +747,7 @@ export default function BattleStarter({
                               ...pendingStates!,
                               own: {
                                 ...pendingStates!.own!,
-                                commitment,
+                                negotiatedState,
                               },
                             }));
                             setChangingCommitment(false);
