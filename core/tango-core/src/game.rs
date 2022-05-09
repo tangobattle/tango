@@ -412,9 +412,7 @@ impl Game {
                             .expect("render pixels");
                         self.fps_counter.lock().mark();
                     }
-                    winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {
-                        log::info!("{:?}", gilrs_ev);
-                    }
+                    winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {}
                     _ => {}
                 }
             });
