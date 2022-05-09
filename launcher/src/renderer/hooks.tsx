@@ -7,6 +7,9 @@ import { useROMs } from "./components/ROMsContext";
 
 export function useROMPath(romName: string | null) {
   const { roms } = useROMs();
+  if (romName == null) {
+    return null;
+  }
   return path.join(getROMsPath(app), roms[romName]);
 }
 
