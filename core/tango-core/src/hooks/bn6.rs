@@ -1251,6 +1251,9 @@ impl hooks::Hooks for BN6 {
             // Not whimsical enough :(
             return;
         }
+        if name.len() == 0 {
+            return;
+        }
         const CHARS: &str = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz";
         const MAX_NAME_LEN: usize = 9;
         const EOS: u8 = 0xe6;
@@ -1265,9 +1268,6 @@ impl hooks::Hooks for BN6 {
             } else {
                 0
             });
-        }
-        if buf.len() == 0 {
-            return;
         }
         buf.push(EOS);
         core.raw_write_range(self.offsets.rom.opponent_name, -1, &buf);
