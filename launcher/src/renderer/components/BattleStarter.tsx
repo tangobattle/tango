@@ -774,6 +774,7 @@ export default function BattleStarter({
                     inputDelay: ownGameSettings.inputDelay,
                     shadowInputDelay: opponentGameSettings.inputDelay,
                     matchType: ownGameSettings.matchType,
+                    opponentNickname: opponentGameSettings.nickname,
                     replaysPath: path.join(getReplaysPath(app), prefix),
                     replayMetadata: enc.encode(
                       JSON.stringify({

@@ -92,6 +92,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   replaysPath: string;
   replayMetadata: Uint8Array;
   rngSeed: Uint8Array;
+  opponentNickname: string;
 }
 
 export interface ToCoreMessage_SmuggleRequest {
@@ -511,6 +512,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     replaysPath: "",
     replayMetadata: new Uint8Array(),
     rngSeed: new Uint8Array(),
+    opponentNickname: "",
   };
 }
 
@@ -542,6 +544,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     }
     if (message.rngSeed.length !== 0) {
       writer.uint32(66).bytes(message.rngSeed);
+    }
+    if (message.opponentNickname !== "") {
+      writer.uint32(74).string(message.opponentNickname);
     }
     return writer;
   },
@@ -580,6 +585,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         case 8:
           message.rngSeed = reader.bytes();
           break;
+        case 9:
+          message.opponentNickname = reader.string();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -608,6 +616,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       rngSeed: isSet(object.rngSeed)
         ? bytesFromBase64(object.rngSeed)
         : new Uint8Array(),
+      opponentNickname: isSet(object.opponentNickname)
+        ? String(object.opponentNickname)
+        : "",
     };
   },
 
@@ -635,6 +646,8 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       (obj.rngSeed = base64FromBytes(
         message.rngSeed !== undefined ? message.rngSeed : new Uint8Array()
       ));
+    message.opponentNickname !== undefined &&
+      (obj.opponentNickname = message.opponentNickname);
     return obj;
   },
 
@@ -650,6 +663,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.replaysPath = object.replaysPath ?? "";
     message.replayMetadata = object.replayMetadata ?? new Uint8Array();
     message.rngSeed = object.rngSeed ?? new Uint8Array();
+    message.opponentNickname = object.opponentNickname ?? "";
     return message;
   },
 };

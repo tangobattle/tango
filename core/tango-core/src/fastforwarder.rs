@@ -141,6 +141,7 @@ impl Fastforwarder {
         rom_path: &std::path::Path,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         local_player_index: u8,
+        opponent_nickname: &str,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         let rom_vf = mgba::vfile::VFile::open(rom_path, mgba::vfile::flags::O_RDONLY)?;
@@ -149,6 +150,7 @@ impl Fastforwarder {
         let state = State(std::sync::Arc::new(parking_lot::Mutex::new(None)));
 
         core.set_traps(hooks.fastforwarder_traps(state.clone()));
+        hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
         core.as_mut().reset();
 
         Ok(Fastforwarder {

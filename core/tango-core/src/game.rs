@@ -127,12 +127,13 @@ impl Game {
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
-        if let Some(_) = match_init {
+        if let Some(match_init) = match_init.as_ref() {
             core.set_traps(hooks.primary_traps(
                 handle.clone(),
                 joyflags.clone(),
                 facade::Facade::new(match_.clone(), cancellation_token.clone()),
             ));
+            hooks.replace_opponent_name(core.as_mut(), &match_init.settings.opponent_nickname);
         }
 
         let thread = mgba::thread::Thread::new(core);

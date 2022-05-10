@@ -147,6 +147,7 @@ fn main() -> Result<(), anyhow::Error> {
                     input_delay: settings.input_delay,
                     shadow_input_delay: settings.shadow_input_delay,
                     rng_seed: settings.rng_seed,
+                    opponent_nickname: settings.opponent_nickname,
                 },
             }),
         },

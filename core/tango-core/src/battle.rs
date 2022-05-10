@@ -25,6 +25,7 @@ pub struct Settings {
     pub input_delay: u32,
     pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
+    pub opponent_nickname: String,
 }
 
 pub struct RoundState {
@@ -401,6 +402,7 @@ impl Match {
                 &self.rom_path,
                 self.hooks,
                 local_player_index,
+                &self.settings.opponent_nickname,
             )?,
             audio_save_state_holder,
             _audio_core_thread: audio_core_thread,

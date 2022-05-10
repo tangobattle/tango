@@ -36,6 +36,7 @@ message ToCoreMessage {
       string replays_path = 6;
       bytes replay_metadata = 7;
       bytes rng_seed = 8;
+      string opponent_nickname = 9;
     }
 
     MatchSettings settings = 4;
