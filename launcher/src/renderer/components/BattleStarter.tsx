@@ -167,6 +167,8 @@ export default function BattleStarter({
   const getPatchPath = useGetPatchPath();
 
   const configRef = React.useRef(config);
+  const saveNameRef = React.useRef(saveName);
+  saveNameRef.current = saveName;
 
   const getAvailableGames = useGetAvailableGames();
 
@@ -503,7 +505,9 @@ export default function BattleStarter({
               });
             } else {
               // Need to negotiate settings with the opponent.
-              const myPendingSettings = defaultMatchSettings(config.nickname);
+              const myPendingSettings = defaultMatchSettings(
+                configRef.current.nickname
+              );
               myPendingSettings.gameInfo = gameInfo;
               myPendingSettings.availableGames =
                 gameInfo != null ? getAvailableGames(gameInfo) : [];
@@ -512,6 +516,8 @@ export default function BattleStarter({
                 opponent: null,
                 own: { negotiatedState: null, settings: myPendingSettings },
               }));
+
+              // After this point, do not read from gameInfo or saveName!
               await core.send({
                 smuggleReq: {
                   data: Message.encode({
@@ -706,8 +712,8 @@ export default function BattleStarter({
 
               const startReq = {
                 romPath: outOwnROMPath,
-                savePath: path.join(getSavesPath(app), saveName!),
-                windowTitle: getGameTitle(gameInfo!),
+                savePath: path.join(getSavesPath(app), saveNameRef.current!),
+                windowTitle: getGameTitle(ownGameInfo),
                 settings: {
                   shadowSavePath,
                   shadowRomPath: outOpponentROMPath,
