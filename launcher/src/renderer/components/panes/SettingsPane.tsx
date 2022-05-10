@@ -381,6 +381,7 @@ function AdvancedTab({ active }: { active: boolean }) {
           <Button
             fullWidth
             variant="contained"
+            color="inherit"
             onClick={() => {
               shell.openPath(app.getPath("logs"));
             }}
