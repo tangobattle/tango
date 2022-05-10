@@ -170,6 +170,8 @@ export default function BattleStarter({
   const getPatchPath = useGetPatchPath();
 
   const configRef = React.useRef(config);
+  configRef.current = config;
+
   const saveNameRef = React.useRef(saveName);
   saveNameRef.current = saveName;
 
