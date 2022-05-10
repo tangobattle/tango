@@ -4,7 +4,7 @@
   "input-delay": "输入延迟",
   "patch-byline": "者：{{authors}}",
   "fight": "战斗！",
-  "no-game-selected": "未选择游戏",
+  "no-game-selected": "无",
   "link-code": "链接代码",
   "save-file": "游戏存档",
   "patch.authors": "作者",
@@ -34,6 +34,7 @@
   "stop": "停止",
   "own-side": "自己",
   "game": "游戏",
+  "open-setup": "公开构筑",
   "unsupported-game": "对方不支持这个游戏。",
   "mismatching-match-type": "你的战斗类型不匹配对方的战斗类型。"
 }

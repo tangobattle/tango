@@ -29,6 +29,7 @@ import MenuItem from "@mui/material/MenuItem";
 import Modal from "@mui/material/Modal";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -61,6 +62,7 @@ function defaultMatchSettings(nickname: string): SetSettings {
     matchType: 1,
     gameInfo: undefined,
     availableGames: [],
+    openSetup: true,
   };
 }
 
@@ -430,6 +432,32 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell>
                     {pendingStates?.opponent?.settings.inputDelay ?? 0}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell component="th" sx={{ fontWeight: "bold" }}>
+                    <Trans i18nKey="play:open-setup" />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      size="small"
+                      checked={pendingStates?.own?.settings.openSetup ?? true}
+                      onChange={(_e, v) => {
+                        changeLocalPendingState({
+                          ...pendingStates!.own!.settings,
+                          openSetup: v,
+                        });
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      size="small"
+                      checked={
+                        pendingStates?.opponent?.settings.openSetup ?? true
+                      }
+                      disabled={true}
+                    />
                   </TableCell>
                 </TableRow>
               </TableBody>

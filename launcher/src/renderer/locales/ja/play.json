@@ -34,6 +34,7 @@
   "stop": "停止",
   "own-side": "自分",
   "game": "ゲーム",
+  "open-setup": "構築を公開",
   "unsupported-game": "相手はこのゲームに対応していません。",
   "mismatching-match-type": "自分のマッチタイプは相手のマッチタイプと一致しなません。"
 }
