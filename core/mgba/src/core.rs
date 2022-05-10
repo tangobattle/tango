@@ -48,7 +48,7 @@ impl Core {
             (*self.ptr).setVideoBuffer.unwrap()(
                 self.ptr,
                 buffer.as_mut_ptr() as *mut _ as *mut u32,
-                width as u64,
+                width as mgba_sys::size_t,
             );
         }
         self.video_buffer = Some(buffer);

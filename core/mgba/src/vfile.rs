@@ -33,6 +33,15 @@ impl VFile {
         Ok(VFile(ptr))
     }
 
+    pub fn open_memory(buf: &[u8]) -> Self {
+        VFile(unsafe {
+            mgba_sys::VFileFromConstMemory(
+                buf as *const _ as *const std::ffi::c_void,
+                buf.len() as mgba_sys::size_t,
+            )
+        })
+    }
+
     pub(super) unsafe fn release(&mut self) -> *mut mgba_sys::VFile {
         let ptr = self.0;
         self.0 = std::ptr::null_mut();

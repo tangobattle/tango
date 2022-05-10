@@ -84,7 +84,7 @@ impl Trapper {
                 &mut *trapper_c_struct as *mut _ as *mut mgba_sys::mCPUComponent;
             mgba_sys::ARMHotplugAttach(
                 arm_core,
-                mgba_sys::mCPUComponentType_CPU_COMPONENT_MISC_1 as u64,
+                mgba_sys::mCPUComponentType_CPU_COMPONENT_MISC_1 as mgba_sys::size_t,
             );
             arm_core.irqh.bkpt16 = Some(c_trapper_bkpt16);
         }
