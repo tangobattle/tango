@@ -729,6 +729,7 @@ export default function BattleStarter({
                   replayMetadata: enc.encode(
                     JSON.stringify({
                       ts: now.valueOf(),
+                      linkCode,
                       rom: ownGameInfo.rom,
                       patch:
                         ownGameInfo.patch != null
@@ -738,6 +739,7 @@ export default function BattleStarter({
                             }
                           : null,
                       remote: {
+                        nickname: opponentGameSettings.nickname,
                         rom: opponentGameInfo.rom,
                         patch:
                           opponentGameInfo.patch != null

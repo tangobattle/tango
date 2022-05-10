@@ -12,7 +12,7 @@ export interface GameInfo {
 
 export interface ReplayInfo extends GameInfo {
   ts: number;
-  lobbyId: string;
+  linkCode: string;
   remote: (GameInfo & { nickname: string }) | null;
 }
 
