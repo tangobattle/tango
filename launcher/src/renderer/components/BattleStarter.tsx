@@ -317,7 +317,23 @@ export default function BattleStarter({
                     getGameTitle(gameInfo)
                   ) : (
                     <Trans i18nKey="play:no-game-selected" />
-                  )}
+                  )}{" "}
+                  {!pendingStates?.opponent?.settings.availableGames.some((g) =>
+                    gameInfoMatches(
+                      pendingStates?.own?.settings.gameInfo ?? null,
+                      g
+                    )
+                  ) ? (
+                    <Tooltip title={<Trans i18nKey="play:unsupported-game" />}>
+                      <WarningIcon
+                        color="warning"
+                        sx={{
+                          fontSize: "1em",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    </Tooltip>
+                  ) : null}
                 </TableCell>
                 <TableCell>
                   {pendingStates?.opponent?.settings.gameInfo != null ? (
