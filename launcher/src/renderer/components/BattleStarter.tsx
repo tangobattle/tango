@@ -806,7 +806,10 @@ export default function BattleStarter({
                 };
 
                 // eslint-disable-next-line no-console
-                console.info("issuing start request", startReq);
+                console.info("issuing start request", {
+                  ...startReq,
+                  settings: { ...startReq.settings, replayMetadata: undefined },
+                });
 
                 await core.send({
                   smuggleReq: undefined,
