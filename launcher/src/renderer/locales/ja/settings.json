@@ -31,5 +31,6 @@
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
-    "rust-log-filter": "RUST_LOG フィルター"
+    "rust-log-filter": "RUST_LOG フィルター",
+    "open-logs-folder": "ログフォルダーを開く"
 }

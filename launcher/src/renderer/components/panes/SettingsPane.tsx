@@ -1,7 +1,8 @@
+import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
-import { app } from "@electron/remote";
+import { app, shell } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import FormControl from "@mui/material/FormControl";
@@ -377,6 +378,15 @@ function AdvancedTab({ active }: { active: boolean }) {
               </MenuItem>
             </Select>
           </FormControl>
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={() => {
+              shell.openPath(app.getPath("logs"));
+            }}
+          >
+            <Trans i18nKey="settings:open-logs-folder" />
+          </Button>
         </Stack>
       </Box>
     </Box>
