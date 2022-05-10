@@ -726,7 +726,7 @@ export default function BattleStarter({
 
                 const prefix = `${datefns.format(
                   now,
-                  "yyyyMMddHHmmmmss"
+                  "yyyyMMddHHmmss"
                 )}-vs-${encodeURIComponent(
                   opponentGameSettings.nickname
                 )}-${linkCode}`;
