@@ -6,7 +6,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import IconButton, { IconButtonProps } from "@mui/material/IconButton";
 import Tooltip from "@mui/material/Tooltip";
 
-export function CopyButton({
+export default function CopyButton({
   value,
   disabled,
   ...props

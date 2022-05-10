@@ -15,7 +15,7 @@ import { makeROM } from "../../game";
 import { spawn } from "../../process";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
-import { CopyButton } from "./CopyButton";
+import CopyButton from "./CopyButton";
 import { useTempDir } from "./TempDirContext";
 
 export default function ReplayviewSupervisor({

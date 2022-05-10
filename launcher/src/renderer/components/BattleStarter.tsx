@@ -47,7 +47,7 @@ import { ReplayInfo } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
-import { CopyButton } from "./CopyButton";
+import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
 import { useSaves } from "./SavesContext";
 import { useTempDir } from "./TempDirContext";
