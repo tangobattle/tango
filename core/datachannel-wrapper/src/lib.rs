@@ -284,7 +284,6 @@ impl std::fmt::Display for Error {
 
 impl datachannel::DataChannelHandler for DataChannelHandler {
     fn on_open(&mut self) {
-        log::info!("data channel opened");
         let _ = self.open_tx.take().unwrap().send(());
     }
 
