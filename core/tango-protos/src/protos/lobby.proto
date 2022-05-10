@@ -15,6 +15,7 @@ message SetSettings {
   GameInfo game_info = 3;
   repeated GameInfo available_games = 4;
   uint32 input_delay = 5;
+  bool open_setup = 6;
 }
 
 message Commit { bytes commitment = 1; }
