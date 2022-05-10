@@ -42,6 +42,7 @@ import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
 import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
+import { ReplayInfo } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
@@ -700,8 +701,10 @@ export default function BattleStarter({
                 outOpponentROMPath
               );
 
+              const now = new Date();
+
               const prefix = `${datefns.format(
-                Date.now(),
+                now,
                 "yyyyMMddHHmmmmss"
               )}-vs-${encodeURIComponent(
                 opponentGameSettings.nickname
@@ -709,6 +712,8 @@ export default function BattleStarter({
 
               const shadowSavePath = path.join(tempDir, prefix + ".sav");
               await writeFile(shadowSavePath, remoteSaveData);
+
+              const enc = new TextEncoder();
 
               const startReq = {
                 romPath: outOwnROMPath,
@@ -721,7 +726,29 @@ export default function BattleStarter({
                   shadowInputDelay: opponentGameSettings.inputDelay,
                   matchType: ownGameSettings.matchType,
                   replaysPath: path.join(getReplaysPath(app), prefix),
-                  replayMetadata: new Uint8Array([]), // TODO
+                  replayMetadata: enc.encode(
+                    JSON.stringify({
+                      ts: now.valueOf(),
+                      rom: ownGameInfo.rom,
+                      patch:
+                        ownGameInfo.patch != null
+                          ? {
+                              name: ownGameInfo.patch.name,
+                              version: ownGameInfo.patch.version,
+                            }
+                          : null,
+                      remote: {
+                        rom: opponentGameInfo.rom,
+                        patch:
+                          opponentGameInfo.patch != null
+                            ? {
+                                name: opponentGameInfo.patch.name,
+                                version: opponentGameInfo.patch.version,
+                              }
+                            : null,
+                      },
+                    } as ReplayInfo)
+                  ),
                   rngSeed,
                 },
               };
