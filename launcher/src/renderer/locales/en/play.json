@@ -36,5 +36,6 @@
   "game": "Game",
   "open-setup": "Open setup",
   "unsupported-game": "Your opponent does not support this game.",
-  "mismatching-match-type": "Does not match your opponent's match type."
+  "mismatching-match-type": "Does not match your opponent's match type.",
+  "generate-random-code": "Generate random code"
 }

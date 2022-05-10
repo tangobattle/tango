@@ -12,6 +12,7 @@ import { promisify } from "util";
 import { brotliCompress, brotliDecompress } from "zlib";
 
 import { app } from "@electron/remote";
+import CasinoOutlinedIcon from "@mui/icons-material/CasinoOutlined";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SportsMmaIcon from "@mui/icons-material/SportsMma";
@@ -25,6 +26,7 @@ import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
+import IconButton from "@mui/material/IconButton";
 import MenuItem from "@mui/material/MenuItem";
 import Modal from "@mui/material/Modal";
 import Select from "@mui/material/Select";
@@ -44,6 +46,7 @@ import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
 import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
+import randomCode from "../../randomcode";
 import { ReplayInfo } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
@@ -896,7 +899,19 @@ export default function BattleStarter({
                       </Typography>
                       <CircularProgress size="1rem" color="inherit" />
                     </Stack>
-                  ) : null,
+                  ) : (
+                    <Tooltip
+                      title={<Trans i18nKey="play:generate-random-code" />}
+                    >
+                      <IconButton
+                        onClick={() => {
+                          setLinkCode(randomCode());
+                        }}
+                      >
+                        <CasinoOutlinedIcon />
+                      </IconButton>
+                    </Tooltip>
+                  ),
               }}
               fullWidth
             />

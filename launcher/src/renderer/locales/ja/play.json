@@ -36,5 +36,6 @@
   "game": "ゲーム",
   "open-setup": "構築を公開",
   "unsupported-game": "相手はこのゲームに対応していません。",
-  "mismatching-match-type": "自分のマッチタイプは相手のマッチタイプと一致しなません。"
+  "mismatching-match-type": "自分のマッチタイプは相手のマッチタイプと一致しなません。",
+  "generate-random-code": "ランダムリンクコードを生成"
 }

@@ -36,5 +36,6 @@
   "game": "游戏",
   "open-setup": "公开构筑",
   "unsupported-game": "对方不支持这个游戏。",
-  "mismatching-match-type": "你的战斗类型不匹配对方的战斗类型。"
+  "mismatching-match-type": "你的战斗类型不匹配对方的战斗类型。",
+  "generate-random-code": "生成随机链接代码"
 }
