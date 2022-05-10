@@ -25,6 +25,8 @@ export class Core extends EventEmitter {
   private proc: ChildProcessWithoutNullStreams;
   private sendMutex: Mutex;
   private receiveMutex: Mutex;
+  private exitPromise: Promise<ExitStatus>;
+  private stderr: string[];
 
   constructor(
     keymapping: Keymapping,
@@ -37,6 +39,7 @@ export class Core extends EventEmitter {
 
     this.sendMutex = new Mutex();
     this.receiveMutex = new Mutex();
+    this.stderr = [];
 
     this.proc = spawn(
       app,
@@ -59,14 +62,14 @@ export class Core extends EventEmitter {
 
     (async () => {
       for await (const data of this!.proc.stderr) {
-        for (const line of data.toString().split(/\n/g)) {
+        for (const line of data.toString().split(/\r?\n/g)) {
           if (line == "") {
             continue;
           }
           // eslint-disable-next-line no-console
           console.info("core:", line);
+          this!.stderr.push(line);
         }
-        this!.emit("stderr", data);
       }
     })();
 
@@ -74,12 +77,22 @@ export class Core extends EventEmitter {
       this.emit("error", err);
     });
 
-    this.proc.addListener("exit", () => {
-      this.emit("exit", {
-        exitCode: this.proc.exitCode,
-        signalCode: this.proc.signalCode,
+    this.exitPromise = new Promise((resolve) => {
+      this.proc.addListener("exit", () => {
+        resolve({
+          exitCode: this.proc.exitCode,
+          signalCode: this.proc.signalCode,
+        });
       });
     });
+  }
+
+  public async wait(): Promise<ExitStatus> {
+    return await this.exitPromise;
+  }
+
+  public getStderr() {
+    return this.stderr.join("\n");
   }
 
   private async _rawWrite(buf: Uint8Array) {
@@ -151,7 +164,5 @@ export class Core extends EventEmitter {
 }
 
 export declare interface Core {
-  on(event: "exit", listener: (exitStatus: ExitStatus) => void): this;
-  on(event: "stderr", listener: (chunk: string) => void): this;
   on(event: "error", listener: (err: Error) => void): this;
 }

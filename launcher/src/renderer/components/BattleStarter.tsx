@@ -26,6 +26,7 @@ import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
 import MenuItem from "@mui/material/MenuItem";
+import Modal from "@mui/material/Modal";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -46,6 +47,7 @@ import { ReplayInfo } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
+import { CopyButton } from "./CopyButton";
 import { usePatches } from "./PatchesContext";
 import { useSaves } from "./SavesContext";
 import { useTempDir } from "./TempDirContext";
@@ -173,6 +175,11 @@ export default function BattleStarter({
 
   const getAvailableGames = useGetAvailableGames();
 
+  const [errorDialogState, setErrorDialogState] = React.useState<{
+    stderr: string;
+    exitStatus: ipc.ExitStatus;
+  } | null>(null);
+
   const [linkCode, setLinkCode] = React.useState("");
   const [state, setState] =
     React.useState<FromCoreMessage_StateIndication_State>(
@@ -263,362 +270,284 @@ export default function BattleStarter({
   const getGameTitle = useGetGameTitle();
 
   return (
-    <Stack>
-      <Collapse
-        in={
-          pendingStates != null &&
-          pendingStates.own != null &&
-          pendingStates.opponent != null
-        }
-      >
-        <Divider />
-        <Box
-          sx={{
-            px: 1,
-            pb: 1,
-          }}
+    <>
+      <Stack>
+        <Collapse
+          in={
+            pendingStates != null &&
+            pendingStates.own != null &&
+            pendingStates.opponent != null
+          }
         >
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell></TableCell>
-                <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                  <Trans i18nKey="play:own-side" />{" "}
-                  {pendingStates?.own?.negotiatedState != null ? (
-                    <CheckCircleIcon
-                      color="success"
-                      sx={{
-                        fontSize: "1em",
-                        marginLeft: "4px",
-                        verticalAlign: "middle",
-                      }}
-                    />
-                  ) : null}
-                </TableCell>
-                <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                  {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
-                  {pendingStates?.opponent?.commitment != null ? (
-                    <CheckCircleIcon
-                      color="success"
-                      sx={{
-                        fontSize: "1em",
-                        marginLeft: "4px",
-                        verticalAlign: "middle",
-                      }}
-                    />
-                  ) : null}
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              <TableRow>
-                <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                  <Trans i18nKey="play:game" />
-                </TableCell>
-                <TableCell>
-                  {gameInfo != null ? (
-                    getGameTitle(gameInfo)
-                  ) : (
-                    <Trans i18nKey="play:no-game-selected" />
-                  )}{" "}
-                  {!pendingStates?.opponent?.settings.availableGames.some((g) =>
-                    gameInfoMatches(
-                      pendingStates?.own?.settings.gameInfo ?? null,
-                      g
-                    )
-                  ) ? (
-                    <Tooltip title={<Trans i18nKey="play:unsupported-game" />}>
-                      <WarningIcon
-                        color="warning"
+          <Divider />
+          <Box
+            sx={{
+              px: 1,
+              pb: 1,
+            }}
+          >
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell></TableCell>
+                  <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
+                    <Trans i18nKey="play:own-side" />{" "}
+                    {pendingStates?.own?.negotiatedState != null ? (
+                      <CheckCircleIcon
+                        color="success"
                         sx={{
                           fontSize: "1em",
+                          marginLeft: "4px",
                           verticalAlign: "middle",
                         }}
                       />
-                    </Tooltip>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  {pendingStates?.opponent?.settings.gameInfo != null ? (
-                    getGameTitle(pendingStates?.opponent?.settings.gameInfo)
-                  ) : (
-                    <Trans i18nKey="play:no-game-selected" />
-                  )}
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                  <Trans i18nKey="play:match-type" />
-                </TableCell>
-                <TableCell>
-                  <Select
-                    variant="standard"
-                    size="small"
-                    value={pendingStates?.own?.settings.matchType ?? 0}
-                    disabled={pendingStates?.own?.negotiatedState != null}
-                    onChange={(e) => {
-                      changeLocalPendingState({
-                        ...pendingStates!.own!.settings,
-                        matchType: e.target.value as number,
-                      });
-                    }}
-                  >
-                    {MATCH_TYPES.map((_v, k) => (
-                      <MenuItem key={k} value={k}>
-                        {k == 0 ? (
-                          <Trans i18nKey="play:match-type.single" />
-                        ) : k == 1 ? (
-                          <Trans i18nKey="play:match-type.triple" />
-                        ) : null}
-                      </MenuItem>
-                    ))}
-                  </Select>{" "}
-                  {pendingStates?.opponent?.settings.matchType !=
-                  pendingStates?.own?.settings.matchType ? (
-                    <Tooltip
-                      title={<Trans i18nKey="play:mismatching-match-type" />}
+                    ) : null}
+                  </TableCell>
+                  <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
+                    {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
+                    {pendingStates?.opponent?.commitment != null ? (
+                      <CheckCircleIcon
+                        color="success"
+                        sx={{
+                          fontSize: "1em",
+                          marginLeft: "4px",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                <TableRow>
+                  <TableCell component="th" sx={{ fontWeight: "bold" }}>
+                    <Trans i18nKey="play:game" />
+                  </TableCell>
+                  <TableCell>
+                    {gameInfo != null ? (
+                      getGameTitle(gameInfo)
+                    ) : (
+                      <Trans i18nKey="play:no-game-selected" />
+                    )}{" "}
+                    {!pendingStates?.opponent?.settings.availableGames.some(
+                      (g) =>
+                        gameInfoMatches(
+                          pendingStates?.own?.settings.gameInfo ?? null,
+                          g
+                        )
+                    ) ? (
+                      <Tooltip
+                        title={<Trans i18nKey="play:unsupported-game" />}
+                      >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {pendingStates?.opponent?.settings.gameInfo != null ? (
+                      getGameTitle(pendingStates?.opponent?.settings.gameInfo)
+                    ) : (
+                      <Trans i18nKey="play:no-game-selected" />
+                    )}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell component="th" sx={{ fontWeight: "bold" }}>
+                    <Trans i18nKey="play:match-type" />
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      variant="standard"
+                      size="small"
+                      value={pendingStates?.own?.settings.matchType ?? 0}
+                      disabled={pendingStates?.own?.negotiatedState != null}
+                      onChange={(e) => {
+                        changeLocalPendingState({
+                          ...pendingStates!.own!.settings,
+                          matchType: e.target.value as number,
+                        });
+                      }}
                     >
-                      <WarningIcon
-                        color="warning"
-                        sx={{
-                          fontSize: "1em",
-                          verticalAlign: "middle",
-                        }}
-                      />
-                    </Tooltip>
-                  ) : null}
-                </TableCell>
-                <TableCell>
-                  {pendingStates?.opponent?.settings.matchType == 0 ? (
-                    <Trans i18nKey="play:match-type.single" />
-                  ) : pendingStates?.opponent?.settings.matchType == 1 ? (
-                    <Trans i18nKey="play:match-type.triple" />
-                  ) : null}
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                  <Trans i18nKey="play:input-delay" />
-                </TableCell>
-                <TableCell>
-                  <TextField
-                    variant="standard"
-                    type="number"
-                    value={pendingStates?.own?.settings.inputDelay ?? 0}
-                    disabled={pendingStates?.own?.negotiatedState != null}
-                    onChange={(e) => {
-                      changeLocalPendingState({
-                        ...pendingStates!.own!.settings,
-                        inputDelay: parseInt(e.target.value),
-                      });
-                    }}
-                    InputProps={{ inputProps: { min: 3, max: 10 } }}
-                  />
-                </TableCell>
-                <TableCell>
-                  {pendingStates?.opponent?.settings.inputDelay ?? 0}
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </Box>
-      </Collapse>
-      <Stack
-        flexGrow={0}
-        flexShrink={0}
-        direction="row"
-        justifyContent="flex-end"
-        spacing={1}
-        sx={{ px: 1, mb: 0 }}
-        component="form"
-        onSubmit={(e: any) => {
-          e.preventDefault();
+                      {MATCH_TYPES.map((_v, k) => (
+                        <MenuItem key={k} value={k}>
+                          {k == 0 ? (
+                            <Trans i18nKey="play:match-type.single" />
+                          ) : k == 1 ? (
+                            <Trans i18nKey="play:match-type.triple" />
+                          ) : null}
+                        </MenuItem>
+                      ))}
+                    </Select>{" "}
+                    {pendingStates?.opponent?.settings.matchType !=
+                    pendingStates?.own?.settings.matchType ? (
+                      <Tooltip
+                        title={<Trans i18nKey="play:mismatching-match-type" />}
+                      >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : null}
+                  </TableCell>
+                  <TableCell>
+                    {pendingStates?.opponent?.settings.matchType == 0 ? (
+                      <Trans i18nKey="play:match-type.single" />
+                    ) : pendingStates?.opponent?.settings.matchType == 1 ? (
+                      <Trans i18nKey="play:match-type.triple" />
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell component="th" sx={{ fontWeight: "bold" }}>
+                    <Trans i18nKey="play:input-delay" />
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      variant="standard"
+                      type="number"
+                      value={pendingStates?.own?.settings.inputDelay ?? 0}
+                      disabled={pendingStates?.own?.negotiatedState != null}
+                      onChange={(e) => {
+                        changeLocalPendingState({
+                          ...pendingStates!.own!.settings,
+                          inputDelay: parseInt(e.target.value),
+                        });
+                      }}
+                      InputProps={{ inputProps: { min: 3, max: 10 } }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    {pendingStates?.opponent?.settings.inputDelay ?? 0}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </Box>
+        </Collapse>
+        <Stack
+          flexGrow={0}
+          flexShrink={0}
+          direction="row"
+          justifyContent="flex-end"
+          spacing={1}
+          sx={{ px: 1, mb: 0 }}
+          component="form"
+          onSubmit={(e: any) => {
+            e.preventDefault();
 
-          const abortController = new AbortController();
+            const abortController = new AbortController();
 
-          const core = new ipc.Core(
-            configRef.current.keymapping,
-            configRef.current.signalingConnectAddr,
-            configRef.current.iceServers,
-            linkCode != "" ? linkCode : null,
-            {
-              env: {
-                WGPU_BACKEND:
-                  configRef.current.wgpuBackend != null
-                    ? configRef.current.wgpuBackend
-                    : undefined,
-                RUST_LOG: configRef.current.rustLogFilter,
-                RUST_BACKTRACE: "1",
-              },
-              signal: abortController.signal,
-            }
-          );
-
-          setPendingStates({
-            core,
-            abortController,
-            own: null,
-            opponent: null,
-          });
-
-          (async () => {
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-              const msg = await core.receive();
-              if (msg == null) {
-                throw "unexpected eof from core";
-              }
-              if (msg.stateInd != null) {
-                setState(msg.stateInd.state);
-                if (
-                  msg.stateInd.state ==
-                  FromCoreMessage_StateIndication_State.STARTING
-                ) {
-                  break;
-                }
-              }
-            }
-
-            if (linkCode == "") {
-              // No link code to worry about, just start the game with no settings.
-              const outROMPath = path.join(
-                tempDir,
-                `${gameInfo!.rom}${
-                  gameInfo!.patch != null
-                    ? `+${gameInfo!.patch.name}-v${gameInfo!.patch.version}`
-                    : ""
-                }.gba`
-              );
-              await makeROM(
-                getROMPath(gameInfo!.rom),
-                gameInfo!.patch != null ? getPatchPath(gameInfo!.patch) : null,
-                outROMPath
-              );
-
-              await core.send({
-                smuggleReq: undefined,
-                startReq: {
-                  romPath: outROMPath,
-                  savePath: path.join(getSavesPath(app), saveName!),
-                  windowTitle: getGameTitle(gameInfo!),
-                  settings: undefined,
+            const core = new ipc.Core(
+              configRef.current.keymapping,
+              configRef.current.signalingConnectAddr,
+              configRef.current.iceServers,
+              linkCode != "" ? linkCode : null,
+              {
+                env: {
+                  WGPU_BACKEND:
+                    configRef.current.wgpuBackend != null
+                      ? configRef.current.wgpuBackend
+                      : undefined,
+                  RUST_LOG: configRef.current.rustLogFilter,
+                  RUST_BACKTRACE: "1",
                 },
-              });
-            } else {
-              // Need to negotiate settings with the opponent.
-              const myPendingSettings = defaultMatchSettings(
-                configRef.current.nickname
-              );
-              myPendingSettings.gameInfo = gameInfo;
-              myPendingSettings.availableGames =
-                gameInfo != null ? getAvailableGames(gameInfo) : [];
-              setPendingStates((pendingStates) => ({
-                ...pendingStates!,
-                opponent: null,
-                own: { negotiatedState: null, settings: myPendingSettings },
-              }));
+                signal: abortController.signal,
+              }
+            );
 
-              // After this point, do not read from gameInfo or saveName!
-              await core.send({
-                smuggleReq: {
-                  data: Message.encode({
-                    setSettings: myPendingSettings,
-                    commit: undefined,
-                    uncommit: undefined,
-                    chunk: undefined,
-                  }).finish(),
-                },
-                startReq: undefined,
-              });
+            setPendingStates({
+              core,
+              abortController,
+              own: null,
+              opponent: null,
+            });
 
-              const remoteChunks = [];
-
+            (async () => {
               // eslint-disable-next-line no-constant-condition
               while (true) {
                 const msg = await core.receive();
                 if (msg == null) {
-                  throw "expected ipc message";
+                  throw "unexpected eof from core";
                 }
-
-                if (msg.smuggleInd == null) {
-                  throw "expected smuggle indication";
-                }
-
-                const lobbyMsg = Message.decode(msg.smuggleInd.data);
-                if (lobbyMsg.uncommit != null) {
-                  setPendingStates((pendingStates) => ({
-                    ...pendingStates!,
-                    opponent: { ...pendingStates!.opponent!, commitment: null },
-                  }));
-                  continue;
-                }
-
-                if (lobbyMsg.commit != null) {
-                  setPendingStates((pendingStates) => ({
-                    ...pendingStates!,
-                    opponent: {
-                      ...pendingStates!.opponent!,
-                      commitment: lobbyMsg.commit!.commitment,
-                    },
-                  }));
-
-                  if (pendingStatesRef.current!.own!.negotiatedState != null) {
+                if (msg.stateInd != null) {
+                  setState(msg.stateInd.state);
+                  if (
+                    msg.stateInd.state ==
+                    FromCoreMessage_StateIndication_State.STARTING
+                  ) {
                     break;
                   }
-
-                  continue;
                 }
-
-                if (lobbyMsg.chunk != null) {
-                  remoteChunks.push(lobbyMsg.chunk.chunk);
-                  break;
-                }
-
-                if (lobbyMsg.setSettings == null) {
-                  throw "expected lobby set settings";
-                }
-
-                setPendingStates((pendingStates) => ({
-                  ...pendingStates!,
-                  opponent: {
-                    commitment: null,
-                    settings: lobbyMsg.setSettings!,
-                  },
-                  own: {
-                    ...pendingStates!.own!,
-                    negotiatedState: null,
-                  },
-                }));
-
-                onOpponentSettingsChange(lobbyMsg.setSettings);
               }
 
-              const localMarshaledState = NegotiatedState.encode(
-                pendingStatesRef.current!.own!.negotiatedState!
-              ).finish();
+              if (linkCode == "") {
+                // No link code to worry about, just start the game with no settings.
+                const outROMPath = path.join(
+                  tempDir,
+                  `${gameInfo!.rom}${
+                    gameInfo!.patch != null
+                      ? `+${gameInfo!.patch.name}-v${gameInfo!.patch.version}`
+                      : ""
+                  }.gba`
+                );
+                await makeROM(
+                  getROMPath(gameInfo!.rom),
+                  gameInfo!.patch != null
+                    ? getPatchPath(gameInfo!.patch)
+                    : null,
+                  outROMPath
+                );
 
-              const CHUNK_SIZE = 32 * 1024;
+                await core.send({
+                  smuggleReq: undefined,
+                  startReq: {
+                    romPath: outROMPath,
+                    savePath: path.join(getSavesPath(app), saveName!),
+                    windowTitle: getGameTitle(gameInfo!),
+                    settings: undefined,
+                  },
+                });
+              } else {
+                // Need to negotiate settings with the opponent.
+                const myPendingSettings = defaultMatchSettings(
+                  configRef.current.nickname
+                );
+                myPendingSettings.gameInfo = gameInfo;
+                myPendingSettings.availableGames =
+                  gameInfo != null ? getAvailableGames(gameInfo) : [];
+                setPendingStates((pendingStates) => ({
+                  ...pendingStates!,
+                  opponent: null,
+                  own: { negotiatedState: null, settings: myPendingSettings },
+                }));
 
-              const CHUNKS_REQUIRED = 5;
-              for (let i = 0; i < CHUNKS_REQUIRED; i++) {
+                // After this point, do not read from gameInfo or saveName!
                 await core.send({
                   smuggleReq: {
                     data: Message.encode({
-                      setSettings: undefined,
+                      setSettings: myPendingSettings,
                       commit: undefined,
                       uncommit: undefined,
-                      chunk: {
-                        chunk: localMarshaledState.subarray(
-                          i * CHUNK_SIZE,
-                          (i + 1) * CHUNK_SIZE
-                        ),
-                      },
+                      chunk: undefined,
                     }).finish(),
                   },
                   startReq: undefined,
                 });
 
-                if (remoteChunks.length < CHUNKS_REQUIRED) {
+                const remoteChunks = [];
+
+                // eslint-disable-next-line no-constant-condition
+                while (true) {
                   const msg = await core.receive();
                   if (msg == null) {
                     throw "expected ipc message";
@@ -629,345 +558,519 @@ export default function BattleStarter({
                   }
 
                   const lobbyMsg = Message.decode(msg.smuggleInd.data);
-                  if (lobbyMsg.chunk == null) {
-                    throw "expected chunk";
+                  if (lobbyMsg.uncommit != null) {
+                    setPendingStates((pendingStates) => ({
+                      ...pendingStates!,
+                      opponent: {
+                        ...pendingStates!.opponent!,
+                        commitment: null,
+                      },
+                    }));
+                    continue;
                   }
 
-                  remoteChunks.push(lobbyMsg.chunk.chunk);
+                  if (lobbyMsg.commit != null) {
+                    setPendingStates((pendingStates) => ({
+                      ...pendingStates!,
+                      opponent: {
+                        ...pendingStates!.opponent!,
+                        commitment: lobbyMsg.commit!.commitment,
+                      },
+                    }));
+
+                    if (
+                      pendingStatesRef.current!.own!.negotiatedState != null
+                    ) {
+                      break;
+                    }
+
+                    continue;
+                  }
+
+                  if (lobbyMsg.chunk != null) {
+                    remoteChunks.push(lobbyMsg.chunk.chunk);
+                    break;
+                  }
+
+                  if (lobbyMsg.setSettings == null) {
+                    throw "expected lobby set settings";
+                  }
+
+                  setPendingStates((pendingStates) => ({
+                    ...pendingStates!,
+                    opponent: {
+                      commitment: null,
+                      settings: lobbyMsg.setSettings!,
+                    },
+                    own: {
+                      ...pendingStates!.own!,
+                      negotiatedState: null,
+                    },
+                  }));
+
+                  onOpponentSettingsChange(lobbyMsg.setSettings);
                 }
-              }
 
-              const remoteMarshaledState = new Uint8Array(
-                Buffer.concat(remoteChunks)
-              );
-              const remoteCommitment = makeCommitment(remoteMarshaledState);
+                const localMarshaledState = NegotiatedState.encode(
+                  pendingStatesRef.current!.own!.negotiatedState!
+                ).finish();
 
-              if (
-                !timingSafeEqual(
-                  remoteCommitment,
-                  pendingStatesRef.current!.opponent!.commitment!
-                )
-              ) {
-                throw "commitment mismatch";
-              }
+                const CHUNK_SIZE = 32 * 1024;
 
-              const remoteState = NegotiatedState.decode(remoteMarshaledState);
-              const remoteSaveData = await promisify(brotliDecompress)(
-                remoteState.saveData
-              );
+                const CHUNKS_REQUIRED = 5;
+                for (let i = 0; i < CHUNKS_REQUIRED; i++) {
+                  await core.send({
+                    smuggleReq: {
+                      data: Message.encode({
+                        setSettings: undefined,
+                        commit: undefined,
+                        uncommit: undefined,
+                        chunk: {
+                          chunk: localMarshaledState.subarray(
+                            i * CHUNK_SIZE,
+                            (i + 1) * CHUNK_SIZE
+                          ),
+                        },
+                      }).finish(),
+                    },
+                    startReq: undefined,
+                  });
 
-              const rngSeed =
-                pendingStatesRef.current!.own!.negotiatedState!.nonce.slice();
-              for (let i = 0; i < rngSeed.length; i++) {
-                rngSeed[i] ^= remoteState.nonce[i];
-              }
+                  if (remoteChunks.length < CHUNKS_REQUIRED) {
+                    const msg = await core.receive();
+                    if (msg == null) {
+                      throw "expected ipc message";
+                    }
 
-              const ownGameSettings = pendingStatesRef.current!.own!.settings;
-              const ownGameInfo = ownGameSettings.gameInfo!;
+                    if (msg.smuggleInd == null) {
+                      throw "expected smuggle indication";
+                    }
 
-              const outOwnROMPath = path.join(
-                tempDir,
-                `${ownGameInfo.rom}${
+                    const lobbyMsg = Message.decode(msg.smuggleInd.data);
+                    if (lobbyMsg.chunk == null) {
+                      throw "expected chunk";
+                    }
+
+                    remoteChunks.push(lobbyMsg.chunk.chunk);
+                  }
+                }
+
+                const remoteMarshaledState = new Uint8Array(
+                  Buffer.concat(remoteChunks)
+                );
+                const remoteCommitment = makeCommitment(remoteMarshaledState);
+
+                if (
+                  !timingSafeEqual(
+                    remoteCommitment,
+                    pendingStatesRef.current!.opponent!.commitment!
+                  )
+                ) {
+                  throw "commitment mismatch";
+                }
+
+                const remoteState =
+                  NegotiatedState.decode(remoteMarshaledState);
+                const remoteSaveData = await promisify(brotliDecompress)(
+                  remoteState.saveData
+                );
+
+                const rngSeed =
+                  pendingStatesRef.current!.own!.negotiatedState!.nonce.slice();
+                for (let i = 0; i < rngSeed.length; i++) {
+                  rngSeed[i] ^= remoteState.nonce[i];
+                }
+
+                const ownGameSettings = pendingStatesRef.current!.own!.settings;
+                const ownGameInfo = ownGameSettings.gameInfo!;
+
+                const outOwnROMPath = path.join(
+                  tempDir,
+                  `${ownGameInfo.rom}${
+                    ownGameInfo.patch != null
+                      ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
+                      : ""
+                  }.gba`
+                );
+                await makeROM(
+                  getROMPath(ownGameInfo.rom),
                   ownGameInfo.patch != null
-                    ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
-                    : ""
-                }.gba`
-              );
-              await makeROM(
-                getROMPath(ownGameInfo.rom),
-                ownGameInfo.patch != null
-                  ? getPatchPath(ownGameInfo.patch)
-                  : null,
-                outOwnROMPath
-              );
+                    ? getPatchPath(ownGameInfo.patch)
+                    : null,
+                  outOwnROMPath
+                );
 
-              const opponentGameSettings =
-                pendingStatesRef.current!.opponent!.settings;
-              const opponentGameInfo = opponentGameSettings.gameInfo!;
+                const opponentGameSettings =
+                  pendingStatesRef.current!.opponent!.settings;
+                const opponentGameInfo = opponentGameSettings.gameInfo!;
 
-              const outOpponentROMPath = path.join(
-                tempDir,
-                `${opponentGameInfo.rom}${
+                const outOpponentROMPath = path.join(
+                  tempDir,
+                  `${opponentGameInfo.rom}${
+                    opponentGameInfo.patch != null
+                      ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
+                      : ""
+                  }.gba`
+                );
+                await makeROM(
+                  getROMPath(opponentGameInfo.rom),
                   opponentGameInfo.patch != null
-                    ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
-                    : ""
-                }.gba`
-              );
-              await makeROM(
-                getROMPath(opponentGameInfo.rom),
-                opponentGameInfo.patch != null
-                  ? getPatchPath(opponentGameInfo.patch)
-                  : null,
-                outOpponentROMPath
-              );
+                    ? getPatchPath(opponentGameInfo.patch)
+                    : null,
+                  outOpponentROMPath
+                );
 
-              const now = new Date();
+                const now = new Date();
 
-              const prefix = `${datefns.format(
-                now,
-                "yyyyMMddHHmmmmss"
-              )}-vs-${encodeURIComponent(
-                opponentGameSettings.nickname
-              )}-${linkCode}`;
+                const prefix = `${datefns.format(
+                  now,
+                  "yyyyMMddHHmmmmss"
+                )}-vs-${encodeURIComponent(
+                  opponentGameSettings.nickname
+                )}-${linkCode}`;
 
-              const shadowSavePath = path.join(tempDir, prefix + ".sav");
-              await writeFile(shadowSavePath, remoteSaveData);
+                const shadowSavePath = path.join(tempDir, prefix + ".sav");
+                await writeFile(shadowSavePath, remoteSaveData);
 
-              const enc = new TextEncoder();
+                const enc = new TextEncoder();
 
-              const startReq = {
-                romPath: outOwnROMPath,
-                savePath: path.join(getSavesPath(app), saveNameRef.current!),
-                windowTitle: getGameTitle(ownGameInfo),
-                settings: {
-                  shadowSavePath,
-                  shadowRomPath: outOpponentROMPath,
-                  inputDelay: ownGameSettings.inputDelay,
-                  shadowInputDelay: opponentGameSettings.inputDelay,
-                  matchType: ownGameSettings.matchType,
-                  replaysPath: path.join(getReplaysPath(app), prefix),
-                  replayMetadata: enc.encode(
-                    JSON.stringify({
-                      ts: now.valueOf(),
-                      linkCode,
-                      rom: ownGameInfo.rom,
-                      patch:
-                        ownGameInfo.patch != null
-                          ? {
-                              name: ownGameInfo.patch.name,
-                              version: ownGameInfo.patch.version,
-                            }
-                          : null,
-                      remote: {
-                        nickname: opponentGameSettings.nickname,
-                        rom: opponentGameInfo.rom,
+                const startReq = {
+                  romPath: outOwnROMPath,
+                  savePath: path.join(getSavesPath(app), saveNameRef.current!),
+                  windowTitle: getGameTitle(ownGameInfo),
+                  settings: {
+                    shadowSavePath,
+                    shadowRomPath: outOpponentROMPath,
+                    inputDelay: ownGameSettings.inputDelay,
+                    shadowInputDelay: opponentGameSettings.inputDelay,
+                    matchType: ownGameSettings.matchType,
+                    replaysPath: path.join(getReplaysPath(app), prefix),
+                    replayMetadata: enc.encode(
+                      JSON.stringify({
+                        ts: now.valueOf(),
+                        linkCode,
+                        rom: ownGameInfo.rom,
                         patch:
-                          opponentGameInfo.patch != null
+                          ownGameInfo.patch != null
                             ? {
-                                name: opponentGameInfo.patch.name,
-                                version: opponentGameInfo.patch.version,
+                                name: ownGameInfo.patch.name,
+                                version: ownGameInfo.patch.version,
                               }
                             : null,
-                      },
-                    } as ReplayInfo)
-                  ),
-                  rngSeed,
-                },
-              };
+                        remote: {
+                          nickname: opponentGameSettings.nickname,
+                          rom: opponentGameInfo.rom,
+                          patch:
+                            opponentGameInfo.patch != null
+                              ? {
+                                  name: opponentGameInfo.patch.name,
+                                  version: opponentGameInfo.patch.version,
+                                }
+                              : null,
+                        },
+                      } as ReplayInfo)
+                    ),
+                    rngSeed,
+                  },
+                };
 
-              // eslint-disable-next-line no-console
-              console.info("issuing start request", startReq);
+                // eslint-disable-next-line no-console
+                console.info("issuing start request", startReq);
 
-              await core.send({
-                smuggleReq: undefined,
-                startReq,
+                await core.send({
+                  smuggleReq: undefined,
+                  startReq,
+                });
+              }
+
+              // eslint-disable-next-line no-constant-condition
+              while (true) {
+                const msg = await core.receive();
+                if (msg == null) {
+                  break;
+                }
+
+                if (msg.stateInd != null) {
+                  setState(msg.stateInd.state);
+                }
+              }
+            })()
+              .catch((e) => {
+                console.error(e);
+              })
+              .finally(() => {
+                if (abortController != null) {
+                  abortController.abort();
+                }
+                (async () => {
+                  const exitStatus = await core.wait();
+                  const stderr = core.getStderr();
+                  if (
+                    exitStatus.exitCode != 0 &&
+                    exitStatus.signalCode != "SIGTERM"
+                  ) {
+                    setErrorDialogState({ stderr, exitStatus });
+                  }
+                  onReadyChange(false);
+                  onOpponentSettingsChange(null);
+                  setPendingStates(null);
+                  onExit();
+                })();
               });
-            }
-
-            // eslint-disable-next-line no-constant-condition
-            while (true) {
-              const msg = await core.receive();
-              if (msg == null) {
-                break;
-              }
-
-              if (msg.stateInd != null) {
-                setState(msg.stateInd.state);
-              }
-            }
-          })()
-            .catch((e) => {
-              console.error(e);
-            })
-            .finally(() => {
-              if (abortController != null) {
-                abortController.abort();
-              }
-              onReadyChange(false);
-              onOpponentSettingsChange(null);
-              setPendingStates(null);
-              onExit();
-            });
-        }}
-      >
-        <Box flexGrow={1} flexShrink={0}>
-          <TextField
-            disabled={pendingStates != null}
-            size="small"
-            label={<Trans i18nKey={"play:link-code"} />}
-            value={linkCode}
-            onChange={(e) => {
-              setLinkCode(
-                e.target.value
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]/g, "")
-                  .slice(0, 40)
-              );
-            }}
-            InputProps={{
-              endAdornment:
-                pendingStates != null ? (
-                  <Stack
-                    spacing={1}
-                    direction="row"
-                    sx={{ alignItems: "center" }}
-                  >
-                    <Typography sx={{ whiteSpace: "nowrap" }}>
-                      {state ==
-                      FromCoreMessage_StateIndication_State.RUNNING ? (
-                        <Trans i18nKey="supervisor:status.running" />
-                      ) : state ==
-                        FromCoreMessage_StateIndication_State.WAITING ? (
-                        <Trans i18nKey="supervisor:status.waiting" />
-                      ) : state ==
-                        FromCoreMessage_StateIndication_State.CONNECTING ? (
-                        <Trans i18nKey="supervisor:status.connecting" />
-                      ) : state ==
-                        FromCoreMessage_StateIndication_State.STARTING ? (
-                        pendingStates.own != null ? null : (
-                          <Trans i18nKey="supervisor:status.starting" />
-                        )
-                      ) : (
-                        <Trans i18nKey="supervisor:status.unknown" />
-                      )}
-                    </Typography>
-                    <CircularProgress size="1rem" color="inherit" />
-                  </Stack>
-                ) : null,
-            }}
-            fullWidth
-          />
-        </Box>
-
-        {pendingStates == null ? (
-          <Button
-            type="submit"
-            variant="contained"
-            startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
-            disabled={
-              pendingStates != null || (linkCode == "" && gameInfo == null)
-            }
-          >
-            {linkCode != "" ? (
-              <Trans i18nKey="play:fight" />
-            ) : (
-              <Trans i18nKey="play:play" />
-            )}
-          </Button>
-        ) : (
-          <>
-            {pendingStates.own != null && pendingStates.opponent != null ? (
-              <>
-                <FormGroup>
-                  <FormControlLabel
-                    control={
-                      <Checkbox
-                        checked={pendingStates.own.negotiatedState != null}
-                        disabled={
-                          saveName == null ||
-                          pendingStates.own.settings.matchType !=
-                            pendingStates.opponent.settings.matchType ||
-                          !pendingStates.opponent.settings.availableGames.some(
-                            (g) =>
-                              gameInfoMatches(
-                                pendingStates.own!.settings.gameInfo ?? null,
-                                g
-                              )
-                          ) ||
-                          changingCommitment ||
-                          (pendingStates.own.negotiatedState != null &&
-                            pendingStates.opponent.commitment != null)
-                        }
-                        indeterminate={changingCommitment}
-                        onChange={(_e, v) => {
-                          setChangingCommitment(true);
-                          (async () => {
-                            let commitment: Uint8Array | null = null;
-                            let negotiatedState: NegotiatedState | null = null;
-
-                            if (v) {
-                              const saveData = await readFile(
-                                path.join(getSavesPath(app), saveName!)
-                              );
-                              const nonce = crypto.getRandomValues(
-                                new Uint8Array(16)
-                              );
-
-                              negotiatedState = {
-                                nonce,
-                                saveData: await promisify(brotliCompress)(
-                                  saveData
-                                ),
-                              };
-
-                              commitment = makeCommitment(
-                                Buffer.from(
-                                  NegotiatedState.encode(
-                                    negotiatedState
-                                  ).finish()
-                                )
-                              );
-                            }
-
-                            if (commitment != null) {
-                              await pendingStates.core.send({
-                                smuggleReq: {
-                                  data: Message.encode({
-                                    setSettings: undefined,
-                                    commit: {
-                                      commitment,
-                                    },
-                                    uncommit: undefined,
-                                    chunk: undefined,
-                                  }).finish(),
-                                },
-                                startReq: undefined,
-                              });
-                            } else {
-                              await pendingStates.core.send({
-                                smuggleReq: {
-                                  data: Message.encode({
-                                    setSettings: undefined,
-                                    commit: undefined,
-                                    uncommit: {},
-                                    chunk: undefined,
-                                  }).finish(),
-                                },
-                                startReq: undefined,
-                              });
-                            }
-
-                            setPendingStates((pendingStates) => ({
-                              ...pendingStates!,
-                              own: {
-                                ...pendingStates!.own!,
-                                negotiatedState,
-                              },
-                            }));
-                            setChangingCommitment(false);
-                          })();
-                        }}
-                      />
-                    }
-                    label={<Trans i18nKey={"play:ready"} />}
-                  />
-                </FormGroup>
-              </>
-            ) : null}
-            <Button
-              color="error"
-              variant="contained"
-              startIcon={<StopIcon />}
-              onClick={() => {
-                pendingStates.abortController.abort();
+          }}
+        >
+          <Box flexGrow={1} flexShrink={0}>
+            <TextField
+              disabled={pendingStates != null}
+              size="small"
+              label={<Trans i18nKey={"play:link-code"} />}
+              value={linkCode}
+              onChange={(e) => {
+                setLinkCode(
+                  e.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]/g, "")
+                    .slice(0, 40)
+                );
               }}
-              disabled={false}
+              InputProps={{
+                endAdornment:
+                  pendingStates != null ? (
+                    <Stack
+                      spacing={1}
+                      direction="row"
+                      sx={{ alignItems: "center" }}
+                    >
+                      <Typography sx={{ whiteSpace: "nowrap" }}>
+                        {state ==
+                        FromCoreMessage_StateIndication_State.RUNNING ? (
+                          <Trans i18nKey="supervisor:status.running" />
+                        ) : state ==
+                          FromCoreMessage_StateIndication_State.WAITING ? (
+                          <Trans i18nKey="supervisor:status.waiting" />
+                        ) : state ==
+                          FromCoreMessage_StateIndication_State.CONNECTING ? (
+                          <Trans i18nKey="supervisor:status.connecting" />
+                        ) : state ==
+                          FromCoreMessage_StateIndication_State.STARTING ? (
+                          pendingStates.own != null ? null : (
+                            <Trans i18nKey="supervisor:status.starting" />
+                          )
+                        ) : (
+                          <Trans i18nKey="supervisor:status.unknown" />
+                        )}
+                      </Typography>
+                      <CircularProgress size="1rem" color="inherit" />
+                    </Stack>
+                  ) : null,
+              }}
+              fullWidth
+            />
+          </Box>
+
+          {pendingStates == null ? (
+            <Button
+              type="submit"
+              variant="contained"
+              startIcon={linkCode != "" ? <SportsMmaIcon /> : <PlayArrowIcon />}
+              disabled={
+                pendingStates != null || (linkCode == "" && gameInfo == null)
+              }
             >
-              <Trans i18nKey="play:stop" />
+              {linkCode != "" ? (
+                <Trans i18nKey="play:fight" />
+              ) : (
+                <Trans i18nKey="play:play" />
+              )}
             </Button>
-          </>
-        )}
+          ) : (
+            <>
+              {pendingStates.own != null && pendingStates.opponent != null ? (
+                <>
+                  <FormGroup>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={pendingStates.own.negotiatedState != null}
+                          disabled={
+                            saveName == null ||
+                            pendingStates.own.settings.matchType !=
+                              pendingStates.opponent.settings.matchType ||
+                            !pendingStates.opponent.settings.availableGames.some(
+                              (g) =>
+                                gameInfoMatches(
+                                  pendingStates.own!.settings.gameInfo ?? null,
+                                  g
+                                )
+                            ) ||
+                            changingCommitment ||
+                            (pendingStates.own.negotiatedState != null &&
+                              pendingStates.opponent.commitment != null)
+                          }
+                          indeterminate={changingCommitment}
+                          onChange={(_e, v) => {
+                            setChangingCommitment(true);
+                            (async () => {
+                              let commitment: Uint8Array | null = null;
+                              let negotiatedState: NegotiatedState | null =
+                                null;
+
+                              if (v) {
+                                const saveData = await readFile(
+                                  path.join(getSavesPath(app), saveName!)
+                                );
+                                const nonce = crypto.getRandomValues(
+                                  new Uint8Array(16)
+                                );
+
+                                negotiatedState = {
+                                  nonce,
+                                  saveData: await promisify(brotliCompress)(
+                                    saveData
+                                  ),
+                                };
+
+                                commitment = makeCommitment(
+                                  Buffer.from(
+                                    NegotiatedState.encode(
+                                      negotiatedState
+                                    ).finish()
+                                  )
+                                );
+                              }
+
+                              if (commitment != null) {
+                                await pendingStates.core.send({
+                                  smuggleReq: {
+                                    data: Message.encode({
+                                      setSettings: undefined,
+                                      commit: {
+                                        commitment,
+                                      },
+                                      uncommit: undefined,
+                                      chunk: undefined,
+                                    }).finish(),
+                                  },
+                                  startReq: undefined,
+                                });
+                              } else {
+                                await pendingStates.core.send({
+                                  smuggleReq: {
+                                    data: Message.encode({
+                                      setSettings: undefined,
+                                      commit: undefined,
+                                      uncommit: {},
+                                      chunk: undefined,
+                                    }).finish(),
+                                  },
+                                  startReq: undefined,
+                                });
+                              }
+
+                              setPendingStates((pendingStates) => ({
+                                ...pendingStates!,
+                                own: {
+                                  ...pendingStates!.own!,
+                                  negotiatedState,
+                                },
+                              }));
+                              setChangingCommitment(false);
+                            })();
+                          }}
+                        />
+                      }
+                      label={<Trans i18nKey={"play:ready"} />}
+                    />
+                  </FormGroup>
+                </>
+              ) : null}
+              <Button
+                color="error"
+                variant="contained"
+                startIcon={<StopIcon />}
+                onClick={() => {
+                  pendingStates.abortController.abort();
+                }}
+                disabled={false}
+              >
+                <Trans i18nKey="play:stop" />
+              </Button>
+            </>
+          )}
+        </Stack>
       </Stack>
-    </Stack>
+      {errorDialogState != null ? (
+        <Modal open={true}>
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <Box
+              sx={{
+                width: 600,
+                bgcolor: "background.paper",
+                boxShadow: 24,
+                px: 3,
+                py: 2,
+                display: "flex",
+              }}
+            >
+              <Stack spacing={1} flexGrow={1}>
+                <Box sx={{ flexGrow: 0, flexShrink: 0 }}>
+                  <Trans i18nKey="supervisor:crash" />
+                </Box>
+                <Box
+                  sx={{
+                    flexGrow: 0,
+                    flexShrink: 0,
+                    display: "flex",
+                    position: "relative",
+                  }}
+                >
+                  <CopyButton
+                    value={errorDialogState.stderr.trimEnd()}
+                    sx={{
+                      position: "absolute",
+                      right: "16px",
+                      top: "8px",
+                      zIndex: 999,
+                    }}
+                  />
+                  <TextField
+                    multiline
+                    InputProps={{
+                      sx: {
+                        fontSize: "0.8rem",
+                        fontFamily: "monospace",
+                      },
+                    }}
+                    maxRows={20}
+                    sx={{
+                      flexGrow: 1,
+                    }}
+                    value={errorDialogState.stderr.trimEnd()}
+                  />
+                </Box>
+                <Stack direction="row" justifyContent="flex-end">
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={(_e) => {
+                      setErrorDialogState(null);
+                    }}
+                  >
+                    <Trans i18nKey="supervisor:dismiss" />
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </Box>
+        </Modal>
+      ) : null}
+    </>
   );
 }
