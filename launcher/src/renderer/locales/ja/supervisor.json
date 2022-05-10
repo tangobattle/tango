@@ -1,9 +1,9 @@
 {
   "status.unknown": "お待ちしてください...",
-  "status.running": "エミュレータ動作中...",
+  "status.running": "動作中...",
   "status.waiting": "相手方の接続待機中...",
   "status.connecting": "通信待機中...",
-  "status.ready-to-start": "エミュレータ起動中...",
+  "status.starting": "起動中...",
   "crash": "おっと、エミュレータがクラッシュしたようです。バグ報告の際には、このログを提供してください。",
   "cancel": "停止",
   "dismiss": "やべっ！",

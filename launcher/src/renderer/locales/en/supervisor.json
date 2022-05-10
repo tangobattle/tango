@@ -4,7 +4,6 @@
   "status.waiting": "Waiting for opponent...",
   "status.connecting": "Connecting to opponent...",
   "status.starting": "Starting...",
-  "status.started": "Started...",
   "crash": "Oops, it looks like the emulator crashed! Please provide this log when reporting a bug!",
   "cancel": "Stop",
   "dismiss": "Damn!",

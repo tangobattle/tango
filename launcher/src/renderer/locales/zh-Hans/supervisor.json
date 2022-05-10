@@ -3,7 +3,7 @@
   "status.running": "正在运行……",
   "status.waiting": "正在等待对方连接……",
   "status.connecting": "正在与对手连接……",
-  "status.ready-to-start": "正在启动仿真器……",
+  "status.starting": "正在启动仿真器……",
   "crash": "抱歉，仿真器遇到崩溃。在报告错误时，请提供此日志！",
   "cancel": "停止",
   "dismiss": "哎呀！",

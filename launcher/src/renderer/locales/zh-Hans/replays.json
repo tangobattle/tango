@@ -7,5 +7,6 @@
   "show-info": "显示信息",
   "show-file": "目录中显示",
   "export-video": "视频导出",
+  "replay-title": "{{linkCode}}： 対 {{nickname}}",
   "crash": "抱歉，回放播放器遇到崩溃。在报告错误时，请提供此日志！"
 }

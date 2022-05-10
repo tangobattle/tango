@@ -9,6 +9,7 @@
   "save-file": "游戏存档",
   "patch.authors": "作者",
   "patch.version": "版本",
+  "match-type": "战斗类型",
   "match-type.single": "一局",
   "match-type.triple": "三局",
   "rescan": "重扫",
@@ -28,5 +29,11 @@
   "navicust.color.yellow": "黄",
   "navicust.color.green": "绿",
   "navicust.color.blue": "蓝",
-  "navicust.color.white": "白"
+  "navicust.color.white": "白",
+  "ready": "准备好了！",
+  "stop": "停止",
+  "own-side": "自己",
+  "game": "游戏",
+  "unsupported-game": "对方不支持这个游戏。",
+  "mismatching-match-type": "你的战斗类型不匹配对方的战斗类型。"
 }
