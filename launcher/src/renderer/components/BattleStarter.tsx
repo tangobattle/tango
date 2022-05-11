@@ -45,7 +45,9 @@ import Typography from "@mui/material/Typography";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
-import { FromCoreMessage_StateIndication_State } from "../../protos/ipc";
+import {
+    FromCoreMessage_StateIndication_State, ToCoreMessage_StartRequest
+} from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import randomCode from "../../randomcode";
 import { ReplayInfo } from "../../replay";
@@ -929,7 +931,10 @@ export default function BattleStarter({
                     inputDelay: ownGameSettings.inputDelay,
                     shadowInputDelay: opponentGameSettings.inputDelay,
                     matchType: ownGameSettings.matchType,
-                    opponentNickname: opponentGameSettings.nickname,
+                    opponentNickname:
+                      ownGameInfo.patch == null
+                        ? opponentGameSettings.nickname
+                        : undefined,
                     replaysPath: path.join(getReplaysPath(app), prefix),
                     replayMetadata: enc.encode(
                       JSON.stringify({
@@ -958,7 +963,7 @@ export default function BattleStarter({
                     ),
                     rngSeed,
                   },
-                };
+                } as ToCoreMessage_StartRequest;
 
                 // eslint-disable-next-line no-console
                 console.info("issuing start request", {

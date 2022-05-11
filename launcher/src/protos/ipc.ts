@@ -97,7 +97,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   replaysPath: string;
   replayMetadata: Uint8Array;
   rngSeed: Uint8Array;
-  opponentNickname: string;
+  opponentNickname?: string | undefined;
 }
 
 export interface ToCoreMessage_SmuggleRequest {
@@ -609,7 +609,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     replaysPath: "",
     replayMetadata: new Uint8Array(),
     rngSeed: new Uint8Array(),
-    opponentNickname: "",
+    opponentNickname: undefined,
   };
 }
 
@@ -642,7 +642,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     if (message.rngSeed.length !== 0) {
       writer.uint32(66).bytes(message.rngSeed);
     }
-    if (message.opponentNickname !== "") {
+    if (message.opponentNickname !== undefined) {
       writer.uint32(74).string(message.opponentNickname);
     }
     return writer;
@@ -715,7 +715,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         : new Uint8Array(),
       opponentNickname: isSet(object.opponentNickname)
         ? String(object.opponentNickname)
-        : "",
+        : undefined,
     };
   },
 
@@ -760,7 +760,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.replaysPath = object.replaysPath ?? "";
     message.replayMetadata = object.replayMetadata ?? new Uint8Array();
     message.rngSeed = object.rngSeed ?? new Uint8Array();
-    message.opponentNickname = object.opponentNickname ?? "";
+    message.opponentNickname = object.opponentNickname ?? undefined;
     return message;
   },
 };

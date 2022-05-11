@@ -133,7 +133,9 @@ impl Game {
                 joyflags.clone(),
                 facade::Facade::new(match_.clone(), cancellation_token.clone()),
             ));
-            hooks.replace_opponent_name(core.as_mut(), &match_init.settings.opponent_nickname);
+            if let Some(opponent_nickname) = match_init.settings.opponent_nickname.as_ref() {
+                hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
+            }
         }
 
         let thread = mgba::thread::Thread::new(core);

@@ -25,7 +25,7 @@ pub struct Settings {
     pub input_delay: u32,
     pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
-    pub opponent_nickname: String,
+    pub opponent_nickname: Option<String>,
 }
 
 pub struct RoundState {
