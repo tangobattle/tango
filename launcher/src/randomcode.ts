@@ -383,6 +383,7 @@ const ENDS = [
   "extra",
   "faked",
   "forme",
+  "fortnite",
   "frenzy",
   "gauntlet",
   "ggswp",
