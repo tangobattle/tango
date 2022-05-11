@@ -69,7 +69,7 @@ function defaultMatchSettings(nickname: string): SetSettings {
     matchType: 1,
     gameInfo: undefined,
     availableGames: [],
-    openSetup: true,
+    openSetup: false,
   };
 }
 
