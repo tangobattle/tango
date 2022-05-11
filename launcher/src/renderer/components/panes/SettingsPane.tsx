@@ -72,7 +72,7 @@ function AboutTab({ active }: { active: boolean }) {
             {app.getName()} <small>{app.getVersion()}</small>
           </Typography>
           <Typography>
-            Tango would not be possible without the work of the many people who
+            Tango would not be a reality without the work of the many people who
             have helped make this possible.
           </Typography>
           <ul>
