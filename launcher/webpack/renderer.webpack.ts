@@ -47,6 +47,9 @@ const config: Configuration = {
     path: path.resolve(rootPath, "dist/renderer"),
     filename: "js/[name].js",
   },
+  optimization: {
+    minimize: false,
+  },
   plugins: [
     new HtmlWebpackPlugin({ template: path.resolve(rootPath, "index.html") }),
   ],
