@@ -527,8 +527,8 @@ export default function BattleStarter({
                     <Button
                       disabled={rtt == null}
                       size="small"
-                      color="inherit"
-                      variant="contained"
+                      color="primary"
+                      variant="outlined"
                       onClick={() => {
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,

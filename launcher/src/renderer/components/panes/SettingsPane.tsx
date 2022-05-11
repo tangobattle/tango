@@ -379,8 +379,8 @@ function AdvancedTab({ active }: { active: boolean }) {
           </FormControl>
           <Button
             fullWidth
-            variant="contained"
-            color="inherit"
+            color="primary"
+            variant="outlined"
             onClick={() => {
               shell.openPath(app.getPath("logs"));
             }}
