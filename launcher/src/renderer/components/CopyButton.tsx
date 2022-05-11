@@ -37,7 +37,7 @@ export default function CopyButton({
         disabled={disabled}
         {...props}
       >
-        <ContentCopyIcon fontSize="small" />
+        <ContentCopyIcon />
       </IconButton>
     </Tooltip>
   );

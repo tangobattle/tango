@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import * as datefns from "date-fns";
+import { clipboard } from "electron";
 import { readFile, writeFile } from "fs/promises";
 import { isEqual } from "lodash-es";
 import path from "path";
@@ -152,6 +153,40 @@ function makeCommitment(s: Uint8Array): Uint8Array {
   shake128.update(Buffer.from("tango:state:"));
   shake128.update(Buffer.from(s));
   return new Uint8Array(shake128.digest());
+}
+
+function GenerateRandomCodeButton({
+  onClick,
+}: {
+  onClick: (e: React.MouseEvent<HTMLButtonElement>, code: string) => void;
+}) {
+  const [clicked, setClicked] = React.useState(false);
+
+  return (
+    <Tooltip
+      title={
+        clicked ? (
+          <Trans i18nKey="common:copied-to-clipboard" />
+        ) : (
+          <Trans i18nKey="play:generate-random-code" />
+        )
+      }
+    >
+      <IconButton
+        onClick={(e) => {
+          const code = randomCode();
+          clipboard.writeText(code);
+          onClick(e, code);
+          setClicked(true);
+          setTimeout(() => {
+            setClicked(false);
+          }, 1000);
+        }}
+      >
+        <CasinoOutlinedIcon />
+      </IconButton>
+    </Tooltip>
+  );
 }
 
 export default function BattleStarter({
@@ -935,17 +970,11 @@ export default function BattleStarter({
                       <CircularProgress size="1rem" color="inherit" />
                     </Stack>
                   ) : (
-                    <Tooltip
-                      title={<Trans i18nKey="play:generate-random-code" />}
-                    >
-                      <IconButton
-                        onClick={() => {
-                          setLinkCode(randomCode());
-                        }}
-                      >
-                        <CasinoOutlinedIcon />
-                      </IconButton>
-                    </Tooltip>
+                    <GenerateRandomCodeButton
+                      onClick={(_e, code) => {
+                        setLinkCode(code);
+                      }}
+                    />
                   ),
               }}
               fullWidth
