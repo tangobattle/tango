@@ -55,6 +55,7 @@ import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
+import { useROMs } from "./ROMsContext";
 import { useSaves } from "./SavesContext";
 import SaveViewer from "./SaveViewer";
 import { useTempDir } from "./TempDirContext";
@@ -150,6 +151,29 @@ function useGetAvailableGames() {
   );
 }
 
+function useHasGame() {
+  const { roms } = useROMs();
+  const { patches } = usePatches();
+  return React.useCallback(
+    (gameInfo: GameInfo) => {
+      return (
+        Object.prototype.hasOwnProperty.call(roms, gameInfo.rom) &&
+        (gameInfo.patch != null
+          ? Object.prototype.hasOwnProperty.call(
+              patches,
+              gameInfo.patch.name
+            ) &&
+            Object.prototype.hasOwnProperty.call(
+              patches[gameInfo.patch.name].versions,
+              gameInfo.patch.version
+            )
+          : true)
+      );
+    },
+    [roms, patches]
+  );
+}
+
 function makeCommitment(s: Uint8Array): Uint8Array {
   const shake128 = new SHAKE(128);
   shake128.update(Buffer.from("tango:state:"));
@@ -218,6 +242,7 @@ export default function BattleStarter({
   saveNameRef.current = saveName;
 
   const getAvailableGames = useGetAvailableGames();
+  const hasGame = useHasGame();
 
   const [errorDialogState, setErrorDialogState] = React.useState<{
     stderr: string;
@@ -408,7 +433,21 @@ export default function BattleStarter({
                       getGameTitle(pendingStates?.opponent?.settings.gameInfo)
                     ) : (
                       <Trans i18nKey="play:no-game-selected" />
-                    )}
+                    )}{" "}
+                    {pendingStates?.opponent?.settings.gameInfo != null &&
+                    !hasGame(pendingStates?.opponent?.settings.gameInfo) ? (
+                      <Tooltip
+                        title={<Trans i18nKey="play:unavailable-game" />}
+                      >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : null}
                   </TableCell>
                 </TableRow>
                 <TableRow>
@@ -1056,6 +1095,10 @@ export default function BattleStarter({
                                   pendingStates.own!.settings.gameInfo ?? null,
                                   g
                                 )
+                            ) ||
+                            pendingStates.opponent.settings.gameInfo == null ||
+                            !hasGame(
+                              pendingStates.opponent.settings.gameInfo
                             ) ||
                             changingCommitment ||
                             (pendingStates.own.negotiatedState != null &&

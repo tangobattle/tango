@@ -36,6 +36,7 @@
   "game": "ゲーム",
   "open-setup": "構築を公開",
   "unsupported-game": "相手はこのゲームに対応していません。",
+  "unavailable-game": "このゲームを持っていません。",
   "mismatching-open-setup": "相手と自分の構築を公開の設定が一致していません。",
   "mismatching-match-type": "相手と自分のマッチタイプの設定が一致していません。",
   "generate-random-code": "ランダムリンクコードを生成",
