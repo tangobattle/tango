@@ -14,6 +14,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import { styled } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
+import useTheme from "@mui/system/useTheme";
 
 import { useUpdateStatus } from "./UpdaterStatusContext";
 
@@ -25,6 +26,13 @@ const Drawer = styled(MuiDrawer, {
   boxSizing: "border-box",
   overflowX: "hidden",
   width: `calc(${theme.spacing(6)} + 1px)`,
+}));
+
+const NavbarButtonWrapper = styled(ListItemButton)(({ theme }) => ({
+  "&.Mui-selected": {
+    transition: "none",
+    background: `${theme.palette.background.paper} !important`,
+  },
 }));
 
 function NavbarButton({
@@ -42,7 +50,7 @@ function NavbarButton({
 }) {
   return (
     <Tooltip title={title} enterDelay={0} placement="right">
-      <ListItemButton
+      <NavbarButtonWrapper
         onClick={onClick}
         selected={selected}
         sx={{
@@ -60,7 +68,7 @@ function NavbarButton({
         >
           {selected ? selectedIcon : unselectedIcon}
         </ListItemIcon>
-      </ListItemButton>
+      </NavbarButtonWrapper>
     </Tooltip>
   );
 }
@@ -74,6 +82,7 @@ export default function Navbar({
   selected: NavbarSelection;
   onSelect: (selected: NavbarSelection) => void;
 }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const { status: updateStatus } = useUpdateStatus();
 
@@ -91,7 +100,16 @@ export default function Navbar({
     );
 
   return (
-    <Drawer variant="permanent" open={true}>
+    <Drawer
+      variant="permanent"
+      open={true}
+      PaperProps={{
+        sx: {
+          background: theme.palette.primary.main,
+          borderRight: "none",
+        },
+      }}
+    >
       <List>
         <NavbarButton
           selected={selected == "play"}
