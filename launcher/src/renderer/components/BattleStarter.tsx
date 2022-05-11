@@ -312,8 +312,11 @@ export default function BattleStarter({
                     ) : null}
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                    {pendingStates?.opponent?.settings.nickname ?? ""} (
-                    {Math.round(rtt)} ms)
+                    {pendingStates?.opponent?.settings.nickname ?? ""}
+                    <Trans
+                      i18nKey="play:connection-quality"
+                      values={{ rtt: Math.round(rtt) }}
+                    />
                     {pendingStates?.opponent?.commitment != null ? (
                       <CheckCircleIcon
                         color="success"
@@ -433,7 +436,27 @@ export default function BattleStarter({
                         });
                       }}
                       InputProps={{ inputProps: { min: 3, max: 10 } }}
-                    />
+                    />{" "}
+                    <Button
+                      disabled={rtt < 0}
+                      size="small"
+                      color="inherit"
+                      variant="contained"
+                      onClick={() => {
+                        changeLocalPendingState({
+                          ...pendingStates!.own!.settings,
+                          inputDelay: Math.min(
+                            10,
+                            Math.max(
+                              0,
+                              Math.round(rtt / 1000 / 1000 / 2 / 60) + 1
+                            )
+                          ),
+                        });
+                      }}
+                    >
+                      <Trans i18nKey="play:auto-input-delay" />
+                    </Button>
                   </TableCell>
                   <TableCell>
                     {pendingStates?.opponent?.settings.inputDelay ?? 0}
