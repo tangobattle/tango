@@ -536,7 +536,11 @@ export default function BattleStarter({
                             10,
                             Math.max(
                               3,
-                              Math.round(rtt! / 1000 / 1000 / 2 / 60) + 1 - 3
+                              Math.round(
+                                ((rtt! / 1000 / 1000 / 2) * 60) / 1000
+                              ) +
+                                1 -
+                                3
                             )
                           ),
                         });
