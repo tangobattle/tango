@@ -36,8 +36,10 @@
   "game": "Game",
   "open-setup": "Open setup",
   "unsupported-game": "Your opponent does not support this game.",
+  "mismatching-open-setup": "Does not match your opponent's open setup setting.",
   "mismatching-match-type": "Does not match your opponent's match type.",
   "generate-random-code": "Generate random code",
   "connection-quality": " ({{rtt}}ms)",
-  "auto-input-delay": "Auto"
+  "auto-input-delay": "Auto",
+  "open-setup-title": "{{opponentNickname}}'s setup"
 }

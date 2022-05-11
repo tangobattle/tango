@@ -27,7 +27,7 @@ import Typography from "@mui/material/Typography";
 import { getBasePath, getSavesPath } from "../../../paths";
 import { SetSettings } from "../../../protos/lobby";
 import { KNOWN_ROMS } from "../../../rom";
-import { Editor } from "../../../saveedit/bn6";
+import * as bn6 from "../../../saveedit/bn6";
 import BattleStarter from "../BattleStarter";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
@@ -43,12 +43,12 @@ function SaveViewerWrapper({
   romName: string;
   incarnation: number;
 }) {
-  const [editor, setEditor] = React.useState<Editor | null>(null);
+  const [editor, setEditor] = React.useState<bn6.Editor | null>(null);
 
   React.useEffect(() => {
     (async () => {
-      const e = new Editor(
-        Editor.sramDumpToRaw(
+      const e = new bn6.Editor(
+        bn6.Editor.sramDumpToRaw(
           (await readFile(path.join(getSavesPath(app), filename))).buffer
         ),
         romName

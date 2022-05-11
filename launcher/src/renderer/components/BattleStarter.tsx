@@ -50,11 +50,13 @@ import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lo
 import randomCode from "../../randomcode";
 import { ReplayInfo } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
+import * as bn6 from "../../saveedit/bn6";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
 import { useSaves } from "./SavesContext";
+import SaveViewer from "./SaveViewer";
 import { useTempDir } from "./TempDirContext";
 
 const MATCH_TYPES = ["single", "triple"];
@@ -241,6 +243,9 @@ export default function BattleStarter({
   } | null>(null);
   const [changingCommitment, setChangingCommitment] = React.useState(false);
   const [rtt, setRtt] = React.useState(-1);
+
+  const [openSetupEditor, setOpenSetupEditor] =
+    React.useState<bn6.Editor | null>(null);
 
   const gameInfo = React.useMemo(
     () =>
@@ -512,6 +517,20 @@ export default function BattleStarter({
                         });
                       }}
                     />
+                    {pendingStates?.opponent?.settings.openSetup !=
+                    pendingStates?.own?.settings.openSetup ? (
+                      <Tooltip
+                        title={<Trans i18nKey="play:mismatching-open-setup" />}
+                      >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : null}
                   </TableCell>
                   <TableCell>
                     <Switch
@@ -835,6 +854,17 @@ export default function BattleStarter({
                 const shadowSavePath = path.join(tempDir, prefix + ".sav");
                 await writeFile(shadowSavePath, remoteSaveData);
 
+                if (opponentGameSettings.openSetup) {
+                  setOpenSetupEditor(
+                    new bn6.Editor(
+                      bn6.Editor.sramDumpToRaw(
+                        new Uint8Array(remoteSaveData).buffer
+                      ),
+                      opponentGameInfo.rom
+                    )
+                  );
+                }
+
                 const enc = new TextEncoder();
 
                 const startReq = {
@@ -920,6 +950,7 @@ export default function BattleStarter({
                   }
                   onReadyChange(false);
                   onOpponentSettingsChange(null);
+                  setOpenSetupEditor(null);
                   setPendingStates(null);
                   onExit();
                 })();
@@ -1009,6 +1040,8 @@ export default function BattleStarter({
                             saveName == null ||
                             pendingStates.own.settings.matchType !=
                               pendingStates.opponent.settings.matchType ||
+                            pendingStates.own.settings.openSetup !=
+                              pendingStates.opponent.settings.openSetup ||
                             !pendingStates.opponent.settings.availableGames.some(
                               (g) =>
                                 gameInfoMatches(
@@ -1112,6 +1145,57 @@ export default function BattleStarter({
           )}
         </Stack>
       </Stack>
+      {openSetupEditor != null ? (
+        <Modal
+          open={true}
+          onClose={(_e, _reason) => {
+            return;
+          }}
+        >
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <Stack
+              sx={{
+                width: 600,
+                height: 600,
+                bgcolor: "background.paper",
+                boxShadow: 24,
+              }}
+              direction="column"
+            >
+              <Stack
+                direction="row"
+                sx={{ pt: 1, px: 1, alignItems: "center" }}
+              >
+                <Typography
+                  variant="h6"
+                  component="h2"
+                  flexGrow={0}
+                  flexShrink={0}
+                  sx={{ px: 1 }}
+                >
+                  <Trans
+                    i18nKey="play:open-setup-title"
+                    values={{
+                      opponentNickname:
+                        pendingStates!.opponent!.settings.nickname,
+                    }}
+                  />
+                </Typography>
+              </Stack>
+              <Box flexGrow={1} sx={{ display: "flex" }}>
+                <SaveViewer editor={openSetupEditor} />
+              </Box>
+            </Stack>
+          </Box>
+        </Modal>
+      ) : null}
       {errorDialogState != null ? (
         <Modal open={true}>
           <Box
