@@ -779,9 +779,11 @@ export default function BattleStarter({
                   onOpponentSettingsChange(lobbyMsg.setSettings);
                 }
 
-                const localMarshaledState = NegotiatedState.encode(
-                  pendingStatesRef.current!.own!.negotiatedState!
-                ).finish();
+                const localMarshaledState = await promisify(brotliCompress)(
+                  NegotiatedState.encode(
+                    pendingStatesRef.current!.own!.negotiatedState!
+                  ).finish()
+                );
 
                 const CHUNK_SIZE = 32 * 1024;
 
@@ -829,7 +831,9 @@ export default function BattleStarter({
                 }
 
                 const remoteMarshaledState = new Uint8Array(
-                  Buffer.concat(remoteChunks)
+                  await promisify(brotliDecompress)(
+                    new Uint8Array(Buffer.concat(remoteChunks))
+                  )
                 );
                 const remoteCommitment = makeCommitment(remoteMarshaledState);
 
@@ -844,9 +848,6 @@ export default function BattleStarter({
 
                 const remoteState =
                   NegotiatedState.decode(remoteMarshaledState);
-                const remoteSaveData = await promisify(brotliDecompress)(
-                  remoteState.saveData
-                );
 
                 const rngSeed =
                   pendingStatesRef.current!.own!.negotiatedState!.nonce.slice();
@@ -903,13 +904,13 @@ export default function BattleStarter({
                 )}-${linkCode}`;
 
                 const shadowSavePath = path.join(tempDir, prefix + ".sav");
-                await writeFile(shadowSavePath, remoteSaveData);
+                await writeFile(shadowSavePath, remoteState.saveData);
 
                 if (opponentGameSettings.openSetup) {
                   setOpenSetupEditor(
                     new bn6.Editor(
                       bn6.Editor.sramDumpToRaw(
-                        new Uint8Array(remoteSaveData).buffer
+                        new Uint8Array(remoteState.saveData).buffer
                       ),
                       opponentGameInfo.rom
                     )
@@ -1126,9 +1127,7 @@ export default function BattleStarter({
 
                                 negotiatedState = {
                                   nonce,
-                                  saveData: await promisify(brotliCompress)(
-                                    saveData
-                                  ),
+                                  saveData,
                                 };
 
                                 commitment = makeCommitment(
