@@ -469,7 +469,13 @@ export default function BattleStarter({
                     <TextField
                       variant="standard"
                       type="number"
-                      value={pendingStates?.own?.settings.inputDelay ?? 0}
+                      value={Math.min(
+                        Math.max(
+                          pendingStates?.own?.settings.inputDelay ?? 0,
+                          3
+                        ),
+                        10
+                      )}
                       disabled={pendingStates?.own?.negotiatedState != null}
                       onChange={(e) => {
                         changeLocalPendingState({
@@ -490,8 +496,8 @@ export default function BattleStarter({
                           inputDelay: Math.min(
                             10,
                             Math.max(
-                              0,
-                              Math.round(rtt! / 1000 / 1000 / 2 / 60) + 1
+                              3,
+                              Math.round(rtt! / 1000 / 1000 / 2 / 60) + 1 - 3
                             )
                           ),
                         });
