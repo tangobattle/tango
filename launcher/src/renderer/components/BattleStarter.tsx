@@ -383,7 +383,7 @@ export default function BattleStarter({
                     {rtt != null ? (
                       <Trans
                         i18nKey="play:connection-quality"
-                        values={{ rtt: Math.round(rtt) }}
+                        values={{ rtt: Math.round(rtt / 1000 / 1000) }}
                       />
                     ) : null}
                     {pendingStates?.opponent?.commitment != null ? (
@@ -719,7 +719,7 @@ export default function BattleStarter({
                   }
 
                   if (msg.connectionQualityInd != null) {
-                    setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
+                    setRtt(msg.connectionQualityInd.rtt);
                     continue;
                   }
 
