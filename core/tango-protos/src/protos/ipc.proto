@@ -14,10 +14,12 @@ message FromCoreMessage {
     State state = 1;
   }
   message SmuggleIndication { bytes data = 1; }
+  message ConnectionQualityIndication { uint64 rtt = 1; }
 
   oneof which {
     StateIndication state_ind = 1;
     SmuggleIndication smuggle_ind = 2;
+    ConnectionQualityIndication connection_quality_ind = 3;
   }
 }
 

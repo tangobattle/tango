@@ -7,6 +7,7 @@ export const protobufPackage = "tango.ipc";
 export interface FromCoreMessage {
   stateInd: FromCoreMessage_StateIndication | undefined;
   smuggleInd: FromCoreMessage_SmuggleIndication | undefined;
+  connectionQualityInd: FromCoreMessage_ConnectionQualityIndication | undefined;
 }
 
 export interface FromCoreMessage_StateIndication {
@@ -71,6 +72,10 @@ export interface FromCoreMessage_SmuggleIndication {
   data: Uint8Array;
 }
 
+export interface FromCoreMessage_ConnectionQualityIndication {
+  rtt: number;
+}
+
 export interface ToCoreMessage {
   startReq: ToCoreMessage_StartRequest | undefined;
   smuggleReq: ToCoreMessage_SmuggleRequest | undefined;
@@ -100,7 +105,11 @@ export interface ToCoreMessage_SmuggleRequest {
 }
 
 function createBaseFromCoreMessage(): FromCoreMessage {
-  return { stateInd: undefined, smuggleInd: undefined };
+  return {
+    stateInd: undefined,
+    smuggleInd: undefined,
+    connectionQualityInd: undefined,
+  };
 }
 
 export const FromCoreMessage = {
@@ -118,6 +127,12 @@ export const FromCoreMessage = {
       FromCoreMessage_SmuggleIndication.encode(
         message.smuggleInd,
         writer.uint32(18).fork()
+      ).ldelim();
+    }
+    if (message.connectionQualityInd !== undefined) {
+      FromCoreMessage_ConnectionQualityIndication.encode(
+        message.connectionQualityInd,
+        writer.uint32(26).fork()
       ).ldelim();
     }
     return writer;
@@ -142,6 +157,13 @@ export const FromCoreMessage = {
             reader.uint32()
           );
           break;
+        case 3:
+          message.connectionQualityInd =
+            FromCoreMessage_ConnectionQualityIndication.decode(
+              reader,
+              reader.uint32()
+            );
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -158,6 +180,11 @@ export const FromCoreMessage = {
       smuggleInd: isSet(object.smuggleInd)
         ? FromCoreMessage_SmuggleIndication.fromJSON(object.smuggleInd)
         : undefined,
+      connectionQualityInd: isSet(object.connectionQualityInd)
+        ? FromCoreMessage_ConnectionQualityIndication.fromJSON(
+            object.connectionQualityInd
+          )
+        : undefined,
     };
   },
 
@@ -170,6 +197,12 @@ export const FromCoreMessage = {
     message.smuggleInd !== undefined &&
       (obj.smuggleInd = message.smuggleInd
         ? FromCoreMessage_SmuggleIndication.toJSON(message.smuggleInd)
+        : undefined);
+    message.connectionQualityInd !== undefined &&
+      (obj.connectionQualityInd = message.connectionQualityInd
+        ? FromCoreMessage_ConnectionQualityIndication.toJSON(
+            message.connectionQualityInd
+          )
         : undefined);
     return obj;
   },
@@ -185,6 +218,13 @@ export const FromCoreMessage = {
     message.smuggleInd =
       object.smuggleInd !== undefined && object.smuggleInd !== null
         ? FromCoreMessage_SmuggleIndication.fromPartial(object.smuggleInd)
+        : undefined;
+    message.connectionQualityInd =
+      object.connectionQualityInd !== undefined &&
+      object.connectionQualityInd !== null
+        ? FromCoreMessage_ConnectionQualityIndication.fromPartial(
+            object.connectionQualityInd
+          )
         : undefined;
     return message;
   },
@@ -308,6 +348,63 @@ export const FromCoreMessage_SmuggleIndication = {
   >(object: I): FromCoreMessage_SmuggleIndication {
     const message = createBaseFromCoreMessage_SmuggleIndication();
     message.data = object.data ?? new Uint8Array();
+    return message;
+  },
+};
+
+function createBaseFromCoreMessage_ConnectionQualityIndication(): FromCoreMessage_ConnectionQualityIndication {
+  return { rtt: 0 };
+}
+
+export const FromCoreMessage_ConnectionQualityIndication = {
+  encode(
+    message: FromCoreMessage_ConnectionQualityIndication,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.rtt !== 0) {
+      writer.uint32(8).uint64(message.rtt);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): FromCoreMessage_ConnectionQualityIndication {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFromCoreMessage_ConnectionQualityIndication();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.rtt = longToNumber(reader.uint64() as Long);
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FromCoreMessage_ConnectionQualityIndication {
+    return {
+      rtt: isSet(object.rtt) ? Number(object.rtt) : 0,
+    };
+  },
+
+  toJSON(message: FromCoreMessage_ConnectionQualityIndication): unknown {
+    const obj: any = {};
+    message.rtt !== undefined && (obj.rtt = Math.round(message.rtt));
+    return obj;
+  },
+
+  fromPartial<
+    I extends Exact<DeepPartial<FromCoreMessage_ConnectionQualityIndication>, I>
+  >(object: I): FromCoreMessage_ConnectionQualityIndication {
+    const message = createBaseFromCoreMessage_ConnectionQualityIndication();
+    message.rtt = object.rtt ?? 0;
     return message;
   },
 };
@@ -790,6 +887,13 @@ export type Exact<P, I extends P> = P extends Builtin
         Exclude<keyof I, KeysOfUnion<P>>,
         never
       >;
+
+function longToNumber(long: Long): number {
+  if (long.gt(Number.MAX_SAFE_INTEGER)) {
+    throw new globalThis.Error("Value is larger than Number.MAX_SAFE_INTEGER");
+  }
+  return long.toNumber();
+}
 
 if (_m0.util.Long !== Long) {
   _m0.util.Long = Long as any;

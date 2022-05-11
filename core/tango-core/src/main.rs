@@ -46,6 +46,8 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .await?;
 
+            let mut ping_timer = tokio::time::interval(std::time::Duration::from_secs(1));
+
             loop {
                 tokio::select! {
                     msg = ipc_receiver.receive() => {
@@ -64,6 +66,13 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                     }
 
+                    _ = ping_timer.tick() => {
+                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+                        dc.send(&tango_core::protocol::Packet::Ping(tango_core::protocol::Ping {
+                            ts: now.as_nanos() as u64,
+                        }).serialize()?).await?;
+                    }
+
                     msg = dc.receive() => {
                         match msg {
                             Some(msg) => {
@@ -74,6 +83,24 @@ fn main() -> Result<(), anyhow::Error> {
                                         ipc_sender.send(tango_protos::ipc::FromCoreMessage {
                                             which: Some(tango_protos::ipc::from_core_message::Which::SmuggleInd(tango_protos::ipc::from_core_message::SmuggleIndication {
                                                 data,
+                                            }))
+                                        }).await?;
+                                    },
+                                    tango_core::protocol::Packet::Ping(tango_core::protocol::Ping {
+                                        ts
+                                    }) => {
+                                        dc.send(&tango_core::protocol::Packet::Pong(tango_core::protocol::Pong {
+                                            ts
+                                        }).serialize()?).await?;
+                                    },
+                                    tango_core::protocol::Packet::Pong(tango_core::protocol::Pong {
+                                        ts
+                                    }) => {
+                                        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
+                                        let then = std::time::Duration::from_nanos(ts);
+                                        ipc_sender.send(tango_protos::ipc::FromCoreMessage {
+                                            which: Some(tango_protos::ipc::from_core_message::Which::ConnectionQualityInd(tango_protos::ipc::from_core_message::ConnectionQualityIndication {
+                                                rtt: (now - then).as_nanos() as u64,
                                             }))
                                         }).await?;
                                     },

@@ -205,6 +205,7 @@ export default function BattleStarter({
     } | null;
   } | null>(null);
   const [changingCommitment, setChangingCommitment] = React.useState(false);
+  const [rtt, setRtt] = React.useState(-1);
 
   const gameInfo = React.useMemo(
     () =>
@@ -311,7 +312,8 @@ export default function BattleStarter({
                     ) : null}
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                    {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
+                    {pendingStates?.opponent?.settings.nickname ?? ""} (
+                    {Math.round(rtt)} ms)
                     {pendingStates?.opponent?.commitment != null ? (
                       <CheckCircleIcon
                         color="success"
@@ -586,6 +588,11 @@ export default function BattleStarter({
                     throw "expected ipc message";
                   }
 
+                  if (msg.connectionQualityInd != null) {
+                    setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
+                    continue;
+                  }
+
                   if (msg.smuggleInd == null) {
                     throw "expected smuggle indication";
                   }
@@ -673,6 +680,11 @@ export default function BattleStarter({
                     const msg = await core.receive();
                     if (msg == null) {
                       throw "expected ipc message";
+                    }
+
+                    if (msg.connectionQualityInd != null) {
+                      setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
+                      continue;
                     }
 
                     if (msg.smuggleInd == null) {

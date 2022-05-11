@@ -1,6 +1,6 @@
 use bincode::Options;
 
-pub const VERSION: u8 = 0x12;
+pub const VERSION: u8 = 0x13;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
@@ -18,6 +18,8 @@ lazy_static! {
 pub enum Packet {
     Hello(Hello),
     Smuggle(Smuggle),
+    Ping(Ping),
+    Pong(Pong),
     Input(Input),
 }
 
@@ -39,6 +41,16 @@ pub struct Hello {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Smuggle {
     pub data: Vec<u8>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Ping {
+    pub ts: u64,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Pong {
+    pub ts: u64,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
