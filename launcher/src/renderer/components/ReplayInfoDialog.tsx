@@ -1,6 +1,6 @@
 import path from "path";
 import React from "react";
-import { Trans } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
 import { app } from "@electron/remote";
 import CloseIcon from "@mui/icons-material/Close";
@@ -28,6 +28,11 @@ export default function ReplayInfoDialog({
   onClose: () => void;
 }) {
   const [editor, setEditor] = React.useState<Editor | null>(null);
+  const { i18n } = useTranslation();
+  const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  });
 
   React.useEffect(() => {
     (async () => {
@@ -78,15 +83,30 @@ export default function ReplayInfoDialog({
           direction="column"
         >
           <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
-            <Typography
-              variant="h6"
-              component="h2"
-              flexGrow={0}
-              flexShrink={0}
-              sx={{ px: 1 }}
-            >
-              {filename}
-            </Typography>
+            <Box>
+              {replayInfo.linkCode != null ? (
+                <>
+                  <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+                    <Trans
+                      i18nKey="replays:replay-title"
+                      values={{
+                        formattedDate: dateFormat.format(
+                          new Date(replayInfo.ts)
+                        ),
+                        nickname: replayInfo.remote!.nickname,
+                        linkCode: replayInfo.linkCode,
+                      }}
+                    />
+                    <br />
+                    <small>{dateFormat.format(new Date(replayInfo.ts))}</small>
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+                  {dateFormat.format(new Date(replayInfo.ts))}
+                </Typography>
+              )}
+            </Box>
             <Tooltip title={<Trans i18nKey="common:close" />}>
               <IconButton
                 sx={{ ml: "auto" }}

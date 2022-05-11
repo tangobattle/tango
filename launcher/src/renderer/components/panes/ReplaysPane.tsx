@@ -118,9 +118,9 @@ function ReplayItem({
         </Stack>
       }
     >
-      {replay.info.linkCode != null ? (
-        <ListItemText
-          primary={
+      <ListItemText
+        primary={
+          replay.info.linkCode != null ? (
             <>
               <Trans
                 i18nKey="replays:replay-title"
@@ -132,15 +132,12 @@ function ReplayItem({
               />{" "}
               <small>{dateFormat.format(new Date(replay.info.ts))}</small>
             </>
-          }
-          secondary={<>{replay.filename}</>}
-        />
-      ) : (
-        <ListItemText
-          primary={dateFormat.format(new Date(replay.info.ts))}
-          secondary={<>{replay.filename}</>}
-        />
-      )}
+          ) : (
+            <>{dateFormat.format(new Date(replay.info.ts))}</>
+          )
+        }
+        secondary={<>{replay.filename}</>}
+      />
     </ListItem>
   );
 }
