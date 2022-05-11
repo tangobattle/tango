@@ -242,7 +242,7 @@ export default function BattleStarter({
     } | null;
   } | null>(null);
   const [changingCommitment, setChangingCommitment] = React.useState(false);
-  const [rtt, setRtt] = React.useState(-1);
+  const [rtt, setRtt] = React.useState<number | null>(null);
 
   const [openSetupEditor, setOpenSetupEditor] =
     React.useState<bn6.Editor | null>(null);
@@ -353,10 +353,12 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                     {pendingStates?.opponent?.settings.nickname ?? ""}
-                    <Trans
-                      i18nKey="play:connection-quality"
-                      values={{ rtt: Math.round(rtt) }}
-                    />
+                    {rtt != null ? (
+                      <Trans
+                        i18nKey="play:connection-quality"
+                        values={{ rtt: Math.round(rtt) }}
+                      />
+                    ) : null}
                     {pendingStates?.opponent?.commitment != null ? (
                       <CheckCircleIcon
                         color="success"
@@ -478,7 +480,7 @@ export default function BattleStarter({
                       InputProps={{ inputProps: { min: 3, max: 10 } }}
                     />{" "}
                     <Button
-                      disabled={rtt < 0}
+                      disabled={rtt == null}
                       size="small"
                       color="inherit"
                       variant="contained"
@@ -489,7 +491,7 @@ export default function BattleStarter({
                             10,
                             Math.max(
                               0,
-                              Math.round(rtt / 1000 / 1000 / 2 / 60) + 1
+                              Math.round(rtt! / 1000 / 1000 / 2 / 60) + 1
                             )
                           ),
                         });
