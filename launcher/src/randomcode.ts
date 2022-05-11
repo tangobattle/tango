@@ -455,6 +455,7 @@ const ENDS = [
   "wswalk",
   "x2",
   "yeastmode",
+  "yeet",
   "youareworthy",
   "yourewinner",
 ];
