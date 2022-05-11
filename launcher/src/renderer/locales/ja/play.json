@@ -14,7 +14,7 @@
   "match-type.triple": "トリプル",
   "rescan": "再スキャン",
   "select-save": "セーブファイル",
-  "no-save-selected": "選択したセーブファイルがない",
+  "no-save-selected": "セーブファイルが選択されていません",
   "tab.navicust": "ナビカス",
   "tab.folder": "フォルダー",
   "tab.modcards": "改造カード",
