@@ -76,7 +76,7 @@ function useGetGameTitle() {
 
   return React.useCallback(
     (gameInfo: GameInfo) =>
-      `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]} ${
+      `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]}${
         gameInfo.patch != null
           ? ` + ${patches[gameInfo.patch.name].title} v${
               gameInfo.patch.version
