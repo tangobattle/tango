@@ -38,3 +38,9 @@ i18n
   });
 
 export default i18n;
+
+export const LANGUAGES = [
+  { code: "en", name: "English" },
+  { code: "ja", name: "日本語" },
+  { code: "zh-Hans", name: "简体中文" },
+];

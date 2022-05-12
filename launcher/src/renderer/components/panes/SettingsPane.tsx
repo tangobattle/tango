@@ -21,6 +21,7 @@ import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
 import { Keymaptool } from "../../../input";
+import { LANGUAGES } from "../../i18n";
 import { useConfig } from "../ConfigContext";
 
 const KEYS = [
@@ -240,9 +241,11 @@ function GeneralTab({ active }: { active: boolean }) {
               }}
               label={<Trans i18nKey="settings:language" />}
             >
-              <MenuItem value="en">English</MenuItem>
-              <MenuItem value="ja">日本語</MenuItem>
-              <MenuItem value="zh-Hans">简体中文</MenuItem>
+              {LANGUAGES.map(({ code, name }) => (
+                <MenuItem key={code} value={code}>
+                  {name}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
           <FormControl fullWidth size="small">
