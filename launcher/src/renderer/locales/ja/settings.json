@@ -2,7 +2,7 @@
     "tab.general": "一般設定",
     "nickname": "ニックネーム",
     "language": "言語",
-    "language.default": "システムのデフォルト",
+    "language.default": "システムデフォルト",
     "tab.keymapping": "キーバインド",
     "keymapping.up": "上",
     "keymapping.down": "下",

@@ -39,8 +39,8 @@
   "unavailable-game": "このゲームを持っていません。",
   "mismatching-open-setup": "相手と自分の構築を公開の設定が一致していません。",
   "mismatching-match-type": "相手と自分のマッチタイプの設定が一致していません。",
-  "generate-random-code": "ランダムリンクコードを生成",
+  "generate-random-code": "ランダムリンクコードを作成",
   "connection-quality": "（{{rtt}}ms）",
   "auto-input-delay": "自動選択",
-  "open-setup-title": "{{opponentNickname}}の構築"
+  "open-setup-title": "{{opponentNickname}}さんの構築"
 }
