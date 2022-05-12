@@ -208,37 +208,49 @@ export default function SavesPane({ active }: { active: boolean }) {
                   setSaveName(e.target.value);
                 }}
               >
-                {romNames.map((romName) => {
+                {Object.keys(KNOWN_ROMS).flatMap((romName) => {
                   const saveNames = groupedSaves[romName] || [];
+                  if (saveNames.length == 0) {
+                    return [];
+                  }
+
                   saveNames.sort();
 
                   return [
-                    <ListSubheader key="title" sx={{ userSelect: "none" }}>
-                      {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
-                    </ListSubheader>,
-                    ...saveNames.map((v) => {
-                      return (
-                        <MenuItem key={v} value={v}>
-                          {availableGames.length > 0 &&
-                          !availableGames.some((g) => g.rom == romName) ? (
-                            // TODO: Distinguish between unsupported vs incompatible.
-                            <Tooltip
-                              title={<Trans i18nKey="play:unsupported-game" />}
-                            >
-                              <WarningIcon
-                                color="warning"
-                                sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
-                                  verticalAlign: "middle",
-                                }}
-                              />
-                            </Tooltip>
-                          ) : null}{" "}
-                          {v}
-                        </MenuItem>
-                      );
-                    }),
+                    [
+                      <ListSubheader key="title" sx={{ userSelect: "none" }}>
+                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
+                      </ListSubheader>,
+                      ...saveNames.map((v) => {
+                        return (
+                          <MenuItem
+                            key={v}
+                            value={v}
+                            disabled={romNames.indexOf(romName) == -1}
+                          >
+                            {availableGames.length > 0 &&
+                            !availableGames.some((g) => g.rom == romName) ? (
+                              // TODO: Distinguish between unsupported vs incompatible.
+                              <Tooltip
+                                title={
+                                  <Trans i18nKey="play:unsupported-game" />
+                                }
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : null}{" "}
+                            {v}
+                          </MenuItem>
+                        );
+                      }),
+                    ],
                   ];
                 })}
               </Select>
