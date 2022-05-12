@@ -142,6 +142,12 @@ function AboutTab({ active }: { active: boolean }) {
               Network 6.
             </li>
             <li>
+              <Link href="https://twitter.com/seventhfonist42" target="_blank">
+                Nonstopmop
+              </Link>{" "}
+              for contributing to the Japanese translation.
+            </li>
+            <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
               </Link>
