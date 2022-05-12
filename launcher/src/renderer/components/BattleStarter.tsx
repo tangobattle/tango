@@ -744,7 +744,6 @@ export default function BattleStarter({
           <Box
             sx={{
               px: 1,
-              pb: 1,
             }}
           >
             <Table size="small">
@@ -1046,7 +1045,7 @@ export default function BattleStarter({
               });
           }}
         >
-          <Box flexGrow={1} flexShrink={0}>
+          <Box flexGrow={1} flexShrink={0} sx={{ pt: 1 }}>
             <TextField
               disabled={pendingStates != null}
               size="small"

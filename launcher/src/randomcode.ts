@@ -63,6 +63,7 @@ const STARTS = [
   "lacking",
   "legsgo",
   "licenseto",
+  "ligma",
   "lookup",
   "lucky",
   "lv100",
