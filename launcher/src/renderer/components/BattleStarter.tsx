@@ -512,18 +512,16 @@ export default function BattleStarter({
                     <TextField
                       variant="standard"
                       type="number"
-                      value={Math.min(
-                        Math.max(
-                          pendingStates?.own?.settings.inputDelay ?? 0,
-                          3
-                        ),
-                        10
-                      )}
+                      value={pendingStates?.own?.settings.inputDelay ?? 0}
                       disabled={pendingStates?.own?.negotiatedState != null}
                       onChange={(e) => {
+                        let v = parseInt(e.target.value);
+                        if (isNaN(v)) {
+                          v = 0;
+                        }
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,
-                          inputDelay: parseInt(e.target.value),
+                          inputDelay: Math.min(Math.max(v, 3), 10),
                         });
                       }}
                       InputProps={{ inputProps: { min: 3, max: 10 } }}
