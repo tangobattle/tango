@@ -1,13 +1,13 @@
 {
-  "welcome": "It looks like this is the first time you've used Tango. Welcome!",
-  "welcome-2": "There's just a few steps you'll need to complete before you can start playing.",
-  "step-1-title": "Place your ROMs in {{path}}.",
-  "step-1-description": "Make sure they're pristine, unpatched ROMs.",
-  "step-1-error": "Could not find any supported ROMs. Please make sure they're unpatched!",
-  "step-2-title": "Place your saves in {{path}}.",
-  "step-2-description": "Make sure they match the games you've put in the ROMs folder.",
-  "step-2-error": "Could not find any supported saves. Please make sure they correspond to the ROMs.",
-  "step-3-title": "You're ready to go!",
-  "open-folder": "Open folder",
-  "next": "I'm done!"
+  "welcome": "初めての使用みたいですね！Tangoにようこそ！",
+  "welcome-2": "対戦できる前にTangoの初期設定をガイドしていきます。",
+  "step-1-title": "ROMを{{path}}に入れてください。",
+  "step-1-description": "パッチが当てられてない状態で入れてください。",
+  "step-1-error": "使用可能なROMが見つかりません。パッチが当てられていないかご確認ください。",
+  "step-2-title": "セーブファイルを{{path}}に入れてください。",
+  "step-2-description": "セーブファイルがROMフォルダに入れたゲームと一致しているかご確認ください。",
+  "step-2-error": "使用可能なセーブファイルが見つかりません。ROMと一致しているセーブファイルが入っているかご確認ください。",
+  "step-3-title": "以上です！",
+  "open-folder": "フォルダを開く",
+  "next": "設定完了です！"
 }
