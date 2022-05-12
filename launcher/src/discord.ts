@@ -72,8 +72,9 @@ rpc.on("ready", () => {
   setDone();
   setInterval(() => {
     updateActivity();
-  }, 15e3);
+  }, 15 * 1000);
 
+  // HACK: The types are actually incorrect, so we do this as a hack sadly.
   rpc.subscribe("ACTIVITY_JOIN", undefined as any);
 });
 
