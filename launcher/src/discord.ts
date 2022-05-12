@@ -16,10 +16,12 @@ const ACTIVITY_TEMPLATE = {
 export function setLinkCode(code: string, gameTitle: string | null) {
   activity = {
     ...ACTIVITY_TEMPLATE,
-    details: gameTitle ?? undefined,
     state: "Looking for match",
+    details: gameTitle ?? undefined,
     joinSecret: code,
     partyId: `party:${code}`,
+    partySize: 1,
+    partyMax: 2,
     largeImageKey: undefined, // TODO
     largeImageText: gameTitle ?? undefined,
   };
@@ -31,6 +33,8 @@ export function setInLobby(gameTitle: string | null) {
     ...ACTIVITY_TEMPLATE,
     state: "In lobby",
     details: gameTitle ?? undefined,
+    partySize: 2,
+    partyMax: 2,
     largeImageKey: undefined, // TODO
     largeImageText: gameTitle ?? undefined,
   };
@@ -40,8 +44,10 @@ export function setInLobby(gameTitle: string | null) {
 export function setInProgress(startTime: Date, gameTitle: string) {
   activity = {
     ...ACTIVITY_TEMPLATE,
-    details: gameTitle,
     state: "Match in progress",
+    details: gameTitle,
+    partySize: 2,
+    partyMax: 2,
     startTimestamp: startTime.valueOf(),
     largeImageKey: undefined, // TODO
     largeImageText: gameTitle ?? undefined,
@@ -68,9 +74,11 @@ rpc.on("ready", () => {
     updateActivity();
   }, 15e3);
 
-  rpc.subscribe("ACTIVITY_JOIN", (d: { secret: string }) => {
-    events.emit("activityjoin", d);
-  });
+  rpc.subscribe("ACTIVITY_JOIN", undefined as any);
+});
+
+rpc.on("ACTIVITY_JOIN", (d: { secret: string }) => {
+  events.emit("activityjoin", d);
 });
 
 rpc.login({ clientId: APP_ID });
