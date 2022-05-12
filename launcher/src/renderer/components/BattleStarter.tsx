@@ -588,7 +588,6 @@ function GenerateRandomCodeButton({
 }
 
 interface PendingStates {
-  core: ipc.Core;
   abortController: AbortController;
   own: {
     settings: SetSettings;
@@ -628,6 +627,8 @@ export default function BattleStarter({
     exitStatus: ipc.ExitStatus;
   } | null>(null);
 
+  const coreRef = React.useRef<ipc.Core | null>(null);
+
   const [linkCode, setLinkCode] = React.useState("");
   const [state, setState] =
     React.useState<FromCoreMessage_StateIndication_State>(
@@ -655,34 +656,31 @@ export default function BattleStarter({
 
   const previousGameInfo = usePrevious(gameInfo);
 
-  const changeLocalPendingState = React.useCallback(
-    (settings: SetSettings) => {
-      setPendingStates((pendingStates) => ({
-        ...pendingStates!,
-        own: {
-          ...pendingStates!.own!,
-          settings,
-        },
-        opponent: {
-          ...pendingStates!.opponent!,
-          commitment: null,
-        },
-      }));
+  const changeLocalPendingState = React.useCallback((settings: SetSettings) => {
+    setPendingStates((pendingStates) => ({
+      ...pendingStates!,
+      own: {
+        ...pendingStates!.own!,
+        settings,
+      },
+      opponent: {
+        ...pendingStates!.opponent!,
+        commitment: null,
+      },
+    }));
 
-      pendingStates!.core.send({
-        smuggleReq: {
-          data: Message.encode({
-            setSettings: settings,
-            commit: undefined,
-            uncommit: undefined,
-            chunk: undefined,
-          }).finish(),
-        },
-        startReq: undefined,
-      });
-    },
-    [pendingStates, setPendingStates]
-  );
+    coreRef.current!.send({
+      smuggleReq: {
+        data: Message.encode({
+          setSettings: settings,
+          commit: undefined,
+          uncommit: undefined,
+          chunk: undefined,
+        }).finish(),
+      },
+      startReq: undefined,
+    });
+  }, []);
 
   React.useEffect(() => {
     if (
@@ -1013,9 +1011,9 @@ export default function BattleStarter({
                 signal: abortController.signal,
               }
             );
+            coreRef.current = core;
 
             setPendingStates({
-              core,
               abortController,
               own: null,
               opponent: null,
@@ -1042,6 +1040,7 @@ export default function BattleStarter({
                   onOpponentSettingsChange(null);
                   setOpenSetupEditor(null);
                   setPendingStates(null);
+                  coreRef.current = null;
                   onExit();
                 })();
               });
@@ -1178,7 +1177,7 @@ export default function BattleStarter({
                               }
 
                               if (commitment != null) {
-                                await pendingStates.core.send({
+                                await coreRef.current!.send({
                                   smuggleReq: {
                                     data: Message.encode({
                                       setSettings: undefined,
@@ -1192,7 +1191,7 @@ export default function BattleStarter({
                                   startReq: undefined,
                                 });
                               } else {
-                                await pendingStates.core.send({
+                                await coreRef.current!.send({
                                   smuggleReq: {
                                     data: Message.encode({
                                       setSettings: undefined,
