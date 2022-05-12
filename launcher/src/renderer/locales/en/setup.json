@@ -5,8 +5,8 @@
   "step-1-description": "Make sure they're pristine, unpatched ROMs.",
   "step-1-error": "Could not find any supported ROMs. Please make sure they're unpatched!",
   "step-2-title": "Place your saves in {{path}}",
-  "step-2-description": "Make sure they match the games you've put in the ROMs folder.",
-  "step-2-error": "Could not find any supported saves. Please make sure they correspond to the ROMs.",
+  "step-2-description": "Make sure they're compatible with the games you've put in the ROMs folder.",
+  "step-2-error": "Could not find any supported saves. Please make sure they compatible.",
   "step-3-title": "You're ready to go!",
   "open-folder": "Open folder",
   "next": "I'm done!"

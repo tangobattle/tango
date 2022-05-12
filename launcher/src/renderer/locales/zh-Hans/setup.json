@@ -5,9 +5,9 @@
   "step-1-description": "确保ROM是原始和没打补丁的。",
   "step-1-error": "找不到任何支持的ROM。请确保ROM是没打补丁的!",
   "step-2-title": "请将你的游戏存档放入 {{path}}",
-  "step-2-description": "确保游戏存档与你放在ROM文件夹中的游戏相匹配。",
-  "step-2-error": "找不到任何支持的游戏存档。请确保游戏存档你的ROM相匹配。",
-  "step-3-title": "准备好了!",
+  "step-2-description": "确保游戏存档与你放在ROM文件夹中的游戏兼容。",
+  "step-2-error": "找不到任何支持的游戏存档。请确保游戏存档与你的ROM兼容。",
+  "step-3-title": "全部完成!",
   "open-folder": "打开文件夹",
   "next": "下一步"
 }
