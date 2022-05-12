@@ -14,6 +14,7 @@ import Step from "@mui/material/Step";
 import StepContent from "@mui/material/StepContent";
 import StepLabel from "@mui/material/StepLabel";
 import Stepper from "@mui/material/Stepper";
+import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ThemeProvider from "@mui/system/ThemeProvider";
 
@@ -50,14 +51,22 @@ function ReadyAppBody() {
 }
 
 function SetupAppBody() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
 
+  const { config, save: saveConfig } = useConfig();
   const { roms, rescan: rescanROMs } = useROMs();
   const { saves, rescan: rescanSaves } = useSaves();
 
   const activeStep =
-    Object.keys(roms).length > 0 ? (Object.keys(saves).length > 0 ? 2 : 1) : 0;
+    config.nickname != null
+      ? Object.keys(roms).length > 0
+        ? Object.keys(saves).length > 0
+          ? 3
+          : 2
+        : 1
+      : 0;
 
+  const [nickname, setNickname] = React.useState("");
   const [romsScanState, setROMsScanState] = React.useState<
     "init" | "pending" | "done"
   >("init");
@@ -115,18 +124,55 @@ function SetupAppBody() {
         <Stepper orientation="vertical" activeStep={activeStep}>
           <Step completed={activeStep > 0}>
             <StepLabel>
-              <Trans
-                i18nKey="setup:step-1-title"
-                values={{ path: getROMsPath(app) }}
-              />
+              <Trans i18nKey="setup:step-1-title" />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:step-1-description" />
               </Typography>
-              {romsScanState == "done" && activeStep == 0 ? (
+              <Stack
+                spacing={1}
+                direction="row"
+                component="form"
+                sx={{ mb: 0 }}
+                onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
+                  e.preventDefault();
+                  saveConfig((config) => ({ ...config, nickname }));
+                }}
+              >
+                <TextField
+                  variant="standard"
+                  size="small"
+                  onChange={(e) => {
+                    setNickname(e.target.value.trim());
+                  }}
+                  placeholder={t("setup:nickname")}
+                />
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={nickname.length == 0}
+                  type="submit"
+                >
+                  <Trans i18nKey="setup:next" />
+                </Button>
+              </Stack>
+            </StepContent>
+          </Step>
+          <Step completed={activeStep > 1}>
+            <StepLabel>
+              <Trans
+                i18nKey="setup:step-2-title"
+                values={{ path: getROMsPath(app) }}
+              />
+            </StepLabel>
+            <StepContent>
+              <Typography sx={{ mb: 2 }}>
+                <Trans i18nKey="setup:step-2-description" />
+              </Typography>
+              {romsScanState == "done" && activeStep == 1 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-1-error" />
+                  <Trans i18nKey="setup:step-2-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
@@ -156,20 +202,20 @@ function SetupAppBody() {
               </Stack>
             </StepContent>
           </Step>
-          <Step completed={activeStep > 1}>
+          <Step completed={activeStep > 2}>
             <StepLabel>
               <Trans
-                i18nKey="setup:step-2-title"
+                i18nKey="setup:step-3-title"
                 values={{ path: getSavesPath(app) }}
               />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-2-description" />
+                <Trans i18nKey="setup:step-3-description" />
               </Typography>
-              {savesScanState == "done" && activeStep == 1 ? (
+              {savesScanState == "done" && activeStep == 2 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-2-error" />
+                  <Trans i18nKey="setup:step-3-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
@@ -199,9 +245,9 @@ function SetupAppBody() {
               </Stack>
             </StepContent>
           </Step>
-          <Step completed={activeStep > 2}>
+          <Step completed={activeStep > 3}>
             <StepLabel>
-              <Trans i18nKey="setup:step-3-title" />
+              <Trans i18nKey="setup:step-4-title" />
             </StepLabel>
           </Step>
         </Stepper>

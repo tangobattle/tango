@@ -15,7 +15,7 @@ export interface Keymapping {
 }
 
 export interface Config {
-  nickname: string;
+  nickname: string | null;
   theme: "dark" | "light";
   language: string | null;
   updateChannel: string;
@@ -27,7 +27,7 @@ export interface Config {
 }
 
 export const DEFAULT: Config = {
-  nickname: "Player T",
+  nickname: null,
   theme: "light",
   language: null,
   updateChannel: "latest",

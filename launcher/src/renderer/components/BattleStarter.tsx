@@ -266,7 +266,9 @@ async function runCallback(
     });
   } else {
     // Need to negotiate settings with the opponent.
-    const myPendingSettings = defaultMatchSettings(ref.current.config.nickname);
+    const myPendingSettings = defaultMatchSettings(
+      ref.current.config.nickname!
+    );
     myPendingSettings.gameInfo = ref.current.gameInfo;
     myPendingSettings.availableGames =
       myPendingSettings.gameInfo != null
