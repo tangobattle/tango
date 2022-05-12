@@ -1,5 +1,5 @@
 {
-  "welcome": "看起来这是您第一次使用 Tango。欢迎！",
+  "welcome": "看起来这是您第一次使用Tango。欢迎！",
   "welcome-2": "在你开始游戏之前，你只需要完成几个步骤。",
   "step-1-title": "请将你的ROM放入 {{path}}",
   "step-1-description": "确保ROM是原始和没打补丁的。",
