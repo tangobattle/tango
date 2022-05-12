@@ -3,8 +3,6 @@ import EventEmitter from "events";
 
 const APP_ID = "974089681333534750";
 
-const rpc = new DiscordRPC.Client({ transport: "ipc" });
-
 let activity: DiscordRPC.Presence | undefined = undefined;
 let ready = false;
 
@@ -60,29 +58,37 @@ export function setDone() {
   updateActivity();
 }
 
+let rpc: DiscordRPC.Client | null = null;
+
 function updateActivity() {
-  if (!ready) {
+  if (rpc == null || !ready) {
     return;
   }
   rpc.setActivity(activity);
 }
 
-rpc.on("ready", () => {
-  ready = true;
-  setDone();
-  setInterval(() => {
-    updateActivity();
-  }, 15 * 1000);
+try {
+  rpc = new DiscordRPC.Client({ transport: "ipc" });
 
-  // HACK: The types are actually incorrect, so we do this as a hack sadly.
-  rpc.subscribe("ACTIVITY_JOIN", undefined as any);
-});
+  rpc.on("ready", () => {
+    ready = true;
+    setDone();
+    setInterval(() => {
+      updateActivity();
+    }, 15 * 1000);
 
-rpc.on("ACTIVITY_JOIN", (d: { secret: string }) => {
-  events.emit("activityjoin", d);
-});
+    // HACK: The types are actually incorrect, so we do this as a hack sadly.
+    rpc!.subscribe("ACTIVITY_JOIN", undefined as any);
+  });
 
-rpc.login({ clientId: APP_ID });
+  rpc.on("ACTIVITY_JOIN", (d: { secret: string }) => {
+    events.emit("activityjoin", d);
+  });
+
+  rpc.login({ clientId: APP_ID });
+} catch (e) {
+  console.error("failed to initialize discord RPC", e);
+}
 
 export class Events extends EventEmitter {
   constructor() {
