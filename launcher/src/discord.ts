@@ -1,4 +1,5 @@
 import DiscordRPC from "discord-rpc";
+import EventEmitter from "events";
 
 const APP_ID = "974089681333534750";
 
@@ -67,9 +68,22 @@ rpc.on("ready", () => {
     updateActivity();
   }, 15e3);
 
-  rpc.subscribe("ACTIVITY_JOIN", (d) => {
-    console.log(d);
+  rpc.subscribe("ACTIVITY_JOIN", (d: { secret: string }) => {
+    events.emit("activityjoin", d);
   });
 });
 
 rpc.login({ clientId: APP_ID });
+
+export class Events extends EventEmitter {
+  constructor() {
+    super();
+  }
+}
+
+export const events = new Events();
+
+export declare interface Events {
+  on(event: "activityjoin", f: (d: { secret: string }) => void): this;
+  off(event: "activityjoin", f: (d: { secret: string }) => void): this;
+}

@@ -188,12 +188,12 @@ function makeCommitment(s: Uint8Array): Uint8Array {
 
 async function runCallback(
   core: ipc.Core,
+  linkCode: string | null,
   ref: React.MutableRefObject<{
     getAvailableGames: (gameInfo: GameInfo) => SetSettings["availableGames"];
     getGameTitle: (gameInfo: GameInfo) => string;
     getPatchPath: (path: { name: string; version: string }) => string;
     getROMPath: (romName: string) => string;
-    linkCode: string | null;
     onOpponentSettingsChange: (settings: SetSettings | null) => void;
     pendingStates: PendingStates | null;
     setPendingStates: React.Dispatch<
@@ -210,9 +210,9 @@ async function runCallback(
     setOpenSetupEditor: React.Dispatch<React.SetStateAction<bn6.Editor | null>>;
   }>
 ) {
-  if (ref.current.linkCode != null) {
+  if (linkCode != null) {
     discord.setLinkCode(
-      ref.current.linkCode,
+      linkCode,
       ref.current.gameInfo != null
         ? ref.current.getGameTitle(ref.current.gameInfo)
         : null
@@ -235,7 +235,7 @@ async function runCallback(
     }
   }
 
-  if (ref.current.linkCode == null) {
+  if (linkCode == null) {
     // No link code to worry about, just start the game with no settings.
     const outROMPath = path.join(
       ref.current.tempDir,
@@ -484,9 +484,7 @@ async function runCallback(
     const prefix = `${datefns.format(
       now,
       "yyyyMMddHHmmss"
-    )}-vs-${encodeURIComponent(opponentGameSettings.nickname)}-${
-      ref.current.linkCode
-    }`;
+    )}-vs-${encodeURIComponent(opponentGameSettings.nickname)}-${linkCode}`;
 
     const shadowSavePath = path.join(ref.current.tempDir, prefix + ".sav");
     await writeFile(shadowSavePath, remoteState.saveData);
@@ -518,7 +516,7 @@ async function runCallback(
         replayMetadata: enc.encode(
           JSON.stringify({
             ts: now.valueOf(),
-            linkCode: ref.current.linkCode,
+            linkCode: linkCode,
             rom: ownGameInfo.rom,
             patch:
               ownGameInfo.patch != null
@@ -740,7 +738,6 @@ export default function BattleStarter({
     getGameTitle,
     getPatchPath,
     getROMPath,
-    linkCode: linkCode != "" ? linkCode : null,
     onOpponentSettingsChange,
     pendingStates,
     setPendingStates,
@@ -754,6 +751,69 @@ export default function BattleStarter({
   };
   const runCallbackDataRef = React.useRef(runCallbackData);
   runCallbackDataRef.current = runCallbackData;
+
+  const start = (linkCode: string | null) => {
+    setLinkCode(linkCode ?? "");
+
+    const abortController = new AbortController();
+
+    const core = new ipc.Core(
+      config.keymapping,
+      config.signalingConnectAddr,
+      config.iceServers,
+      linkCode != "" ? linkCode : null,
+      {
+        env: {
+          WGPU_BACKEND:
+            config.wgpuBackend != null ? config.wgpuBackend : undefined,
+          RUST_LOG: config.rustLogFilter,
+          RUST_BACKTRACE: "1",
+        },
+        signal: abortController.signal,
+      }
+    );
+    coreRef.current = core;
+
+    setPendingStates({
+      abortController,
+      own: null,
+      opponent: null,
+    });
+
+    runCallback(core, linkCode, runCallbackDataRef)
+      .catch((e) => {
+        console.error(e);
+      })
+      .finally(() => {
+        if (abortController != null) {
+          abortController.abort();
+        }
+        discord.setDone();
+        (async () => {
+          const exitStatus = await core.wait();
+          const stderr = core.getStderr();
+          if (exitStatus.exitCode != 0 && exitStatus.signalCode != "SIGTERM") {
+            setErrorDialogState({ stderr, exitStatus });
+          }
+          onReadyChange(false);
+          onOpponentSettingsChange(null);
+          setOpenSetupEditor(null);
+          setPendingStates(null);
+          coreRef.current = null;
+          onExit();
+        })();
+      });
+  };
+
+  React.useEffect(() => {
+    const activityJoinCallback = (d: { secret: string }) => {
+      start(d.secret);
+    };
+    discord.events.on("activityjoin", activityJoinCallback);
+    return () => {
+      discord.events.off("activityjoin", activityJoinCallback);
+    };
+  });
 
   return (
     <>
@@ -1017,58 +1077,7 @@ export default function BattleStarter({
           component="form"
           onSubmit={(e: any) => {
             e.preventDefault();
-
-            const abortController = new AbortController();
-
-            const core = new ipc.Core(
-              config.keymapping,
-              config.signalingConnectAddr,
-              config.iceServers,
-              linkCode != "" ? linkCode : null,
-              {
-                env: {
-                  WGPU_BACKEND:
-                    config.wgpuBackend != null ? config.wgpuBackend : undefined,
-                  RUST_LOG: config.rustLogFilter,
-                  RUST_BACKTRACE: "1",
-                },
-                signal: abortController.signal,
-              }
-            );
-            coreRef.current = core;
-
-            setPendingStates({
-              abortController,
-              own: null,
-              opponent: null,
-            });
-
-            runCallback(core, runCallbackDataRef)
-              .catch((e) => {
-                console.error(e);
-              })
-              .finally(() => {
-                if (abortController != null) {
-                  abortController.abort();
-                }
-                discord.setDone();
-                (async () => {
-                  const exitStatus = await core.wait();
-                  const stderr = core.getStderr();
-                  if (
-                    exitStatus.exitCode != 0 &&
-                    exitStatus.signalCode != "SIGTERM"
-                  ) {
-                    setErrorDialogState({ stderr, exitStatus });
-                  }
-                  onReadyChange(false);
-                  onOpponentSettingsChange(null);
-                  setOpenSetupEditor(null);
-                  setPendingStates(null);
-                  coreRef.current = null;
-                  onExit();
-                })();
-              });
+            start(linkCode);
           }}
         >
           <Box flexGrow={1} flexShrink={0}>
