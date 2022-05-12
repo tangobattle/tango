@@ -42,6 +42,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { Config } from "../../config";
+import * as discord from "../../discord";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
@@ -192,7 +193,7 @@ async function runCallback(
     getGameTitle: (gameInfo: GameInfo) => string;
     getPatchPath: (path: { name: string; version: string }) => string;
     getROMPath: (romName: string) => string;
-    linkCode: string;
+    linkCode: string | null;
     onOpponentSettingsChange: (settings: SetSettings | null) => void;
     pendingStates: PendingStates | null;
     setPendingStates: React.Dispatch<
@@ -209,6 +210,15 @@ async function runCallback(
     setOpenSetupEditor: React.Dispatch<React.SetStateAction<bn6.Editor | null>>;
   }>
 ) {
+  if (ref.current.linkCode != null) {
+    discord.setLinkCode(
+      ref.current.linkCode,
+      ref.current.gameInfo != null
+        ? ref.current.getGameTitle(ref.current.gameInfo)
+        : null
+    );
+  }
+
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const msg = await core.receive();
@@ -225,7 +235,7 @@ async function runCallback(
     }
   }
 
-  if (ref.current.linkCode == "") {
+  if (ref.current.linkCode == null) {
     // No link code to worry about, just start the game with no settings.
     const outROMPath = path.join(
       ref.current.tempDir,
@@ -267,6 +277,12 @@ async function runCallback(
       opponent: null,
       own: { negotiatedState: null, settings: myPendingSettings },
     }));
+
+    discord.setInLobby(
+      myPendingSettings.gameInfo != null
+        ? ref.current.getGameTitle(myPendingSettings.gameInfo)
+        : null
+    );
 
     await core.send({
       smuggleReq: {
@@ -538,6 +554,8 @@ async function runCallback(
       smuggleReq: undefined,
       startReq,
     });
+
+    discord.setInProgress(new Date(), ref.current.getGameTitle(ownGameInfo));
   }
 
   // eslint-disable-next-line no-constant-condition
@@ -656,6 +674,8 @@ export default function BattleStarter({
 
   const previousGameInfo = usePrevious(gameInfo);
 
+  const getGameTitle = useGetGameTitle();
+
   const changeLocalPendingState = React.useCallback((settings: SetSettings) => {
     setPendingStates((pendingStates) => ({
       ...pendingStates!,
@@ -683,11 +703,16 @@ export default function BattleStarter({
   }, []);
 
   React.useEffect(() => {
-    if (
-      pendingStates != null &&
-      pendingStates.own != null &&
-      !isEqual(gameInfo, previousGameInfo)
-    ) {
+    if (isEqual(gameInfo, previousGameInfo)) {
+      return;
+    }
+
+    discord.setLinkCode(
+      linkCode,
+      gameInfo != null ? getGameTitle(gameInfo) : null
+    );
+
+    if (pendingStates != null && pendingStates.own != null) {
       changeLocalPendingState({
         ...pendingStates.own.settings,
         gameInfo,
@@ -695,6 +720,8 @@ export default function BattleStarter({
       });
     }
   }, [
+    linkCode,
+    getGameTitle,
     gameInfo,
     previousGameInfo,
     changeLocalPendingState,
@@ -708,14 +735,12 @@ export default function BattleStarter({
     onReadyChange(myPendingState?.negotiatedState != null);
   }, [myPendingState, onReadyChange]);
 
-  const getGameTitle = useGetGameTitle();
-
   const runCallbackData = {
     getAvailableGames,
     getGameTitle,
     getPatchPath,
     getROMPath,
-    linkCode,
+    linkCode: linkCode != "" ? linkCode : null,
     onOpponentSettingsChange,
     pendingStates,
     setPendingStates,
@@ -1026,6 +1051,7 @@ export default function BattleStarter({
                 if (abortController != null) {
                   abortController.abort();
                 }
+                discord.setDone();
                 (async () => {
                   const exitStatus = await core.wait();
                   const stderr = core.getStderr();
