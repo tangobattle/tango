@@ -114,6 +114,8 @@ function gameInfoMatches(g: GameInfo | null, h: GameInfo) {
 
 function useGetAvailableGames() {
   const { patches } = usePatches();
+  const { roms } = useROMs();
+
   return React.useCallback(
     (gameInfo: GameInfo) => {
       let netplayCompatibility = KNOWN_ROMS[gameInfo.rom].netplayCompatibility;
@@ -125,7 +127,7 @@ function useGetAvailableGames() {
 
       return Array.from(
         (function* () {
-          for (const romName of Object.keys(KNOWN_ROMS)) {
+          for (const romName of Object.keys(roms)) {
             const rom = KNOWN_ROMS[romName];
             if (rom.netplayCompatibility == netplayCompatibility) {
               yield { rom: romName, patch: undefined };
@@ -149,7 +151,7 @@ function useGetAvailableGames() {
         })()
       );
     },
-    [patches]
+    [patches, roms]
   );
 }
 
