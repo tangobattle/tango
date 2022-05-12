@@ -13,8 +13,8 @@ import PlayPane from "./panes/PlayPane";
 import ReplaysPane from "./panes/ReplaysPane";
 import SettingsPane from "./panes/SettingsPane";
 import { PatchesProvider } from "./PatchesContext";
-import { ROMsProvider } from "./ROMsContext";
-import { SavesProvider } from "./SavesContext";
+import { ROMsProvider, useROMs } from "./ROMsContext";
+import { SavesProvider, useSaves } from "./SavesContext";
 import { TempDirProvider } from "./TempDirContext";
 import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
@@ -36,21 +36,27 @@ function ReadyAppBody() {
   );
 }
 
-const AppBody = withTranslation()(() => {
+function SetupAppBody() {
+  return <>copy roms to roms and saves to saves pls and restart tango</>;
+}
+
+function AppBody() {
+  const { roms } = useROMs();
+  const { saves } = useSaves();
+
+  return Object.keys(roms).length > 0 && Object.keys(saves).length > 0 ? (
+    <ReadyAppBody />
+  ) : (
+    <SetupAppBody />
+  );
+}
+
+const ThemedAppWrapper = withTranslation()(() => {
   const { config } = useConfig();
 
   return (
     <ThemeProvider theme={createTheme(config.theme)}>
-      <CssBaseline />
-      <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
-        <ROMsProvider>
-          <PatchesProvider>
-            <SavesProvider>
-              <ReadyAppBody />
-            </SavesProvider>
-          </PatchesProvider>
-        </ROMsProvider>
-      </Box>
+      <AppBody />;
     </ThemeProvider>
   );
 });
@@ -75,7 +81,16 @@ export default function App() {
       >
         <TempDirProvider>
           <ConfigProvider>
-            <AppBody />
+            <ROMsProvider>
+              <PatchesProvider>
+                <SavesProvider>
+                  <CssBaseline />
+                  <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
+                    <ThemedAppWrapper />
+                  </Box>
+                </SavesProvider>
+              </PatchesProvider>
+            </ROMsProvider>
           </ConfigProvider>
         </TempDirProvider>
       </Suspense>
