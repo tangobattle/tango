@@ -18,48 +18,38 @@ import { SavesProvider } from "./SavesContext";
 import { TempDirProvider } from "./TempDirContext";
 import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
-const AppBody = withTranslation()(() => {
+function ReadyAppBody() {
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
 
+  return (
+    <>
+      <Navbar
+        selected={selected}
+        onSelect={(v) => {
+          setSelected(v);
+        }}
+      />
+      <PlayPane active={selected == "play"} />
+      <ReplaysPane active={selected == "replays"} />
+      <SettingsPane active={selected == "settings"} />
+    </>
+  );
+}
+
+const AppBody = withTranslation()(() => {
   const { config } = useConfig();
 
   return (
     <ThemeProvider theme={createTheme(config.theme)}>
       <CssBaseline />
       <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
-        <Suspense fallback={null}>
-          <Navbar
-            selected={selected}
-            onSelect={(v) => {
-              setSelected(v);
-            }}
-          />
-        </Suspense>
-        <Suspense
-          fallback={
-            <Box
-              sx={{
-                display: "flex",
-                width: "100%",
-                height: "100%",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <CircularProgress />
-            </Box>
-          }
-        >
-          <ROMsProvider>
-            <PatchesProvider>
-              <SavesProvider>
-                <PlayPane active={selected == "play"} />
-                <ReplaysPane active={selected == "replays"} />
-                <SettingsPane active={selected == "settings"} />
-              </SavesProvider>
-            </PatchesProvider>
-          </ROMsProvider>
-        </Suspense>
+        <ROMsProvider>
+          <PatchesProvider>
+            <SavesProvider>
+              <ReadyAppBody />
+            </SavesProvider>
+          </PatchesProvider>
+        </ROMsProvider>
       </Box>
     </ThemeProvider>
   );
