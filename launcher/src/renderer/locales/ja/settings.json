@@ -16,7 +16,7 @@
     "keymapping.start": "START",
     "remap": "リマップ",
     "request-keymapping": "「{{key}}」のキーを押してください。",
-    "tab.about": "Tango について",
+    "tab.about": "Tangoについて",
     "tab.advanced": "詳細設定",
     "wgpu-backend": "レンダラー",
     "wgpu-backend.default": "デフォルト",
@@ -31,6 +31,6 @@
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
-    "rust-log-filter": "RUST_LOG フィルター",
+    "rust-log-filter": "RUST_LOGフィルター",
     "open-logs-folder": "ログフォルダーを開く"
 }
