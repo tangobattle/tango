@@ -988,7 +988,7 @@ export default function BattleStarter({
           direction="row"
           justifyContent="flex-end"
           spacing={1}
-          sx={{ px: 1, mb: 0 }}
+          sx={{ px: 1, mb: 0, pt: 1 }}
           component="form"
           onSubmit={(e: any) => {
             e.preventDefault();
@@ -1045,7 +1045,7 @@ export default function BattleStarter({
               });
           }}
         >
-          <Box flexGrow={1} flexShrink={0} sx={{ pt: 1 }}>
+          <Box flexGrow={1} flexShrink={0}>
             <TextField
               disabled={pendingStates != null}
               size="small"
