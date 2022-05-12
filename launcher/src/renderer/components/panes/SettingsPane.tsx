@@ -142,12 +142,6 @@ function AboutTab({ active }: { active: boolean }) {
               Network 6.
             </li>
             <li>
-              <Link href="https://twitter.com/seventhfonist42" target="_blank">
-                Nonstopmop
-              </Link>{" "}
-              for contributing to the Japanese translation.
-            </li>
-            <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
               </Link>
@@ -159,13 +153,19 @@ function AboutTab({ active }: { active: boolean }) {
               <Link href="https://n1gp.net/" target="_blank">
                 N1GP
               </Link>{" "}
-              for their bug testing and support!
+              for their bug testing and support.
+            </li>
+            <li>
+              <Link href="https://twitter.com/seventhfonist42" target="_blank">
+                Nonstopmop
+              </Link>{" "}
+              for their contribution to the Japanese translation.
             </li>
             <li>
               <Link href="https://twitter.com/Hikari_Calyx" target="_blank">
                 Hikari Calyx
               </Link>{" "}
-              for various pieces of the Chinese translation!
+              for their contribution to the Chinese translation.
             </li>
             <li>
               <Link href="https://github.com/bigfarts" target="_blank">
