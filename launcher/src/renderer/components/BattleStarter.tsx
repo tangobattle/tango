@@ -279,6 +279,7 @@ async function runCallback(
     }));
 
     discord.setInLobby(
+      linkCode,
       myPendingSettings.gameInfo != null
         ? ref.current.getGameTitle(myPendingSettings.gameInfo)
         : null
@@ -553,7 +554,11 @@ async function runCallback(
       startReq,
     });
 
-    discord.setInProgress(new Date(), ref.current.getGameTitle(ownGameInfo));
+    discord.setInProgress(
+      linkCode,
+      new Date(),
+      ref.current.getGameTitle(ownGameInfo)
+    );
   }
 
   // eslint-disable-next-line no-constant-condition

@@ -11,13 +11,13 @@ const ACTIVITY_TEMPLATE = {
   smallImageText: "Tango",
 } as DiscordRPC.Presence;
 
-export function setLinkCode(code: string, gameTitle: string | null) {
+export function setLinkCode(linkCode: string, gameTitle: string | null) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "Looking for match",
     details: gameTitle ?? undefined,
-    joinSecret: code,
-    partyId: `party:${code}`,
+    joinSecret: linkCode,
+    partyId: `party:${linkCode}`,
     partySize: 1,
     partyMax: 2,
     largeImageKey: undefined, // TODO
@@ -26,11 +26,12 @@ export function setLinkCode(code: string, gameTitle: string | null) {
   updateActivity();
 }
 
-export function setInLobby(gameTitle: string | null) {
+export function setInLobby(linkCode: string, gameTitle: string | null) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "In lobby",
     details: gameTitle ?? undefined,
+    partyId: `party:${linkCode}`,
     partySize: 2,
     partyMax: 2,
     largeImageKey: undefined, // TODO
@@ -39,11 +40,16 @@ export function setInLobby(gameTitle: string | null) {
   updateActivity();
 }
 
-export function setInProgress(startTime: Date, gameTitle: string) {
+export function setInProgress(
+  linkCode: string,
+  startTime: Date,
+  gameTitle: string
+) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "Match in progress",
     details: gameTitle,
+    partyId: `party:${linkCode}`,
     partySize: 2,
     partyMax: 2,
     startTimestamp: startTime.valueOf(),
