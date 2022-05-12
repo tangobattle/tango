@@ -19,6 +19,8 @@ export function setLinkCode(code: string, gameTitle: string | null) {
     state: "Looking for match",
     joinSecret: code,
     partyId: `party:${code}`,
+    largeImageKey: undefined, // TODO
+    largeImageText: gameTitle ?? undefined,
   };
   updateActivity();
 }
@@ -28,6 +30,8 @@ export function setInLobby(gameTitle: string | null) {
     ...ACTIVITY_TEMPLATE,
     state: "In lobby",
     details: gameTitle ?? undefined,
+    largeImageKey: undefined, // TODO
+    largeImageText: gameTitle ?? undefined,
   };
   updateActivity();
 }
@@ -38,6 +42,8 @@ export function setInProgress(startTime: Date, gameTitle: string) {
     details: gameTitle,
     state: "Match in progress",
     startTimestamp: startTime.valueOf(),
+    largeImageKey: undefined, // TODO
+    largeImageText: gameTitle ?? undefined,
   };
   updateActivity();
 }
