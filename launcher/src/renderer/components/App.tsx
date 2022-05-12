@@ -53,11 +53,12 @@ function AppBody() {
   );
 }
 
-const ThemedAppWrapper = withTranslation()(() => {
+const AppWrapper = withTranslation()(() => {
   const { config } = useConfig();
 
   return (
     <ThemeProvider theme={createTheme(config.theme)}>
+      <CssBaseline />
       <Suspense
         fallback={
           <Box
@@ -76,8 +77,7 @@ const ThemedAppWrapper = withTranslation()(() => {
         <ROMsProvider>
           <PatchesProvider>
             <SavesProvider>
-              <CssBaseline />
-              <AppBody />;
+              <AppBody />
             </SavesProvider>
           </PatchesProvider>
         </ROMsProvider>
@@ -88,31 +88,30 @@ const ThemedAppWrapper = withTranslation()(() => {
 
 export default function App() {
   return (
-    <UpdateStatusProvider>
-      <Suspense
-        fallback={
-          <Box
-            sx={{
-              display: "flex",
-              width: "100%",
-              height: "100%",
-              justifyContent: "center",
-              alignItems: "center",
-            }}
-          >
-            <CircularProgress />
-          </Box>
-        }
-      >
-        <TempDirProvider>
-          <ConfigProvider>
-            <CssBaseline />
-            <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
-              <ThemedAppWrapper />
+    <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
+      <UpdateStatusProvider>
+        <Suspense
+          fallback={
+            <Box
+              sx={{
+                display: "flex",
+                width: "100%",
+                height: "100%",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <CircularProgress />
             </Box>
-          </ConfigProvider>
-        </TempDirProvider>
-      </Suspense>
-    </UpdateStatusProvider>
+          }
+        >
+          <TempDirProvider>
+            <ConfigProvider>
+              <AppWrapper />
+            </ConfigProvider>
+          </TempDirProvider>
+        </Suspense>
+      </UpdateStatusProvider>
+    </Box>
   );
 }
