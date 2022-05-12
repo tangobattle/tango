@@ -32,6 +32,10 @@ i18n
     ns: Object.keys(locales.en.default),
     defaultNS: "common",
 
+    react: {
+      transSupportBasicHtmlNodes: false,
+    },
+
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default
     },
