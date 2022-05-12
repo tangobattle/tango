@@ -188,7 +188,7 @@ function makeCommitment(s: Uint8Array): Uint8Array {
 
 async function runCallback(
   core: ipc.Core,
-  linkCode: string | null,
+  linkCode: string,
   ref: React.MutableRefObject<{
     getAvailableGames: (gameInfo: GameInfo) => SetSettings["availableGames"];
     getGameTitle: (gameInfo: GameInfo) => string;
@@ -210,7 +210,7 @@ async function runCallback(
     setOpenSetupEditor: React.Dispatch<React.SetStateAction<bn6.Editor | null>>;
   }>
 ) {
-  if (linkCode != null) {
+  if (linkCode != "") {
     discord.setLinkCode(
       linkCode,
       ref.current.gameInfo != null
@@ -235,7 +235,7 @@ async function runCallback(
     }
   }
 
-  if (linkCode == null) {
+  if (linkCode == "") {
     // No link code to worry about, just start the game with no settings.
     const outROMPath = path.join(
       ref.current.tempDir,
@@ -753,8 +753,8 @@ export default function BattleStarter({
   runCallbackDataRef.current = runCallbackData;
 
   const start = React.useCallback(
-    (linkCode: string | null) => {
-      setLinkCode(linkCode ?? "");
+    (linkCode: string) => {
+      setLinkCode(linkCode);
 
       const abortController = new AbortController();
 
@@ -762,7 +762,7 @@ export default function BattleStarter({
         config.keymapping,
         config.signalingConnectAddr,
         config.iceServers,
-        linkCode != "" ? linkCode : null,
+        linkCode,
         {
           env: {
             WGPU_BACKEND:

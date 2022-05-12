@@ -32,7 +32,7 @@ export class Core extends EventEmitter {
     keymapping: Keymapping,
     signalingConnectAddr: string,
     iceServers: string[],
-    sessionId: string | null,
+    sessionId: string,
     { signal, env }: { signal?: AbortSignal; env?: NodeJS.ProcessEnv } = {}
   ) {
     super();
@@ -48,7 +48,7 @@ export class Core extends EventEmitter {
         ["--keymapping", JSON.stringify(keymapping)],
         ["--signaling-connect-addr", signalingConnectAddr],
         ...iceServers.map((iceServer) => ["--ice-servers", iceServer]),
-        sessionId != null ? ["--session-id", sessionId] : [],
+        sessionId != "" ? ["--session-id", sessionId] : [],
       ].flat(),
       {
         signal,
