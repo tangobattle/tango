@@ -1,6 +1,9 @@
 {
   "welcome": "看起来这是您第一次使用Tango。欢迎！",
   "welcome-2": "在你开始游戏之前，你只需要完成几个步骤。",
+  "nickname": "昵称",
+  "step-1-title": "请选择你的昵称。",
+  "step-1-description": "你可以在任何时候改变你的昵称。",
   "step-2-title": "请将你的ROM放入 {{path}}",
   "step-2-description": "确保ROM是原始和没打补丁的。",
   "step-2-error": "找不到任何支持的ROM。请确保ROM是没打补丁的!",
