@@ -89,7 +89,6 @@ function createWindow() {
     width: 800,
     height: 800,
     title: "Tango",
-    resizable: false,
     fullscreenable: false,
     webPreferences: {
       nodeIntegration: true,
