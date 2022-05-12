@@ -85,11 +85,20 @@ function SetupAppBody() {
         sx={{
           width: 400,
           py: 3,
-          pt: 10,
+          pt: 2,
           mx: "auto",
         }}
       >
-        <Typography sx={{ mb: 2 }}>
+        <img
+          src={require("../../../static/images/logo.png")}
+          width={160}
+          height={160}
+          alt="Tango"
+          title="Tango"
+          draggable={false}
+          style={{ marginLeft: "auto", marginRight: "auto", display: "block" }}
+        />
+        <Typography sx={{ mb: 2, mt: 3 }}>
           <Trans i18nKey="setup:welcome" />
         </Typography>
         <Typography sx={{ mb: 2 }}>
