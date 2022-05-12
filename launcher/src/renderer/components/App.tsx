@@ -2,6 +2,7 @@ import React, { Suspense } from "react";
 import { Trans, useTranslation, withTranslation } from "react-i18next";
 
 import { app, shell } from "@electron/remote";
+import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -56,6 +57,13 @@ function SetupAppBody() {
 
   const activeStep =
     Object.keys(roms).length > 0 ? (Object.keys(saves).length > 0 ? 2 : 1) : 0;
+
+  const [romsScanState, setROMsScanState] = React.useState<
+    "init" | "pending" | "done"
+  >("init");
+  const [savesScanState, setSavesScanState] = React.useState<
+    "init" | "pending" | "done"
+  >("init");
 
   return (
     <Box
@@ -116,6 +124,11 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:step-1-description" />
               </Typography>
+              {romsScanState == "done" && activeStep == 0 ? (
+                <Alert sx={{ mb: 2 }} severity="warning">
+                  <Trans i18nKey="setup:step-1-error" />
+                </Alert>
+              ) : null}
               <Stack spacing={1} direction="row">
                 <Button
                   variant="outlined"
@@ -129,8 +142,13 @@ function SetupAppBody() {
                 <Button
                   variant="contained"
                   size="small"
+                  disabled={romsScanState == "pending"}
                   onClick={() => {
-                    rescanROMs();
+                    setROMsScanState("pending");
+                    (async () => {
+                      await rescanROMs();
+                      setROMsScanState("done");
+                    })();
                   }}
                 >
                   <Trans i18nKey="setup:next" />
@@ -149,10 +167,16 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:step-2-description" />
               </Typography>
+              {savesScanState == "done" && activeStep == 1 ? (
+                <Alert sx={{ mb: 2 }} severity="warning">
+                  <Trans i18nKey="setup:step-2-error" />
+                </Alert>
+              ) : null}
               <Stack spacing={1} direction="row">
                 <Button
                   variant="outlined"
                   size="small"
+                  disabled={savesScanState == "pending"}
                   onClick={() => {
                     shell.openPath(getSavesPath(app));
                   }}
@@ -163,7 +187,11 @@ function SetupAppBody() {
                   variant="contained"
                   size="small"
                   onClick={() => {
-                    rescanSaves();
+                    setSavesScanState("pending");
+                    (async () => {
+                      await rescanSaves();
+                      setSavesScanState("done");
+                    })();
                   }}
                 >
                   <Trans i18nKey="setup:next" />
