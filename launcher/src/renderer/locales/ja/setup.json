@@ -1,1 +1,11 @@
-{}
+{
+  "welcome": "It looks like this is the first time you've used Tango. Welcome!",
+  "welcome-2": "There's just a few steps you'll need to complete before you can start playing.",
+  "step-1-title": "Place your ROMs in {{path}}.",
+  "step-1-description": "Make sure they're pristine, unpatched ROMs.",
+  "step-2-title": "Place your saves in {{path}}.",
+  "step-2-description": "Make sure they match the games you've put in the ROMs folder.",
+  "step-3-title": "You're ready to go!",
+  "open-folder": "Open folder",
+  "next": "I'm done!"
+}
