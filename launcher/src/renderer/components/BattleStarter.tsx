@@ -1008,7 +1008,10 @@ export default function BattleStarter({
                       InputProps={{ inputProps: { min: 3, max: 10 } }}
                     />{" "}
                     <Button
-                      disabled={rtt == null}
+                      disabled={
+                        rtt == null ||
+                        pendingStates?.own?.negotiatedState != null
+                      }
                       size="small"
                       color="primary"
                       variant="outlined"
