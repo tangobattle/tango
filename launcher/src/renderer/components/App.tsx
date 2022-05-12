@@ -37,6 +37,8 @@ function ReadyAppBody() {
 }
 
 function SetupAppBody() {
+  const { roms } = useROMs();
+  const { saves } = useSaves();
   return <>copy roms to roms and saves to saves pls and restart tango</>;
 }
 
@@ -56,7 +58,30 @@ const ThemedAppWrapper = withTranslation()(() => {
 
   return (
     <ThemeProvider theme={createTheme(config.theme)}>
-      <AppBody />;
+      <Suspense
+        fallback={
+          <Box
+            sx={{
+              display: "flex",
+              width: "100%",
+              height: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        }
+      >
+        <ROMsProvider>
+          <PatchesProvider>
+            <SavesProvider>
+              <CssBaseline />
+              <AppBody />;
+            </SavesProvider>
+          </PatchesProvider>
+        </ROMsProvider>
+      </Suspense>
     </ThemeProvider>
   );
 });
@@ -81,16 +106,10 @@ export default function App() {
       >
         <TempDirProvider>
           <ConfigProvider>
-            <ROMsProvider>
-              <PatchesProvider>
-                <SavesProvider>
-                  <CssBaseline />
-                  <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
-                    <ThemedAppWrapper />
-                  </Box>
-                </SavesProvider>
-              </PatchesProvider>
-            </ROMsProvider>
+            <CssBaseline />
+            <Box sx={{ display: "flex", height: "100%", width: "100%" }}>
+              <ThemedAppWrapper />
+            </Box>
           </ConfigProvider>
         </TempDirProvider>
       </Suspense>
