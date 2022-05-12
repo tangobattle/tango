@@ -17,7 +17,7 @@
     "remap": "リマップ",
     "request-keymapping": "「{{key}}」のキーを押してください。",
     "tab.about": "Tango について",
-    "tab.advanced": "高度設定",
+    "tab.advanced": "詳細設定",
     "wgpu-backend": "レンダラー",
     "wgpu-backend.default": "デフォルト",
     "wgpu-backend.vulkan": "Vulkan",
