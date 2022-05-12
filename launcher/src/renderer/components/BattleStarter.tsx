@@ -752,58 +752,64 @@ export default function BattleStarter({
   const runCallbackDataRef = React.useRef(runCallbackData);
   runCallbackDataRef.current = runCallbackData;
 
-  const start = (linkCode: string | null) => {
-    setLinkCode(linkCode ?? "");
+  const start = React.useCallback(
+    (linkCode: string | null) => {
+      setLinkCode(linkCode ?? "");
 
-    const abortController = new AbortController();
+      const abortController = new AbortController();
 
-    const core = new ipc.Core(
-      config.keymapping,
-      config.signalingConnectAddr,
-      config.iceServers,
-      linkCode != "" ? linkCode : null,
-      {
-        env: {
-          WGPU_BACKEND:
-            config.wgpuBackend != null ? config.wgpuBackend : undefined,
-          RUST_LOG: config.rustLogFilter,
-          RUST_BACKTRACE: "1",
-        },
-        signal: abortController.signal,
-      }
-    );
-    coreRef.current = core;
-
-    setPendingStates({
-      abortController,
-      own: null,
-      opponent: null,
-    });
-
-    runCallback(core, linkCode, runCallbackDataRef)
-      .catch((e) => {
-        console.error(e);
-      })
-      .finally(() => {
-        if (abortController != null) {
-          abortController.abort();
+      const core = new ipc.Core(
+        config.keymapping,
+        config.signalingConnectAddr,
+        config.iceServers,
+        linkCode != "" ? linkCode : null,
+        {
+          env: {
+            WGPU_BACKEND:
+              config.wgpuBackend != null ? config.wgpuBackend : undefined,
+            RUST_LOG: config.rustLogFilter,
+            RUST_BACKTRACE: "1",
+          },
+          signal: abortController.signal,
         }
-        discord.setDone();
-        (async () => {
-          const exitStatus = await core.wait();
-          const stderr = core.getStderr();
-          if (exitStatus.exitCode != 0 && exitStatus.signalCode != "SIGTERM") {
-            setErrorDialogState({ stderr, exitStatus });
-          }
-          onReadyChange(false);
-          onOpponentSettingsChange(null);
-          setOpenSetupEditor(null);
-          setPendingStates(null);
-          coreRef.current = null;
-          onExit();
-        })();
+      );
+      coreRef.current = core;
+
+      setPendingStates({
+        abortController,
+        own: null,
+        opponent: null,
       });
-  };
+
+      runCallback(core, linkCode, runCallbackDataRef)
+        .catch((e) => {
+          console.error(e);
+        })
+        .finally(() => {
+          if (abortController != null) {
+            abortController.abort();
+          }
+          discord.setDone();
+          (async () => {
+            const exitStatus = await core.wait();
+            const stderr = core.getStderr();
+            if (
+              exitStatus.exitCode != 0 &&
+              exitStatus.signalCode != "SIGTERM"
+            ) {
+              setErrorDialogState({ stderr, exitStatus });
+            }
+            onReadyChange(false);
+            onOpponentSettingsChange(null);
+            setOpenSetupEditor(null);
+            setPendingStates(null);
+            coreRef.current = null;
+            onExit();
+          })();
+        });
+    },
+    [config, onExit, onOpponentSettingsChange, onReadyChange]
+  );
 
   React.useEffect(() => {
     const activityJoinCallback = (d: { secret: string }) => {
@@ -813,7 +819,7 @@ export default function BattleStarter({
     return () => {
       discord.events.off("activityjoin", activityJoinCallback);
     };
-  });
+  }, [start]);
 
   return (
     <>
