@@ -89,13 +89,11 @@ function SetupAppBody() {
           mx: "auto",
         }}
       >
-        <Typography>
-          <p>
-            <Trans i18nKey="setup:welcome" />
-          </p>
-          <p>
-            <Trans i18nKey="setup:welcome-2" />
-          </p>
+        <Typography sx={{ mb: 2 }}>
+          <Trans i18nKey="setup:welcome" />
+        </Typography>
+        <Typography sx={{ mb: 2 }}>
+          <Trans i18nKey="setup:welcome-2" />
         </Typography>
         <Stepper orientation="vertical" activeStep={activeStep}>
           <Step completed={activeStep > 0}>
