@@ -7,7 +7,6 @@ import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { usePrevious } from "react-use";
-import useStateRef from "react-usestateref";
 import { SHAKE } from "sha3";
 import { promisify } from "util";
 import { brotliCompress, brotliDecompress } from "zlib";
@@ -42,6 +41,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { Config } from "../../config";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
@@ -185,6 +185,374 @@ function makeCommitment(s: Uint8Array): Uint8Array {
   return new Uint8Array(shake128.digest());
 }
 
+async function runCallback(
+  core: ipc.Core,
+  ref: React.MutableRefObject<{
+    getAvailableGames: (gameInfo: GameInfo) => SetSettings["availableGames"];
+    getGameTitle: (gameInfo: GameInfo) => string;
+    getPatchPath: (path: { name: string; version: string }) => string;
+    getROMPath: (romName: string) => string;
+    linkCode: string;
+    onOpponentSettingsChange: (settings: SetSettings | null) => void;
+    pendingStates: PendingStates | null;
+    setPendingStates: React.Dispatch<
+      React.SetStateAction<PendingStates | null>
+    >;
+    gameInfo: GameInfo | undefined;
+    tempDir: string;
+    saveName: string | null;
+    setState: React.Dispatch<
+      React.SetStateAction<FromCoreMessage_StateIndication_State>
+    >;
+    config: Config;
+    setRtt: React.Dispatch<React.SetStateAction<number | null>>;
+    setOpenSetupEditor: React.Dispatch<React.SetStateAction<bn6.Editor | null>>;
+  }>
+) {
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const msg = await core.receive();
+    if (msg == null) {
+      throw "unexpected eof from core";
+    }
+    if (msg.stateInd != null) {
+      ref.current.setState(msg.stateInd.state);
+      if (
+        msg.stateInd.state == FromCoreMessage_StateIndication_State.STARTING
+      ) {
+        break;
+      }
+    }
+  }
+
+  if (ref.current.linkCode == "") {
+    // No link code to worry about, just start the game with no settings.
+    const outROMPath = path.join(
+      ref.current.tempDir,
+      `${ref.current.gameInfo!.rom}${
+        ref.current.gameInfo!.patch != null
+          ? `+${ref.current.gameInfo!.patch.name}-v${
+              ref.current.gameInfo!.patch.version
+            }`
+          : ""
+      }.gba`
+    );
+    await makeROM(
+      ref.current.getROMPath(ref.current.gameInfo!.rom),
+      ref.current.gameInfo!.patch != null
+        ? ref.current.getPatchPath(ref.current.gameInfo!.patch)
+        : null,
+      outROMPath
+    );
+
+    await core.send({
+      smuggleReq: undefined,
+      startReq: {
+        romPath: outROMPath,
+        savePath: path.join(getSavesPath(app), ref.current.saveName!),
+        windowTitle: ref.current.getGameTitle(ref.current.gameInfo!),
+        settings: undefined,
+      },
+    });
+  } else {
+    // Need to negotiate settings with the opponent.
+    const myPendingSettings = defaultMatchSettings(ref.current.config.nickname);
+    myPendingSettings.gameInfo = ref.current.gameInfo;
+    myPendingSettings.availableGames =
+      myPendingSettings.gameInfo != null
+        ? ref.current.getAvailableGames(myPendingSettings.gameInfo)
+        : [];
+    ref.current.setPendingStates((pendingStates) => ({
+      ...pendingStates!,
+      opponent: null,
+      own: { negotiatedState: null, settings: myPendingSettings },
+    }));
+
+    await core.send({
+      smuggleReq: {
+        data: Message.encode({
+          setSettings: myPendingSettings,
+          commit: undefined,
+          uncommit: undefined,
+          chunk: undefined,
+        }).finish(),
+      },
+      startReq: undefined,
+    });
+
+    const remoteChunks = [];
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const msg = await core.receive();
+      if (msg == null) {
+        throw "expected ipc message";
+      }
+
+      if (msg.connectionQualityInd != null) {
+        ref.current.setRtt(msg.connectionQualityInd.rtt);
+        continue;
+      }
+
+      if (msg.smuggleInd == null) {
+        throw "expected smuggle indication";
+      }
+
+      const lobbyMsg = Message.decode(msg.smuggleInd.data);
+      if (lobbyMsg.uncommit != null) {
+        ref.current.setPendingStates((pendingStates) => ({
+          ...pendingStates!,
+          opponent: {
+            ...pendingStates!.opponent!,
+            commitment: null,
+          },
+        }));
+        continue;
+      }
+
+      if (lobbyMsg.commit != null) {
+        ref.current.setPendingStates((pendingStates) => ({
+          ...pendingStates!,
+          opponent: {
+            ...pendingStates!.opponent!,
+            commitment: lobbyMsg.commit!.commitment,
+          },
+        }));
+
+        if (ref.current.pendingStates!.own!.negotiatedState != null) {
+          break;
+        }
+
+        continue;
+      }
+
+      if (lobbyMsg.chunk != null) {
+        remoteChunks.push(lobbyMsg.chunk.chunk);
+        break;
+      }
+
+      if (lobbyMsg.setSettings == null) {
+        throw "expected lobby set settings";
+      }
+
+      ref.current.setPendingStates((pendingStates) => ({
+        ...pendingStates!,
+        opponent: {
+          commitment: null,
+          settings: lobbyMsg.setSettings!,
+        },
+        own: {
+          ...pendingStates!.own!,
+          negotiatedState: null,
+        },
+      }));
+
+      ref.current.onOpponentSettingsChange(lobbyMsg.setSettings);
+    }
+
+    const localMarshaledState = await promisify(brotliCompress)(
+      NegotiatedState.encode(
+        ref.current.pendingStates!.own!.negotiatedState!
+      ).finish()
+    );
+
+    const CHUNK_SIZE = 32 * 1024;
+
+    const CHUNKS_REQUIRED = 5;
+    for (let i = 0; i < CHUNKS_REQUIRED; i++) {
+      await core.send({
+        smuggleReq: {
+          data: Message.encode({
+            setSettings: undefined,
+            commit: undefined,
+            uncommit: undefined,
+            chunk: {
+              chunk: localMarshaledState.subarray(
+                i * CHUNK_SIZE,
+                (i + 1) * CHUNK_SIZE
+              ),
+            },
+          }).finish(),
+        },
+        startReq: undefined,
+      });
+
+      if (remoteChunks.length < CHUNKS_REQUIRED) {
+        const msg = await core.receive();
+        if (msg == null) {
+          throw "expected ipc message";
+        }
+
+        if (msg.connectionQualityInd != null) {
+          ref.current.setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
+          continue;
+        }
+
+        if (msg.smuggleInd == null) {
+          throw "expected smuggle indication";
+        }
+
+        const lobbyMsg = Message.decode(msg.smuggleInd.data);
+        if (lobbyMsg.chunk == null) {
+          throw "expected chunk";
+        }
+
+        remoteChunks.push(lobbyMsg.chunk.chunk);
+      }
+    }
+
+    const remoteMarshaledState = new Uint8Array(
+      await promisify(brotliDecompress)(
+        new Uint8Array(Buffer.concat(remoteChunks))
+      )
+    );
+    const remoteCommitment = makeCommitment(remoteMarshaledState);
+
+    if (
+      !timingSafeEqual(
+        remoteCommitment,
+        ref.current.pendingStates!.opponent!.commitment!
+      )
+    ) {
+      throw "commitment mismatch";
+    }
+
+    const remoteState = NegotiatedState.decode(remoteMarshaledState);
+
+    const rngSeed =
+      ref.current.pendingStates!.own!.negotiatedState!.nonce.slice();
+    for (let i = 0; i < rngSeed.length; i++) {
+      rngSeed[i] ^= remoteState.nonce[i];
+    }
+
+    const ownGameSettings = ref.current.pendingStates!.own!.settings;
+    const ownGameInfo = ownGameSettings.gameInfo!;
+
+    const outOwnROMPath = path.join(
+      ref.current.tempDir,
+      `${ownGameInfo.rom}${
+        ownGameInfo.patch != null
+          ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
+          : ""
+      }.gba`
+    );
+    await makeROM(
+      ref.current.getROMPath(ownGameInfo.rom),
+      ownGameInfo.patch != null
+        ? ref.current.getPatchPath(ownGameInfo.patch)
+        : null,
+      outOwnROMPath
+    );
+
+    const opponentGameSettings = ref.current.pendingStates!.opponent!.settings;
+    const opponentGameInfo = opponentGameSettings.gameInfo!;
+
+    const outOpponentROMPath = path.join(
+      ref.current.tempDir,
+      `${opponentGameInfo.rom}${
+        opponentGameInfo.patch != null
+          ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
+          : ""
+      }.gba`
+    );
+    await makeROM(
+      ref.current.getROMPath(opponentGameInfo.rom),
+      opponentGameInfo.patch != null
+        ? ref.current.getPatchPath(opponentGameInfo.patch)
+        : null,
+      outOpponentROMPath
+    );
+
+    const now = new Date();
+
+    const prefix = `${datefns.format(
+      now,
+      "yyyyMMddHHmmss"
+    )}-vs-${encodeURIComponent(opponentGameSettings.nickname)}-${
+      ref.current.linkCode
+    }`;
+
+    const shadowSavePath = path.join(ref.current.tempDir, prefix + ".sav");
+    await writeFile(shadowSavePath, remoteState.saveData);
+
+    if (opponentGameSettings.openSetup) {
+      ref.current.setOpenSetupEditor(
+        new bn6.Editor(
+          bn6.Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
+          opponentGameInfo.rom
+        )
+      );
+    }
+
+    const enc = new TextEncoder();
+
+    const startReq = {
+      romPath: outOwnROMPath,
+      savePath: path.join(getSavesPath(app), ref.current.saveName!),
+      windowTitle: ref.current.getGameTitle(ownGameInfo),
+      settings: {
+        shadowSavePath,
+        shadowRomPath: outOpponentROMPath,
+        inputDelay: ownGameSettings.inputDelay,
+        shadowInputDelay: opponentGameSettings.inputDelay,
+        matchType: ownGameSettings.matchType,
+        opponentNickname:
+          ownGameInfo.patch == null ? opponentGameSettings.nickname : undefined,
+        replaysPath: path.join(getReplaysPath(app), prefix),
+        replayMetadata: enc.encode(
+          JSON.stringify({
+            ts: now.valueOf(),
+            linkCode: ref.current.linkCode,
+            rom: ownGameInfo.rom,
+            patch:
+              ownGameInfo.patch != null
+                ? {
+                    name: ownGameInfo.patch.name,
+                    version: ownGameInfo.patch.version,
+                  }
+                : null,
+            remote: {
+              nickname: opponentGameSettings.nickname,
+              rom: opponentGameInfo.rom,
+              patch:
+                opponentGameInfo.patch != null
+                  ? {
+                      name: opponentGameInfo.patch.name,
+                      version: opponentGameInfo.patch.version,
+                    }
+                  : null,
+            },
+          } as ReplayInfo)
+        ),
+        rngSeed,
+      },
+    } as ToCoreMessage_StartRequest;
+
+    // eslint-disable-next-line no-console
+    console.info("issuing start request", {
+      ...startReq,
+      settings: { ...startReq.settings, replayMetadata: undefined },
+    });
+
+    await core.send({
+      smuggleReq: undefined,
+      startReq,
+    });
+  }
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const msg = await core.receive();
+    if (msg == null) {
+      break;
+    }
+
+    if (msg.stateInd != null) {
+      ref.current.setState(msg.stateInd.state);
+    }
+  }
+}
+
 function GenerateRandomCodeButton({
   onClick,
 }: {
@@ -219,6 +587,19 @@ function GenerateRandomCodeButton({
   );
 }
 
+interface PendingStates {
+  core: ipc.Core;
+  abortController: AbortController;
+  own: {
+    settings: SetSettings;
+    negotiatedState: NegotiatedState | null;
+  } | null;
+  opponent: {
+    settings: SetSettings;
+    commitment: Uint8Array | null;
+  } | null;
+}
+
 export default function BattleStarter({
   saveName,
   patch,
@@ -239,12 +620,6 @@ export default function BattleStarter({
   const getROMPath = useGetROMPath();
   const getPatchPath = useGetPatchPath();
 
-  const configRef = React.useRef(config);
-  configRef.current = config;
-
-  const saveNameRef = React.useRef(saveName);
-  saveNameRef.current = saveName;
-
   const getAvailableGames = useGetAvailableGames();
   const hasGame = useHasGame();
 
@@ -258,18 +633,9 @@ export default function BattleStarter({
     React.useState<FromCoreMessage_StateIndication_State>(
       FromCoreMessage_StateIndication_State.UNKNOWN
     );
-  const [pendingStates, setPendingStates, pendingStatesRef] = useStateRef<{
-    core: ipc.Core;
-    abortController: AbortController;
-    own: {
-      settings: SetSettings;
-      negotiatedState: NegotiatedState | null;
-    } | null;
-    opponent: {
-      settings: SetSettings;
-      commitment: Uint8Array | null;
-    } | null;
-  } | null>(null);
+  const [pendingStates, setPendingStates] =
+    React.useState<PendingStates | null>(null);
+
   const [changingCommitment, setChangingCommitment] = React.useState(false);
   const [rtt, setRtt] = React.useState<number | null>(null);
 
@@ -345,6 +711,26 @@ export default function BattleStarter({
   }, [myPendingState, onReadyChange]);
 
   const getGameTitle = useGetGameTitle();
+
+  const runCallbackData = {
+    getAvailableGames,
+    getGameTitle,
+    getPatchPath,
+    getROMPath,
+    linkCode,
+    onOpponentSettingsChange,
+    pendingStates,
+    setPendingStates,
+    gameInfo,
+    tempDir,
+    saveName,
+    setState,
+    config,
+    setRtt,
+    setOpenSetupEditor,
+  };
+  const runCallbackDataRef = React.useRef(runCallbackData);
+  runCallbackDataRef.current = runCallbackData;
 
   return (
     <>
@@ -613,17 +999,15 @@ export default function BattleStarter({
             const abortController = new AbortController();
 
             const core = new ipc.Core(
-              configRef.current.keymapping,
-              configRef.current.signalingConnectAddr,
-              configRef.current.iceServers,
+              config.keymapping,
+              config.signalingConnectAddr,
+              config.iceServers,
               linkCode != "" ? linkCode : null,
               {
                 env: {
                   WGPU_BACKEND:
-                    configRef.current.wgpuBackend != null
-                      ? configRef.current.wgpuBackend
-                      : undefined,
-                  RUST_LOG: configRef.current.rustLogFilter,
+                    config.wgpuBackend != null ? config.wgpuBackend : undefined,
+                  RUST_LOG: config.rustLogFilter,
                   RUST_BACKTRACE: "1",
                 },
                 signal: abortController.signal,
@@ -637,358 +1021,7 @@ export default function BattleStarter({
               opponent: null,
             });
 
-            (async () => {
-              // eslint-disable-next-line no-constant-condition
-              while (true) {
-                const msg = await core.receive();
-                if (msg == null) {
-                  throw "unexpected eof from core";
-                }
-                if (msg.stateInd != null) {
-                  setState(msg.stateInd.state);
-                  if (
-                    msg.stateInd.state ==
-                    FromCoreMessage_StateIndication_State.STARTING
-                  ) {
-                    break;
-                  }
-                }
-              }
-
-              if (linkCode == "") {
-                // No link code to worry about, just start the game with no settings.
-                const outROMPath = path.join(
-                  tempDir,
-                  `${gameInfo!.rom}${
-                    gameInfo!.patch != null
-                      ? `+${gameInfo!.patch.name}-v${gameInfo!.patch.version}`
-                      : ""
-                  }.gba`
-                );
-                await makeROM(
-                  getROMPath(gameInfo!.rom),
-                  gameInfo!.patch != null
-                    ? getPatchPath(gameInfo!.patch)
-                    : null,
-                  outROMPath
-                );
-
-                await core.send({
-                  smuggleReq: undefined,
-                  startReq: {
-                    romPath: outROMPath,
-                    savePath: path.join(getSavesPath(app), saveName!),
-                    windowTitle: getGameTitle(gameInfo!),
-                    settings: undefined,
-                  },
-                });
-              } else {
-                // Need to negotiate settings with the opponent.
-                const myPendingSettings = defaultMatchSettings(
-                  configRef.current.nickname
-                );
-                myPendingSettings.gameInfo = gameInfo;
-                myPendingSettings.availableGames =
-                  gameInfo != null ? getAvailableGames(gameInfo) : [];
-                setPendingStates((pendingStates) => ({
-                  ...pendingStates!,
-                  opponent: null,
-                  own: { negotiatedState: null, settings: myPendingSettings },
-                }));
-
-                // After this point, do not read from gameInfo or saveName!
-                await core.send({
-                  smuggleReq: {
-                    data: Message.encode({
-                      setSettings: myPendingSettings,
-                      commit: undefined,
-                      uncommit: undefined,
-                      chunk: undefined,
-                    }).finish(),
-                  },
-                  startReq: undefined,
-                });
-
-                const remoteChunks = [];
-
-                // eslint-disable-next-line no-constant-condition
-                while (true) {
-                  const msg = await core.receive();
-                  if (msg == null) {
-                    throw "expected ipc message";
-                  }
-
-                  if (msg.connectionQualityInd != null) {
-                    setRtt(msg.connectionQualityInd.rtt);
-                    continue;
-                  }
-
-                  if (msg.smuggleInd == null) {
-                    throw "expected smuggle indication";
-                  }
-
-                  const lobbyMsg = Message.decode(msg.smuggleInd.data);
-                  if (lobbyMsg.uncommit != null) {
-                    setPendingStates((pendingStates) => ({
-                      ...pendingStates!,
-                      opponent: {
-                        ...pendingStates!.opponent!,
-                        commitment: null,
-                      },
-                    }));
-                    continue;
-                  }
-
-                  if (lobbyMsg.commit != null) {
-                    setPendingStates((pendingStates) => ({
-                      ...pendingStates!,
-                      opponent: {
-                        ...pendingStates!.opponent!,
-                        commitment: lobbyMsg.commit!.commitment,
-                      },
-                    }));
-
-                    if (
-                      pendingStatesRef.current!.own!.negotiatedState != null
-                    ) {
-                      break;
-                    }
-
-                    continue;
-                  }
-
-                  if (lobbyMsg.chunk != null) {
-                    remoteChunks.push(lobbyMsg.chunk.chunk);
-                    break;
-                  }
-
-                  if (lobbyMsg.setSettings == null) {
-                    throw "expected lobby set settings";
-                  }
-
-                  setPendingStates((pendingStates) => ({
-                    ...pendingStates!,
-                    opponent: {
-                      commitment: null,
-                      settings: lobbyMsg.setSettings!,
-                    },
-                    own: {
-                      ...pendingStates!.own!,
-                      negotiatedState: null,
-                    },
-                  }));
-
-                  onOpponentSettingsChange(lobbyMsg.setSettings);
-                }
-
-                const localMarshaledState = await promisify(brotliCompress)(
-                  NegotiatedState.encode(
-                    pendingStatesRef.current!.own!.negotiatedState!
-                  ).finish()
-                );
-
-                const CHUNK_SIZE = 32 * 1024;
-
-                const CHUNKS_REQUIRED = 5;
-                for (let i = 0; i < CHUNKS_REQUIRED; i++) {
-                  await core.send({
-                    smuggleReq: {
-                      data: Message.encode({
-                        setSettings: undefined,
-                        commit: undefined,
-                        uncommit: undefined,
-                        chunk: {
-                          chunk: localMarshaledState.subarray(
-                            i * CHUNK_SIZE,
-                            (i + 1) * CHUNK_SIZE
-                          ),
-                        },
-                      }).finish(),
-                    },
-                    startReq: undefined,
-                  });
-
-                  if (remoteChunks.length < CHUNKS_REQUIRED) {
-                    const msg = await core.receive();
-                    if (msg == null) {
-                      throw "expected ipc message";
-                    }
-
-                    if (msg.connectionQualityInd != null) {
-                      setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
-                      continue;
-                    }
-
-                    if (msg.smuggleInd == null) {
-                      throw "expected smuggle indication";
-                    }
-
-                    const lobbyMsg = Message.decode(msg.smuggleInd.data);
-                    if (lobbyMsg.chunk == null) {
-                      throw "expected chunk";
-                    }
-
-                    remoteChunks.push(lobbyMsg.chunk.chunk);
-                  }
-                }
-
-                const remoteMarshaledState = new Uint8Array(
-                  await promisify(brotliDecompress)(
-                    new Uint8Array(Buffer.concat(remoteChunks))
-                  )
-                );
-                const remoteCommitment = makeCommitment(remoteMarshaledState);
-
-                if (
-                  !timingSafeEqual(
-                    remoteCommitment,
-                    pendingStatesRef.current!.opponent!.commitment!
-                  )
-                ) {
-                  throw "commitment mismatch";
-                }
-
-                const remoteState =
-                  NegotiatedState.decode(remoteMarshaledState);
-
-                const rngSeed =
-                  pendingStatesRef.current!.own!.negotiatedState!.nonce.slice();
-                for (let i = 0; i < rngSeed.length; i++) {
-                  rngSeed[i] ^= remoteState.nonce[i];
-                }
-
-                const ownGameSettings = pendingStatesRef.current!.own!.settings;
-                const ownGameInfo = ownGameSettings.gameInfo!;
-
-                const outOwnROMPath = path.join(
-                  tempDir,
-                  `${ownGameInfo.rom}${
-                    ownGameInfo.patch != null
-                      ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
-                      : ""
-                  }.gba`
-                );
-                await makeROM(
-                  getROMPath(ownGameInfo.rom),
-                  ownGameInfo.patch != null
-                    ? getPatchPath(ownGameInfo.patch)
-                    : null,
-                  outOwnROMPath
-                );
-
-                const opponentGameSettings =
-                  pendingStatesRef.current!.opponent!.settings;
-                const opponentGameInfo = opponentGameSettings.gameInfo!;
-
-                const outOpponentROMPath = path.join(
-                  tempDir,
-                  `${opponentGameInfo.rom}${
-                    opponentGameInfo.patch != null
-                      ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
-                      : ""
-                  }.gba`
-                );
-                await makeROM(
-                  getROMPath(opponentGameInfo.rom),
-                  opponentGameInfo.patch != null
-                    ? getPatchPath(opponentGameInfo.patch)
-                    : null,
-                  outOpponentROMPath
-                );
-
-                const now = new Date();
-
-                const prefix = `${datefns.format(
-                  now,
-                  "yyyyMMddHHmmss"
-                )}-vs-${encodeURIComponent(
-                  opponentGameSettings.nickname
-                )}-${linkCode}`;
-
-                const shadowSavePath = path.join(tempDir, prefix + ".sav");
-                await writeFile(shadowSavePath, remoteState.saveData);
-
-                if (opponentGameSettings.openSetup) {
-                  setOpenSetupEditor(
-                    new bn6.Editor(
-                      bn6.Editor.sramDumpToRaw(
-                        new Uint8Array(remoteState.saveData).buffer
-                      ),
-                      opponentGameInfo.rom
-                    )
-                  );
-                }
-
-                const enc = new TextEncoder();
-
-                const startReq = {
-                  romPath: outOwnROMPath,
-                  savePath: path.join(getSavesPath(app), saveNameRef.current!),
-                  windowTitle: getGameTitle(ownGameInfo),
-                  settings: {
-                    shadowSavePath,
-                    shadowRomPath: outOpponentROMPath,
-                    inputDelay: ownGameSettings.inputDelay,
-                    shadowInputDelay: opponentGameSettings.inputDelay,
-                    matchType: ownGameSettings.matchType,
-                    opponentNickname:
-                      ownGameInfo.patch == null
-                        ? opponentGameSettings.nickname
-                        : undefined,
-                    replaysPath: path.join(getReplaysPath(app), prefix),
-                    replayMetadata: enc.encode(
-                      JSON.stringify({
-                        ts: now.valueOf(),
-                        linkCode,
-                        rom: ownGameInfo.rom,
-                        patch:
-                          ownGameInfo.patch != null
-                            ? {
-                                name: ownGameInfo.patch.name,
-                                version: ownGameInfo.patch.version,
-                              }
-                            : null,
-                        remote: {
-                          nickname: opponentGameSettings.nickname,
-                          rom: opponentGameInfo.rom,
-                          patch:
-                            opponentGameInfo.patch != null
-                              ? {
-                                  name: opponentGameInfo.patch.name,
-                                  version: opponentGameInfo.patch.version,
-                                }
-                              : null,
-                        },
-                      } as ReplayInfo)
-                    ),
-                    rngSeed,
-                  },
-                } as ToCoreMessage_StartRequest;
-
-                // eslint-disable-next-line no-console
-                console.info("issuing start request", {
-                  ...startReq,
-                  settings: { ...startReq.settings, replayMetadata: undefined },
-                });
-
-                await core.send({
-                  smuggleReq: undefined,
-                  startReq,
-                });
-              }
-
-              // eslint-disable-next-line no-constant-condition
-              while (true) {
-                const msg = await core.receive();
-                if (msg == null) {
-                  break;
-                }
-
-                if (msg.stateInd != null) {
-                  setState(msg.stateInd.state);
-                }
-              }
-            })()
+            runCallback(core, runCallbackDataRef)
               .catch((e) => {
                 console.error(e);
               })
