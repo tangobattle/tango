@@ -249,7 +249,7 @@ async function runCallback(
     >;
     config: Config;
     setRtt: React.Dispatch<React.SetStateAction<number | null>>;
-    setrevealedSetupEditor: React.Dispatch<
+    setRevealedSetupEditor: React.Dispatch<
       React.SetStateAction<bn6.Editor | null>
     >;
   }>
@@ -546,7 +546,7 @@ async function runCallback(
     await writeFile(shadowSavePath, remoteState.saveData);
 
     if (opponentGameSettings.revealSetup) {
-      ref.current.setrevealedSetupEditor(
+      ref.current.setRevealedSetupEditor(
         new bn6.Editor(
           bn6.Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
           opponentGameInfo.rom
@@ -717,7 +717,7 @@ export default function BattleStarter({
   const [changingCommitment, setChangingCommitment] = React.useState(false);
   const [rtt, setRtt] = React.useState<number | null>(null);
 
-  const [revealedSetupEditor, setrevealedSetupEditor] =
+  const [revealedSetupEditor, setRevealedSetupEditor] =
     React.useState<bn6.Editor | null>(null);
 
   const gameInfo = React.useMemo(
@@ -815,7 +815,7 @@ export default function BattleStarter({
     setState,
     config,
     setRtt,
-    setrevealedSetupEditor,
+    setRevealedSetupEditor,
   };
   const runCallbackDataRef = React.useRef(runCallbackData);
   runCallbackDataRef.current = runCallbackData;
@@ -869,7 +869,7 @@ export default function BattleStarter({
             }
             onReadyChange(false);
             onOpponentSettingsChange(null);
-            setrevealedSetupEditor(null);
+            setRevealedSetupEditor(null);
             setPendingStates(null);
             coreRef.current = null;
             onExit();
