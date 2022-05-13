@@ -444,26 +444,32 @@ async function runCallback(
       });
 
       if (remoteChunks.length < CHUNKS_REQUIRED) {
-        const msg = await core.receive();
-        if (msg == null) {
-          throw "expected ipc message";
-        }
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          // We keep looping until we get a remote chunk.
 
-        if (msg.connectionQualityInd != null) {
-          ref.current.setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
-          continue;
-        }
+          const msg = await core.receive();
+          if (msg == null) {
+            throw "expected ipc message";
+          }
 
-        if (msg.smuggleInd == null) {
-          throw "expected smuggle indication";
-        }
+          if (msg.connectionQualityInd != null) {
+            ref.current.setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
+            continue;
+          }
 
-        const lobbyMsg = Message.decode(msg.smuggleInd.data);
-        if (lobbyMsg.chunk == null) {
-          throw "expected chunk";
-        }
+          if (msg.smuggleInd == null) {
+            throw "expected smuggle indication";
+          }
 
-        remoteChunks.push(lobbyMsg.chunk.chunk);
+          const lobbyMsg = Message.decode(msg.smuggleInd.data);
+          if (lobbyMsg.chunk == null) {
+            throw "expected chunk";
+          }
+
+          remoteChunks.push(lobbyMsg.chunk.chunk);
+          break;
+        }
       }
     }
 
