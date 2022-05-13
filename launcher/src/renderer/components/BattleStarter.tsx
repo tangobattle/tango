@@ -150,6 +150,9 @@ function useGetAvailableGames() {
 
           for (const patchName of Object.keys(patches)) {
             const patch = patches[patchName];
+            if (!Object.prototype.hasOwnProperty.call(roms, patch.forROM)) {
+              continue;
+            }
             for (const version of Object.keys(patch.versions)) {
               if (
                 patch.versions[version].netplayCompatibility ==
@@ -737,6 +740,10 @@ export default function BattleStarter({
       linkCode,
       gameInfo != null ? getGameTitle(gameInfo) : null
     );
+
+    if (gameInfo != null) {
+      console.log(getAvailableGames(gameInfo));
+    }
 
     if (pendingStates != null && pendingStates.own != null) {
       changeLocalPendingState({
