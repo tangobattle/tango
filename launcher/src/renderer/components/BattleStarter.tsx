@@ -76,20 +76,33 @@ function defaultMatchSettings(nickname: string): SetSettings {
   };
 }
 
-function useGetGameTitle() {
+function useGetPatchName() {
   const { patches } = usePatches();
+  const { t } = useTranslation();
+  return React.useCallback(
+    (patchInfo: { name: string; version: string }) => {
+      const title = Object.prototype.hasOwnProperty.call(
+        patches,
+        patchInfo.name
+      )
+        ? patches[patchInfo.name].title
+        : `${t("play:missing-patch", { name: patchInfo.name })}`;
+      return `${title} v${patchInfo.version}`;
+    },
+    [patches, t]
+  );
+}
+
+function useGetGameTitle() {
+  const getPatchName = useGetPatchName();
   const { i18n } = useTranslation();
 
   return React.useCallback(
     (gameInfo: GameInfo) =>
       `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]}${
-        gameInfo.patch != null
-          ? ` + ${patches[gameInfo.patch.name].title} v${
-              gameInfo.patch.version
-            }`
-          : ""
+        gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""
       }`,
-    [patches, i18n]
+    [i18n, getPatchName]
   );
 }
 

@@ -42,5 +42,6 @@
   "generate-random-code": "Generate random code",
   "connection-quality": " ({{rtt}}ms)",
   "auto-input-delay": "Auto",
-  "open-setup-title": "{{opponentNickname}}'s setup"
+  "open-setup-title": "{{opponentNickname}}'s setup",
+  "missing-patch": "Unknown patch \"{{name}}\""
 }

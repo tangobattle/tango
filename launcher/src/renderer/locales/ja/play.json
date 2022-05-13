@@ -42,5 +42,6 @@
   "generate-random-code": "ランダムリンクコードを作成",
   "connection-quality": "（{{rtt}}ms）",
   "auto-input-delay": "自動選択",
-  "open-setup-title": "{{opponentNickname}}さんの構築"
+  "open-setup-title": "{{opponentNickname}}さんの構築",
+  "missing-patch": "未知のパッチ「{{name}}」"
 }
