@@ -92,7 +92,7 @@ export default function Navbar({
         {children}
       </Badge>
     ) : updateStatus == "downloaded" ? (
-      <Badge color="primary" variant="dot">
+      <Badge color="info" variant="dot">
         {children}
       </Badge>
     ) : (
