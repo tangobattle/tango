@@ -126,50 +126,76 @@ function gameInfoMatches(g: GameInfo | null, h: GameInfo) {
   return g.patch!.name == h.patch!.name && g.patch!.version == h.patch!.version;
 }
 
-function useGetAvailableGames() {
+export function useGetNetplayCompatibility() {
   const { patches } = usePatches();
-  const { roms } = useROMs();
-
   return React.useCallback(
     (gameInfo: GameInfo) => {
       let netplayCompatibility = KNOWN_ROMS[gameInfo.rom].netplayCompatibility;
       if (gameInfo.patch != null) {
+        if (
+          !Object.prototype.hasOwnProperty.call(patches, gameInfo.patch.name)
+        ) {
+          return null;
+        }
         netplayCompatibility =
           patches[gameInfo.patch.name].versions[gameInfo.patch.version]
             .netplayCompatibility;
       }
-
-      return Array.from(
-        (function* () {
-          for (const romName of Object.keys(roms)) {
-            const rom = KNOWN_ROMS[romName];
-            if (rom.netplayCompatibility == netplayCompatibility) {
-              yield { rom: romName, patch: undefined };
-            }
-          }
-
-          for (const patchName of Object.keys(patches)) {
-            const patch = patches[patchName];
-            if (!Object.prototype.hasOwnProperty.call(roms, patch.forROM)) {
-              continue;
-            }
-            for (const version of Object.keys(patch.versions)) {
-              if (
-                patch.versions[version].netplayCompatibility ==
-                netplayCompatibility
-              ) {
-                yield {
-                  rom: patch.forROM,
-                  patch: { name: patchName, version },
-                };
-              }
-            }
-          }
-        })()
-      );
+      return netplayCompatibility;
     },
-    [patches, roms]
+    [patches]
   );
+}
+
+function useIsNetplayCompatible() {
+  const getNetplayCompatiblity = useGetNetplayCompatibility();
+
+  return React.useCallback(
+    (ownGameInfo: GameInfo | null, opponentGameInfo: GameInfo | null) => {
+      const ownNetplayCompatiblity =
+        ownGameInfo != null ? getNetplayCompatiblity(ownGameInfo) : null;
+      const opponentNetplayCompatiblity =
+        opponentGameInfo != null
+          ? getNetplayCompatiblity(opponentGameInfo)
+          : null;
+      if (
+        ownNetplayCompatiblity == null ||
+        opponentNetplayCompatiblity == null
+      ) {
+        return null;
+      }
+      return ownNetplayCompatiblity == opponentNetplayCompatiblity;
+    },
+    [getNetplayCompatiblity]
+  );
+}
+
+function useAvailableGames() {
+  const { patches } = usePatches();
+  const { roms } = useROMs();
+
+  return React.useMemo(() => {
+    return Array.from(
+      (function* () {
+        for (const romName of Object.keys(roms)) {
+          yield { rom: romName, patch: undefined };
+        }
+
+        for (const patchName of Object.keys(patches)) {
+          const patch = patches[patchName];
+          if (!Object.prototype.hasOwnProperty.call(roms, patch.forROM)) {
+            continue;
+          }
+          for (const version of Object.keys(patch.versions)) {
+            yield {
+              rom: patch.forROM,
+              patch: { name: patchName, version },
+            };
+          }
+        }
+      })()
+    );
+  }, [patches, roms]);
 }
 
 function useHasGame() {
@@ -206,7 +232,7 @@ async function runCallback(
   core: ipc.Core,
   linkCode: string,
   ref: React.MutableRefObject<{
-    getAvailableGames: (gameInfo: GameInfo) => SetSettings["availableGames"];
+    availableGames: SetSettings["availableGames"];
     getGameTitle: (gameInfo: GameInfo) => string;
     getPatchPath: (path: { name: string; version: string }) => string;
     getROMPath: (romName: string) => string;
@@ -294,10 +320,7 @@ async function runCallback(
       ref.current.config.nickname!
     );
     myPendingSettings.gameInfo = ref.current.gameInfo;
-    myPendingSettings.availableGames =
-      myPendingSettings.gameInfo != null
-        ? ref.current.getAvailableGames(myPendingSettings.gameInfo)
-        : [];
+    myPendingSettings.availableGames = ref.current.availableGames;
     ref.current.setPendingStates((pendingStates) => ({
       ...pendingStates!,
       opponent: null,
@@ -666,7 +689,8 @@ export default function BattleStarter({
   const getROMPath = useGetROMPath();
   const getPatchPath = useGetPatchPath();
 
-  const getAvailableGames = useGetAvailableGames();
+  const availableGames = useAvailableGames();
+  const isNetplayCompatible = useIsNetplayCompatible();
   const hasGame = useHasGame();
 
   const [errorDialogState, setErrorDialogState] = React.useState<{
@@ -702,6 +726,7 @@ export default function BattleStarter({
   );
 
   const previousGameInfo = usePrevious(gameInfo);
+  const previousAvailableGames = usePrevious(availableGames);
 
   const getGameTitle = useGetGameTitle();
 
@@ -732,7 +757,10 @@ export default function BattleStarter({
   }, []);
 
   React.useEffect(() => {
-    if (isEqual(gameInfo, previousGameInfo)) {
+    if (
+      isEqual(gameInfo, previousGameInfo) &&
+      isEqual(availableGames, previousAvailableGames)
+    ) {
       return;
     }
 
@@ -745,7 +773,7 @@ export default function BattleStarter({
       changeLocalPendingState({
         ...pendingStates.own.settings,
         gameInfo,
-        availableGames: gameInfo != null ? getAvailableGames(gameInfo) : [],
+        availableGames,
       });
     }
   }, [
@@ -753,8 +781,9 @@ export default function BattleStarter({
     getGameTitle,
     gameInfo,
     previousGameInfo,
+    availableGames,
+    previousAvailableGames,
     changeLocalPendingState,
-    getAvailableGames,
     pendingStates,
   ]);
 
@@ -765,7 +794,7 @@ export default function BattleStarter({
   }, [myPendingState, onReadyChange]);
 
   const runCallbackData = {
-    getAvailableGames,
+    availableGames,
     getGameTitle,
     getPatchPath,
     getROMPath,
@@ -917,16 +946,29 @@ export default function BattleStarter({
                     ) : (
                       <Trans i18nKey="play:no-game-selected" />
                     )}{" "}
-                    {!pendingStates?.opponent?.settings.availableGames.some(
-                      (g) =>
-                        gameInfoMatches(
-                          pendingStates?.own?.settings.gameInfo ?? null,
-                          g
-                        )
+                    {!isNetplayCompatible(
+                      pendingStates?.own?.settings.gameInfo ?? null,
+                      pendingStates?.opponent?.settings.gameInfo ?? null
                     ) ? (
                       <Tooltip
-                        title={<Trans i18nKey="play:unsupported-game" />}
+                        title={<Trans i18nKey="play:incompatible-game" />}
                       >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : !pendingStates?.opponent?.settings.availableGames.some(
+                        (g) =>
+                          gameInfoMatches(
+                            pendingStates?.own?.settings.gameInfo ?? null,
+                            g
+                          )
+                      ) ? (
+                      <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
                         <WarningIcon
                           color="warning"
                           sx={{
@@ -945,9 +987,7 @@ export default function BattleStarter({
                     )}{" "}
                     {pendingStates?.opponent?.settings.gameInfo != null &&
                     !hasGame(pendingStates?.opponent?.settings.gameInfo) ? (
-                      <Tooltip
-                        title={<Trans i18nKey="play:unavailable-game" />}
-                      >
+                      <Tooltip title={<Trans i18nKey="play:no-local-copy" />}>
                         <WarningIcon
                           color="warning"
                           sx={{
