@@ -72,7 +72,7 @@ function defaultMatchSettings(nickname: string): SetSettings {
     matchType: 1,
     gameInfo: undefined,
     availableGames: [],
-    openSetup: false,
+    revealSetup: false,
   };
 }
 
@@ -220,7 +220,9 @@ async function runCallback(
     >;
     config: Config;
     setRtt: React.Dispatch<React.SetStateAction<number | null>>;
-    setOpenSetupEditor: React.Dispatch<React.SetStateAction<bn6.Editor | null>>;
+    setrevealedSetupEditor: React.Dispatch<
+      React.SetStateAction<bn6.Editor | null>
+    >;
   }>
 ) {
   if (linkCode != "") {
@@ -511,8 +513,8 @@ async function runCallback(
     const shadowSavePath = path.join(ref.current.tempDir, prefix + ".sav");
     await writeFile(shadowSavePath, remoteState.saveData);
 
-    if (opponentGameSettings.openSetup) {
-      ref.current.setOpenSetupEditor(
+    if (opponentGameSettings.revealSetup) {
+      ref.current.setrevealedSetupEditor(
         new bn6.Editor(
           bn6.Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
           opponentGameInfo.rom
@@ -682,7 +684,7 @@ export default function BattleStarter({
   const [changingCommitment, setChangingCommitment] = React.useState(false);
   const [rtt, setRtt] = React.useState<number | null>(null);
 
-  const [openSetupEditor, setOpenSetupEditor] =
+  const [revealedSetupEditor, setrevealedSetupEditor] =
     React.useState<bn6.Editor | null>(null);
 
   const gameInfo = React.useMemo(
@@ -773,7 +775,7 @@ export default function BattleStarter({
     setState,
     config,
     setRtt,
-    setOpenSetupEditor,
+    setrevealedSetupEditor,
   };
   const runCallbackDataRef = React.useRef(runCallbackData);
   runCallbackDataRef.current = runCallbackData;
@@ -827,7 +829,7 @@ export default function BattleStarter({
             }
             onReadyChange(false);
             onOpponentSettingsChange(null);
-            setOpenSetupEditor(null);
+            setrevealedSetupEditor(null);
             setPendingStates(null);
             coreRef.current = null;
             onExit();
@@ -1060,39 +1062,25 @@ export default function BattleStarter({
                 </TableRow>
                 <TableRow>
                   <TableCell component="th" sx={{ fontWeight: "bold" }}>
-                    <Trans i18nKey="play:open-setup" />
+                    <Trans i18nKey="play:reveal-setup" />
                   </TableCell>
                   <TableCell>
                     <Switch
                       size="small"
-                      checked={pendingStates?.own?.settings.openSetup ?? true}
+                      checked={pendingStates?.own?.settings.revealSetup ?? true}
                       onChange={(_e, v) => {
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,
-                          openSetup: v,
+                          revealSetup: v,
                         });
                       }}
                     />
-                    {pendingStates?.opponent?.settings.openSetup !=
-                    pendingStates?.own?.settings.openSetup ? (
-                      <Tooltip
-                        title={<Trans i18nKey="play:mismatching-open-setup" />}
-                      >
-                        <WarningIcon
-                          color="warning"
-                          sx={{
-                            fontSize: "1em",
-                            verticalAlign: "middle",
-                          }}
-                        />
-                      </Tooltip>
-                    ) : null}
                   </TableCell>
                   <TableCell>
                     <Switch
                       size="small"
                       checked={
-                        pendingStates?.opponent?.settings.openSetup ?? true
+                        pendingStates?.opponent?.settings.revealSetup ?? true
                       }
                       disabled={true}
                     />
@@ -1198,8 +1186,6 @@ export default function BattleStarter({
                             saveName == null ||
                             pendingStates.own.settings.matchType !=
                               pendingStates.opponent.settings.matchType ||
-                            pendingStates.own.settings.openSetup !=
-                              pendingStates.opponent.settings.openSetup ||
                             !pendingStates.opponent.settings.availableGames.some(
                               (g) =>
                                 gameInfoMatches(
@@ -1305,7 +1291,7 @@ export default function BattleStarter({
           )}
         </Stack>
       </Stack>
-      {openSetupEditor != null ? (
+      {revealedSetupEditor != null ? (
         <Modal
           open={true}
           onClose={(_e, _reason) => {
@@ -1341,7 +1327,7 @@ export default function BattleStarter({
                   sx={{ px: 1 }}
                 >
                   <Trans
-                    i18nKey="play:open-setup-title"
+                    i18nKey="play:reveal-setup-title"
                     values={{
                       opponentNickname:
                         pendingStates!.opponent!.settings.nickname,
@@ -1350,7 +1336,7 @@ export default function BattleStarter({
                 </Typography>
               </Stack>
               <Box flexGrow={1} sx={{ display: "flex" }}>
-                <SaveViewer editor={openSetupEditor} />
+                <SaveViewer editor={revealedSetupEditor} />
               </Box>
             </Stack>
           </Box>

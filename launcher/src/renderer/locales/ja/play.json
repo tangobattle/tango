@@ -34,14 +34,13 @@
   "stop": "停止",
   "own-side": "自分",
   "game": "ゲーム",
-  "open-setup": "構築を公開",
+  "reveal-setup": "構築を公開",
   "unsupported-game": "相手はこのゲームに対応していません。",
   "unavailable-game": "このゲームを持っていません。",
-  "mismatching-open-setup": "相手と自分の構築を公開の設定が一致していません。",
   "mismatching-match-type": "相手と自分のマッチタイプの設定が一致していません。",
   "generate-random-code": "ランダムリンクコードを作成",
   "connection-quality": "（{{rtt}}ms）",
   "auto-input-delay": "自動選択",
-  "open-setup-title": "{{opponentNickname}}さんの構築",
+  "reveal-setup-title": "{{opponentNickname}}さんの構築",
   "missing-patch": "未知のパッチ「{{name}}」"
 }

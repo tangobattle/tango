@@ -34,14 +34,13 @@
   "stop": "停止",
   "own-side": "自己",
   "game": "游戏",
-  "open-setup": "公开构筑",
+  "reveal-setup": "公开构筑",
   "unsupported-game": "对方不支持这个游戏。",
   "unavailable-game": "你没有这个游戏。",
-  "mismatching-open-setup": "对方和你的公开构筑设置不匹配。",
   "mismatching-match-type": "对方和你的战斗类型设置不匹配。",
   "generate-random-code": "生成随机链接代码",
   "connection-quality": "（{{rtt}}ms）",
   "auto-input-delay": "自动选择",
-  "open-setup-title": "{{opponentNickname}}的构筑",
+  "reveal-setup-title": "{{opponentNickname}}的构筑",
   "missing-patch": "未知补丁“{{name}}”"
 }
