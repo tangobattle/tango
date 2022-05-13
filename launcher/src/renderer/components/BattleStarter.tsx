@@ -741,10 +741,6 @@ export default function BattleStarter({
       gameInfo != null ? getGameTitle(gameInfo) : null
     );
 
-    if (gameInfo != null) {
-      console.log(getAvailableGames(gameInfo));
-    }
-
     if (pendingStates != null && pendingStates.own != null) {
       changeLocalPendingState({
         ...pendingStates.own.settings,
