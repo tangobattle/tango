@@ -1068,6 +1068,7 @@ export default function BattleStarter({
                     <Switch
                       size="small"
                       checked={pendingStates?.own?.settings.revealSetup ?? true}
+                      disabled={pendingStates?.own?.negotiatedState != null}
                       onChange={(_e, v) => {
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,
