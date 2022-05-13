@@ -743,6 +743,8 @@ export default function BattleStarter({
       },
     }));
 
+    // eslint-disable-next-line no-console
+    console.info("local pending state changed", settings);
     coreRef.current!.send({
       smuggleReq: {
         data: Message.encode({
@@ -1276,6 +1278,8 @@ export default function BattleStarter({
                               }
 
                               if (commitment != null) {
+                                // eslint-disable-next-line no-console
+                                console.info("sending commit to core");
                                 await coreRef.current!.send({
                                   smuggleReq: {
                                     data: Message.encode({
@@ -1290,6 +1294,8 @@ export default function BattleStarter({
                                   startReq: undefined,
                                 });
                               } else {
+                                // eslint-disable-next-line no-console
+                                console.info("sending uncommit to core");
                                 await coreRef.current!.send({
                                   smuggleReq: {
                                     data: Message.encode({
