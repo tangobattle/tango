@@ -258,13 +258,19 @@ async function runCallback(
     discord.setLinkCode(
       linkCode,
       ref.current.gameInfo != null
-        ? ref.current.getGameTitle(ref.current.gameInfo)
+        ? {
+            title: ref.current.getGameTitle(ref.current.gameInfo),
+            romName: ref.current.gameInfo.rom,
+          }
         : null
     );
   } else {
     discord.setSinglePlayer(
       ref.current.gameInfo != null
-        ? ref.current.getGameTitle(ref.current.gameInfo)
+        ? {
+            title: ref.current.getGameTitle(ref.current.gameInfo),
+            romName: ref.current.gameInfo.rom,
+          }
         : null
     );
   }
@@ -330,7 +336,10 @@ async function runCallback(
     discord.setInLobby(
       linkCode,
       myPendingSettings.gameInfo != null
-        ? ref.current.getGameTitle(myPendingSettings.gameInfo)
+        ? {
+            title: ref.current.getGameTitle(myPendingSettings.gameInfo),
+            romName: myPendingSettings.gameInfo.rom,
+          }
         : null
     );
 
@@ -609,11 +618,10 @@ async function runCallback(
       startReq,
     });
 
-    discord.setInProgress(
-      linkCode,
-      new Date(),
-      ref.current.getGameTitle(ownGameInfo)
-    );
+    discord.setInProgress(linkCode, new Date(), {
+      title: ref.current.getGameTitle(ownGameInfo),
+      romName: ownGameInfo.rom,
+    });
   }
 
   // eslint-disable-next-line no-constant-condition
@@ -774,7 +782,12 @@ export default function BattleStarter({
 
     discord.setLinkCode(
       linkCode,
-      gameInfo != null ? getGameTitle(gameInfo) : null
+      gameInfo != null
+        ? {
+            title: getGameTitle(gameInfo),
+            romName: gameInfo.rom,
+          }
+        : null
     );
 
     if (pendingStates != null && pendingStates.own != null) {

@@ -11,42 +11,53 @@ const ACTIVITY_TEMPLATE = {
   smallImageText: "Tango",
 } as DiscordRPC.Presence;
 
-export function setLinkCode(linkCode: string, gameTitle: string | null) {
+export interface RichPresenceGameInfo {
+  title: string;
+  romName: string;
+}
+
+export function setLinkCode(
+  linkCode: string,
+  info: RichPresenceGameInfo | null
+) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "Looking for match",
-    details: gameTitle ?? undefined,
+    details: info != null ? info.title : undefined,
     joinSecret: linkCode,
     partyId: `party:${linkCode}`,
     partySize: 1,
     partyMax: 2,
-    largeImageKey: undefined, // TODO
-    largeImageText: gameTitle ?? undefined,
+    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
 }
 
-export function setSinglePlayer(gameTitle: string | null) {
+export function setSinglePlayer(info: RichPresenceGameInfo | null) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "In single player",
-    details: gameTitle ?? undefined,
-    largeImageKey: undefined, // TODO
-    largeImageText: gameTitle ?? undefined,
+    details: info != null ? info.title : undefined,
+    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
 }
 
-export function setInLobby(linkCode: string, gameTitle: string | null) {
+export function setInLobby(
+  linkCode: string,
+  info: RichPresenceGameInfo | null
+) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "In lobby",
-    details: gameTitle ?? undefined,
+    details: info != null ? info.title : undefined,
     partyId: `party:${linkCode}`,
     partySize: 2,
     partyMax: 2,
-    largeImageKey: undefined, // TODO
-    largeImageText: gameTitle ?? undefined,
+    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
 }
@@ -54,18 +65,18 @@ export function setInLobby(linkCode: string, gameTitle: string | null) {
 export function setInProgress(
   linkCode: string,
   startTime: Date,
-  gameTitle: string
+  info: RichPresenceGameInfo | null
 ) {
   activity = {
     ...ACTIVITY_TEMPLATE,
     state: "Match in progress",
-    details: gameTitle,
+    details: info != null ? info.title : undefined,
     partyId: `party:${linkCode}`,
     partySize: 2,
     partyMax: 2,
     startTimestamp: startTime.valueOf(),
-    largeImageKey: undefined, // TODO
-    largeImageText: gameTitle ?? undefined,
+    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
 }
