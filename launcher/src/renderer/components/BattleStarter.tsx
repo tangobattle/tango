@@ -217,6 +217,12 @@ async function runCallback(
         ? ref.current.getGameTitle(ref.current.gameInfo)
         : null
     );
+  } else {
+    discord.setSinglePlayer(
+      ref.current.gameInfo != null
+        ? ref.current.getGameTitle(ref.current.gameInfo)
+        : null
+    );
   }
 
   // eslint-disable-next-line no-constant-condition

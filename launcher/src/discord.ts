@@ -26,6 +26,17 @@ export function setLinkCode(linkCode: string, gameTitle: string | null) {
   updateActivity();
 }
 
+export function setSinglePlayer(gameTitle: string | null) {
+  activity = {
+    ...ACTIVITY_TEMPLATE,
+    state: "In single player",
+    details: gameTitle ?? undefined,
+    largeImageKey: undefined, // TODO
+    largeImageText: gameTitle ?? undefined,
+  };
+  updateActivity();
+}
+
 export function setInLobby(linkCode: string, gameTitle: string | null) {
   activity = {
     ...ACTIVITY_TEMPLATE,
