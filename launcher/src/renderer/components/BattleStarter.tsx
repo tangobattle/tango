@@ -1087,10 +1087,10 @@ export default function BattleStarter({
                         }
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,
-                          inputDelay: Math.min(Math.max(v, 3), 10),
+                          inputDelay: Math.min(Math.max(v, 1), 10),
                         });
                       }}
-                      InputProps={{ inputProps: { min: 3, max: 10 } }}
+                      InputProps={{ inputProps: { min: 1, max: 10 } }}
                     />{" "}
                     <Button
                       disabled={
