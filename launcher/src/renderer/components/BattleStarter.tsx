@@ -131,7 +131,11 @@ export function useGetNetplayCompatibility() {
       let netplayCompatibility = KNOWN_ROMS[gameInfo.rom].netplayCompatibility;
       if (gameInfo.patch != null) {
         if (
-          !Object.prototype.hasOwnProperty.call(patches, gameInfo.patch.name)
+          !Object.prototype.hasOwnProperty.call(patches, gameInfo.patch.name) ||
+          !Object.prototype.hasOwnProperty.call(
+            patches[gameInfo.patch.name].versions,
+            gameInfo.patch.version
+          )
         ) {
           return null;
         }
