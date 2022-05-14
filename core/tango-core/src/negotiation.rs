@@ -52,10 +52,9 @@ pub async fn negotiate(
     log::info!("negotiating match, session_id = {}", session_id);
     ipc_sender
         .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
-                tango_protos::ipc::from_core_message::StateIndication {
-                    state: tango_protos::ipc::from_core_message::state_indication::State::Waiting
-                        .into(),
+            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                tango_protos::ipc::from_core_message::StateEvent {
+                    state: tango_protos::ipc::from_core_message::state_event::State::Waiting.into(),
                 },
             )),
         })
@@ -101,11 +100,10 @@ pub async fn negotiate(
 
     ipc_sender
         .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
-                tango_protos::ipc::from_core_message::StateIndication {
-                    state:
-                        tango_protos::ipc::from_core_message::state_indication::State::Connecting
-                            .into(),
+            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                tango_protos::ipc::from_core_message::StateEvent {
+                    state: tango_protos::ipc::from_core_message::state_event::State::Connecting
+                        .into(),
                 },
             )),
         })
@@ -145,9 +143,9 @@ pub async fn negotiate(
 
     ipc_sender
         .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
-                tango_protos::ipc::from_core_message::StateIndication {
-                    state: tango_protos::ipc::from_core_message::state_indication::State::Starting
+            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                tango_protos::ipc::from_core_message::StateEvent {
+                    state: tango_protos::ipc::from_core_message::state_event::State::Starting
                         .into(),
                 },
             )),

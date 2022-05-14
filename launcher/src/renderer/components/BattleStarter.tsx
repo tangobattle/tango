@@ -46,9 +46,7 @@ import * as discord from "../../discord";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
-import {
-    FromCoreMessage_StateIndication_State, ToCoreMessage_StartRequest
-} from "../../protos/ipc";
+import { FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import randomCode from "../../randomcode";
 import { ReplayInfo } from "../../replay";
@@ -245,7 +243,7 @@ async function runCallback(
     tempDir: string;
     saveName: string | null;
     setState: React.Dispatch<
-      React.SetStateAction<FromCoreMessage_StateIndication_State>
+      React.SetStateAction<FromCoreMessage_StateEvent_State>
     >;
     config: Config;
     setRtt: React.Dispatch<React.SetStateAction<number | null>>;
@@ -281,11 +279,9 @@ async function runCallback(
     if (msg == null) {
       throw "unexpected eof from core";
     }
-    if (msg.stateInd != null) {
-      ref.current.setState(msg.stateInd.state);
-      if (
-        msg.stateInd.state == FromCoreMessage_StateIndication_State.STARTING
-      ) {
+    if (msg.stateEv != null) {
+      ref.current.setState(msg.stateEv.state);
+      if (msg.stateEv.state == FromCoreMessage_StateEvent_State.STARTING) {
         break;
       }
     }
@@ -364,16 +360,16 @@ async function runCallback(
         throw "expected ipc message";
       }
 
-      if (msg.connectionQualityInd != null) {
-        ref.current.setRtt(msg.connectionQualityInd.rtt);
+      if (msg.connectionQualityEv != null) {
+        ref.current.setRtt(msg.connectionQualityEv.rtt);
         continue;
       }
 
-      if (msg.smuggleInd == null) {
-        throw "expected smuggle indication";
+      if (msg.smuggleEv == null) {
+        throw "expected smuggle event";
       }
 
-      const lobbyMsg = Message.decode(msg.smuggleInd.data);
+      const lobbyMsg = Message.decode(msg.smuggleEv.data);
       if (lobbyMsg.uncommit != null) {
         ref.current.setPendingStates((pendingStates) => ({
           ...pendingStates!,
@@ -462,16 +458,16 @@ async function runCallback(
             throw "expected ipc message";
           }
 
-          if (msg.connectionQualityInd != null) {
-            ref.current.setRtt(msg.connectionQualityInd.rtt / 1000 / 1000);
+          if (msg.connectionQualityEv != null) {
+            ref.current.setRtt(msg.connectionQualityEv.rtt / 1000 / 1000);
             continue;
           }
 
-          if (msg.smuggleInd == null) {
-            throw "expected smuggle indication";
+          if (msg.smuggleEv == null) {
+            throw "expected smuggle event";
           }
 
-          const lobbyMsg = Message.decode(msg.smuggleInd.data);
+          const lobbyMsg = Message.decode(msg.smuggleEv.data);
           if (lobbyMsg.chunk == null) {
             throw "expected chunk";
           }
@@ -631,8 +627,8 @@ async function runCallback(
       break;
     }
 
-    if (msg.stateInd != null) {
-      ref.current.setState(msg.stateInd.state);
+    if (msg.stateEv != null) {
+      ref.current.setState(msg.stateEv.state);
     }
   }
 }
@@ -715,10 +711,9 @@ export default function BattleStarter({
   const coreRef = React.useRef<ipc.Core | null>(null);
 
   const [linkCode, setLinkCode] = React.useState("");
-  const [state, setState] =
-    React.useState<FromCoreMessage_StateIndication_State>(
-      FromCoreMessage_StateIndication_State.UNKNOWN
-    );
+  const [state, setState] = React.useState<FromCoreMessage_StateEvent_State>(
+    FromCoreMessage_StateEvent_State.UNKNOWN
+  );
   const [pendingStates, setPendingStates] =
     React.useState<PendingStates | null>(null);
 
@@ -1191,17 +1186,16 @@ export default function BattleStarter({
                       sx={{ alignItems: "center" }}
                     >
                       <Typography sx={{ whiteSpace: "nowrap" }}>
-                        {state ==
-                        FromCoreMessage_StateIndication_State.RUNNING ? (
+                        {state == FromCoreMessage_StateEvent_State.RUNNING ? (
                           <Trans i18nKey="supervisor:status.running" />
                         ) : state ==
-                          FromCoreMessage_StateIndication_State.WAITING ? (
+                          FromCoreMessage_StateEvent_State.WAITING ? (
                           <Trans i18nKey="supervisor:status.waiting" />
                         ) : state ==
-                          FromCoreMessage_StateIndication_State.CONNECTING ? (
+                          FromCoreMessage_StateEvent_State.CONNECTING ? (
                           <Trans i18nKey="supervisor:status.connecting" />
                         ) : state ==
-                          FromCoreMessage_StateIndication_State.STARTING ? (
+                          FromCoreMessage_StateEvent_State.STARTING ? (
                           pendingStates.own != null ? null : (
                             <Trans i18nKey="supervisor:status.starting" />
                           )
@@ -1449,7 +1443,7 @@ export default function BattleStarter({
                       position: "absolute",
                       right: "16px",
                       top: "8px",
-                      zIndex: 999,
+                      zEvex: 999,
                     }}
                   />
                   <TextField

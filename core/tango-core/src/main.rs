@@ -81,7 +81,7 @@ fn main() -> Result<(), anyhow::Error> {
                                         data,
                                     }) => {
                                         ipc_sender.send(tango_protos::ipc::FromCoreMessage {
-                                            which: Some(tango_protos::ipc::from_core_message::Which::SmuggleInd(tango_protos::ipc::from_core_message::SmuggleIndication {
+                                            which: Some(tango_protos::ipc::from_core_message::Which::SmuggleEv(tango_protos::ipc::from_core_message::SmuggleEvent {
                                                 data,
                                             }))
                                         }).await?;
@@ -99,7 +99,7 @@ fn main() -> Result<(), anyhow::Error> {
                                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
                                         let then = std::time::Duration::from_nanos(ts);
                                         ipc_sender.send(tango_protos::ipc::FromCoreMessage {
-                                            which: Some(tango_protos::ipc::from_core_message::Which::ConnectionQualityInd(tango_protos::ipc::from_core_message::ConnectionQualityIndication {
+                                            which: Some(tango_protos::ipc::from_core_message::Which::ConnectionQualityEv(tango_protos::ipc::from_core_message::ConnectionQualityEvent {
                                                 rtt: (now - then).as_nanos() as u64,
                                             }))
                                         }).await?;
@@ -121,10 +121,10 @@ fn main() -> Result<(), anyhow::Error> {
         rt.block_on(async {
             ipc_sender
                 .send(tango_protos::ipc::FromCoreMessage {
-                    which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
-                        tango_protos::ipc::from_core_message::StateIndication {
+                    which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                        tango_protos::ipc::from_core_message::StateEvent {
                             state:
-                                tango_protos::ipc::from_core_message::state_indication::State::Starting
+                                tango_protos::ipc::from_core_message::state_event::State::Starting
                                     .into(),
                         },
                     )),

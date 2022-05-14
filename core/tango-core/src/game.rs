@@ -281,10 +281,10 @@ impl Game {
         self.rt.block_on(async {
             self.ipc_sender
                 .send(tango_protos::ipc::FromCoreMessage {
-                    which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
-                        tango_protos::ipc::from_core_message::StateIndication {
+                    which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                        tango_protos::ipc::from_core_message::StateEvent {
                             state:
-                                tango_protos::ipc::from_core_message::state_indication::State::Running
+                                tango_protos::ipc::from_core_message::state_event::State::Running
                                     .into(),
                         },
                     )),
