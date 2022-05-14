@@ -9,6 +9,24 @@ export class Keymaptool {
 
   constructor(lang: string, { env }: { env?: NodeJS.ProcessEnv } = {}) {
     this.proc = spawn(app, "keymaptool", ["--lang", lang], { env });
+    (async () => {
+      for await (const data of this!.proc.stderr) {
+        for (const line of data.toString().split(/\r?\n/g)) {
+          if (line == "") {
+            continue;
+          }
+          // eslint-disable-next-line no-console
+          console.info("keymaptool:", line);
+        }
+      }
+    })();
+    this.proc.addListener("exit", () => {
+      // eslint-disable-next-line no-console
+      console.info("keymaptool exited", {
+        exitCode: this.proc.exitCode,
+        signalCode: this.proc.signalCode,
+      });
+    });
   }
 
   async request(message: string) {

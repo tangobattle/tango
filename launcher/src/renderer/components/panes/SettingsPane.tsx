@@ -452,6 +452,7 @@ function KeymappingTab({ active }: { active: boolean }) {
                       config.wgpuBackend != null
                         ? config.wgpuBackend
                         : undefined,
+                    RUST_BACKTRACE: "1",
                   },
                 });
                 for (const key of KEYS) {
