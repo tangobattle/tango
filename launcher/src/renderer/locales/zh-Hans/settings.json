@@ -22,7 +22,7 @@
     "wgpu-backend.default": "默认",
     "wgpu-backend.vulkan": "Vulkan",
     "wgpu-backend.dx12": "DirectX 12",
-    "wgpu-backend.gl": "OpenGL（需要ANGLE函式库）",
+    "wgpu-backend.gl": "OpenGL",
     "wgpu-backend.metal": "Metal（仅限 macOS）",
     "theme": "色彩主题",
     "theme.light": "浅色",

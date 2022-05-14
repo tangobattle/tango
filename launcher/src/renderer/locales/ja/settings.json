@@ -22,7 +22,7 @@
     "wgpu-backend.default": "デフォルト",
     "wgpu-backend.vulkan": "Vulkan",
     "wgpu-backend.dx12": "DirectX 12",
-    "wgpu-backend.gl": "OpenGL（ANGLEライブラリが必要）",
+    "wgpu-backend.gl": "OpenGL",
     "wgpu-backend.metal": "Metal（macOSのみ）",
     "theme": "テーマ",
     "theme.light": "ライト",
