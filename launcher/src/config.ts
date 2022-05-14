@@ -19,7 +19,6 @@ export interface Config {
   theme: "dark" | "light";
   language: string | null;
   updateChannel: string;
-  wgpuBackend: string | null;
   rustLogFilter: string;
   keymapping: Keymapping;
   signalingConnectAddr: string;
@@ -31,7 +30,6 @@ export const DEFAULT: Config = {
   theme: "light",
   language: null,
   updateChannel: "latest",
-  wgpuBackend: null,
   rustLogFilter: "",
   keymapping: {
     up: "Up",

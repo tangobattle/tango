@@ -308,41 +308,6 @@ function AdvancedTab({ active }: { active: boolean }) {
             width: "500px",
           }}
         >
-          <FormControl fullWidth size="small">
-            <InputLabel id="wgpu-backend-label">
-              <Trans i18nKey="settings:wgpu-backend" />
-            </InputLabel>
-            <Select
-              labelId="wgpu-backend-label"
-              value={config.wgpuBackend ?? "default"}
-              onChange={(e) => {
-                (async () => {
-                  saveConfig((config) => ({
-                    ...config,
-                    wgpuBackend:
-                      e.target.value != "default" ? e.target.value : null,
-                  }));
-                })();
-              }}
-              label={<Trans i18nKey="settings:wgpu-backend" />}
-            >
-              <MenuItem value="default">
-                <Trans i18nKey="settings:wgpu-backend.default" />
-              </MenuItem>
-              <MenuItem value="vulkan">
-                <Trans i18nKey="settings:wgpu-backend.vulkan" />
-              </MenuItem>
-              <MenuItem value="dx12">
-                <Trans i18nKey="settings:wgpu-backend.dx12" />
-              </MenuItem>
-              <MenuItem value="gl">
-                <Trans i18nKey="settings:wgpu-backend.gl" />
-              </MenuItem>
-              <MenuItem value="metal">
-                <Trans i18nKey="settings:wgpu-backend.metal" />
-              </MenuItem>
-            </Select>
-          </FormControl>
           <TextField
             size="small"
             fullWidth
@@ -448,10 +413,6 @@ function KeymappingTab({ active }: { active: boolean }) {
                 }
                 keymaptoolRef.current = new Keymaptool(i18n.resolvedLanguage, {
                   env: {
-                    WGPU_BACKEND:
-                      config.wgpuBackend != null
-                        ? config.wgpuBackend
-                        : undefined,
                     RUST_BACKTRACE: "1",
                   },
                 });

@@ -1,93 +1,28 @@
-use egui::{ClippedMesh, Context, TexturesDelta};
-use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
-use pixels::{wgpu, PixelsContext};
-use winit::window::Window;
+use egui::Context;
+use egui_glium::EguiGlium;
 
 pub struct Gui {
-    ctx: Context,
-    winit_state: egui_winit::State,
-    screen_descriptor: ScreenDescriptor,
-    rpass: RenderPass,
-    paint_jobs: Vec<ClippedMesh>,
-    textures: TexturesDelta,
+    egui_glium: EguiGlium,
     state: std::sync::Arc<State>,
 }
 
 impl Gui {
-    pub fn new(width: u32, height: u32, scale_factor: f32, pixels: &pixels::Pixels) -> Self {
-        let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
-
-        let ctx = Context::default();
-        ctx.set_visuals(egui::Visuals::light());
-
-        let winit_state = egui_winit::State::from_pixels_per_point(max_texture_size, scale_factor);
-        let screen_descriptor = ScreenDescriptor {
-            physical_width: width,
-            physical_height: height,
-            scale_factor,
-        };
-        let rpass = RenderPass::new(pixels.device(), pixels.render_texture_format(), 1);
-        let textures = TexturesDelta::default();
-
+    pub fn new(display: &glium::Display) -> Self {
         Self {
-            ctx,
-            winit_state,
-            screen_descriptor,
-            rpass,
-            paint_jobs: Vec::new(),
-            textures,
+            egui_glium: EguiGlium::new(display),
             state: std::sync::Arc::new(State::new()),
         }
     }
 
-    pub fn handle_event(&mut self, event: &winit::event::WindowEvent) -> bool {
-        self.winit_state.on_event(&self.ctx, event)
+    pub fn handle_event(&mut self, event: &glium::glutin::event::WindowEvent) -> bool {
+        self.egui_glium.on_event(event)
     }
 
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.screen_descriptor.physical_width = width;
-            self.screen_descriptor.physical_height = height;
-        }
-    }
-
-    pub fn prepare(&mut self, window: &Window) {
-        let raw_input = self.winit_state.take_egui_input(window);
-        let output = self.ctx.run(raw_input, |ctx| {
+    pub fn render(&mut self, display: &glium::Display, target: &mut impl glium::Surface) {
+        self.egui_glium.run(&display, |ctx| {
             self.state.layout(ctx);
         });
-
-        self.textures.append(output.textures_delta);
-        self.winit_state
-            .handle_platform_output(window, &self.ctx, output.platform_output);
-        self.paint_jobs = self.ctx.tessellate(output.shapes);
-    }
-
-    pub fn render(
-        &mut self,
-        encoder: &mut wgpu::CommandEncoder,
-        render_target: &wgpu::TextureView,
-        context: &PixelsContext,
-    ) -> Result<(), BackendError> {
-        self.rpass
-            .add_textures(&context.device, &context.queue, &self.textures)?;
-        self.rpass.update_buffers(
-            &context.device,
-            &context.queue,
-            &self.paint_jobs,
-            &self.screen_descriptor,
-        );
-
-        self.rpass.execute(
-            encoder,
-            render_target,
-            &self.paint_jobs,
-            &self.screen_descriptor,
-            None,
-        )?;
-
-        let textures = std::mem::take(&mut self.textures);
-        self.rpass.remove_textures(textures)
+        self.egui_glium.paint(&display, target);
     }
 
     pub fn state(&self) -> std::sync::Arc<State> {
@@ -137,6 +72,7 @@ impl State {
     }
 
     fn layout(&self, ctx: &Context) {
+        ctx.set_visuals(egui::Visuals::light());
         let mut show_debug = self.show_debug.load(std::sync::atomic::Ordering::Relaxed);
         egui::Window::new("Debug")
             .id(egui::Id::new("debug-window"))

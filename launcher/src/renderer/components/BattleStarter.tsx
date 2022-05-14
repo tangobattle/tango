@@ -846,8 +846,6 @@ export default function BattleStarter({
         linkCode,
         {
           env: {
-            WGPU_BACKEND:
-              config.wgpuBackend != null ? config.wgpuBackend : undefined,
             RUST_LOG: config.rustLogFilter,
             RUST_BACKTRACE: "1",
           },
