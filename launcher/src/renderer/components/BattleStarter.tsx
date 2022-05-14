@@ -614,6 +614,7 @@ async function runCallback(
       startReq,
     });
 
+    ref.current.setRtt(null);
     discord.setInProgress(linkCode, new Date(), {
       title: ref.current.getGameTitle(ownGameInfo),
       romName: ownGameInfo.rom,
