@@ -3,49 +3,139 @@ use std::io::Write;
 
 use clap::StructOpt;
 
-pub fn init_wgpu(
-    window: &winit::window::Window,
-) -> (
-    wgpu::Device,
-    wgpu::Queue,
-    wgpu::Surface,
-    wgpu::SurfaceConfiguration,
-) {
-    let backends = wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::PRIMARY);
-    let instance = wgpu::Instance::new(backends);
-    let (size, surface) = unsafe {
-        let size = window.inner_size();
-        let surface = instance.create_surface(&window);
-        (size, surface)
-    };
+struct GuiState {
+    text: parking_lot::Mutex<String>,
+}
 
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::default(),
-        compatible_surface: Some(&surface),
-        ..Default::default()
-    }))
-    .expect("No adapters found!");
+impl GuiState {
+    fn new() -> Self {
+        Self {
+            text: parking_lot::Mutex::new("".to_owned()),
+        }
+    }
 
-    let (device, queue) = pollster::block_on(adapter.request_device(
-        &wgpu::DeviceDescriptor {
-            label: Some("Device"),
-            features: wgpu::Features::empty(),
-            limits: wgpu::Limits::default(),
-        },
-        None,
-    ))
-    .unwrap();
+    fn set_text(&self, text: &str) {
+        *self.text.lock() = text.to_owned();
+    }
 
-    let format = surface.get_preferred_format(&adapter).unwrap();
-    let config = wgpu::SurfaceConfiguration {
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-        format,
-        width: size.width,
-        height: size.height,
-        present_mode: wgpu::PresentMode::Mailbox,
-    };
-    surface.configure(&device, &config);
-    (device, queue, surface, config)
+    fn layout(&self, ctx: &egui::Context) {
+        egui::panel::CentralPanel::default().show(ctx, |ui| {
+            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                ui.label(egui::RichText::new(self.text.lock().clone()).size(32.0));
+            });
+        });
+    }
+}
+
+struct Gui {
+    ctx: egui::Context,
+    winit_state: egui_winit::State,
+    screen_descriptor: egui_wgpu_backend::ScreenDescriptor,
+    rpass: egui_wgpu_backend::RenderPass,
+    paint_jobs: Vec<egui::ClippedMesh>,
+    textures: egui::TexturesDelta,
+    state: std::sync::Arc<GuiState>,
+}
+
+impl Gui {
+    pub fn new(
+        lang: String,
+        width: u32,
+        height: u32,
+        scale_factor: f32,
+        pixels: &pixels::Pixels,
+    ) -> Self {
+        let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
+
+        let ctx = egui::Context::default();
+
+        let mut fonts = egui::FontDefinitions::default();
+        let font = match lang.as_str() {
+            "ja" => egui::FontData::from_static(include_bytes!("fonts/NotoSansJP-Regular.otf")),
+            "zh-Hans" => {
+                egui::FontData::from_static(include_bytes!("fonts/NotoSansSC-Regular.otf"))
+            }
+            _ => egui::FontData::from_static(include_bytes!("fonts/NotoSans-Regular.ttf")),
+        };
+        fonts.font_data.insert("main".to_owned(), font);
+        *fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap() = vec!["main".to_owned()];
+        ctx.set_fonts(fonts);
+
+        ctx.set_visuals(egui::Visuals::light());
+
+        let winit_state = egui_winit::State::from_pixels_per_point(max_texture_size, scale_factor);
+        let screen_descriptor = egui_wgpu_backend::ScreenDescriptor {
+            physical_width: width,
+            physical_height: height,
+            scale_factor,
+        };
+        let rpass =
+            egui_wgpu_backend::RenderPass::new(pixels.device(), pixels.render_texture_format(), 1);
+        let textures = egui::TexturesDelta::default();
+
+        Self {
+            ctx,
+            winit_state,
+            screen_descriptor,
+            rpass,
+            paint_jobs: Vec::new(),
+            textures,
+            state: std::sync::Arc::new(GuiState::new()),
+        }
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width > 0 && height > 0 {
+            self.screen_descriptor.physical_width = width;
+            self.screen_descriptor.physical_height = height;
+        }
+    }
+
+    pub fn prepare(&mut self, window: &winit::window::Window) {
+        let raw_input = self.winit_state.take_egui_input(window);
+        let output = self.ctx.run(raw_input, |ctx| {
+            self.state.layout(ctx);
+        });
+
+        self.textures.append(output.textures_delta);
+        self.winit_state
+            .handle_platform_output(window, &self.ctx, output.platform_output);
+        self.paint_jobs = self.ctx.tessellate(output.shapes);
+    }
+
+    pub fn render(
+        &mut self,
+        encoder: &mut wgpu::CommandEncoder,
+        render_target: &wgpu::TextureView,
+        context: &pixels::PixelsContext,
+    ) -> Result<(), egui_wgpu_backend::BackendError> {
+        self.rpass
+            .add_textures(&context.device, &context.queue, &self.textures)?;
+        self.rpass.update_buffers(
+            &context.device,
+            &context.queue,
+            &self.paint_jobs,
+            &self.screen_descriptor,
+        );
+
+        self.rpass.execute(
+            encoder,
+            render_target,
+            &self.paint_jobs,
+            &self.screen_descriptor,
+            None,
+        )?;
+
+        let textures = std::mem::take(&mut self.textures);
+        self.rpass.remove_textures(textures)
+    }
+
+    pub fn state(&self) -> std::sync::Arc<GuiState> {
+        self.state.clone()
+    }
 }
 
 enum UserEvent {
@@ -76,16 +166,19 @@ fn main() -> anyhow::Result<()> {
         .with_decorations(false)
         .build(event_loop.as_ref().expect("event loop"))?;
 
-    let (device, queue, surface, config) = init_wgpu(&window);
-
-    let mut brush = wgpu_text::BrushBuilder::using_font(match args.lang.as_str() {
-        "ja" => ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSansJP-Regular.otf"))?,
-        "zh-Hans" => {
-            ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSansSC-Regular.otf"))?
-        }
-        _ => ab_glyph::FontRef::try_from_slice(include_bytes!("fonts/NotoSans-Regular.ttf"))?,
-    })
-    .build(&device, &config);
+    let window_size = window.inner_size();
+    let surface_texture =
+        pixels::SurfaceTexture::new(window_size.width, window_size.height, &window);
+    let mut pixels =
+        pixels::PixelsBuilder::new(size.width, size.height, surface_texture).build()?;
+    let mut gui = Gui::new(
+        args.lang,
+        window_size.width,
+        window_size.height,
+        window.scale_factor() as f32,
+        &pixels,
+    );
+    let gui_state = gui.state();
 
     let mut keys_pressed = [false; 255];
 
@@ -100,6 +193,7 @@ fn main() -> anyhow::Result<()> {
             panic!("{}", e);
         }
     }
+    gui_state.set_text(&text);
 
     let el_proxy = event_loop.as_ref().expect("event loop").create_proxy();
     let mut gilrs = gilrs::Gilrs::new().unwrap();
@@ -116,60 +210,14 @@ fn main() -> anyhow::Result<()> {
         .run(move |event, _, control_flow| {
             match event {
                 winit::event::Event::RedrawRequested(_) => {
-                    let frame = match surface.get_current_texture() {
-                        Ok(frame) => frame,
-                        Err(_) => {
-                            surface.configure(&device, &config);
-                            surface
-                                .get_current_texture()
-                                .expect("Failed to acquire next surface texture!")
-                        }
-                    };
-                    let view = frame
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default());
-
-                    let mut encoder =
-                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("Command Encoder"),
-                        });
-
-                    {
-                        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                            label: Some("Render Pass"),
-                            color_attachments: &[wgpu::RenderPassColorAttachment {
-                                view: &view,
-                                resolve_target: None,
-                                ops: wgpu::Operations {
-                                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                                        r: 1.0,
-                                        g: 1.0,
-                                        b: 1.0,
-                                        a: 1.0,
-                                    }),
-                                    store: true,
-                                },
-                            }],
-                            depth_stencil_attachment: None,
-                        });
-                    }
-
-                    let window_size = window.inner_size();
-                    let section = wgpu_text::section::Section::default()
-                        .add_text(wgpu_text::section::Text::new(&text).with_scale(48.0))
-                        .with_layout(
-                            wgpu_text::section::Layout::default()
-                                .h_align(wgpu_text::section::HorizontalAlign::Center)
-                                .v_align(wgpu_text::section::VerticalAlign::Center),
-                        )
-                        .with_screen_position((
-                            window_size.width as f32 / 2.0,
-                            window_size.height as f32 / 2.0,
-                        ));
-                    brush.queue(&section);
-                    let text_buffer = brush.draw(&device, &view, &queue);
-                    queue.submit([encoder.finish(), text_buffer]);
-                    frame.present();
+                    gui.prepare(&window);
+                    pixels
+                        .render_with(|encoder, render_target, context| {
+                            context.scaling_renderer.render(encoder, render_target);
+                            gui.render(encoder, render_target, context)?;
+                            Ok(())
+                        })
+                        .expect("render pixels");
                 }
                 winit::event::Event::WindowEvent {
                     event: ref window_event,
@@ -199,7 +247,7 @@ fn main() -> anyhow::Result<()> {
                                         )
                                         .unwrap();
                                     std::io::stdout().write_all(b"\n").unwrap();
-                                    text.clear();
+                                    let mut text = "".to_owned();
                                     match std::io::stdin().read_line(&mut text) {
                                         Ok(n) => {
                                             if n == 0 {
@@ -213,11 +261,16 @@ fn main() -> anyhow::Result<()> {
                                             panic!("{}", e);
                                         }
                                     }
+                                    gui_state.set_text(&text);
                                 }
                                 winit::event::ElementState::Released => {
                                     keys_pressed[keycode as usize] = false;
                                 }
                             }
+                        }
+                        winit::event::WindowEvent::Resized(size) => {
+                            pixels.resize_surface(size.width, size.height);
+                            gui.resize(size.width, size.height);
                         }
                         _ => {}
                     };
