@@ -1261,6 +1261,10 @@ export default function BattleStarter({
                             !hasGame(
                               pendingStates.opponent.settings.gameInfo
                             ) ||
+                            !isNetplayCompatible(
+                              pendingStates?.own?.settings.gameInfo ?? null,
+                              pendingStates?.opponent?.settings.gameInfo ?? null
+                            ) ||
                             changingCommitment ||
                             (pendingStates.own.negotiatedState != null &&
                               pendingStates.opponent.commitment != null)
