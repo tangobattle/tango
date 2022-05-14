@@ -142,14 +142,16 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
     fn on_connection_state_change(&mut self, state: ConnectionState) {
         // This can called by the destructor on the same thread that Tokio is running on (horrible).
         let signal = PeerConnectionSignal::ConnectionStateChange(state);
-        let _ = match tokio::runtime::Handle::try_current() {
+        match tokio::runtime::Handle::try_current() {
             Ok(_) => {
-                // There is no safe way to do this. This occurs during destruction so just completely ignore it.
+                // We're running in an async context, just try send it and if we can't, oh well (this is probably during destruction).
+                let _ = self.signal_tx.try_send(signal);
             }
             Err(_) => {
+                // We're not running in an async context, block on sending it.
                 let _ = self.signal_tx.blocking_send(signal);
             }
-        };
+        }
     }
 
     fn on_gathering_state_change(&mut self, state: GatheringState) {
