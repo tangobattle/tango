@@ -1106,7 +1106,7 @@ export default function BattleStarter({
                           inputDelay: Math.min(
                             10,
                             Math.max(
-                              3,
+                              1,
                               Math.round(
                                 ((rtt! / 1000 / 1000 / 2) * 60) / 1000
                               ) +
