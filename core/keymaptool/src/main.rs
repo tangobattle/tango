@@ -89,11 +89,17 @@ fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
-    let event_loop = Some(winit::event_loop::EventLoop::with_user_event());
+    let event_loop = winit::event_loop::EventLoop::with_user_event();
 
+    let handle = event_loop.primary_monitor().unwrap();
+    let monitor_size = handle.size();
     let size = winit::dpi::LogicalSize::new(400u32, 100u32);
     let wb = winit::window::WindowBuilder::new()
         .with_title("keymaptool")
+        .with_position(winit::dpi::PhysicalPosition {
+            x: monitor_size.width / 2 - 400 / 2,
+            y: monitor_size.height / 2 - 100 / 2,
+        })
         .with_inner_size(size)
         .with_min_inner_size(size)
         .with_always_on_top(true)
@@ -101,7 +107,7 @@ fn main() -> anyhow::Result<()> {
 
     let cb = glium::glutin::ContextBuilder::new();
 
-    let display = glium::Display::new(wb, cb, event_loop.as_ref().expect("event loop"))?;
+    let display = glium::Display::new(wb, cb, &event_loop)?;
 
     let mut gui = Gui::new(args.lang, &display);
     let gui_state = gui.state();
@@ -121,7 +127,7 @@ fn main() -> anyhow::Result<()> {
     }
     gui_state.set_text(&text);
 
-    let el_proxy = event_loop.as_ref().expect("event loop").create_proxy();
+    let el_proxy = event_loop.create_proxy();
     let mut gilrs = gilrs::Gilrs::new().unwrap();
     std::thread::spawn(move || {
         while let Some(event) = gilrs.next_event() {
@@ -131,70 +137,65 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    event_loop
-        .expect("event loop")
-        .run(move |event, _, control_flow| {
-            match event {
-                winit::event::Event::RedrawRequested(_) => {
-                    let mut target = display.draw();
-                    target.clear_color(0.0, 0.0, 0.0, 1.0);
-                    gui.render(&display, &mut target);
-                    target.finish().unwrap();
-                }
-                winit::event::Event::WindowEvent {
-                    event: ref window_event,
-                    ..
-                } => {
-                    match window_event {
-                        winit::event::WindowEvent::CloseRequested
-                        | winit::event::WindowEvent::Focused(false) => {
-                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                        }
-                        winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                            let keycode = if let Some(keycode) = input.virtual_keycode {
-                                keycode
-                            } else {
-                                return;
-                            };
-                            match input.state {
-                                winit::event::ElementState::Pressed => {
-                                    if keys_pressed[keycode as usize] {
-                                        return;
-                                    }
-                                    keys_pressed[keycode as usize] = true;
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            winit::event::Event::RedrawRequested(_) => {
+                let mut target = display.draw();
+                target.clear_color(0.0, 0.0, 0.0, 1.0);
+                gui.render(&display, &mut target);
+                target.finish().unwrap();
+            }
+            winit::event::Event::WindowEvent {
+                event: ref window_event,
+                ..
+            } => {
+                match window_event {
+                    winit::event::WindowEvent::CloseRequested
+                    | winit::event::WindowEvent::Focused(false) => {
+                        *control_flow = winit::event_loop::ControlFlow::Exit;
+                    }
+                    winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                        let keycode = if let Some(keycode) = input.virtual_keycode {
+                            keycode
+                        } else {
+                            return;
+                        };
+                        match input.state {
+                            winit::event::ElementState::Pressed => {
+                                if keys_pressed[keycode as usize] {
+                                    return;
+                                }
+                                keys_pressed[keycode as usize] = true;
 
-                                    std::io::stdout()
-                                        .write_all(
-                                            serde_plain::to_string(&keycode).unwrap().as_bytes(),
-                                        )
-                                        .unwrap();
-                                    std::io::stdout().write_all(b"\n").unwrap();
-                                    let mut text = "".to_owned();
-                                    match std::io::stdin().read_line(&mut text) {
-                                        Ok(n) => {
-                                            if n == 0 {
-                                                *control_flow =
-                                                    winit::event_loop::ControlFlow::Exit;
-                                                return;
-                                            }
-                                            display.gl_window().window().request_redraw();
+                                std::io::stdout()
+                                    .write_all(serde_plain::to_string(&keycode).unwrap().as_bytes())
+                                    .unwrap();
+                                std::io::stdout().write_all(b"\n").unwrap();
+                                let mut text = "".to_owned();
+                                match std::io::stdin().read_line(&mut text) {
+                                    Ok(n) => {
+                                        if n == 0 {
+                                            *control_flow = winit::event_loop::ControlFlow::Exit;
+                                            return;
                                         }
-                                        Err(e) => {
-                                            panic!("{}", e);
-                                        }
+                                        display.gl_window().window().request_redraw();
                                     }
-                                    gui_state.set_text(&text);
+                                    Err(e) => {
+                                        panic!("{}", e);
+                                    }
                                 }
-                                winit::event::ElementState::Released => {
-                                    keys_pressed[keycode as usize] = false;
-                                }
+                                gui_state.set_text(&text);
+                            }
+                            winit::event::ElementState::Released => {
+                                keys_pressed[keycode as usize] = false;
                             }
                         }
-                        _ => {}
-                    };
-                }
-                winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
-                _ => {}
-            };
-        });
+                    }
+                    _ => {}
+                };
+            }
+            winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
+            _ => {}
+        };
+    });
 }
