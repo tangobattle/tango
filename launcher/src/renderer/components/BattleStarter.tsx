@@ -894,13 +894,16 @@ export default function BattleStarter({
 
   React.useEffect(() => {
     const activityJoinCallback = (d: { secret: string }) => {
+      if (pendingStates != null) {
+        return;
+      }
       start(d.secret);
     };
     discord.events.on("activityjoin", activityJoinCallback);
     return () => {
       discord.events.off("activityjoin", activityJoinCallback);
     };
-  }, [start]);
+  }, [start, pendingStates]);
 
   return (
     <>
