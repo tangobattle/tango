@@ -92,7 +92,11 @@ function updateActivity() {
   if (rpc == null || !ready) {
     return;
   }
-  rpc.setActivity(activity);
+  try {
+    rpc.setActivity(activity);
+  } catch (e) {
+    console.error("failed to set discord activity", e);
+  }
 }
 
 try {
