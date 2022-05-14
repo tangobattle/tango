@@ -64,7 +64,7 @@ fn main() -> Result<(), anyhow::Error> {
             .with_min_inner_size(size)
     };
 
-    let cb = glium::glutin::ContextBuilder::new().with_srgb(false);
+    let cb = glium::glutin::ContextBuilder::new();
 
     let event_loop = winit::event_loop::EventLoop::new();
 
