@@ -83,3 +83,9 @@ glowfb was designed for use with a GBA emulator, so it doesn't have very many be
 -   [softbuffer](https://github.com/john01dav/softbuffer): A pixel buffer implemented completely in software rendering.
 
 -   [minifb](https://github.com/emoon/rust_minifb): A similar framebuffer library but comes with window management built in.
+
+## Acknowledgements
+
+-   [shivshank](https://github.com/shivshank) for the original mini_gl_fb package.
+
+-   [emilk](https://github.com/emilk) for the OpenGL shim code in egui.
