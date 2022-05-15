@@ -1,28 +1,28 @@
 use egui::Context;
-use egui_glium::EguiGlium;
 
 pub struct Gui {
-    egui_glium: EguiGlium,
+    egui_glow: egui_glow::EguiGlow,
     state: std::sync::Arc<State>,
 }
 
 impl Gui {
-    pub fn new(display: &glium::Display) -> Self {
+    pub fn new(window: &winit::window::Window, gl: &glow::Context) -> Self {
+        let egui_glow = egui_glow::EguiGlow::new(window, gl);
         Self {
-            egui_glium: EguiGlium::new(display),
+            egui_glow,
             state: std::sync::Arc::new(State::new()),
         }
     }
 
-    pub fn handle_event(&mut self, event: &glium::glutin::event::WindowEvent) -> bool {
-        self.egui_glium.on_event(event)
+    pub fn handle_event(&mut self, event: &glutin::event::WindowEvent) -> bool {
+        self.egui_glow.on_event(event)
     }
 
-    pub fn render(&mut self, display: &glium::Display, target: &mut impl glium::Surface) {
-        self.egui_glium.run(&display, |ctx| {
+    pub fn render(&mut self, window: &winit::window::Window, gl: &glow::Context) {
+        self.egui_glow.run(window, |ctx| {
             self.state.layout(ctx);
         });
-        self.egui_glium.paint(&display, target);
+        self.egui_glow.paint(window, gl);
     }
 
     pub fn state(&self) -> std::sync::Arc<State> {

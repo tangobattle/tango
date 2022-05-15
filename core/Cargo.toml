@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "mgba",
+    "glowfb",
     "tango-core",
     "tango-protos",
     "tango-server",
@@ -9,6 +10,3 @@ members = [
     "keymaptool",
     "datachannel-wrapper",
 ]
-
-[patch.crates-io]
-glium = { git = "https://github.com/bigfarts/glium", rev = "27cf5774e076a8aa5ef02ddb00ad836dfef41859" }

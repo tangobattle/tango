@@ -17,5 +17,6 @@ clap = { version = "3.1", features = ["derive"] }
 egui = "0.17"
 egui-winit = { version = "0.17", default-features = false }
 parking_lot = { version = "0.12.0" }
-glium = "0.31"
-egui_glium = "0.17"
+egui_glow = "0.17"
+glow = "0.11"
+glutin = "0.28.0"

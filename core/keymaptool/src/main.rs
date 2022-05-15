@@ -2,7 +2,7 @@
 use std::io::Write;
 
 use clap::StructOpt;
-use glium::Surface;
+use glow::HasContext;
 
 struct GuiState {
     text: parking_lot::Mutex<String>,
@@ -30,13 +30,13 @@ impl GuiState {
 }
 
 struct Gui {
-    egui_glium: egui_glium::EguiGlium,
+    egui_glow: egui_glow::EguiGlow,
     state: std::sync::Arc<GuiState>,
 }
 
 impl Gui {
-    pub fn new(lang: String, display: &glium::Display) -> Self {
-        let egui_glium = egui_glium::EguiGlium::new(display);
+    pub fn new(lang: String, window: &winit::window::Window, gl: &glow::Context) -> Self {
+        let egui_glow = egui_glow::EguiGlow::new(window, gl);
 
         let mut fonts = egui::FontDefinitions::default();
         let font = match lang.as_str() {
@@ -52,19 +52,19 @@ impl Gui {
             .get_mut(&egui::FontFamily::Proportional)
             .unwrap() = vec!["main".to_owned()];
 
-        egui_glium.egui_ctx.set_fonts(fonts);
+        egui_glow.egui_ctx.set_fonts(fonts);
 
         Self {
-            egui_glium,
+            egui_glow,
             state: std::sync::Arc::new(GuiState::new()),
         }
     }
 
-    pub fn render(&mut self, display: &glium::Display, target: &mut impl glium::Surface) {
-        self.egui_glium.run(&display, |ctx| {
+    pub fn render(&mut self, window: &winit::window::Window, gl: &glow::Context) {
+        self.egui_glow.run(window, |ctx| {
             self.state.layout(ctx);
         });
-        self.egui_glium.paint(&display, target);
+        self.egui_glow.paint(window, gl);
     }
 
     pub fn state(&self) -> std::sync::Arc<GuiState> {
@@ -105,12 +105,22 @@ fn main() -> anyhow::Result<()> {
         .with_always_on_top(true)
         .with_decorations(false);
 
-    let cb = glium::glutin::ContextBuilder::new();
+    let gl_window = unsafe {
+        glutin::ContextBuilder::new()
+            .with_double_buffer(Some(true))
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap()
+            .make_current()
+            .unwrap()
+    };
 
-    let display = glium::Display::new(wb, cb, &event_loop)?;
-    log::info!("GL version: {}", display.get_opengl_version_string());
+    let gl = unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) };
+    log::info!("GL version: {}", unsafe {
+        gl.get_parameter_string(glow::VERSION)
+    });
 
-    let mut gui = Gui::new(args.lang, &display);
+    let mut gui = Gui::new(args.lang, gl_window.window(), &gl);
     let gui_state = gui.state();
 
     let mut keys_pressed = [false; 255];
@@ -141,10 +151,12 @@ fn main() -> anyhow::Result<()> {
     event_loop.run(move |event, _, control_flow| {
         match event {
             winit::event::Event::RedrawRequested(_) => {
-                let mut target = display.draw();
-                target.clear_color(0.0, 0.0, 0.0, 1.0);
-                gui.render(&display, &mut target);
-                target.finish().unwrap();
+                unsafe {
+                    gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                    gl.clear(glow::COLOR_BUFFER_BIT);
+                }
+                gui.render(gl_window.window(), &gl);
+                gl_window.swap_buffers().unwrap();
             }
             winit::event::Event::WindowEvent {
                 event: ref window_event,
@@ -179,7 +191,7 @@ fn main() -> anyhow::Result<()> {
                                             *control_flow = winit::event_loop::ControlFlow::Exit;
                                             return;
                                         }
-                                        display.gl_window().window().request_redraw();
+                                        gl_window.window().request_redraw();
                                     }
                                     Err(e) => {
                                         panic!("{}", e);
