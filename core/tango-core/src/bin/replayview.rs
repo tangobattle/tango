@@ -69,6 +69,7 @@ fn main() -> Result<(), anyhow::Error> {
     let event_loop = winit::event_loop::EventLoop::new();
 
     let display = glium::Display::new(wb, cb, &event_loop)?;
+    log::info!("GL version: {}", display.get_opengl_version_string());
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::HOOKS

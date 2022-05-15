@@ -108,6 +108,7 @@ fn main() -> anyhow::Result<()> {
     let cb = glium::glutin::ContextBuilder::new();
 
     let display = glium::Display::new(wb, cb, &event_loop)?;
+    log::info!("GL version: {}", display.get_opengl_version_string());
 
     let mut gui = Gui::new(args.lang, &display);
     let gui_state = gui.state();

@@ -87,6 +87,8 @@ impl Game {
         let cb = glium::glutin::ContextBuilder::new().with_vsync(true);
 
         let display = glium::Display::new(wb, cb, event_loop.as_ref().expect("event loop"))?;
+        log::info!("GL API: {}", display.get_opengl_version_string());
+
         let gui = gui::Gui::new(&display);
 
         let mut core = mgba::core::Core::new_gba("tango")?;
