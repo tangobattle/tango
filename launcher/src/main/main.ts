@@ -18,11 +18,13 @@ const cfg = config.ensureSync(getConfigPath(app));
 remoteMain.initialize();
 
 Object.assign(console, log.functions);
-
-autoUpdater.channel = cfg.updateChannel;
-autoUpdater.allowDowngrade = false;
-autoUpdater.allowPrerelease = cfg.updateChannel != "latest";
 autoUpdater.logger = console;
+
+if (autoUpdater.channel != "disabled") {
+  autoUpdater.channel = cfg.updateChannel;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.allowPrerelease = cfg.updateChannel != "latest";
+}
 
 autoUpdater.addListener("update-available", () => {
   if (mainWindow != null) {
@@ -138,7 +140,10 @@ function createWindow() {
   );
 
   remoteMain.enable(mainWindow.webContents);
-  autoUpdater.checkForUpdates();
+
+  if (cfg.updateChannel != "disabled") {
+    autoUpdater.checkForUpdates();
+  }
 }
 
 // This method will be called when Electron has finished

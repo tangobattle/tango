@@ -25,6 +25,7 @@
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
-    "rust-log-filter": "RUST_LOG 过滤",
+    "update-channel.disabled": "禁用",
+    "rust-log-filter": "RUST_LOG过滤",
     "open-logs-folder": "打开日志文件夹"
 }

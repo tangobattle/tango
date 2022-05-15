@@ -349,6 +349,9 @@ function AdvancedTab({ active }: { active: boolean }) {
               <MenuItem value="alpha">
                 <Trans i18nKey="settings:update-channel.alpha" />
               </MenuItem>
+              <MenuItem value="disabled">
+                <Trans i18nKey="settings:update-channel.disabled" />
+              </MenuItem>
             </Select>
           </FormControl>
           <Button
