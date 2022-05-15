@@ -84,7 +84,13 @@ impl Game {
         let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
         let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
 
-        let cb = glium::glutin::ContextBuilder::new().with_vsync(true);
+        let cb = glium::glutin::ContextBuilder::new()
+            .with_vsync(true)
+            .with_gl(glium::glutin::GlRequest::Specific(
+                glium::glutin::Api::OpenGl,
+                (3, 2),
+            ))
+            .with_gl_profile(glium::glutin::GlProfile::Core);
 
         let display = glium::Display::new(wb, cb, event_loop.as_ref().expect("event loop"))?;
         let gui = gui::Gui::new(&display);
