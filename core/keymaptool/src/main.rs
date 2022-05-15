@@ -105,12 +105,7 @@ fn main() -> anyhow::Result<()> {
         .with_always_on_top(true)
         .with_decorations(false);
 
-    let cb = glium::glutin::ContextBuilder::new()
-        .with_gl(glium::glutin::GlRequest::Specific(
-            glium::glutin::Api::OpenGl,
-            (3, 2),
-        ))
-        .with_gl_profile(glium::glutin::GlProfile::Core);
+    let cb = glium::glutin::ContextBuilder::new();
 
     let display = glium::Display::new(wb, cb, &event_loop)?;
 

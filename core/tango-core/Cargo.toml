@@ -35,9 +35,9 @@ shell-words = "1.1"
 serde_json = "1.0"
 url = "2.2"
 serde_plain = "1.0"
-egui = "0.18"
-egui_glium = "0.18"
-egui-winit = { version = "0.18", default-features = false }
+egui = "0.17"
+egui_glium = "0.17"
+egui-winit = { version = "0.17", default-features = false }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
 gilrs = "0.8"
 tokio-tungstenite = { version = "0.17.1", features = ["native-tls"] }
