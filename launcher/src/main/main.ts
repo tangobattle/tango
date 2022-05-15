@@ -143,6 +143,8 @@ function createWindow() {
 
   if (cfg.updateChannel != "disabled") {
     autoUpdater.checkForUpdates();
+  } else {
+    console.warn("automatic updates are disabled!");
   }
 }
 
