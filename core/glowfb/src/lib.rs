@@ -23,8 +23,9 @@ impl Framebuffer {
             gl.shader_source(
                 vertex_shader,
                 &format!(
-                    "{}{}",
+                    "{}{}{}",
                     shader_version.version(),
+                    shader_version.is_new_shader_interface(),
                     include_str!("./shaders/fb.vert")
                 ),
             );
@@ -40,8 +41,9 @@ impl Framebuffer {
             gl.shader_source(
                 fragment_shader,
                 &format!(
-                    "{}{}",
+                    "{}{}{}",
                     shader_version.version(),
+                    shader_version.is_new_shader_interface(),
                     include_str!("./shaders/fb.frag")
                 ),
             );

@@ -2,7 +2,7 @@
 precision mediump float;
 #endif
 
-#if __VERSION__ >= 130
+#ifdef NEW_SHADER_INTERFACE
 #define IN in
 #define OUT out
 #else
