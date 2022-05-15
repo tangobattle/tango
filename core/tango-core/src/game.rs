@@ -101,14 +101,7 @@ impl Game {
             gl.get_parameter_string(glow::VERSION)
         });
 
-        let fb = glowfb::Framebuffer::new(
-            gl.clone(),
-            glutin::dpi::LogicalSize {
-                width: mgba::gba::SCREEN_WIDTH,
-                height: mgba::gba::SCREEN_HEIGHT,
-            },
-        )
-        .map_err(|e| anyhow::format_err!("{}", e))?;
+        let fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
 
         let gui = gui::Gui::new(&gl_window.window(), &gl);
 
@@ -408,7 +401,14 @@ impl Game {
                         self.gl.clear(glow::COLOR_BUFFER_BIT);
                     }
                     let vbuf = self.vbuf.lock().clone();
-                    self.fb.draw(self.gl_window.window().inner_size(), &vbuf);
+                    self.fb.draw(
+                        self.gl_window.window().inner_size(),
+                        glutin::dpi::LogicalSize {
+                            width: mgba::gba::SCREEN_WIDTH,
+                            height: mgba::gba::SCREEN_HEIGHT,
+                        },
+                        &vbuf,
+                    );
                     self.gui.render(&self.gl_window.window(), &self.gl);
                     self.gl_window.swap_buffers().unwrap();
                     self.fps_counter.lock().mark();

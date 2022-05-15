@@ -82,14 +82,7 @@ fn main() -> Result<(), anyhow::Error> {
         gl.get_parameter_string(glow::VERSION)
     });
 
-    let mut fb = glowfb::Framebuffer::new(
-        gl.clone(),
-        glutin::dpi::LogicalSize {
-            width: mgba::gba::SCREEN_WIDTH,
-            height: mgba::gba::SCREEN_HEIGHT,
-        },
-    )
-    .map_err(|e| anyhow::format_err!("{}", e))?;
+    let mut fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::HOOKS
@@ -174,7 +167,14 @@ fn main() -> Result<(), anyhow::Error> {
                         gl.clear(glow::COLOR_BUFFER_BIT);
                     }
                     let vbuf = vbuf.lock().clone();
-                    fb.draw(gl_window.window().inner_size(), &vbuf);
+                    fb.draw(
+                        gl_window.window().inner_size(),
+                        glutin::dpi::LogicalSize {
+                            width: mgba::gba::SCREEN_WIDTH,
+                            height: mgba::gba::SCREEN_HEIGHT,
+                        },
+                        &vbuf,
+                    );
                     gl_window.swap_buffers().unwrap();
                 }
                 winit::event::Event::WindowEvent {

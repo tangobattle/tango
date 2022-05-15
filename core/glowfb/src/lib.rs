@@ -4,7 +4,6 @@ mod vao;
 
 pub struct Framebuffer {
     gl: std::rc::Rc<glow::Context>,
-    buffer_size: glutin::dpi::LogicalSize<u32>,
     program: glow::Program,
     vao: vao::VertexArrayObject,
     vbo: glow::Buffer,
@@ -12,10 +11,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub fn new(
-        gl: std::rc::Rc<glow::Context>,
-        buffer_size: glutin::dpi::LogicalSize<u32>,
-    ) -> Result<Self, String> {
+    pub fn new(gl: std::rc::Rc<glow::Context>) -> Result<Self, String> {
         unsafe {
             let shader_version = shader_version::ShaderVersion::get(&gl);
 
@@ -163,7 +159,6 @@ impl Framebuffer {
 
             Ok(Self {
                 gl,
-                buffer_size,
                 program,
                 vao,
                 vbo,
@@ -172,15 +167,20 @@ impl Framebuffer {
         }
     }
 
-    pub fn draw(&mut self, viewport_size: glutin::dpi::PhysicalSize<u32>, pixels: &[u8]) {
+    pub fn draw(
+        &mut self,
+        viewport_size: glutin::dpi::PhysicalSize<u32>,
+        buffer_size: glutin::dpi::LogicalSize<u32>,
+        pixels: &[u8],
+    ) {
         unsafe {
             let scaling_factor = std::cmp::min(
-                viewport_size.width / self.buffer_size.width,
-                viewport_size.height / self.buffer_size.height,
+                viewport_size.width / buffer_size.width,
+                viewport_size.height / buffer_size.height,
             );
 
-            let width = self.buffer_size.width * scaling_factor;
-            let height = self.buffer_size.height * scaling_factor;
+            let width = buffer_size.width * scaling_factor;
+            let height = buffer_size.height * scaling_factor;
 
             self.gl.viewport(
                 ((viewport_size.width - width) / 2) as i32,
@@ -196,8 +196,8 @@ impl Framebuffer {
                 glow::TEXTURE_2D,
                 0,
                 glow::RGBA8 as i32,
-                self.buffer_size.width as i32,
-                self.buffer_size.height as i32,
+                buffer_size.width as i32,
+                buffer_size.height as i32,
                 0,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,

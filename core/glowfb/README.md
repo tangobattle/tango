@@ -13,7 +13,7 @@ If you're using e.g. winit + glutin:
 ```rust
 let event_loop = winit::event_loop::EventLoop::new();
 
-let wb =  glutin::window::WindowBuilder::new();
+let wb = glutin::window::WindowBuilder::new();
 
 let gl_window = unsafe {
     glutin::ContextBuilder::new()
@@ -68,8 +68,6 @@ event_loop.run(move |event, _, control_flow| {
 ## Limitations
 
 glowfb was designed for use with a GBA emulator, so it doesn't have very many bells and whistles. In particular:
-
--   The internal buffer cannot be resized.
 
 -   Only proportional integer scaling is performed.
 
