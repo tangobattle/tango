@@ -27,10 +27,7 @@ let gl = std::rc::Rc::new(unsafe {
     glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
 });
 
-let mut fb = glowfb::Framebuffer::new(
-    gl.clone(),
-    glutin::dpi::LogicalSize { width, height },
-).unwrap();
+let mut fb = glowfb::Framebuffer::new(gl.clone()).unwrap();
 ```
 
 ### 2. Hook it up to the event loop
@@ -43,7 +40,11 @@ event_loop.run(move |event, _, control_flow| {
                 gl.clear_color(0.0, 0.0, 0.0, 1.0);
                 gl.clear(glow::COLOR_BUFFER_BIT);
             }
-            fb.draw(gl_window.window().inner_size(), &pixels);
+            fb.draw(
+                gl_window.window().inner_size(),
+                glutin::dpi::LogicalSize { width, height },
+                &pixels,
+            );
             gl_window.swap_buffers().unwrap();
         }
         winit::event::Event::WindowEvent {
