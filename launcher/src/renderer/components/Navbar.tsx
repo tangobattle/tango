@@ -30,9 +30,10 @@ const Drawer = styled(MuiDrawer, {
 const NavbarButtonWrapper = styled(ListItemButton)(({ theme }) => ({
   "&.Mui-selected": {
     transition: "none",
-    borderLeft: `4px solid ${theme.palette.primary.main} !important`,
+    borderLeft: `2px solid ${theme.palette.primary.main} !important`,
     "& > .MuiListItemIcon-root": {
-      marginLeft: "-4px",
+      marginLeft: "-2px",
+      color: `${theme.palette.primary.main} !important`,
     },
   },
 }));
