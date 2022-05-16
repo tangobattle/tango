@@ -87,12 +87,12 @@ pub async fn negotiate(
 
     let (mut dc_rx, mut dc_tx) = dc.split();
 
-    log::info!(
+    log::debug!(
         "local sdp (type = {:?}): {}",
         peer_conn.local_description().expect("local sdp").sdp_type,
         peer_conn.local_description().expect("local sdp").sdp
     );
-    log::info!(
+    log::debug!(
         "remote sdp (type = {:?}): {}",
         peer_conn.remote_description().expect("remote sdp").sdp_type,
         peer_conn.remote_description().expect("remote sdp").sdp
