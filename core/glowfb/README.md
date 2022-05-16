@@ -72,6 +72,8 @@ glowfb was designed for use with a GBA emulator, so it doesn't have very many be
 
 -   Only proportional integer scaling is performed.
 
+-   The coordinate system is flipped vertically from OpenGL's: that is, (0, 0) is the top-left of the window. This is probably what you want, but might be unexpected if you're assuming OpenGL behavior.
+
 ## Alternatives
 
 -   [mini_gl_fb](https://github.com/shivshank/mini_gl_fb): Another OpenGL framebuffer library! Similar to this library but requires OpenGL 3.3+ support due to use of GLSL 3.3 and direct use of VAOs.
