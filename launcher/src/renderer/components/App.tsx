@@ -1,4 +1,3 @@
-import { config } from "process";
 import React, { Suspense } from "react";
 import { Trans, useTranslation, withTranslation } from "react-i18next";
 
