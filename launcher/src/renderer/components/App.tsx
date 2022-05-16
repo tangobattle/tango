@@ -1,3 +1,4 @@
+import { config } from "process";
 import React, { Suspense } from "react";
 import { Trans, useTranslation, withTranslation } from "react-i18next";
 
@@ -257,10 +258,13 @@ function SetupAppBody() {
 }
 
 function AppBody() {
+  const { config } = useConfig();
   const { roms } = useROMs();
   const { saves } = useSaves();
 
-  return Object.keys(roms).length > 0 && Object.keys(saves).length > 0 ? (
+  return config.nickname != null &&
+    Object.keys(roms).length > 0 &&
+    Object.keys(saves).length > 0 ? (
     <ReadyAppBody />
   ) : (
     <SetupAppBody />
