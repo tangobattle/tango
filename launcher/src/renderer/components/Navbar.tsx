@@ -14,7 +14,6 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import { styled } from "@mui/material/styles";
 import Tooltip from "@mui/material/Tooltip";
-import useTheme from "@mui/system/useTheme";
 
 import { useUpdateStatus } from "./UpdaterStatusContext";
 
@@ -31,7 +30,10 @@ const Drawer = styled(MuiDrawer, {
 const NavbarButtonWrapper = styled(ListItemButton)(({ theme }) => ({
   "&.Mui-selected": {
     transition: "none",
-    background: `${theme.palette.background.paper} !important`,
+    borderLeft: `4px solid ${theme.palette.primary.main} !important`,
+    "& > .MuiListItemIcon-root": {
+      marginLeft: "-4px",
+    },
   },
 }));
 
@@ -82,7 +84,6 @@ export default function Navbar({
   selected: NavbarSelection;
   onSelect: (selected: NavbarSelection) => void;
 }) {
-  const theme = useTheme();
   const { t } = useTranslation();
   const { status: updateStatus } = useUpdateStatus();
 
@@ -100,17 +101,8 @@ export default function Navbar({
     );
 
   return (
-    <Drawer
-      variant="permanent"
-      open={true}
-      PaperProps={{
-        sx: {
-          background: theme.palette.primary.main,
-          borderRight: "none",
-        },
-      }}
-    >
-      <List>
+    <Drawer variant="permanent" open={true}>
+      <List sx={{ py: 0 }}>
         <NavbarButton
           selected={selected == "play"}
           onClick={() => {
@@ -130,7 +122,7 @@ export default function Navbar({
           selectedIcon={<SlowMotionVideoIcon />}
         />
       </List>
-      <List style={{ marginTop: "auto" }}>
+      <List sx={{ mt: "auto", py: 0 }}>
         <NavbarButton
           selected={selected == "settings"}
           onClick={() => {
