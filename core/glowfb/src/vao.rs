@@ -24,16 +24,17 @@ pub(crate) struct VertexArrayObject {
     vao: Option<glow::VertexArray>,
     vbo: glow::Buffer,
     buffer_infos: Vec<BufferInfo>,
+    gl: std::rc::Rc<glow::Context>,
 }
 
 impl VertexArrayObject {
     #[allow(clippy::needless_pass_by_value)] // false positive
     pub(crate) unsafe fn new(
-        gl: &glow::Context,
+        gl: std::rc::Rc<glow::Context>,
         vbo: glow::Buffer,
         buffer_infos: Vec<BufferInfo>,
     ) -> Self {
-        let vao = if supports_vao(gl) {
+        let vao = if supports_vao(&*gl) {
             let vao = gl.create_vertex_array().unwrap();
 
             // Store state in the VAO:
@@ -61,20 +62,21 @@ impl VertexArrayObject {
         };
 
         Self {
+            gl,
             vao,
             vbo,
             buffer_infos,
         }
     }
 
-    pub(crate) unsafe fn bind(&self, gl: &glow::Context) {
+    pub(crate) unsafe fn bind(&self) {
         if let Some(vao) = self.vao {
-            gl.bind_vertex_array(Some(vao));
+            self.gl.bind_vertex_array(Some(vao));
         } else {
-            gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, Some(self.vbo));
 
             for attribute in &self.buffer_infos {
-                gl.vertex_attrib_pointer_f32(
+                self.gl.vertex_attrib_pointer_f32(
                     attribute.location,
                     attribute.vector_size,
                     attribute.data_type,
@@ -82,18 +84,28 @@ impl VertexArrayObject {
                     attribute.stride,
                     attribute.offset,
                 );
-                gl.enable_vertex_attrib_array(attribute.location);
+                self.gl.enable_vertex_attrib_array(attribute.location);
             }
         }
     }
 
-    pub(crate) unsafe fn unbind(&self, gl: &glow::Context) {
+    pub(crate) unsafe fn unbind(&self) {
         if self.vao.is_some() {
-            gl.bind_vertex_array(None);
+            self.gl.bind_vertex_array(None);
         } else {
-            gl.bind_buffer(glow::ARRAY_BUFFER, None);
+            self.gl.bind_buffer(glow::ARRAY_BUFFER, None);
             for attribute in &self.buffer_infos {
-                gl.disable_vertex_attrib_array(attribute.location);
+                self.gl.disable_vertex_attrib_array(attribute.location);
+            }
+        }
+    }
+}
+
+impl Drop for VertexArrayObject {
+    fn drop(&mut self) {
+        if let Some(vao) = self.vao {
+            unsafe {
+                self.gl.delete_vertex_array(vao);
             }
         }
     }

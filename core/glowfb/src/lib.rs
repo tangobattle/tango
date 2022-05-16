@@ -133,7 +133,7 @@ impl Framebuffer {
             };
 
             let vao = vao::VertexArrayObject::new(
-                &gl,
+                gl.clone(),
                 vbo,
                 vec![
                     vao::BufferInfo {
@@ -189,7 +189,7 @@ impl Framebuffer {
                 height as i32,
             );
             self.gl.use_program(Some(self.program));
-            self.vao.bind(&self.gl);
+            self.vao.bind();
             self.gl.active_texture(glow::TEXTURE0);
             self.gl.bind_texture(glow::TEXTURE_2D, Some(self.texture));
             self.gl.tex_image_2d(
@@ -205,7 +205,7 @@ impl Framebuffer {
             );
             self.gl.draw_arrays(glow::TRIANGLES, 0, 6);
             self.gl.bind_texture(glow::TEXTURE_2D, None);
-            self.vao.unbind(&self.gl);
+            self.vao.unbind();
             self.gl.use_program(None);
         }
     }
