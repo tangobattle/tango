@@ -122,7 +122,7 @@ function SetupAppBody() {
           <Trans i18nKey="setup:welcome-2" />
         </Typography>
         <Stepper orientation="vertical" activeStep={activeStep}>
-          <Step completed={activeStep > 0}>
+          <Step completed={config.nickname != null}>
             <StepLabel>
               <Trans i18nKey="setup:step-1-title" />
             </StepLabel>
@@ -159,7 +159,7 @@ function SetupAppBody() {
               </Stack>
             </StepContent>
           </Step>
-          <Step completed={activeStep > 1}>
+          <Step completed={Object.keys(roms).length > 0}>
             <StepLabel>
               <Trans
                 i18nKey="setup:step-2-title"
@@ -202,7 +202,7 @@ function SetupAppBody() {
               </Stack>
             </StepContent>
           </Step>
-          <Step completed={activeStep > 2}>
+          <Step completed={Object.keys(saves).length > 0}>
             <StepLabel>
               <Trans
                 i18nKey="setup:step-3-title"
