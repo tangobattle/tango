@@ -78,6 +78,12 @@ function AboutTab({ active }: { active: boolean }) {
           </Typography>
           <ul>
             <li>
+              <Link href="https://www.capcom.com/" target="_blank">
+                CAPCOM
+              </Link>{" "}
+              for making Mega Man Battle Network!
+            </li>
+            <li>
               <Link href="https://twitter.com/endrift" target="_blank">
                 endrift
               </Link>{" "}
