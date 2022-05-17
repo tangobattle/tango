@@ -841,7 +841,9 @@ export default function BattleStarter({
 
       const core = new ipc.Core(
         config.keymapping,
-        config.signalingConnectAddr,
+        `ws${!config.matchmakingServer.insecure ? "s" : ""}://${
+          config.matchmakingServer.host
+        }/signaling`,
         config.iceServers,
         linkCode,
         {

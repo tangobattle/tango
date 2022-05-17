@@ -21,7 +21,10 @@ export interface Config {
   updateChannel: string;
   rustLogFilter: string;
   keymapping: Keymapping;
-  signalingConnectAddr: string;
+  matchmakingServer: {
+    host: string;
+    insecure: boolean;
+  };
   iceServers: string[];
 }
 
@@ -43,7 +46,10 @@ export const DEFAULT: Config = {
     select: "Back",
     start: "Return",
   },
-  signalingConnectAddr: "wss://lets.tangobattle.com",
+  matchmakingServer: {
+    host: "lets.tangobattle.com",
+    insecure: false,
+  },
   iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",

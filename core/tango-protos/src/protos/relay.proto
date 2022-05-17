@@ -1,0 +1,7 @@
+syntax = "proto3";
+
+package tango.relay;
+
+message GetRelayRequest {}
+
+message GetRelayResponse { repeated string turn_addresses = 1; }

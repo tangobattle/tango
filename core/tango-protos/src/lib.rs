@@ -5,3 +5,7 @@ pub mod signaling {
 pub mod ipc {
     include!(concat!(env!("OUT_DIR"), "/tango.ipc.rs"));
 }
+
+pub mod relay {
+    include!(concat!(env!("OUT_DIR"), "/tango.relay.rs"));
+}
