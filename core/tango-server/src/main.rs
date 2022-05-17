@@ -8,16 +8,22 @@ use routerify::ext::RequestExt;
 #[derive(Envconfig)]
 struct Config {
     #[envconfig(from = "LISTEN_ADDR", default = "[::]:1984")]
-    pub listen_addr: String,
+    listen_addr: String,
 
     // Don't use this unless you know what you're doing!
     #[envconfig(from = "USE_X_REAL_IP", default = "false")]
-    pub use_x_real_ip: bool,
+    use_x_real_ip: bool,
+
+    #[envconfig(from = "SUBSPACE_CLIENT_ID")]
+    subspace_client_id: String,
+
+    #[envconfig(from = "SUBSPACE_CLIENT_SECRET")]
+    subspace_client_secret: String,
 }
 
 struct State {
     real_ip_getter: httputil::RealIPGetter,
-    relay_server: Option<std::sync::Arc<relay::Server>>,
+    relay_server: std::sync::Arc<relay::Server>,
     signaling_server: std::sync::Arc<signaling::Server>,
 }
 
@@ -29,13 +35,7 @@ async fn handle_relay_request(
         .real_ip_getter
         .get_remote_real_ip(&request)
         .ok_or(anyhow::anyhow!("could not get remote ip"))?;
-    let relay_server = if let Some(relay_server) = state.relay_server.as_ref() {
-        relay_server.clone()
-    } else {
-        return Ok(hyper::Response::builder()
-            .status(hyper::StatusCode::NOT_IMPLEMENTED)
-            .body(hyper::StatusCode::NOT_IMPLEMENTED.as_str().into())?);
-    };
+    let relay_server = state.relay_server.clone();
     let req =
         tango_protos::relay::GetRequest::decode(hyper::body::to_bytes(request.into_body()).await?)?;
     log::debug!("/relay: {:?}", req);
@@ -85,11 +85,14 @@ async fn handle_signaling_request(
     Ok(response)
 }
 
-fn router(config: &Config) -> routerify::Router<hyper::Body, anyhow::Error> {
+fn router(
+    real_ip_getter: httputil::RealIPGetter,
+    relay_backend: Option<Box<dyn relay::Backend + Send + Sync + 'static>>,
+) -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
-            real_ip_getter: httputil::RealIPGetter::new(config.use_x_real_ip),
-            relay_server: Some(std::sync::Arc::new(relay::Server::new())),
+            real_ip_getter,
+            relay_server: std::sync::Arc::new(relay::Server::new(relay_backend)),
             signaling_server: std::sync::Arc::new(signaling::Server::new()),
         })
         .get("/", handle_signaling_request)
@@ -106,8 +109,20 @@ async fn main() -> anyhow::Result<()> {
         .init();
     log::info!("welcome to tango-server {}!", git_version::git_version!());
     let config = Config::init_from_env().unwrap();
+    let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
+    let relay_backend: Option<Box<dyn relay::Backend + Send + Sync + 'static>> =
+        if !config.subspace_client_id.is_empty() && !config.subspace_client_secret.is_empty() {
+            log::info!("using subspace relay backend");
+            Some(Box::new(relay::subspace::Backend::new(
+                config.subspace_client_id.clone(),
+                config.subspace_client_secret.clone(),
+            )))
+        } else {
+            log::warn!("no relay backend, will not service relay requests");
+            None
+        };
     let addr = config.listen_addr.parse()?;
-    let router = router(&config);
+    let router = router(real_ip_getter, relay_backend);
     let service = routerify::RouterService::new(router).unwrap();
     hyper::Server::bind(&addr).serve(service).await?;
     Ok(())
