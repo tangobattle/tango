@@ -93,7 +93,7 @@ impl super::Backend for Backend {
                     )]
                 })
                 .collect(),
-            expires_at: std::time::SystemTime::now()
+            expires_at: std::time::Instant::now()
                 + std::time::Duration::from_secs(webrtc_resp.ttl as u64),
         })
     }

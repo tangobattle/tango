@@ -14,22 +14,28 @@ impl Server {
     pub async fn get(
         &self,
         remote_ip: std::net::IpAddr,
-        req: tango_protos::relay::GetRequest,
+        _req: tango_protos::relay::GetRequest,
     ) -> Result<tango_protos::relay::GetResponse, anyhow::Error> {
         let backend = if let Some(backend) = self.backend.as_ref() {
             backend
         } else {
             return Ok(tango_protos::relay::GetResponse {
-                turn_addresses: vec![],
+                ice_servers: vec![],
             });
         };
-        anyhow::bail!("not implemented")
+
+        // TODO: Cache lookup.
+
+        let relay_info = backend.get().await?;
+        Ok(tango_protos::relay::GetResponse {
+            ice_servers: relay_info.ice_servers,
+        })
     }
 }
 
 pub struct RelayInfo {
     ice_servers: Vec<String>,
-    expires_at: std::time::SystemTime,
+    expires_at: std::time::Instant,
 }
 
 #[async_trait]

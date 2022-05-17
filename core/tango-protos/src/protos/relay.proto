@@ -4,4 +4,4 @@ package tango.relay;
 
 message GetRequest {}
 
-message GetResponse { repeated string turn_addresses = 1; }
+message GetResponse { repeated string ice_servers = 1; }
