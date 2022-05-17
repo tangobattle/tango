@@ -1,6 +1,8 @@
 mod httputil;
+mod relay;
 mod signaling;
 use envconfig::Envconfig;
+use prost::Message;
 use routerify::ext::RequestExt;
 
 #[derive(Envconfig)]
@@ -15,7 +17,31 @@ struct Config {
 
 struct State {
     real_ip_getter: httputil::RealIPGetter,
+    relay_server: std::sync::Arc<relay::Server>,
     signaling_server: std::sync::Arc<signaling::Server>,
+}
+
+async fn handle_relay_request(
+    request: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    let state = request.data::<State>().unwrap();
+    let remote_ip = state
+        .real_ip_getter
+        .get_remote_real_ip(&request)
+        .ok_or(anyhow::anyhow!("could not get remote ip"))?;
+    let relay_server = state.relay_server.clone();
+    let req =
+        tango_protos::relay::GetRequest::decode(hyper::body::to_bytes(request.into_body()).await?)?;
+    log::debug!("/relay: {:?}", req);
+    Ok(hyper::Response::builder()
+        .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")
+        .body(
+            relay_server
+                .get(remote_ip, req)
+                .await?
+                .encode_to_vec()
+                .into(),
+        )?)
 }
 
 async fn handle_signaling_request(
@@ -57,6 +83,7 @@ fn router(config: &Config) -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
             real_ip_getter: httputil::RealIPGetter::new(config.use_x_real_ip),
+            relay_server: std::sync::Arc::new(relay::Server::new()),
             signaling_server: std::sync::Arc::new(signaling::Server::new()),
         })
         .get("/", handle_signaling_request)

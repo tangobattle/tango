@@ -2,6 +2,6 @@ syntax = "proto3";
 
 package tango.relay;
 
-message GetRelayRequest {}
+message GetRequest {}
 
-message GetRelayResponse { repeated string turn_addresses = 1; }
+message GetResponse { repeated string turn_addresses = 1; }
