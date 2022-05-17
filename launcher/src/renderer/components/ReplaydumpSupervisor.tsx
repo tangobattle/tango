@@ -165,6 +165,7 @@ export default function ReplaydumpSupervisor({
         if (reason == "backdropClick" || reason == "escapeKeyDown") {
           return;
         }
+        onExit();
       }}
     >
       <Box
