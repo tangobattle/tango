@@ -90,6 +90,6 @@ The order of language support is as follows:
 
 -   **English (en):** This is Tango's primary and fallback language. All Tango development is done in English.
 
--   **Japanese (ja):** This is Tango's secondary but fully supported language. All text in the UI, barring some extremely supplementary text (e.g. the About screen) is expected to be available in Japanese. If new UI text is added, a Japanese translation SHOULD also be provided. Tango releases MUST not contain missing Japanese text.
+-   **Japanese (ja):** This is Tango's secondary but fully supported language. All text in the UI, barring some extremely supplementary text (e.g. the About screen) is expected to be available in Japanese. If new UI text is added, a Japanese translation SHOULD also be provided. Tango releases MUST NOT contain missing Japanese text.
 
 -   **Simplified Chinese (zh-Hans):** These are Tango's tertiary languages. Support is provided on a best effort basis and translations are provided as available.
