@@ -5190,7 +5190,7 @@
     "mb": 82,
     "version": "gregar",
     "stars": 5,
-    "damage": 260,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5361,7 +5361,7 @@
     "mb": 99,
     "version": "gregar",
     "stars": 5,
-    "damage": 300,
+    "damage": 0,
     "class": "giga"
   },
   {
