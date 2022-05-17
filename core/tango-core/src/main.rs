@@ -109,7 +109,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     }
                                 }
                             },
-                            Non     e => {
+                            None => {
                                 anyhow::bail!("data channel closed");
                             },
                         }
