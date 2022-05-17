@@ -3,6 +3,7 @@ import * as datefns from "date-fns";
 import { clipboard } from "electron";
 import { readFile, writeFile } from "fs/promises";
 import { isEqual } from "lodash-es";
+import fetch from "node-fetch";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -48,6 +49,7 @@ import * as ipc from "../../ipc";
 import { getReplaysPath, getSavesPath } from "../../paths";
 import { FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest } from "../../protos/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
+import { GetRequest, GetResponse } from "../../protos/relay";
 import randomCode from "../../randomcode";
 import { ReplayInfo } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
@@ -231,9 +233,11 @@ function makeCommitment(s: Uint8Array): Uint8Array {
 }
 
 async function runCallback(
-  core: ipc.Core,
+  config: Config,
+  signal: AbortSignal,
   linkCode: string,
   ref: React.MutableRefObject<{
+    coreRef: React.MutableRefObject<ipc.Core | null>;
     availableGames: SetSettings["availableGames"];
     getGameTitle: (gameInfo: GameInfo) => string;
     getPatchPath: (path: { name: string; version: string }) => string;
@@ -256,6 +260,53 @@ async function runCallback(
     >;
   }>
 ) {
+  let iceServers = [...config.iceServers];
+
+  try {
+    const req = await fetch(
+      `http${!config.matchmakingServer.insecure ? "s" : ""}://${
+        config.matchmakingServer.host
+      }/relay`,
+      {
+        method: "POST",
+        headers: {
+          Host: config.matchmakingServer.host,
+          "Content-Type": "application/x-protobuf",
+        },
+        body: Buffer.from(GetRequest.encode({}).finish()),
+        signal,
+      }
+    );
+    if (req.ok) {
+      iceServers = [
+        ...iceServers,
+        ...GetResponse.decode(new Uint8Array(await req.arrayBuffer()))
+          .iceServers,
+      ];
+    } else {
+      throw await req.text();
+    }
+  } catch (e) {
+    console.warn("failed to get relay servers:", e);
+  }
+
+  const core = new ipc.Core(
+    config.keymapping,
+    `ws${!config.matchmakingServer.insecure ? "s" : ""}://${
+      config.matchmakingServer.host
+    }/signaling`,
+    iceServers,
+    linkCode,
+    {
+      env: {
+        RUST_LOG: config.rustLogFilter,
+        RUST_BACKTRACE: "1",
+      },
+      signal,
+    }
+  );
+  ref.current.coreRef.current = core;
+
   if (linkCode != "") {
     discord.setLinkCode(
       linkCode,
@@ -673,7 +724,6 @@ function GenerateRandomCodeButton({
 }
 
 interface PendingStates {
-  abortController: AbortController;
   own: {
     settings: SetSettings;
     negotiatedState: NegotiatedState | null;
@@ -714,6 +764,7 @@ export default function BattleStarter({
   } | null>(null);
 
   const coreRef = React.useRef<ipc.Core | null>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   const [linkCode, setLinkCode] = React.useState("");
   const [state, setState] = React.useState<FromCoreMessage_StateEvent_State>(
@@ -815,6 +866,7 @@ export default function BattleStarter({
   }, [myPendingState, onReadyChange]);
 
   const runCallbackData = {
+    coreRef,
     availableGames,
     getGameTitle,
     getPatchPath,
@@ -838,42 +890,26 @@ export default function BattleStarter({
       setLinkCode(linkCode);
 
       const abortController = new AbortController();
-
-      const core = new ipc.Core(
-        config.keymapping,
-        `ws${!config.matchmakingServer.insecure ? "s" : ""}://${
-          config.matchmakingServer.host
-        }/signaling`,
-        config.iceServers,
-        linkCode,
-        {
-          env: {
-            RUST_LOG: config.rustLogFilter,
-            RUST_BACKTRACE: "1",
-          },
-          signal: abortController.signal,
-        }
-      );
-      coreRef.current = core;
+      abortControllerRef.current = abortController;
 
       setPendingStates({
-        abortController,
         own: null,
         opponent: null,
       });
 
-      runCallback(core, linkCode, runCallbackDataRef)
+      runCallback(config, abortController.signal, linkCode, runCallbackDataRef)
         .catch((e) => {
           console.error(e);
         })
         .finally(() => {
-          if (abortController != null) {
-            abortController.abort();
+          if (abortControllerRef.current != null) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
           }
           discord.setDone();
           (async () => {
-            const exitStatus = await core.wait();
-            const stderr = core.getStderr();
+            const exitStatus = await coreRef.current!.wait();
+            const stderr = coreRef.current!.getStderr();
             if (
               exitStatus.exitCode != 0 &&
               exitStatus.signalCode != "SIGTERM"
@@ -1356,7 +1392,9 @@ export default function BattleStarter({
                 variant="contained"
                 startIcon={<StopIcon />}
                 onClick={() => {
-                  pendingStates.abortController.abort();
+                  if (abortControllerRef.current != null) {
+                    abortControllerRef.current.abort();
+                  }
                 }}
                 disabled={false}
               >

@@ -102,7 +102,7 @@ fn router(
         })
         .get("/", handle_signaling_request)
         .get("/signaling", handle_signaling_request)
-        .get("/relay", handle_relay_request)
+        .post("/relay", handle_relay_request)
         .build()
         .unwrap()
 }
