@@ -17,7 +17,7 @@ struct Config {
 
 struct State {
     real_ip_getter: httputil::RealIPGetter,
-    relay_server: std::sync::Arc<relay::Server>,
+    relay_server: Option<std::sync::Arc<relay::Server>>,
     signaling_server: std::sync::Arc<signaling::Server>,
 }
 
@@ -29,7 +29,13 @@ async fn handle_relay_request(
         .real_ip_getter
         .get_remote_real_ip(&request)
         .ok_or(anyhow::anyhow!("could not get remote ip"))?;
-    let relay_server = state.relay_server.clone();
+    let relay_server = if let Some(relay_server) = state.relay_server.as_ref() {
+        relay_server.clone()
+    } else {
+        return Ok(hyper::Response::builder()
+            .status(hyper::StatusCode::NOT_IMPLEMENTED)
+            .body(hyper::StatusCode::NOT_IMPLEMENTED.as_str().into())?);
+    };
     let req =
         tango_protos::relay::GetRequest::decode(hyper::body::to_bytes(request.into_body()).await?)?;
     log::debug!("/relay: {:?}", req);
@@ -50,7 +56,7 @@ async fn handle_signaling_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body("Bad request".into())?);
+            .body(hyper::StatusCode::BAD_REQUEST.as_str().into())?);
     }
 
     let (response, websocket) = hyper_tungstenite::upgrade(
@@ -83,7 +89,7 @@ fn router(config: &Config) -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
             real_ip_getter: httputil::RealIPGetter::new(config.use_x_real_ip),
-            relay_server: std::sync::Arc::new(relay::Server::new()),
+            relay_server: Some(std::sync::Arc::new(relay::Server::new())),
             signaling_server: std::sync::Arc::new(signaling::Server::new()),
         })
         .get("/", handle_signaling_request)
