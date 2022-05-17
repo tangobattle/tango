@@ -282,7 +282,7 @@
     "mb": 15,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -301,7 +301,7 @@
     "mb": 30,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -320,7 +320,7 @@
     "mb": 38,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -339,8 +339,8 @@
     "mb": 80,
     "version": null,
     "stars": 5,
-    "damage": null,
-    "class": "standard"
+    "damage": 0,
+    "class": "secret"
   },
   {
     "section": "standard",
@@ -1270,7 +1270,7 @@
     "mb": 24,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1289,7 +1289,7 @@
     "mb": 19,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -1308,7 +1308,7 @@
     "mb": 31,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -1327,7 +1327,7 @@
     "mb": 37,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -1612,7 +1612,7 @@
     "mb": 77,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1950,7 +1950,7 @@
       "ja": "てきのはいごから\nスナームがあらわれ\nたいあたり攻撃！"
     },
     "element": "null",
-    "codes": "HLS",
+    "codes": "HJS",
     "mb": 38,
     "version": null,
     "stars": 3,
@@ -2448,7 +2448,7 @@
     "mb": 10,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2467,7 +2467,7 @@
     "mb": 10,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2600,7 +2600,7 @@
     "mb": 46,
     "version": null,
     "stars": 3,
-    "damage": 260,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2619,7 +2619,7 @@
     "mb": 69,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2714,7 +2714,7 @@
     "mb": 6,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 200,
     "class": "standard"
   },
   {
@@ -2771,7 +2771,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2790,7 +2790,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2809,7 +2809,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2828,7 +2828,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2847,7 +2847,7 @@
     "mb": 39,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -2885,7 +2885,7 @@
     "mb": 86,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 1,
     "class": "standard"
   },
   {
@@ -2904,7 +2904,7 @@
     "mb": 66,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 1,
     "class": "standard"
   },
   {
@@ -2923,7 +2923,7 @@
     "mb": 4,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2942,7 +2942,7 @@
     "mb": 12,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2961,7 +2961,7 @@
     "mb": 18,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2980,7 +2980,7 @@
     "mb": 24,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2999,7 +2999,7 @@
     "mb": 32,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3018,7 +3018,7 @@
     "mb": 38,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3037,7 +3037,7 @@
     "mb": 42,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3056,7 +3056,7 @@
     "mb": 48,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3075,7 +3075,7 @@
     "mb": 6,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -3094,7 +3094,7 @@
     "mb": 8,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -3113,7 +3113,7 @@
     "mb": 24,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 20,
     "class": "standard"
   },
   {
@@ -3132,7 +3132,7 @@
     "mb": 50,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 40,
     "class": "standard"
   },
   {
@@ -3151,7 +3151,7 @@
     "mb": 14,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3170,7 +3170,7 @@
     "mb": 47,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3189,7 +3189,7 @@
     "mb": 24,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3208,7 +3208,7 @@
     "mb": 62,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3227,7 +3227,7 @@
     "mb": 21,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 40,
     "class": "standard"
   },
   {
@@ -3246,7 +3246,7 @@
     "mb": 21,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 40,
     "class": "standard"
   },
   {
@@ -3265,7 +3265,7 @@
     "mb": 42,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3284,7 +3284,7 @@
     "mb": 48,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3303,7 +3303,7 @@
     "mb": 50,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3322,7 +3322,7 @@
     "mb": 11,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3341,7 +3341,7 @@
     "mb": 62,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3360,7 +3360,7 @@
     "mb": 30,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3379,7 +3379,7 @@
     "mb": 7,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3398,7 +3398,7 @@
     "mb": 30,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3417,7 +3417,7 @@
     "mb": 52,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3436,7 +3436,7 @@
     "mb": 58,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3455,7 +3455,7 @@
     "mb": 70,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3474,7 +3474,7 @@
     "mb": 14,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3493,7 +3493,7 @@
     "mb": 30,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3512,7 +3512,7 @@
     "mb": 60,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3531,7 +3531,7 @@
     "mb": 50,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3588,7 +3588,7 @@
     "mb": 37,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3607,7 +3607,7 @@
     "mb": 12,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3626,7 +3626,7 @@
     "mb": 12,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3645,7 +3645,7 @@
     "mb": 4,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 10,
     "class": "standard"
   },
   {
@@ -3664,7 +3664,7 @@
     "mb": 36,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 20,
     "class": "standard"
   },
   {
@@ -3683,7 +3683,7 @@
     "mb": 31,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3702,7 +3702,7 @@
     "mb": 66,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 30,
     "class": "standard"
   },
   {
@@ -3721,7 +3721,7 @@
     "mb": 50,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3967,12 +3967,12 @@
     "mb": 68,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
     "section": "mega",
-    "index": 7,
+    "index": 3,
     "name": {
       "en": "HeatMan",
       "ja": "ヒートマン"
@@ -3991,7 +3991,7 @@
   },
   {
     "section": "mega",
-    "index": 8,
+    "index": 4,
     "name": {
       "en": "HeatManEX",
       "ja": "ヒートマンEX"
@@ -4010,7 +4010,7 @@
   },
   {
     "section": "mega",
-    "index": 9,
+    "index": 5,
     "name": {
       "en": "HeatManSP",
       "ja": "ヒートマンSP"
@@ -4024,12 +4024,12 @@
     "mb": 70,
     "version": "gregar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
     "section": "mega",
-    "index": 10,
+    "index": 6,
     "name": {
       "en": "ElecMan",
       "ja": "エレキマン"
@@ -4048,7 +4048,7 @@
   },
   {
     "section": "mega",
-    "index": 11,
+    "index": 7,
     "name": {
       "en": "ElecManEX",
       "ja": "エレキマンEX"
@@ -4067,7 +4067,7 @@
   },
   {
     "section": "mega",
-    "index": 12,
+    "index": 8,
     "name": {
       "en": "ElecManSP",
       "ja": "エレキマンSP"
@@ -4081,12 +4081,12 @@
     "mb": 79,
     "version": "gregar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
     "section": "mega",
-    "index": 13,
+    "index": 9,
     "name": {
       "en": "SlashMan",
       "ja": "スラッシュマン"
@@ -4105,7 +4105,7 @@
   },
   {
     "section": "mega",
-    "index": 14,
+    "index": 10,
     "name": {
       "en": "SlashMnEX",
       "ja": "スラッシュマンEX"
@@ -4124,7 +4124,7 @@
   },
   {
     "section": "mega",
-    "index": 15,
+    "index": 11,
     "name": {
       "en": "SlashMnSP",
       "ja": "スラッシュマンSP"
@@ -4138,12 +4138,12 @@
     "mb": 79,
     "version": "gregar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
     "section": "mega",
-    "index": 16,
+    "index": 12,
     "name": {
       "en": "EraseMan",
       "ja": "キラーマン"
@@ -4162,7 +4162,7 @@
   },
   {
     "section": "mega",
-    "index": 17,
+    "index": 13,
     "name": {
       "en": "EraseMnEX",
       "ja": "キラーマンEX"
@@ -4181,7 +4181,7 @@
   },
   {
     "section": "mega",
-    "index": 18,
+    "index": 14,
     "name": {
       "en": "EraseMnSP",
       "ja": "キラーマンSP"
@@ -4195,12 +4195,12 @@
     "mb": 79,
     "version": "gregar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
     "section": "mega",
-    "index": 19,
+    "index": 15,
     "name": {
       "en": "ChrgeMan",
       "ja": "チャージマン"
@@ -4219,7 +4219,7 @@
   },
   {
     "section": "mega",
-    "index": 20,
+    "index": 16,
     "name": {
       "en": "ChrgeMnEX",
       "ja": "チャージマンEX"
@@ -4238,7 +4238,7 @@
   },
   {
     "section": "mega",
-    "index": 21,
+    "index": 17,
     "name": {
       "en": "ChrgeMnSP",
       "ja": "チャージマンSP"
@@ -4252,7 +4252,7 @@
     "mb": 81,
     "version": "gregar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4309,7 +4309,7 @@
     "mb": 78,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4366,7 +4366,7 @@
     "mb": 80,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4423,7 +4423,7 @@
     "mb": 74,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4480,7 +4480,7 @@
     "mb": 85,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4537,7 +4537,7 @@
     "mb": 74,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4594,7 +4594,7 @@
     "mb": 68,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4651,7 +4651,7 @@
     "mb": 75,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4708,7 +4708,7 @@
     "mb": 86,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4765,7 +4765,7 @@
     "mb": 72,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4822,7 +4822,7 @@
     "mb": 66,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4879,7 +4879,7 @@
     "mb": 91,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4936,7 +4936,7 @@
     "mb": 89,
     "version": null,
     "stars": 5,
-    "damage": 50,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4956,7 +4956,7 @@
     "version": null,
     "stars": 3,
     "damage": 130,
-    "class": "mega"
+    "class": "secret"
   },
   {
     "section": "mega",
@@ -4975,7 +4975,7 @@
     "version": null,
     "stars": 4,
     "damage": 180,
-    "class": "mega"
+    "class": "secret"
   },
   {
     "section": "mega",
@@ -4993,73 +4993,138 @@
     "mb": 90,
     "version": null,
     "stars": 5,
-    "damage": 260,
-    "class": "mega"
+    "damage": 0,
+    "class": "secret"
   },
   {
     "name": {
       "en": "PunchArm",
       "ja": "パンチアーム"
-    }
+    },
+    "index": 61,
+    "stars": 5,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 10,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "NeedlArm",
       "ja": "ニードルアーム"
-    }
+    },
+    "index": 62,
+    "stars": 5,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 30,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "PuzzlArm",
       "ja": "パルスアーム"
-    }
+    },
+    "index": 63,
+    "stars": 5,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 40,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "BoomrArm",
       "ja": "ブーメランアーム"
-    }
+    },
+    "index": 64,
+    "stars": 5,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 50,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "SyncTrgr",
       "ja": "シンクロトリガー"
-    }
+    },
+    "index": 65,
+    "stars": 5,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 80,
+    "damage": 0,
+    "class": "mega"
   },
   {
     "name": {
       "en": "DrkSword",
       "ja": "ダークソード"
     },
-    "codes": "ABC*"
+    "codes": "ABC*",
+    "index": 66,
+    "stars": 5,
+    "element": "sword",
+    "mb": 80,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "DarkThnd",
       "ja": "ダークサンダー"
     },
-    "codes": "ABC*"
+    "codes": "ABC*",
+    "index": 67,
+    "stars": 5,
+    "element": "elec",
+    "mb": 80,
+    "damage": 200,
+    "class": "standard"
   },
   {
     "name": {
       "en": "DrkRecov",
       "ja": "ダークリカバリー"
     },
-    "codes": "ABC*"
+    "codes": "ABC*",
+    "index": 68,
+    "stars": 5,
+    "element": "null",
+    "mb": 80,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "DarkInvs",
       "ja": "ダークインビジ"
     },
-    "codes": "ABC*"
+    "codes": "ABC*",
+    "index": 69,
+    "stars": 5,
+    "element": "null",
+    "mb": 64,
+    "damage": 0,
+    "class": "standard"
   },
   {
     "name": {
       "en": "DarkPlus",
       "ja": "ダークプラス"
     },
-    "codes": "ABC*"
+    "codes": "ABC*",
+    "index": 70,
+    "stars": 5,
+    "element": "null",
+    "mb": 80,
+    "damage": 50,
+    "class": "standard"
   },
   null,
   null,
@@ -5163,7 +5228,7 @@
     "mb": 80,
     "version": "gregar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5239,7 +5304,7 @@
     "mb": 99,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5258,12 +5323,12 @@
     "mb": 80,
     "version": "falzar",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
     "section": "secret",
-    "index": 3,
+    "index": 11,
     "name": {
       "en": "DblBeast",
       "ja": "ダブルビースト"
@@ -5277,12 +5342,12 @@
     "mb": 99,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
     "section": "secret",
-    "index": 4,
+    "index": 12,
     "name": {
       "en": "Gregar",
       "ja": "グレイガ"
@@ -5301,7 +5366,7 @@
   },
   {
     "section": "secret",
-    "index": 4,
+    "index": 13,
     "name": {
       "en": "Falzar",
       "ja": "ファルザー"
@@ -5327,7 +5392,14 @@
     "description": {
       "en": "MegaBstr\nattk with\nMegaMan!",
       "ja": "シンボクがわに\nロックマンが現れ\nバスター攻撃"
-    }
+    },
+    "index": 1,
+    "stars": 1,
+    "element": "null",
+    "codes": "*",
+    "mb": 5,
+    "damage": 40,
+    "class": "standard"
   },
   {
     "name": {
@@ -5337,7 +5409,14 @@
     "description": {
       "en": "ZapRing\nattk with\nMegaMan!",
       "ja": "シンボクがわに\nロックマンが現れ\nラビリング攻撃"
-    }
+    },
+    "index": 1,
+    "stars": 1,
+    "element": "null",
+    "codes": "S",
+    "mb": 5,
+    "damage": 40,
+    "class": "standard"
   },
   {
     "name": {
@@ -5347,7 +5426,14 @@
     "description": {
       "en": "LifeSrd\nattk with\nMegaMan!",
       "ja": "シンボクがわに\nロックマンが現れ\nドリームソード攻撃"
-    }
+    },
+    "index": 1,
+    "stars": 1,
+    "element": "null",
+    "codes": "R",
+    "mb": 5,
+    "damage": 40,
+    "class": "standard"
   },
   {
     "name": {
@@ -5357,7 +5443,14 @@
     "description": {
       "en": "Snd all 3\ntypes of\nDstb Atks",
       "ja": "シンボクがわに\n3しゅるいすべての\nオジャマをおくる"
-    }
+    },
+    "index": 1,
+    "stars": 1,
+    "element": "null",
+    "codes": "Z",
+    "mb": 5,
+    "damage": 40,
+    "class": "standard"
   },
   {
     "name": {
@@ -5367,7 +5460,14 @@
     "description": {
       "en": "If Beast\nChip hits\nDstb atk!",
       "ja": "1ターンの間､獣化\nチップ攻撃ヒットで\nオジャマをおくれる"
-    }
+    },
+    "index": 1,
+    "stars": 1,
+    "element": "null",
+    "codes": "*",
+    "mb": 99,
+    "damage": 10,
+    "class": "giga"
   },
   {
     "section": "pa",
@@ -5380,7 +5480,7 @@
       "en": "Giga lvl\ncannon\nattack!",
       "ja": "前方のてきに\nギガきゅうの\nキャノン攻撃！"
     },
-    "damage": 300,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5396,7 +5496,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5409,7 +5514,7 @@
       "en": "Giga lvl\ncannon\nattack!",
       "ja": "前方のてきに\nギガきゅうの\nキャノン攻撃！"
     },
-    "damage": 400,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5425,7 +5530,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5438,7 +5548,7 @@
       "en": "Giga lvl\ncannon\nattack!",
       "ja": "前方のてきに\nギガきゅうの\nキャノン攻撃！"
     },
-    "damage": 500,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5454,7 +5564,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5467,7 +5582,7 @@
       "en": "An expnd\n3 row\nfire attk",
       "ja": "たて3れつに\nひろがる火炎攻撃！"
     },
-    "damage": 300,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5483,7 +5598,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5496,7 +5616,7 @@
       "en": "An expnd\n3 row\nfire attk",
       "ja": "たて3れつに\nひろがる火炎攻撃！"
     },
-    "damage": 350,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5512,7 +5632,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5525,7 +5650,7 @@
       "en": "An expnd\n3 row\nfire attk",
       "ja": "たて3れつに\nひろがる火炎攻撃！"
     },
-    "damage": 400,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5541,7 +5666,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5554,7 +5684,7 @@
       "en": "Launch 2\nflaming\nhooks!",
       "ja": "よこ2マスぶんの\n炎のコブシが2つ\nフックをはなつ！"
     },
-    "damage": 300,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5570,7 +5700,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5583,7 +5718,7 @@
       "en": "Launch 2\nflaming\nhooks!",
       "ja": "よこ2マスぶんの\n炎のコブシが2つ\nフックをはなつ！"
     },
-    "damage": 350,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5599,7 +5734,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5612,7 +5752,7 @@
       "en": "Launch 2\nflaming\nhooks!",
       "ja": "よこ2マスぶんの\n炎のコブシが2つ\nフックをはなつ！"
     },
-    "damage": 400,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5628,7 +5768,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5641,7 +5786,7 @@
       "en": "Send a\npwrfl wav\n3rows fwd",
       "ja": "たて3れつにすすむ\nちをはうウェーブ！"
     },
-    "damage": 400,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5657,7 +5802,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5670,7 +5820,7 @@
       "en": "Send a\npwrfl wav\n3rows fwd",
       "ja": "たて3れつにすすむ\nちをはうウェーブ！"
     },
-    "damage": 500,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5686,7 +5836,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5699,7 +5854,7 @@
       "en": "Send a\npwrfl wav\n3rows fwd",
       "ja": "たて3れつにすすむ\nちをはうウェーブ！"
     },
-    "damage": 600,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5715,7 +5870,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5772,7 +5932,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5785,7 +5950,7 @@
       "en": "Shell atk\non 5 rght\ngrid rows",
       "ja": "すべてのれつに\n画面左から5マス分\nすすむシェル攻撃！"
     },
-    "damage": 350,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5829,7 +5994,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5842,7 +6012,7 @@
       "en": "Fire puls\nthat caus\nstrg bug!",
       "ja": "あいてにひどいバグ\nをひきおこすパルス\nをはなつ！"
     },
-    "damage": 400,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5858,7 +6028,12 @@
           "variant": 1
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5871,7 +6046,7 @@
       "en": "Set TmBm+\nin enemy\narea!",
       "ja": "前方のてきエリアの\n左はしマスに\nギガカウントボム！"
     },
-    "damage": 700,
+    "damage": 0,
     "pa": [
       [
         {
@@ -5915,7 +6090,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -5972,7 +6152,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6001,7 +6186,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6058,7 +6248,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6071,7 +6266,7 @@
       "en": "Slices\n2sq wide\n3sq vrtcl",
       "ja": "よこ2､たて3の\nはんいをきる\nきょだいソード！"
     },
-    "damage": 400,
+    "damage": 0,
     "pa": [
       [
         {
@@ -6129,7 +6324,12 @@
           "variant": 0
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6158,7 +6358,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6187,7 +6392,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6200,7 +6410,7 @@
       "en": "Places a\npoisoned\nPharaoh",
       "ja": "目の前にどくを\nはっせいさせる\nファラオぞうをおく"
     },
-    "damage": null,
+    "damage": 1,
     "pa": [
       [
         {
@@ -6216,7 +6426,12 @@
           "variant": 0
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6245,7 +6460,12 @@
           "variant": 3
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6274,7 +6494,12 @@
           "variant": 0
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6287,7 +6512,7 @@
       "en": "BtlNwk2's\nGspelBth&\nBass Swrd",
       "ja": "エグゼ2リスペクト\nゴスペルのブレスと\nフォルテのソード！"
     },
-    "damage": 300,
+    "damage": 0,
     "pa": [
       [
         {
@@ -6317,7 +6542,12 @@
           "variant": 0
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6350,7 +6580,12 @@
           "variant": 0
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6379,7 +6614,12 @@
           "variant": 2
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6422,7 +6662,12 @@
           "variant": 1
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   {
     "section": "pa",
@@ -6435,7 +6680,7 @@
       "en": "Cllbrate!\nAttk w/MM\n+ Django!",
       "ja": "コラボレーション！\nロックマンとジャン\nゴのはさみうち攻撃"
     },
-    "damage": null,
+    "damage": 100,
     "pa": [
       [
         {
@@ -6451,7 +6696,12 @@
           "variant": 0
         }
       ]
-    ]
+    ],
+    "stars": 1,
+    "element": "null",
+    "codes": "ABC*",
+    "mb": 5,
+    "class": "pa"
   },
   null,
   null,
@@ -6491,7 +6741,14 @@
     "description": {
       "en": "Add an\neffect:\nConfuse",
       "ja": "1つ前にえらんだ\n攻撃チップに\nこんらんをつける"
-    }
+    },
+    "index": 0,
+    "stars": 1,
+    "element": "obstacle",
+    "codes": "ABC*",
+    "mb": 5,
+    "damage": 200,
+    "class": "secret"
   },
   {
     "name": {
@@ -6501,7 +6758,14 @@
     "description": {
       "en": "Add an\neffect:\nBlind",
       "ja": "1つ前にえらんだ\n攻撃チップに\nもうもくをつける"
-    }
+    },
+    "index": 0,
+    "stars": 1,
+    "element": "sword",
+    "codes": "ABC*",
+    "mb": 5,
+    "damage": 100,
+    "class": "secret"
   },
   {
     "name": {
@@ -6511,7 +6775,14 @@
     "description": {
       "en": "Add an\neffect:\nParalyze",
       "ja": "1つ前にえらんだ\n攻撃チップに\nマヒこうかをつける"
-    }
+    },
+    "index": 0,
+    "stars": 1,
+    "element": "null",
+    "codes": "",
+    "mb": 30,
+    "damage": 0,
+    "class": "secret"
   },
   {
     "name": {
@@ -6521,7 +6792,14 @@
     "description": {
       "en": "Add an\neffect:\nHP Bug",
       "ja": "1つ前にえらんだ\n攻撃チップに\nHPバグをつける"
-    }
+    },
+    "index": 0,
+    "stars": 1,
+    "element": "obstacle",
+    "codes": "",
+    "mb": 6,
+    "damage": 0,
+    "class": "secret"
   },
   {
     "name": {
@@ -6531,7 +6809,14 @@
     "description": {
       "en": "Add an\neffect:\nRecovery",
       "ja": "1つ前にえらんだ\n攻撃チップに\nリカバリーをつける"
-    }
+    },
+    "index": 0,
+    "stars": 1,
+    "element": "obstacle",
+    "codes": "",
+    "mb": 6,
+    "damage": 0,
+    "class": "secret"
   },
   null,
   null,
@@ -6550,7 +6835,7 @@
   null,
   {
     "section": "special",
-    "index": 1,
+    "index": 0,
     "name": {
       "en": "HeatPres",
       "ja": "ヒートプレス"
@@ -6562,12 +6847,14 @@
     "element": "fire",
     "codes": "H",
     "version": "gregar",
-    "damage": 70,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 2,
+    "index": 0,
     "name": {
       "en": "DElecSwd",
       "ja": "Dエレキソード"
@@ -6579,12 +6866,14 @@
     "element": "elec",
     "codes": "E",
     "version": "gregar",
-    "damage": 60,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 2,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 3,
+    "index": 0,
     "name": {
       "en": "RSlash",
       "ja": "Rスラッシュ"
@@ -6596,12 +6885,14 @@
     "element": "sword",
     "codes": "S",
     "version": "gregar",
-    "damage": 100,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 4,
+    "index": 0,
     "name": {
       "en": "EDeletBm",
       "ja": "Kデスビーム"
@@ -6613,12 +6904,14 @@
     "element": "cursor",
     "codes": "K",
     "version": "gregar",
-    "damage": 50,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 5,
+    "index": 0,
     "name": {
       "en": "VolcChrg",
       "ja": "ボルカノチャージ"
@@ -6630,12 +6923,14 @@
     "element": "fire",
     "codes": "C",
     "version": "gregar",
-    "damage": 40,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 1,
+    "index": 0,
     "name": {
       "en": "DripShwr",
       "ja": "アクアシャワー"
@@ -6647,12 +6942,14 @@
     "element": "aqua",
     "codes": "A",
     "version": "falzar",
-    "damage": 30,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 2,
+    "index": 0,
     "name": {
       "en": "ETomahwk",
       "ja": "Eトマホーク"
@@ -6664,12 +6961,14 @@
     "element": "null",
     "codes": "T",
     "version": "falzar",
-    "damage": 130,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 3,
+    "index": 0,
     "name": {
       "en": "FTornado",
       "ja": "Fトルネード"
@@ -6681,12 +6980,14 @@
     "element": "wind",
     "codes": "T",
     "version": "falzar",
-    "damage": 20,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 4,
+    "index": 0,
     "name": {
       "en": "RC Brakr",
       "ja": "RCブレイカー"
@@ -6698,12 +6999,14 @@
     "element": "break",
     "codes": "G",
     "version": "falzar",
-    "damage": 40,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 5,
+    "index": 0,
     "name": {
       "en": "DustBrk",
       "ja": "ダストブレイク"
@@ -6715,12 +7018,14 @@
     "element": "break",
     "codes": "D",
     "version": "falzar",
-    "damage": 110,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   },
   {
     "section": "special",
-    "index": 6,
+    "index": 0,
     "name": {
       "en": "StepSwrd",
       "ja": "フミコミザン"
@@ -6732,7 +7037,9 @@
     "element": "sword",
     "codes": "B",
     "version": null,
-    "damage": 80,
-    "class": "special"
+    "damage": 0,
+    "class": "secret",
+    "stars": 1,
+    "mb": 99
   }
 ]

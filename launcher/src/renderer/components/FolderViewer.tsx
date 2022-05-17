@@ -123,7 +123,7 @@ function FolderChipRow({
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
-        <strong>{chipInfo.damage}</strong>
+        <strong>{chipInfo.damage > 0 ? chipInfo.damage : null}</strong>
       </TableCell>
       <TableCell sx={{ width: "64px", textAlign: "right" }}>
         {chipInfo.mb!}MB
