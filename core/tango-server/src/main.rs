@@ -56,7 +56,12 @@ async fn handle_signaling_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(hyper::StatusCode::BAD_REQUEST.as_str().into())?);
+            .body(
+                hyper::StatusCode::BAD_REQUEST
+                    .canonical_reason()
+                    .unwrap()
+                    .into(),
+            )?);
     }
 
     let (response, websocket) = hyper_tungstenite::upgrade(

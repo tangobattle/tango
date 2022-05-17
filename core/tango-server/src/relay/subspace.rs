@@ -23,7 +23,7 @@ struct OAuthTokenRequest {
 }
 
 #[allow(dead_code)]
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct OAuthTokenResponse {
     access_token: String,
     scope: String,
@@ -42,6 +42,7 @@ struct WebRTCCDNResponseICEServer {
 #[allow(dead_code)]
 #[derive(serde::Deserialize)]
 struct WebRTCCDNResponse {
+    #[serde(rename = "iceServers")]
     ice_servers: Vec<WebRTCCDNResponseICEServer>,
     ttl: i64,
 }
@@ -60,17 +61,19 @@ impl super::Backend for Backend {
             })
             .send()
             .await?
+            .error_for_status()?
             .json::<OAuthTokenResponse>()
             .await?;
 
         let webrtc_resp = client
             .post("https://api.subspace.com/v1/webrtc-cdn")
             .header(
-                "Authorizaton",
+                reqwest::header::AUTHORIZATION,
                 format!("{} {}", token_resp.token_type, token_resp.access_token),
             )
             .send()
             .await?
+            .error_for_status()?
             .json::<WebRTCCDNResponse>()
             .await?;
 
@@ -94,7 +97,7 @@ impl super::Backend for Backend {
                 })
                 .collect(),
             expires_at: std::time::Instant::now()
-                + std::time::Duration::from_secs(webrtc_resp.ttl as u64),
+                + std::time::Duration::from_secs(webrtc_resp.ttl as u64) / 2,
         })
     }
 }
