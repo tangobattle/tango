@@ -5,7 +5,8 @@
     "index": 1,
     "name": {
       "en": "Cannon",
-      "ja": "キャノン"
+      "ja": "キャノン",
+      "zh-Hans": "加农炮"
     },
     "description": {
       "en": "Cannon to\nattack\n1 enemy",
@@ -24,7 +25,8 @@
     "index": 2,
     "name": {
       "en": "HiCannon",
-      "ja": "ハイキャノン"
+      "ja": "ハイキャノン",
+      "zh-Hans": "高级加农炮"
     },
     "description": {
       "en": "Cannon to\nattack\n1 enemy",
@@ -43,7 +45,8 @@
     "index": 3,
     "name": {
       "en": "M-Cannon",
-      "ja": "メガキャノン"
+      "ja": "メガキャノン",
+      "zh-Hans": "超级加农炮"
     },
     "description": {
       "en": "Cannon to\nattack\n1 enemy",
@@ -62,7 +65,8 @@
     "index": 4,
     "name": {
       "en": "AirShot",
-      "ja": "エアシュート"
+      "ja": "エアシュート",
+      "zh-Hans": "空气射击"
     },
     "description": {
       "en": "Knock\nenmy back\n1 square",
@@ -81,7 +85,8 @@
     "index": 5,
     "name": {
       "en": "Vulcan1",
-      "ja": "バルカン1"
+      "ja": "バルカン1",
+      "zh-Hans": "火神炮1"
     },
     "description": {
       "en": "3-shot to\npierce 1\npanel!",
@@ -100,7 +105,8 @@
     "index": 6,
     "name": {
       "en": "Vulcan2",
-      "ja": "バルカン2"
+      "ja": "バルカン2",
+      "zh-Hans": "火神炮2"
     },
     "description": {
       "en": "4-shot to\npierce 1\npanel!",
@@ -119,7 +125,8 @@
     "index": 7,
     "name": {
       "en": "Vulcan3",
-      "ja": "バルカン3"
+      "ja": "バルカン3",
+      "zh-Hans": "火神炮3"
     },
     "description": {
       "en": "5-shot to\npierce 1\npanel!",
@@ -138,7 +145,8 @@
     "index": 8,
     "name": {
       "en": "SuprVulc",
-      "ja": "スーパーバルカン"
+      "ja": "スーパーバルカン",
+      "zh-Hans": "超级火神炮"
     },
     "description": {
       "en": "10-shot\nvulcan\ncannon!",
@@ -157,7 +165,8 @@
     "index": 9,
     "name": {
       "en": "Spreadr1",
-      "ja": "スプレッドガン1"
+      "ja": "スプレッドガン1",
+      "zh-Hans": "散弹枪1"
     },
     "description": {
       "en": "Spreads\ndamg to\nadj panls",
@@ -176,7 +185,8 @@
     "index": 10,
     "name": {
       "en": "Spreadr2",
-      "ja": "スプレッドガン2"
+      "ja": "スプレッドガン2",
+      "zh-Hans": "散弹枪2"
     },
     "description": {
       "en": "Spreads\ndamg to\nadj panls",
@@ -195,7 +205,8 @@
     "index": 11,
     "name": {
       "en": "Spreadr3",
-      "ja": "スプレッドガン3"
+      "ja": "スプレッドガン3",
+      "zh-Hans": "散弹枪3"
     },
     "description": {
       "en": "Spreads\ndamg to\nadj panls",
@@ -214,7 +225,8 @@
     "index": 12,
     "name": {
       "en": "TankCan1",
-      "ja": "センシャホウ1"
+      "ja": "センシャホウ1",
+      "zh-Hans": "战车炮1"
     },
     "description": {
       "en": "3sqr blst\nif hits\nend row",
@@ -233,7 +245,8 @@
     "index": 13,
     "name": {
       "en": "TankCan2",
-      "ja": "センシャホウ2"
+      "ja": "センシャホウ2",
+      "zh-Hans": "战车炮2"
     },
     "description": {
       "en": "3sqr blst\nif hits\nend row",
@@ -252,7 +265,8 @@
     "index": 14,
     "name": {
       "en": "TankCan3",
-      "ja": "センシャホウ3"
+      "ja": "センシャホウ3",
+      "zh-Hans": "战车炮3"
     },
     "description": {
       "en": "3sqr blst\nif hits\nend row",
@@ -271,7 +285,8 @@
     "index": 15,
     "name": {
       "en": "GunDelS1",
-      "ja": "ガンデルソル1"
+      "ja": "ガンデルソル1",
+      "zh-Hans": "太阳枪1"
     },
     "description": {
       "en": "Hits row\n2pnl ahd\nw/sunshne",
@@ -290,7 +305,8 @@
     "index": 16,
     "name": {
       "en": "GunDelS2",
-      "ja": "ガンデルソル2"
+      "ja": "ガンデルソル2",
+      "zh-Hans": "太阳枪2"
     },
     "description": {
       "en": "Hits row\n2pnl ahd\nw/sunshne",
@@ -309,7 +325,8 @@
     "index": 17,
     "name": {
       "en": "GunDelS3",
-      "ja": "ガンデルソル3"
+      "ja": "ガンデルソル3",
+      "zh-Hans": "太阳枪3"
     },
     "description": {
       "en": "Hits row\n2pnl ahd\nw/sunshne",
@@ -328,7 +345,8 @@
     "index": 1,
     "name": {
       "en": "GunDelEX",
-      "ja": "ガンデルソルEX"
+      "ja": "ガンデルソルEX",
+      "zh-Hans": "太阳枪EX"
     },
     "description": {
       "en": "Fires a\nspread\nsunbeam",
@@ -347,7 +365,8 @@
     "index": 18,
     "name": {
       "en": "YoYo",
-      "ja": "ヨーヨー"
+      "ja": "ヨーヨー",
+      "zh-Hans": "溜溜球"
     },
     "description": {
       "en": "YoYo atk\nreaches\n3sq ahead",
@@ -366,7 +385,8 @@
     "index": 19,
     "name": {
       "en": "FireBrn1",
-      "ja": "ヘルズバーナー1"
+      "ja": "ヘルズバーナー1",
+      "zh-Hans": "地狱火焰1"
     },
     "description": {
       "en": "Crcks 3\nsqrs ahd\nwith fire",
@@ -385,7 +405,8 @@
     "index": 20,
     "name": {
       "en": "FireBrn2",
-      "ja": "ヘルズバーナー2"
+      "ja": "ヘルズバーナー2",
+      "zh-Hans": "地狱火焰2"
     },
     "description": {
       "en": "Crcks 3\nsqrs ahd\nwith fire",
@@ -404,7 +425,8 @@
     "index": 21,
     "name": {
       "en": "FireBrn3",
-      "ja": "ヘルズバーナー3"
+      "ja": "ヘルズバーナー3",
+      "zh-Hans": "地狱火焰3"
     },
     "description": {
       "en": "Crcks 3\nsqrs ahd\nwith fire",
@@ -423,7 +445,8 @@
     "index": 22,
     "name": {
       "en": "WideSht",
-      "ja": "ワイドショット"
+      "ja": "ワイドショット",
+      "zh-Hans": "阔水箭"
     },
     "description": {
       "en": "Fires 3sq\nshotgun\nblast!",
@@ -442,7 +465,8 @@
     "index": 23,
     "name": {
       "en": "TrnArrw1",
-      "ja": "トレインアロー1"
+      "ja": "トレインアロー1",
+      "zh-Hans": "连环箭1"
     },
     "description": {
       "en": "Hits enmy\nw/arrow.\nUse dstnc",
@@ -461,7 +485,8 @@
     "index": 24,
     "name": {
       "en": "TrnArrw2",
-      "ja": "トレインアロー2"
+      "ja": "トレインアロー2",
+      "zh-Hans": "连环箭2"
     },
     "description": {
       "en": "Hits enmy\nw/arrow.\nUse dstnc",
@@ -480,7 +505,8 @@
     "index": 25,
     "name": {
       "en": "TrnArrw3",
-      "ja": "トレインアロー3"
+      "ja": "トレインアロー3",
+      "zh-Hans": "连环箭3"
     },
     "description": {
       "en": "Hits enmy\nw/arrow.\nUse dstnc",
@@ -499,7 +525,8 @@
     "index": 26,
     "name": {
       "en": "BblStar1",
-      "ja": "バブルスター1"
+      "ja": "バブルスター1",
+      "zh-Hans": "海星炮1"
     },
     "description": {
       "en": "Seals an\nenemy in\na bubble.",
@@ -518,7 +545,8 @@
     "index": 27,
     "name": {
       "en": "BblStar2",
-      "ja": "バブルスター2"
+      "ja": "バブルスター2",
+      "zh-Hans": "海星炮2"
     },
     "description": {
       "en": "Seals an\nenemy in\na bubble.",
@@ -537,7 +565,8 @@
     "index": 28,
     "name": {
       "en": "BblStar3",
-      "ja": "バブルスター3"
+      "ja": "バブルスター3",
+      "zh-Hans": "海星炮3"
     },
     "description": {
       "en": "Seals an\nenemy in\na bubble.",
@@ -556,7 +585,8 @@
     "index": 29,
     "name": {
       "en": "Thunder",
-      "ja": "サンダーボール"
+      "ja": "サンダーボール",
+      "zh-Hans": "电球"
     },
     "description": {
       "en": "Pralyzing\nelectric\nattack!",
@@ -575,7 +605,8 @@
     "index": 30,
     "name": {
       "en": "DolThdr1",
-      "ja": "ドールサンダー1"
+      "ja": "ドールサンダー1",
+      "zh-Hans": "玩偶闪电1"
     },
     "description": {
       "en": "A piercng\nthunder\nattack!",
@@ -594,7 +625,8 @@
     "index": 31,
     "name": {
       "en": "DolThdr2",
-      "ja": "ドールサンダー2"
+      "ja": "ドールサンダー2",
+      "zh-Hans": "玩偶闪电2"
     },
     "description": {
       "en": "A piercng\nthunder\nattack!",
@@ -613,7 +645,8 @@
     "index": 32,
     "name": {
       "en": "DolThdr3",
-      "ja": "ドールサンダー3"
+      "ja": "ドールサンダー3",
+      "zh-Hans": "玩偶闪电3"
     },
     "description": {
       "en": "A piercng\nthunder\nattack!",
@@ -632,7 +665,8 @@
     "index": 33,
     "name": {
       "en": "ElcPuls1",
-      "ja": "エレキパルス1"
+      "ja": "エレキパルス1",
+      "zh-Hans": "电气脉冲1"
     },
     "description": {
       "en": "Sprd elec\npuls that\nparalyzes",
@@ -651,7 +685,8 @@
     "index": 34,
     "name": {
       "en": "ElcPuls2",
-      "ja": "エレキパルス2"
+      "ja": "エレキパルス2",
+      "zh-Hans": "电气脉冲2"
     },
     "description": {
       "en": "Sprd elec\npulse.Pul\nenemy in.",
@@ -670,7 +705,8 @@
     "index": 35,
     "name": {
       "en": "ElcPuls3",
-      "ja": "エレキパルス3"
+      "ja": "エレキパルス3",
+      "zh-Hans": "电气脉冲3"
     },
     "description": {
       "en": "Sprd elec\npuls. Hit\nw/HP bug.",
@@ -689,7 +725,8 @@
     "index": 39,
     "name": {
       "en": "RskyHny1",
-      "ja": "リスキーハニー1"
+      "ja": "リスキーハニー1",
+      "zh-Hans": "危机蜜蜂1"
     },
     "description": {
       "en": "Bees attk\nwhle hive\ndefending",
@@ -708,7 +745,8 @@
     "index": 40,
     "name": {
       "en": "RskyHny2",
-      "ja": "リスキーハニー2"
+      "ja": "リスキーハニー2",
+      "zh-Hans": "危机蜜蜂2"
     },
     "description": {
       "en": "Bees attk\nwhle hive\ndefending",
@@ -727,7 +765,8 @@
     "index": 41,
     "name": {
       "en": "RskyHny3",
-      "ja": "リスキーハニー3"
+      "ja": "リスキーハニー3",
+      "zh-Hans": "危机蜜蜂3"
     },
     "description": {
       "en": "Bees attk\nwhle hive\ndefending",
@@ -746,7 +785,8 @@
     "index": 42,
     "name": {
       "en": "RlngLog1",
-      "ja": "ローリングログ1"
+      "ja": "ローリングログ1",
+      "zh-Hans": "滚木1"
     },
     "description": {
       "en": "Send out\n2 logs\n2panl fwd",
@@ -765,7 +805,8 @@
     "index": 43,
     "name": {
       "en": "RlngLog2",
-      "ja": "ローリングログ2"
+      "ja": "ローリングログ2",
+      "zh-Hans": "滚木2"
     },
     "description": {
       "en": "Send out\n2 logs\n2panl fwd",
@@ -784,7 +825,8 @@
     "index": 44,
     "name": {
       "en": "RlngLog3",
-      "ja": "ローリングログ3"
+      "ja": "ローリングログ3",
+      "zh-Hans": "滚木3"
     },
     "description": {
       "en": "Send out\n2 logs\n2panl fwd",
@@ -803,7 +845,8 @@
     "index": 55,
     "name": {
       "en": "MachGun1",
-      "ja": "マシンガン1"
+      "ja": "マシンガン1",
+      "zh-Hans": "机枪1"
     },
     "description": {
       "en": "Fire 9sts\nat row w/\nclst enmy",
@@ -822,7 +865,8 @@
     "index": 56,
     "name": {
       "en": "MachGun2",
-      "ja": "マシンガン2"
+      "ja": "マシンガン2",
+      "zh-Hans": "机枪2"
     },
     "description": {
       "en": "Fire 9sts\nat row w/\nclst enmy",
@@ -841,7 +885,8 @@
     "index": 57,
     "name": {
       "en": "MachGun3",
-      "ja": "マシンガン3"
+      "ja": "マシンガン3",
+      "zh-Hans": "机枪3"
     },
     "description": {
       "en": "Fire 9sts\nat row w/\nclst enmy",
@@ -860,7 +905,8 @@
     "index": 123,
     "name": {
       "en": "HeatDrgn",
-      "ja": "ヒートドラゴン"
+      "ja": "ヒートドラゴン",
+      "zh-Hans": "火龙"
     },
     "description": {
       "en": "Drgn near\nclst enmy\nHit 2rows",
@@ -879,7 +925,8 @@
     "index": 124,
     "name": {
       "en": "ElecDrgn",
-      "ja": "エレキドラゴン"
+      "ja": "エレキドラゴン",
+      "zh-Hans": "电龙"
     },
     "description": {
       "en": "Drgn near\nclst enmy\nHit 2rows",
@@ -898,7 +945,8 @@
     "index": 125,
     "name": {
       "en": "AquaDrgn",
-      "ja": "アクアドラゴン"
+      "ja": "アクアドラゴン",
+      "zh-Hans": "水龙"
     },
     "description": {
       "en": "Drgn near\nclst enmy\nHit 2rows",
@@ -917,7 +965,8 @@
     "index": 126,
     "name": {
       "en": "WoodDrgn",
-      "ja": "ウッドドラゴン"
+      "ja": "ウッドドラゴン",
+      "zh-Hans": "木龙"
     },
     "description": {
       "en": "Drgn near\nclst enmy\nHit 2rows",
@@ -936,7 +985,8 @@
     "index": 51,
     "name": {
       "en": "AirHocky",
-      "ja": "エアホッケー"
+      "ja": "エアホッケー",
+      "zh-Hans": "空气曲棍球"
     },
     "description": {
       "en": "Bounce\nthe puck\noff walls",
@@ -955,7 +1005,8 @@
     "index": 52,
     "name": {
       "en": "DrilArm",
-      "ja": "ドリルアーム"
+      "ja": "ドリルアーム",
+      "zh-Hans": "钻头臂"
     },
     "description": {
       "en": "Knocks\nenmy 2sq\naway",
@@ -974,7 +1025,8 @@
     "index": 53,
     "name": {
       "en": "Tornado",
-      "ja": "トルネード"
+      "ja": "トルネード",
+      "zh-Hans": "龙卷风"
     },
     "description": {
       "en": "8hit strm\n2 squares\nahead",
@@ -993,7 +1045,8 @@
     "index": 54,
     "name": {
       "en": "Static",
-      "ja": "ノイズストーム"
+      "ja": "ノイズストーム",
+      "zh-Hans": "噪音风暴"
     },
     "description": {
       "en": "A static\nblast 2sq\nahead",
@@ -1012,7 +1065,8 @@
     "index": 58,
     "name": {
       "en": "MiniBomb",
-      "ja": "ミニボム"
+      "ja": "ミニボム",
+      "zh-Hans": "迷你炸弹"
     },
     "description": {
       "en": "Throws a\nMiniBomb\n3sq ahead",
@@ -1031,7 +1085,8 @@
     "index": 60,
     "name": {
       "en": "EnergBom",
-      "ja": "エナジーボム"
+      "ja": "エナジーボム",
+      "zh-Hans": "能量炸弹"
     },
     "description": {
       "en": "Throws a\nbomb 3sq\nahead",
@@ -1050,7 +1105,8 @@
     "index": 61,
     "name": {
       "en": "MegEnBom",
-      "ja": "メガエナジーボム"
+      "ja": "メガエナジーボム",
+      "zh-Hans": "高级能量炸弹"
     },
     "description": {
       "en": "Throws a\nbomb 3sq\nahead",
@@ -1069,7 +1125,8 @@
     "index": 62,
     "name": {
       "en": "FlshBom1",
-      "ja": "フラッシュボム1"
+      "ja": "フラッシュボム1",
+      "zh-Hans": "闪光弹1"
     },
     "description": {
       "en": "Thrw dlyd\nstun bomb\n3sq fwd.",
@@ -1088,7 +1145,8 @@
     "index": 63,
     "name": {
       "en": "FlshBom2",
-      "ja": "フラッシュボム2"
+      "ja": "フラッシュボム2",
+      "zh-Hans": "闪光弹2"
     },
     "description": {
       "en": "Thrw dlyd\nstun bomb\n3sq fwd.",
@@ -1107,7 +1165,8 @@
     "index": 64,
     "name": {
       "en": "FlshBom3",
-      "ja": "フラッシュボム3"
+      "ja": "フラッシュボム3",
+      "zh-Hans": "闪光弹3"
     },
     "description": {
       "en": "Thrw dlyd\nstun bomb\n3sq fwd.",
@@ -1126,7 +1185,8 @@
     "index": 65,
     "name": {
       "en": "BlkBomb",
-      "ja": "ブラックボム"
+      "ja": "ブラックボム",
+      "zh-Hans": "黑色炸弹"
     },
     "description": {
       "en": "Thrw shel\n3sqr fwd.\nFire attk",
@@ -1145,7 +1205,8 @@
     "index": 112,
     "name": {
       "en": "AquaNdl1",
-      "ja": "アクアニードル1"
+      "ja": "アクアニードル1",
+      "zh-Hans": "刺球针1"
     },
     "description": {
       "en": "Target 3\nneedles\nat enemy!",
@@ -1164,7 +1225,8 @@
     "index": 113,
     "name": {
       "en": "AquaNdl2",
-      "ja": "アクアニードル2"
+      "ja": "アクアニードル2",
+      "zh-Hans": "刺球针2"
     },
     "description": {
       "en": "Target 3\nneedles\nat enemy!",
@@ -1183,7 +1245,8 @@
     "index": 114,
     "name": {
       "en": "AquaNdl3",
-      "ja": "アクアニードル3"
+      "ja": "アクアニードル3",
+      "zh-Hans": "刺球针3"
     },
     "description": {
       "en": "Target 3\nneedles\nat enemy!",
@@ -1202,7 +1265,8 @@
     "index": 36,
     "name": {
       "en": "CornSht1",
-      "ja": "コーンショット1"
+      "ja": "コーンショット1",
+      "zh-Hans": "玉米射击1"
     },
     "description": {
       "en": "Damages\nenemies\nw/corn.",
@@ -1221,7 +1285,8 @@
     "index": 37,
     "name": {
       "en": "CornSht2",
-      "ja": "コーンショット2"
+      "ja": "コーンショット2",
+      "zh-Hans": "玉米射击2"
     },
     "description": {
       "en": "Damages\nenemies\nw/corn.",
@@ -1240,7 +1305,8 @@
     "index": 38,
     "name": {
       "en": "CornSht3",
-      "ja": "コーンショット3"
+      "ja": "コーンショット3",
+      "zh-Hans": "玉米射击3"
     },
     "description": {
       "en": "Damages\nenemies\nw/corn.",
@@ -1259,7 +1325,8 @@
     "index": 66,
     "name": {
       "en": "BugBomb",
-      "ja": "バグボム"
+      "ja": "バグボム",
+      "zh-Hans": "bug炸弹"
     },
     "description": {
       "en": "Throws a\nBugBomb\n3sq ahead",
@@ -1278,7 +1345,8 @@
     "index": 67,
     "name": {
       "en": "GrasSeed",
-      "ja": "クサムラシード"
+      "ja": "クサムラシード",
+      "zh-Hans": "草地种子"
     },
     "description": {
       "en": "Makes 9sq\nmeadow\n3sq ahead",
@@ -1297,7 +1365,8 @@
     "index": 68,
     "name": {
       "en": "IceSeed",
-      "ja": "アイスシード"
+      "ja": "アイスシード",
+      "zh-Hans": "冰地种子"
     },
     "description": {
       "en": "Makes 9sq\nice field\n3sq ahead",
@@ -1316,7 +1385,8 @@
     "index": 69,
     "name": {
       "en": "PoisSeed",
-      "ja": "ポイズンシード"
+      "ja": "ポイズンシード",
+      "zh-Hans": "毒地种子"
     },
     "description": {
       "en": "Makes 9sq\npoisn swp\n3sq ahead",
@@ -1335,7 +1405,8 @@
     "index": 70,
     "name": {
       "en": "Sword",
-      "ja": "ソード"
+      "ja": "ソード",
+      "zh-Hans": "短剑"
     },
     "description": {
       "en": "Cuts enmy\nin front!\nRange: 1",
@@ -1354,7 +1425,8 @@
     "index": 71,
     "name": {
       "en": "WideSwrd",
-      "ja": "ワイドソード"
+      "ja": "ワイドソード",
+      "zh-Hans": "阔剑"
     },
     "description": {
       "en": "Cuts enmy\nin front!\nRange: 3",
@@ -1373,7 +1445,8 @@
     "index": 72,
     "name": {
       "en": "LongSwrd",
-      "ja": "ロングソード"
+      "ja": "ロングソード",
+      "zh-Hans": "长剑"
     },
     "description": {
       "en": "Cuts enmy\nin front!\nRange: 2",
@@ -1392,7 +1465,8 @@
     "index": 73,
     "name": {
       "en": "WideBlde",
-      "ja": "ワイドブレード"
+      "ja": "ワイドブレード",
+      "zh-Hans": "阔刃剑"
     },
     "description": {
       "en": "Cuts enmy\nin front!\nRange: 3",
@@ -1411,7 +1485,8 @@
     "index": 74,
     "name": {
       "en": "LongBlde",
-      "ja": "ロングブレード"
+      "ja": "ロングブレード",
+      "zh-Hans": "长刃剑"
     },
     "description": {
       "en": "Cuts enmy\nin front!\nRange: 2",
@@ -1430,7 +1505,8 @@
     "index": 75,
     "name": {
       "en": "FireSwrd",
-      "ja": "フレイムソード"
+      "ja": "フレイムソード",
+      "zh-Hans": "火焰剑"
     },
     "description": {
       "en": "Cut enmy\n3sq fwrd\nw/fire!",
@@ -1449,7 +1525,8 @@
     "index": 76,
     "name": {
       "en": "AquaSwrd",
-      "ja": "アクアソード"
+      "ja": "アクアソード",
+      "zh-Hans": "碧水剑"
     },
     "description": {
       "en": "Cut enmy\n3sq fwrd\nw/aqua!",
@@ -1468,7 +1545,8 @@
     "index": 77,
     "name": {
       "en": "ElecSwrd",
-      "ja": "エレキソード"
+      "ja": "エレキソード",
+      "zh-Hans": "电气剑"
     },
     "description": {
       "en": "Cut enmy\n3sq fwrd\nw/elec!",
@@ -1487,7 +1565,8 @@
     "index": 78,
     "name": {
       "en": "BambSwrd",
-      "ja": "バンブーソード"
+      "ja": "バンブーソード",
+      "zh-Hans": "木叶剑"
     },
     "description": {
       "en": "Cut enmy\n3sq fwrd\nw/wood!",
@@ -1506,7 +1585,8 @@
     "index": 79,
     "name": {
       "en": "WindRack",
-      "ja": "フウジンラケット"
+      "ja": "フウジンラケット",
+      "zh-Hans": "风神扇"
     },
     "description": {
       "en": "Blow enmy\nin front!\nRange: 3",
@@ -1525,7 +1605,8 @@
     "index": 80,
     "name": {
       "en": "StepSwrd",
-      "ja": "フミコミザン"
+      "ja": "フミコミザン",
+      "zh-Hans": "踏前斩"
     },
     "description": {
       "en": "Use\nWideSwrd\n2sq ahead",
@@ -1544,7 +1625,8 @@
     "index": 81,
     "name": {
       "en": "VarSwrd",
-      "ja": "バリアブルソード"
+      "ja": "バリアブルソード",
+      "zh-Hans": "变幻剑"
     },
     "description": {
       "en": "A magical\nshifting\nsword.",
@@ -1563,7 +1645,8 @@
     "index": 82,
     "name": {
       "en": "NeoVari",
-      "ja": "ネオバリアブル"
+      "ja": "ネオバリアブル",
+      "zh-Hans": "新颖变幻剑"
     },
     "description": {
       "en": "A magical\nshifting\nsword.",
@@ -1582,7 +1665,8 @@
     "index": 83,
     "name": {
       "en": "MoonBld",
-      "ja": "エンゲツクナイ"
+      "ja": "エンゲツクナイ",
+      "zh-Hans": "圆月弯刀"
     },
     "description": {
       "en": "Slices\nenemies\naround",
@@ -1601,7 +1685,8 @@
     "index": 84,
     "name": {
       "en": "Muramasa",
-      "ja": "ムラマサブレード"
+      "ja": "ムラマサブレード",
+      "zh-Hans": "妖刀村正"
     },
     "description": {
       "en": "Atk power\nequal amt\nof lostHP",
@@ -1620,7 +1705,8 @@
     "index": 85,
     "name": {
       "en": "MchnSwrd",
-      "ja": "マシーンソード"
+      "ja": "マシーンソード",
+      "zh-Hans": "机械剑"
     },
     "description": {
       "en": "Search &\nhit stund\nenemies.",
@@ -1639,7 +1725,8 @@
     "index": 86,
     "name": {
       "en": "ElemSwrd",
-      "ja": "エレメントソード"
+      "ja": "エレメントソード",
+      "zh-Hans": "元素剑"
     },
     "description": {
       "en": "Cut enmy\non grass,\nice, fire",
@@ -1658,7 +1745,8 @@
     "index": 87,
     "name": {
       "en": "AssnSwrd",
-      "ja": "アサシンソード"
+      "ja": "アサシンソード",
+      "zh-Hans": "暗杀剑"
     },
     "description": {
       "en": "When plyz\ncut enemy\nspec panl",
@@ -1677,7 +1765,8 @@
     "index": 88,
     "name": {
       "en": "CrakShot",
-      "ja": "クラックシュート"
+      "ja": "クラックシュート",
+      "zh-Hans": "飞地板"
     },
     "description": {
       "en": "Shoot a\npanel at\nan enemy!",
@@ -1696,7 +1785,8 @@
     "index": 89,
     "name": {
       "en": "DublShot",
-      "ja": "ダブルシュート"
+      "ja": "ダブルシュート",
+      "zh-Hans": "双重飞地"
     },
     "description": {
       "en": "Shoot 2\npanels at\nan enemy!",
@@ -1715,7 +1805,8 @@
     "index": 90,
     "name": {
       "en": "TrplShot",
-      "ja": "トリプルシュート"
+      "ja": "トリプルシュート",
+      "zh-Hans": "三重飞地"
     },
     "description": {
       "en": "Shoot 3\npanels at\nan enemy!",
@@ -1734,7 +1825,8 @@
     "index": 94,
     "name": {
       "en": "WaveArm1",
-      "ja": "ウェーブアーム1"
+      "ja": "ウェーブアーム1",
+      "zh-Hans": "地震波1"
     },
     "description": {
       "en": "Fllw enmy\nand fire\ntrap wave",
@@ -1753,7 +1845,8 @@
     "index": 95,
     "name": {
       "en": "WaveArm2",
-      "ja": "ウェーブアーム2"
+      "ja": "ウェーブアーム2",
+      "zh-Hans": "地震波2"
     },
     "description": {
       "en": "Fllw enmy\nand fire\ntrap wave",
@@ -1772,7 +1865,8 @@
     "index": 96,
     "name": {
       "en": "WaveArm3",
-      "ja": "ウェーブアーム3"
+      "ja": "ウェーブアーム3",
+      "zh-Hans": "地震波3"
     },
     "description": {
       "en": "Fllw enmy\nand fire\ntrap wave",
@@ -1791,7 +1885,8 @@
     "index": 48,
     "name": {
       "en": "AuraHed1",
-      "ja": "オーラヘッド1"
+      "ja": "オーラヘッド1",
+      "zh-Hans": "辉光石脑1"
     },
     "description": {
       "en": "A flying\nhead with\n2spc tail",
@@ -1810,7 +1905,8 @@
     "index": 49,
     "name": {
       "en": "AuraHed2",
-      "ja": "オーラヘッド2"
+      "ja": "オーラヘッド2",
+      "zh-Hans": "辉光石脑2"
     },
     "description": {
       "en": "A flying\nhead with\n2spc tail",
@@ -1829,7 +1925,8 @@
     "index": 50,
     "name": {
       "en": "AuraHed3",
-      "ja": "オーラヘッド3"
+      "ja": "オーラヘッド3",
+      "zh-Hans": "辉光石脑3"
     },
     "description": {
       "en": "A flying\nhead with\n2spc tail",
@@ -1848,7 +1945,8 @@
     "index": 139,
     "name": {
       "en": "LilBolr1",
-      "ja": "リトルボイラー1"
+      "ja": "リトルボイラー1",
+      "zh-Hans": "小煮壶1"
     },
     "description": {
       "en": "3pnl fwd\nKttl attk\nAttack+",
@@ -1867,7 +1965,8 @@
     "index": 140,
     "name": {
       "en": "LilBolr2",
-      "ja": "リトルボイラー2"
+      "ja": "リトルボイラー2",
+      "zh-Hans": "小煮壶2"
     },
     "description": {
       "en": "3pnl fwd\nKttl attk\nAttack+",
@@ -1886,7 +1985,8 @@
     "index": 141,
     "name": {
       "en": "LilBolr3",
-      "ja": "リトルボイラー3"
+      "ja": "リトルボイラー3",
+      "zh-Hans": "小煮壶3"
     },
     "description": {
       "en": "3pnl fwd\nKttl attk\nAttack+",
@@ -1905,7 +2005,8 @@
     "index": 97,
     "name": {
       "en": "SandWrm1",
-      "ja": "サンドワーム1"
+      "ja": "サンドワーム1",
+      "zh-Hans": "沙虫1"
     },
     "description": {
       "en": "Attk enmy\nfrom rear\nw/snakarm",
@@ -1924,7 +2025,8 @@
     "index": 98,
     "name": {
       "en": "SandWrm2",
-      "ja": "サンドワーム2"
+      "ja": "サンドワーム2",
+      "zh-Hans": "沙虫2"
     },
     "description": {
       "en": "Attk enmy\nfrom rear\nw/snakarm",
@@ -1943,7 +2045,8 @@
     "index": 99,
     "name": {
       "en": "SandWrm3",
-      "ja": "サンドワーム3"
+      "ja": "サンドワーム3",
+      "zh-Hans": "沙虫3"
     },
     "description": {
       "en": "Attk enmy\nfrom rear\nw/snakarm",
@@ -1962,7 +2065,8 @@
     "index": 142,
     "name": {
       "en": "AirRaid1",
-      "ja": "エアレイド1"
+      "ja": "エアレイド1",
+      "zh-Hans": "风轮1"
     },
     "description": {
       "en": "Attk enmy\nw/flying\nFgtrPlne.",
@@ -1981,7 +2085,8 @@
     "index": 143,
     "name": {
       "en": "AirRaid2",
-      "ja": "エアレイド2"
+      "ja": "エアレイド2",
+      "zh-Hans": "风轮2"
     },
     "description": {
       "en": "Attk enmy\nw/flying\nFgtrPlne.",
@@ -2000,7 +2105,8 @@
     "index": 144,
     "name": {
       "en": "AirRaid3",
-      "ja": "エアレイド3"
+      "ja": "エアレイド3",
+      "zh-Hans": "风轮3"
     },
     "description": {
       "en": "Attk enmy\nw/flying\nFgtrPlne.",
@@ -2019,7 +2125,8 @@
     "index": 105,
     "name": {
       "en": "FireHit1",
-      "ja": "ファイアパンチ1"
+      "ja": "ファイアパンチ1",
+      "zh-Hans": "火焰拳1"
     },
     "description": {
       "en": "Slams\nclosest\nenemy",
@@ -2038,7 +2145,8 @@
     "index": 106,
     "name": {
       "en": "FireHit2",
-      "ja": "ファイアパンチ2"
+      "ja": "ファイアパンチ2",
+      "zh-Hans": "火焰拳2"
     },
     "description": {
       "en": "Slams\nclosest\nenemy",
@@ -2057,7 +2165,8 @@
     "index": 107,
     "name": {
       "en": "FireHit3",
-      "ja": "ファイアパンチ3"
+      "ja": "ファイアパンチ3",
+      "zh-Hans": "火焰拳3"
     },
     "description": {
       "en": "Slams\nclosest\nenemy",
@@ -2076,7 +2185,8 @@
     "index": 108,
     "name": {
       "en": "BurnSqr1",
-      "ja": "バーンスクエア1"
+      "ja": "バーンスクエア1",
+      "zh-Hans": "燃烧立方1"
     },
     "description": {
       "en": "Press 🅐\nto burn a\n4pnl sqr!",
@@ -2095,7 +2205,8 @@
     "index": 109,
     "name": {
       "en": "BurnSqr2",
-      "ja": "バーンスクエア2"
+      "ja": "バーンスクエア2",
+      "zh-Hans": "燃烧立方2"
     },
     "description": {
       "en": "Press 🅐\nto burn a\n4pnl sqr!",
@@ -2114,7 +2225,8 @@
     "index": 110,
     "name": {
       "en": "BurnSqr3",
-      "ja": "バーンスクエア3"
+      "ja": "バーンスクエア3",
+      "zh-Hans": "燃烧立方3"
     },
     "description": {
       "en": "Press 🅐\nto burn a\n4pnl sqr!",
@@ -2133,7 +2245,8 @@
     "index": 116,
     "name": {
       "en": "Sensor1",
-      "ja": "キラーセンサー1"
+      "ja": "キラーセンサー1",
+      "zh-Hans": "杀人眼感应器1"
     },
     "description": {
       "en": "Hits enmy\nwith beam\nfrom snsr",
@@ -2152,7 +2265,8 @@
     "index": 117,
     "name": {
       "en": "Sensor2",
-      "ja": "キラーセンサー2"
+      "ja": "キラーセンサー2",
+      "zh-Hans": "杀人眼感应器2"
     },
     "description": {
       "en": "Hits enmy\nwith beam\nfrom snsr",
@@ -2171,7 +2285,8 @@
     "index": 118,
     "name": {
       "en": "Sensor3",
-      "ja": "キラーセンサー3"
+      "ja": "キラーセンサー3",
+      "zh-Hans": "杀人眼感应器3"
     },
     "description": {
       "en": "Hits enmy\nwith beam\nfrom snsr",
@@ -2190,7 +2305,8 @@
     "index": 119,
     "name": {
       "en": "Boomer",
-      "ja": "ブーメラン"
+      "ja": "ブーメラン",
+      "zh-Hans": "回旋镖"
     },
     "description": {
       "en": "Boomerang\nthat circ\nbtl field",
@@ -2209,7 +2325,8 @@
     "index": 120,
     "name": {
       "en": "HiBoomer",
-      "ja": "ハイブーメラン"
+      "ja": "ハイブーメラン",
+      "zh-Hans": "高级回旋镖"
     },
     "description": {
       "en": "Boomerang\nthat circ\nbtl field",
@@ -2228,7 +2345,8 @@
     "index": 121,
     "name": {
       "en": "M-Boomer",
-      "ja": "メガブーメラン"
+      "ja": "メガブーメラン",
+      "zh-Hans": "超级回旋镖"
     },
     "description": {
       "en": "Boomerang\nthat circ\nbtl field",
@@ -2247,7 +2365,8 @@
     "index": 122,
     "name": {
       "en": "Lance",
-      "ja": "バンブーランス"
+      "ja": "バンブーランス",
+      "zh-Hans": "背刺竹"
     },
     "description": {
       "en": "Lance\nthrough\nback line",
@@ -2266,7 +2385,8 @@
     "index": 127,
     "name": {
       "en": "GolmHit1",
-      "ja": "ゴーレムパンチ1"
+      "ja": "ゴーレムパンチ1",
+      "zh-Hans": "巨人拳1"
     },
     "description": {
       "en": "Hit 3panl\narea arnd\nclst enmy",
@@ -2285,7 +2405,8 @@
     "index": 128,
     "name": {
       "en": "GolmHit2",
-      "ja": "ゴーレムパンチ2"
+      "ja": "ゴーレムパンチ2",
+      "zh-Hans": "巨人拳2"
     },
     "description": {
       "en": "Hit 3panl\narea arnd\nclst enmy",
@@ -2304,7 +2425,8 @@
     "index": 129,
     "name": {
       "en": "GolmHit3",
-      "ja": "ゴーレムパンチ3"
+      "ja": "ゴーレムパンチ3",
+      "zh-Hans": "巨人拳3"
     },
     "description": {
       "en": "Hit 3panl\narea arnd\nclst enmy",
@@ -2323,7 +2445,8 @@
     "index": 45,
     "name": {
       "en": "IronShl1",
-      "ja": "アイアンシェル1"
+      "ja": "アイアンシェル1",
+      "zh-Hans": "穿山铁壳1"
     },
     "description": {
       "en": "Fire off\npiercing\nshell.",
@@ -2342,7 +2465,8 @@
     "index": 46,
     "name": {
       "en": "IronShl2",
-      "ja": "アイアンシェル2"
+      "ja": "アイアンシェル2",
+      "zh-Hans": "穿山铁壳2"
     },
     "description": {
       "en": "Fire off\npiercing\nshell.",
@@ -2361,7 +2485,8 @@
     "index": 47,
     "name": {
       "en": "IronShl3",
-      "ja": "アイアンシェル3"
+      "ja": "アイアンシェル3",
+      "zh-Hans": "穿山铁壳3"
     },
     "description": {
       "en": "Fire off\npiercing\nshell.",
@@ -2380,7 +2505,8 @@
     "index": 131,
     "name": {
       "en": "AirSpin1",
-      "ja": "エアホイール1"
+      "ja": "エアホイール1",
+      "zh-Hans": "风轮1"
     },
     "description": {
       "en": "Spits out\nhurricane\nattack",
@@ -2399,7 +2525,8 @@
     "index": 132,
     "name": {
       "en": "AirSpin2",
-      "ja": "エアホイール2"
+      "ja": "エアホイール2",
+      "zh-Hans": "风轮2"
     },
     "description": {
       "en": "Spits out\nhurricane\nattack",
@@ -2418,7 +2545,8 @@
     "index": 133,
     "name": {
       "en": "AirSpin3",
-      "ja": "エアホイール3"
+      "ja": "エアホイール3",
+      "zh-Hans": "风轮3"
     },
     "description": {
       "en": "Spits out\nhurricane\nattack",
@@ -2437,7 +2565,8 @@
     "index": 134,
     "name": {
       "en": "Wind",
-      "ja": "トップウ"
+      "ja": "トップウ",
+      "zh-Hans": "吹风机"
     },
     "description": {
       "en": "WindBox\nblows at\nenmy area",
@@ -2456,7 +2585,8 @@
     "index": 135,
     "name": {
       "en": "Fan",
-      "ja": "スイコミ"
+      "ja": "スイコミ",
+      "zh-Hans": "吸风机"
     },
     "description": {
       "en": "VacuumFn\npulls\nenemy in",
@@ -2475,7 +2605,8 @@
     "index": 91,
     "name": {
       "en": "Rflectr1",
-      "ja": "リフレクメット1"
+      "ja": "リフレクメット1",
+      "zh-Hans": "反射盾1"
     },
     "description": {
       "en": "Bounce an\nattk back\nat them!",
@@ -2494,7 +2625,8 @@
     "index": 92,
     "name": {
       "en": "Rflectr2",
-      "ja": "リフレクメット2"
+      "ja": "リフレクメット2",
+      "zh-Hans": "反射盾2"
     },
     "description": {
       "en": "Bounce an\nattk back\nat them!",
@@ -2513,7 +2645,8 @@
     "index": 93,
     "name": {
       "en": "Rflectr3",
-      "ja": "リフレクメット3"
+      "ja": "リフレクメット3",
+      "zh-Hans": "反射盾3"
     },
     "description": {
       "en": "Bounce an\nattk back\nat them!",
@@ -2532,7 +2665,8 @@
     "index": 103,
     "name": {
       "en": "Snake",
-      "ja": "カモンスネーク"
+      "ja": "カモンスネーク",
+      "zh-Hans": "家门蛇"
     },
     "description": {
       "en": "Call snke\nfrom hole\nin area.",
@@ -2551,7 +2685,8 @@
     "index": 100,
     "name": {
       "en": "SumnBlk1",
-      "ja": "サモンブラック1"
+      "ja": "サモンブラック1",
+      "zh-Hans": "梦魇召唤1"
     },
     "description": {
       "en": "Summon a\nNghtmare\nattack!",
@@ -2570,7 +2705,8 @@
     "index": 101,
     "name": {
       "en": "SumnBlk2",
-      "ja": "サモンブラック2"
+      "ja": "サモンブラック2",
+      "zh-Hans": "梦魇召唤2"
     },
     "description": {
       "en": "Summon a\nNghtmare\nattack!",
@@ -2589,7 +2725,8 @@
     "index": 102,
     "name": {
       "en": "SumnBlk3",
-      "ja": "サモンブラック3"
+      "ja": "サモンブラック3",
+      "zh-Hans": "梦魇召唤3"
     },
     "description": {
       "en": "Summon a\nNghtmare\nattack!",
@@ -2608,7 +2745,8 @@
     "index": 104,
     "name": {
       "en": "NumbrBl",
-      "ja": "ナンバーボール"
+      "ja": "ナンバーボール",
+      "zh-Hans": "数字球"
     },
     "description": {
       "en": "Last 2\nHP digits\n= atk pwr",
@@ -2627,7 +2765,8 @@
     "index": 111,
     "name": {
       "en": "Meteors",
-      "ja": "リュウセイグン"
+      "ja": "リュウセイグン",
+      "zh-Hans": "流星群"
     },
     "description": {
       "en": "Drop many\nmeteor on\nenmy area",
@@ -2646,7 +2785,8 @@
     "index": 130,
     "name": {
       "en": "JustcOne",
-      "ja": "ジャスティスワン"
+      "ja": "ジャスティスワン",
+      "zh-Hans": "正义之拳"
     },
     "description": {
       "en": "Fist Atk\non center\npanel",
@@ -2665,7 +2805,8 @@
     "index": 136,
     "name": {
       "en": "Magnum",
-      "ja": "マグナム"
+      "ja": "マグナム",
+      "zh-Hans": "破地炮"
     },
     "description": {
       "en": "Cursor\ndestroys\npanels!",
@@ -2684,7 +2825,8 @@
     "index": 137,
     "name": {
       "en": "CircGun",
-      "ja": "サークルガン"
+      "ja": "サークルガン",
+      "zh-Hans": "环绕枪"
     },
     "description": {
       "en": "Stop sght\nw/Button\nand attck",
@@ -2703,7 +2845,8 @@
     "index": 138,
     "name": {
       "en": "RockCube",
-      "ja": "ストーンキューブ"
+      "ja": "ストーンキューブ",
+      "zh-Hans": "石块"
     },
     "description": {
       "en": "Place a\nRockCube\nin front",
@@ -2722,7 +2865,8 @@
     "index": 145,
     "name": {
       "en": "TimeBom1",
-      "ja": "カウントボム1"
+      "ja": "カウントボム1",
+      "zh-Hans": "计数炸弹1"
     },
     "description": {
       "en": "Explodes\n3 seconds\nlater",
@@ -2741,7 +2885,8 @@
     "index": 148,
     "name": {
       "en": "Mine",
-      "ja": "ステルスマイン"
+      "ja": "ステルスマイン",
+      "zh-Hans": "隐蔽地雷"
     },
     "description": {
       "en": "Place a\nmine in\nenmy area",
@@ -2760,7 +2905,8 @@
     "index": 149,
     "name": {
       "en": "Fanfare",
-      "ja": "オウエンカ"
+      "ja": "オウエンカ",
+      "zh-Hans": "无敌喇叭"
     },
     "description": {
       "en": "Take no\ndmage for\na while",
@@ -2779,7 +2925,8 @@
     "index": 150,
     "name": {
       "en": "Discord",
-      "ja": "ディスコード"
+      "ja": "ディスコード",
+      "zh-Hans": "混乱喇叭"
     },
     "description": {
       "en": "Confuses\nenemies\nw/music",
@@ -2798,7 +2945,8 @@
     "index": 151,
     "name": {
       "en": "Timpani",
-      "ja": "ティンパニー"
+      "ja": "ティンパニー",
+      "zh-Hans": "地震喇叭"
     },
     "description": {
       "en": "Stop enmy\nfeet with\nmusic",
@@ -2817,7 +2965,8 @@
     "index": 152,
     "name": {
       "en": "Silence",
-      "ja": "サイレンス"
+      "ja": "サイレンス",
+      "zh-Hans": "失明喇叭"
     },
     "description": {
       "en": "Blinds\nenemies\nw/music",
@@ -2836,7 +2985,8 @@
     "index": 153,
     "name": {
       "en": "VDoll",
-      "ja": "ワラニンギョウ"
+      "ja": "ワラニンギョウ",
+      "zh-Hans": "诅咒人偶"
     },
     "description": {
       "en": "Throws\nVDoll\n3sq ahead",
@@ -2855,7 +3005,8 @@
     "index": 154,
     "name": {
       "en": "Guardian",
-      "ja": "オジゾウサン"
+      "ja": "オジゾウサン",
+      "zh-Hans": "地藏王"
     },
     "description": {
       "en": "Statue\npunishes\nwhen hit",
@@ -2874,7 +3025,8 @@
     "index": 155,
     "name": {
       "en": "Anubis",
-      "ja": "ポイズンアヌビス"
+      "ja": "ポイズンアヌビス",
+      "zh-Hans": "毒阿努比斯"
     },
     "description": {
       "en": "Anubis\npoisons\nenemies",
@@ -2893,7 +3045,8 @@
     "index": 2,
     "name": {
       "en": "Otenko",
-      "ja": "オテンコサマ"
+      "ja": "オテンコサマ",
+      "zh-Hans": "天鼓大人"
     },
     "description": {
       "en": "Put Otnko\nto raise\natk pwr",
@@ -2912,7 +3065,8 @@
     "index": 156,
     "name": {
       "en": "Recov10",
-      "ja": "リカバリー10"
+      "ja": "リカバリー10",
+      "zh-Hans": "回复10"
     },
     "description": {
       "en": "Recovers\n10HP",
@@ -2931,7 +3085,8 @@
     "index": 157,
     "name": {
       "en": "Recov30",
-      "ja": "リカバリー30"
+      "ja": "リカバリー30",
+      "zh-Hans": "回复30"
     },
     "description": {
       "en": "Recovers\n30HP",
@@ -2950,7 +3105,8 @@
     "index": 158,
     "name": {
       "en": "Recov50",
-      "ja": "リカバリー50"
+      "ja": "リカバリー50",
+      "zh-Hans": "回复50"
     },
     "description": {
       "en": "Recovers\n50HP",
@@ -2969,7 +3125,8 @@
     "index": 159,
     "name": {
       "en": "Recov80",
-      "ja": "リカバリー80"
+      "ja": "リカバリー80",
+      "zh-Hans": "回复80"
     },
     "description": {
       "en": "Recovers\n80HP",
@@ -2988,7 +3145,8 @@
     "index": 160,
     "name": {
       "en": "Recov120",
-      "ja": "リカバリー120"
+      "ja": "リカバリー120",
+      "zh-Hans": "回复120"
     },
     "description": {
       "en": "Recovers\n120HP",
@@ -3007,7 +3165,8 @@
     "index": 161,
     "name": {
       "en": "Recov150",
-      "ja": "リカバリー150"
+      "ja": "リカバリー150",
+      "zh-Hans": "回复150"
     },
     "description": {
       "en": "Recovers\n150HP",
@@ -3026,7 +3185,8 @@
     "index": 162,
     "name": {
       "en": "Recov200",
-      "ja": "リカバリー200"
+      "ja": "リカバリー200",
+      "zh-Hans": "回复200"
     },
     "description": {
       "en": "Recovers\n200HP",
@@ -3045,7 +3205,8 @@
     "index": 163,
     "name": {
       "en": "Recov300",
-      "ja": "リカバリー300"
+      "ja": "リカバリー300",
+      "zh-Hans": "回复300"
     },
     "description": {
       "en": "Recovers\n300HP",
@@ -3064,7 +3225,8 @@
     "index": 164,
     "name": {
       "en": "PanlGrab",
-      "ja": "パネルスチール"
+      "ja": "パネルスチール",
+      "zh-Hans": "占格"
     },
     "description": {
       "en": "Steals 1\nenemy\nsquare!",
@@ -3083,7 +3245,8 @@
     "index": 165,
     "name": {
       "en": "AreaGrab",
-      "ja": "エリアスチール"
+      "ja": "エリアスチール",
+      "zh-Hans": "占地"
     },
     "description": {
       "en": "Steals\nleft edge\nfrom enmy",
@@ -3102,7 +3265,8 @@
     "index": 166,
     "name": {
       "en": "GrabBnsh",
-      "ja": "スチールパニシュ"
+      "ja": "スチールパニシュ",
+      "zh-Hans": "占地惩罚"
     },
     "description": {
       "en": "20 damage\nfor every\nstolen sq",
@@ -3121,7 +3285,8 @@
     "index": 167,
     "name": {
       "en": "GrabRvng",
-      "ja": "スチールリベンジ"
+      "ja": "スチールリベンジ",
+      "zh-Hans": "占地复仇"
     },
     "description": {
       "en": "40 damage\nfor every\nstolen sq",
@@ -3140,7 +3305,8 @@
     "index": 168,
     "name": {
       "en": "PnlRetrn",
-      "ja": "パネルリターン"
+      "ja": "パネルリターン",
+      "zh-Hans": "地板复原"
     },
     "description": {
       "en": "Fix your\narea's\npanels",
@@ -3159,7 +3325,8 @@
     "index": 169,
     "name": {
       "en": "Geddon",
-      "ja": "デスマッチ"
+      "ja": "デスマッチ",
+      "zh-Hans": "死亡竞赛"
     },
     "description": {
       "en": "Breaks\nall empty\npanels",
@@ -3178,7 +3345,8 @@
     "index": 170,
     "name": {
       "en": "HolyPanl",
-      "ja": "ホーリーパネル"
+      "ja": "ホーリーパネル",
+      "zh-Hans": "圣格"
     },
     "description": {
       "en": "Creates a\nHolyPanl\nin front",
@@ -3197,7 +3365,8 @@
     "index": 171,
     "name": {
       "en": "Snctuary",
-      "ja": "サンクチュアリ"
+      "ja": "サンクチュアリ",
+      "zh-Hans": "圣地"
     },
     "description": {
       "en": "Chng all\nown panel\nto holy",
@@ -3216,7 +3385,8 @@
     "index": 172,
     "name": {
       "en": "ComingRd",
-      "ja": "カミングロード"
+      "ja": "カミングロード",
+      "zh-Hans": "来之路"
     },
     "description": {
       "en": "Pull an\nenemy to\nthe front",
@@ -3235,7 +3405,8 @@
     "index": 173,
     "name": {
       "en": "GoingRd",
-      "ja": "ゴーイングロード"
+      "ja": "ゴーイングロード",
+      "zh-Hans": "去之路"
     },
     "description": {
       "en": "Push an\nenemy to\nthe back",
@@ -3254,7 +3425,8 @@
     "index": 174,
     "name": {
       "en": "SloGauge",
-      "ja": "ヘビーゲージ"
+      "ja": "ヘビーゲージ",
+      "zh-Hans": "慢槽"
     },
     "description": {
       "en": "CustGauge\nslow-down",
@@ -3273,7 +3445,8 @@
     "index": 175,
     "name": {
       "en": "FstGauge",
-      "ja": "クイックゲージ"
+      "ja": "クイックゲージ",
+      "zh-Hans": "快槽"
     },
     "description": {
       "en": "CustGauge\nspeed-up",
@@ -3292,7 +3465,8 @@
     "index": 176,
     "name": {
       "en": "FullCust",
-      "ja": "フルカスタム"
+      "ja": "フルカスタム",
+      "zh-Hans": "满槽"
     },
     "description": {
       "en": "CustGauge\ninstantly\nrefills",
@@ -3311,7 +3485,8 @@
     "index": 177,
     "name": {
       "en": "BusterUp",
-      "ja": "バスターアップ"
+      "ja": "バスターアップ",
+      "zh-Hans": "火力修正"
     },
     "description": {
       "en": "Power\ngoes up\nby 1",
@@ -3330,7 +3505,8 @@
     "index": 178,
     "name": {
       "en": "BugFix",
-      "ja": "バグシュウセイ"
+      "ja": "バグシュウセイ",
+      "zh-Hans": "错误修正"
     },
     "description": {
       "en": "Repairs &\nremoves\nbugs",
@@ -3349,7 +3525,8 @@
     "index": 179,
     "name": {
       "en": "Invisibl",
-      "ja": "インビジブル"
+      "ja": "インビジブル",
+      "zh-Hans": "隐身"
     },
     "description": {
       "en": "Invisible\nfor a\nwhile",
@@ -3368,7 +3545,8 @@
     "index": 180,
     "name": {
       "en": "Barrier",
-      "ja": "バリア"
+      "ja": "バリア",
+      "zh-Hans": "防护罩10"
     },
     "description": {
       "en": "Nullifies\n10 HP of\ndamage",
@@ -3387,7 +3565,8 @@
     "index": 181,
     "name": {
       "en": "Barr100",
-      "ja": "バリア100"
+      "ja": "バリア100",
+      "zh-Hans": "防护罩100"
     },
     "description": {
       "en": "Nullifies\n100 HP of\ndamage",
@@ -3406,7 +3585,8 @@
     "index": 182,
     "name": {
       "en": "Barr200",
-      "ja": "バリア200"
+      "ja": "バリア200",
+      "zh-Hans": "防护罩200"
     },
     "description": {
       "en": "Nullifies\n200 HP of\ndamage",
@@ -3425,7 +3605,8 @@
     "index": 183,
     "name": {
       "en": "BblWrap",
-      "ja": "バブルラップ"
+      "ja": "バブルラップ",
+      "zh-Hans": "泡泡护罩"
     },
     "description": {
       "en": "Weak\nagainst\nelec atk",
@@ -3444,7 +3625,8 @@
     "index": 184,
     "name": {
       "en": "LifeAur",
-      "ja": "ドリームオーラ"
+      "ja": "ドリームオーラ",
+      "zh-Hans": "梦幻辉光"
     },
     "description": {
       "en": "Repel all\nattacks\nunder200",
@@ -3463,7 +3645,8 @@
     "index": 185,
     "name": {
       "en": "MagCoil",
-      "ja": "マグネコイル"
+      "ja": "マグネコイル",
+      "zh-Hans": "磁力圈"
     },
     "description": {
       "en": "Draw in\nenmy with\nmag force",
@@ -3482,7 +3665,8 @@
     "index": 192,
     "name": {
       "en": "WhiCapsl",
-      "ja": "ホワイトカプセル"
+      "ja": "ホワイトカプセル",
+      "zh-Hans": "白色胶囊"
     },
     "description": {
       "en": "Add an\neffect:\nParalyze",
@@ -3501,7 +3685,8 @@
     "index": 193,
     "name": {
       "en": "Uninstll",
-      "ja": "アンインストール"
+      "ja": "アンインストール",
+      "zh-Hans": "卸载"
     },
     "description": {
       "en": "Attach to\nNoDim Chp\nNavCusOff",
@@ -3520,7 +3705,8 @@
     "index": 188,
     "name": {
       "en": "AntiNavi",
-      "ja": "ナビスカウト"
+      "ja": "ナビスカウト",
+      "zh-Hans": "领航员反叛"
     },
     "description": {
       "en": "Takes the\nenemy's\nNavi away",
@@ -3539,7 +3725,8 @@
     "index": 189,
     "name": {
       "en": "AntiDmg",
-      "ja": "カワリミ"
+      "ja": "カワリミ",
+      "zh-Hans": "替身攻击"
     },
     "description": {
       "en": "Sets trap\nand throw\nstars",
@@ -3558,7 +3745,8 @@
     "index": 190,
     "name": {
       "en": "AntiSwrd",
-      "ja": "シラハドリ"
+      "ja": "シラハドリ",
+      "zh-Hans": "空手夺刃"
     },
     "description": {
       "en": "Retaliate\nfor sword\ndamage",
@@ -3577,7 +3765,8 @@
     "index": 191,
     "name": {
       "en": "AntiRecv",
-      "ja": "バッドメディスン"
+      "ja": "バッドメディスン",
+      "zh-Hans": "回复毒药"
     },
     "description": {
       "en": "Damages\nenemy in\nrecovery",
@@ -3596,7 +3785,8 @@
     "index": 194,
     "name": {
       "en": "CopyDmg",
-      "ja": "コピーダメージ"
+      "ja": "コピーダメージ",
+      "zh-Hans": "伤害复制"
     },
     "description": {
       "en": "Duplicate\ndamage to\n2nd enemy",
@@ -3615,7 +3805,8 @@
     "index": 195,
     "name": {
       "en": "LifeSync",
-      "ja": "ライフシンクロ"
+      "ja": "ライフシンクロ",
+      "zh-Hans": "体力同步"
     },
     "description": {
       "en": "Makes HP\nsame as\nenemy",
@@ -3634,7 +3825,8 @@
     "index": 196,
     "name": {
       "en": "Atk+10",
-      "ja": "アタック+10"
+      "ja": "アタック+10",
+      "zh-Hans": "攻击+10"
     },
     "description": {
       "en": "+10 for\nselected\natk chip",
@@ -3653,7 +3845,8 @@
     "index": 198,
     "name": {
       "en": "Navi+20",
-      "ja": "ナビ+20"
+      "ja": "ナビ+20",
+      "zh-Hans": "领航员+20"
     },
     "description": {
       "en": "+20 for\nselected\nNavi chip",
@@ -3672,7 +3865,8 @@
     "index": 199,
     "name": {
       "en": "ColorPt",
-      "ja": "カラーポイント"
+      "ja": "カラーポイント",
+      "zh-Hans": "单色点"
     },
     "description": {
       "en": "+10 for\nnext chip\nattack",
@@ -3691,7 +3885,8 @@
     "index": 197,
     "name": {
       "en": "Atk+30",
-      "ja": "アタック+30"
+      "ja": "アタック+30",
+      "zh-Hans": "攻击+30"
     },
     "description": {
       "en": "+30 for\nselected\natk chip",
@@ -3710,7 +3905,8 @@
     "index": 200,
     "name": {
       "en": "DblPoint",
-      "ja": "ダブルポイント"
+      "ja": "ダブルポイント",
+      "zh-Hans": "双色点"
     },
     "description": {
       "en": "+20 for\nnext chip\nattack",
@@ -3729,7 +3925,8 @@
     "index": 187,
     "name": {
       "en": "ElemTrap",
-      "ja": "エレメントラップ"
+      "ja": "エレメントラップ",
+      "zh-Hans": "元素陷阱"
     },
     "description": {
       "en": "Trap enmy\nand attk\nwith elem",
@@ -3748,7 +3945,8 @@
     "index": 186,
     "name": {
       "en": "ColArmy",
-      "ja": "カーネルアーミー"
+      "ja": "カーネルアーミー",
+      "zh-Hans": "卡尼路士兵"
     },
     "description": {
       "en": "Launch an\nattk with\nCol. army",
@@ -3767,7 +3965,8 @@
     "index": 115,
     "name": {
       "en": "BlzrdBal",
-      "ja": "ブリザードボール"
+      "ja": "ブリザードボール",
+      "zh-Hans": "雪球"
     },
     "description": {
       "en": "Launch a\ngiant\nsnowball",
@@ -3786,7 +3985,8 @@
     "index": 146,
     "name": {
       "en": "TimeBom2",
-      "ja": "カウントボム2"
+      "ja": "カウントボム2",
+      "zh-Hans": "计数炸弹2"
     },
     "description": {
       "en": "Explodes\n3 seconds\nlater",
@@ -3805,7 +4005,8 @@
     "index": 147,
     "name": {
       "en": "TimeBom3",
-      "ja": "カウントボム3"
+      "ja": "カウントボム3",
+      "zh-Hans": "计数炸弹3"
     },
     "description": {
       "en": "Explodes\n3 seconds\nlater",
@@ -3824,7 +4025,8 @@
     "index": 59,
     "name": {
       "en": "BigBomb",
-      "ja": "ビッグボム"
+      "ja": "ビッグボム",
+      "zh-Hans": "巨型炸弹"
     },
     "description": {
       "en": "Throw a 9\npanl bomb\n3panl fwd",
@@ -3861,7 +4063,8 @@
     "index": 1,
     "name": {
       "en": "Roll",
-      "ja": "ロール"
+      "ja": "ロール",
+      "zh-Hans": "萝露"
     },
     "description": {
       "en": "Attacks\nenmy,then\nheals you",
@@ -3880,7 +4083,8 @@
     "index": 2,
     "name": {
       "en": "Roll2",
-      "ja": "ロールV2"
+      "ja": "ロールV2",
+      "zh-Hans": "萝露V2"
     },
     "description": {
       "en": "Attacks\nenmy,then\nheals you",
@@ -3899,7 +4103,8 @@
     "index": 3,
     "name": {
       "en": "Roll3",
-      "ja": "ロールV3"
+      "ja": "ロールV3",
+      "zh-Hans": "萝露V3"
     },
     "description": {
       "en": "Attacks\nenmy,then\nheals you",
@@ -3918,7 +4123,8 @@
     "index": 4,
     "name": {
       "en": "ProtoMan",
-      "ja": "ブルース"
+      "ja": "ブルース",
+      "zh-Hans": "布鲁斯"
     },
     "description": {
       "en": "Move in\nand slice\nthe enemy",
@@ -3937,7 +4143,8 @@
     "index": 5,
     "name": {
       "en": "ProtoMnEX",
-      "ja": "ブルースEX"
+      "ja": "ブルースEX",
+      "zh-Hans": "布鲁斯EX"
     },
     "description": {
       "en": "Move in\nand slice\nthe enemy",
@@ -3956,7 +4163,8 @@
     "index": 6,
     "name": {
       "en": "ProtoMnSP",
-      "ja": "ブルースSP"
+      "ja": "ブルースSP",
+      "zh-Hans": "布鲁斯SP"
     },
     "description": {
       "en": "Move in\nand slice\nthe enemy",
@@ -3975,7 +4183,8 @@
     "index": 3,
     "name": {
       "en": "HeatMan",
-      "ja": "ヒートマン"
+      "ja": "ヒートマン",
+      "zh-Hans": "灼热人"
     },
     "description": {
       "en": "Burn with\na radial\nfire attk",
@@ -3994,7 +4203,8 @@
     "index": 4,
     "name": {
       "en": "HeatManEX",
-      "ja": "ヒートマンEX"
+      "ja": "ヒートマンEX",
+      "zh-Hans": "灼热人EX"
     },
     "description": {
       "en": "Burn with\na radial\nfire attk",
@@ -4013,7 +4223,8 @@
     "index": 5,
     "name": {
       "en": "HeatManSP",
-      "ja": "ヒートマンSP"
+      "ja": "ヒートマンSP",
+      "zh-Hans": "灼热人SP"
     },
     "description": {
       "en": "Burn with\na radial\nfire attk",
@@ -4032,7 +4243,8 @@
     "index": 6,
     "name": {
       "en": "ElecMan",
-      "ja": "エレキマン"
+      "ja": "エレキマン",
+      "zh-Hans": "电气人"
     },
     "description": {
       "en": "Attk your\nsurrndngs\nwith thdr",
@@ -4051,7 +4263,8 @@
     "index": 7,
     "name": {
       "en": "ElecManEX",
-      "ja": "エレキマンEX"
+      "ja": "エレキマンEX",
+      "zh-Hans": "电气人EX"
     },
     "description": {
       "en": "Attk your\nsurrndngs\nwith thdr",
@@ -4070,7 +4283,8 @@
     "index": 8,
     "name": {
       "en": "ElecManSP",
-      "ja": "エレキマンSP"
+      "ja": "エレキマンSP",
+      "zh-Hans": "电气人SP"
     },
     "description": {
       "en": "Attk your\nsurrndngs\nwith thdr",
@@ -4089,7 +4303,8 @@
     "index": 9,
     "name": {
       "en": "SlashMan",
-      "ja": "スラッシュマン"
+      "ja": "スラッシュマン",
+      "zh-Hans": "切裂人"
     },
     "description": {
       "en": "Slash an\nenmy w/\nflyn knfe",
@@ -4108,7 +4323,8 @@
     "index": 10,
     "name": {
       "en": "SlashMnEX",
-      "ja": "スラッシュマンEX"
+      "ja": "スラッシュマンEX",
+      "zh-Hans": "切裂人EX"
     },
     "description": {
       "en": "Slash an\nenmy w/\nflyn knfe",
@@ -4127,7 +4343,8 @@
     "index": 11,
     "name": {
       "en": "SlashMnSP",
-      "ja": "スラッシュマンSP"
+      "ja": "スラッシュマンSP",
+      "zh-Hans": "切裂人SP"
     },
     "description": {
       "en": "Slash an\nenmy w/\nflyn knfe",
@@ -4146,7 +4363,8 @@
     "index": 12,
     "name": {
       "en": "EraseMan",
-      "ja": "キラーマン"
+      "ja": "キラーマン",
+      "zh-Hans": "杀手人"
     },
     "description": {
       "en": "Press 🅐\nfor 3panl\nbeam attk",
@@ -4165,7 +4383,8 @@
     "index": 13,
     "name": {
       "en": "EraseMnEX",
-      "ja": "キラーマンEX"
+      "ja": "キラーマンEX",
+      "zh-Hans": "杀手人EX"
     },
     "description": {
       "en": "Press 🅐\nfor 3panl\nbeam attk",
@@ -4184,7 +4403,8 @@
     "index": 14,
     "name": {
       "en": "EraseMnSP",
-      "ja": "キラーマンSP"
+      "ja": "キラーマンSP",
+      "zh-Hans": "杀手人SP"
     },
     "description": {
       "en": "Press 🅐\nfor 3panl\nbeam attk",
@@ -4203,7 +4423,8 @@
     "index": 15,
     "name": {
       "en": "ChrgeMan",
-      "ja": "チャージマン"
+      "ja": "チャージマン",
+      "zh-Hans": "火车人"
     },
     "description": {
       "en": "Rush fwd!\nOpen panl\nhit TrCar",
@@ -4222,7 +4443,8 @@
     "index": 16,
     "name": {
       "en": "ChrgeMnEX",
-      "ja": "チャージマンEX"
+      "ja": "チャージマンEX",
+      "zh-Hans": "火车人EX"
     },
     "description": {
       "en": "Rush fwd!\nOpen panl\nhit TrCar",
@@ -4241,7 +4463,8 @@
     "index": 17,
     "name": {
       "en": "ChrgeMnSP",
-      "ja": "チャージマンSP"
+      "ja": "チャージマンSP",
+      "zh-Hans": "火车人SP"
     },
     "description": {
       "en": "Rush fwd!\nOpen panl\nhit TrCar",
@@ -4260,7 +4483,8 @@
     "index": 7,
     "name": {
       "en": "SpoutMan",
-      "ja": "アクアマン"
+      "ja": "アクアマン",
+      "zh-Hans": "水泡人"
     },
     "description": {
       "en": "Watr atk!\nBhnd 2row\npower-up",
@@ -4279,7 +4503,8 @@
     "index": 8,
     "name": {
       "en": "SpoutMnEX",
-      "ja": "アクアマンEX"
+      "ja": "アクアマンEX",
+      "zh-Hans": "水泡人EX"
     },
     "description": {
       "en": "Watr atk!\nBhnd 2row\npower-up",
@@ -4298,7 +4523,8 @@
     "index": 9,
     "name": {
       "en": "SpoutMnSP",
-      "ja": "アクアマンSP"
+      "ja": "アクアマンSP",
+      "zh-Hans": "水泡人SP"
     },
     "description": {
       "en": "Watr atk!\nBhnd 2row\npower-up",
@@ -4317,7 +4543,8 @@
     "index": 10,
     "name": {
       "en": "TmhkMan",
-      "ja": "トマホークマン"
+      "ja": "トマホークマン",
+      "zh-Hans": "战斧人"
     },
     "description": {
       "en": "Slice 2sq\nside,3sq\nvertical",
@@ -4336,7 +4563,8 @@
     "index": 11,
     "name": {
       "en": "TmhkManEX",
-      "ja": "トマホークマンEX"
+      "ja": "トマホークマンEX",
+      "zh-Hans": "战斧人EX"
     },
     "description": {
       "en": "Slice 2sq\nside,3sq\nvertical",
@@ -4355,7 +4583,8 @@
     "index": 12,
     "name": {
       "en": "TmhkManSP",
-      "ja": "トマホークマンSP"
+      "ja": "トマホークマンSP",
+      "zh-Hans": "战斧人SP"
     },
     "description": {
       "en": "Slice 2sq\nside,3sq\nvertical",
@@ -4374,7 +4603,8 @@
     "index": 13,
     "name": {
       "en": "TenguMan",
-      "ja": "テングマン"
+      "ja": "テングマン",
+      "zh-Hans": "天狗人"
     },
     "description": {
       "en": "Attk 2row\nfrom air,\nthen side",
@@ -4393,7 +4623,8 @@
     "index": 14,
     "name": {
       "en": "TenguMnEX",
-      "ja": "テングマンEX"
+      "ja": "テングマンEX",
+      "zh-Hans": "天狗人EX"
     },
     "description": {
       "en": "Attk 2row\nfrom air,\nthen side",
@@ -4412,7 +4643,8 @@
     "index": 15,
     "name": {
       "en": "TenguMnSP",
-      "ja": "テングマンSP"
+      "ja": "テングマンSP",
+      "zh-Hans": "天狗人SP"
     },
     "description": {
       "en": "Attk 2row\nfrom air,\nthen side",
@@ -4431,7 +4663,8 @@
     "index": 16,
     "name": {
       "en": "GrndMan",
-      "ja": "グランドマン"
+      "ja": "グランドマン",
+      "zh-Hans": "大地人"
     },
     "description": {
       "en": "Move fwrd\nthen attk\nw/drill",
@@ -4450,7 +4683,8 @@
     "index": 17,
     "name": {
       "en": "GrndManEX",
-      "ja": "グランドマンEX"
+      "ja": "グランドマンEX",
+      "zh-Hans": "大地人EX"
     },
     "description": {
       "en": "Move fwrd\nthen attk\nw/drill",
@@ -4469,7 +4703,8 @@
     "index": 18,
     "name": {
       "en": "GrndManSP",
-      "ja": "グランドマンSP"
+      "ja": "グランドマンSP",
+      "zh-Hans": "大地人SP"
     },
     "description": {
       "en": "Move fwrd\nthen attk\nw/drill",
@@ -4488,7 +4723,8 @@
     "index": 19,
     "name": {
       "en": "DustMan",
-      "ja": "ダストマン"
+      "ja": "ダストマン",
+      "zh-Hans": "垃圾人"
     },
     "description": {
       "en": "Attk ahd.\nSuck in &\nshoot out",
@@ -4507,7 +4743,8 @@
     "index": 20,
     "name": {
       "en": "DustManEX",
-      "ja": "ダストマンEX"
+      "ja": "ダストマンEX",
+      "zh-Hans": "垃圾人EX"
     },
     "description": {
       "en": "Attk ahd.\nSuck in &\nshoot out",
@@ -4526,7 +4763,8 @@
     "index": 21,
     "name": {
       "en": "DustManSP",
-      "ja": "ダストマンSP"
+      "ja": "ダストマンSP",
+      "zh-Hans": "垃圾人SP"
     },
     "description": {
       "en": "Attk ahd.\nSuck in &\nshoot out",
@@ -4545,7 +4783,8 @@
     "index": 22,
     "name": {
       "en": "BlastMan",
-      "ja": "ブラストマン"
+      "ja": "ブラストマン",
+      "zh-Hans": "爆炎人"
     },
     "description": {
       "en": "Head fwd\n& launch\nblst attk",
@@ -4564,7 +4803,8 @@
     "index": 23,
     "name": {
       "en": "BlastMnEX",
-      "ja": "ブラストマンEX"
+      "ja": "ブラストマンEX",
+      "zh-Hans": "爆炎人EX"
     },
     "description": {
       "en": "Head fwd\n& launch\nblst attk",
@@ -4583,7 +4823,8 @@
     "index": 24,
     "name": {
       "en": "BlastMnSP",
-      "ja": "ブラストマンSP"
+      "ja": "ブラストマンSP",
+      "zh-Hans": "爆炎人SP"
     },
     "description": {
       "en": "Head fwd\n& launch\nblst attk",
@@ -4602,7 +4843,8 @@
     "index": 25,
     "name": {
       "en": "DiveMan",
-      "ja": "ダイブマン"
+      "ja": "ダイブマン",
+      "zh-Hans": "潜水人"
     },
     "description": {
       "en": "Snd giant\nwave acrs\narea 2pnl",
@@ -4621,7 +4863,8 @@
     "index": 26,
     "name": {
       "en": "DiveManEX",
-      "ja": "ダイブマンEX"
+      "ja": "ダイブマンEX",
+      "zh-Hans": "潜水人EX"
     },
     "description": {
       "en": "Snd giant\nwave acrs\narea 2pnl",
@@ -4640,7 +4883,8 @@
     "index": 27,
     "name": {
       "en": "DiveManSP",
-      "ja": "ダイブマンSP"
+      "ja": "ダイブマンSP",
+      "zh-Hans": "潜水人SP"
     },
     "description": {
       "en": "Snd giant\nwave acrs\narea 2pnl",
@@ -4659,7 +4903,8 @@
     "index": 28,
     "name": {
       "en": "CrcusMan",
-      "ja": "サーカスマン"
+      "ja": "サーカスマン",
+      "zh-Hans": "马戏人"
     },
     "description": {
       "en": "Capture\nenmy in a\nash attck",
@@ -4678,7 +4923,8 @@
     "index": 29,
     "name": {
       "en": "CrcusMnEX",
-      "ja": "サーカスマンEX"
+      "ja": "サーカスマンEX",
+      "zh-Hans": "马戏人EX"
     },
     "description": {
       "en": "Capture\nenmy in a\nash attck",
@@ -4697,7 +4943,8 @@
     "index": 30,
     "name": {
       "en": "CrcusMnSP",
-      "ja": "サーカスマンSP"
+      "ja": "サーカスマンSP",
+      "zh-Hans": "马戏人SP"
     },
     "description": {
       "en": "Capture\nenmy in a\nash attck",
@@ -4716,7 +4963,8 @@
     "index": 31,
     "name": {
       "en": "JudgeMan",
-      "ja": "ジャッジマン"
+      "ja": "ジャッジマン",
+      "zh-Hans": "审判人"
     },
     "description": {
       "en": "Whip 3\npanels\nforward",
@@ -4735,7 +4983,8 @@
     "index": 32,
     "name": {
       "en": "JudgeMnEX",
-      "ja": "ジャッジマンEX"
+      "ja": "ジャッジマンEX",
+      "zh-Hans": "审判人EX"
     },
     "description": {
       "en": "Whip 3\npanels\nforward",
@@ -4754,7 +5003,8 @@
     "index": 33,
     "name": {
       "en": "JudgeMnSP",
-      "ja": "ジャッジマンSP"
+      "ja": "ジャッジマンSP",
+      "zh-Hans": "审判人SP"
     },
     "description": {
       "en": "Whip 3\npanels\nforward",
@@ -4773,7 +5023,8 @@
     "index": 34,
     "name": {
       "en": "ElmntMan",
-      "ja": "エレメントマン"
+      "ja": "エレメントマン",
+      "zh-Hans": "元素人"
     },
     "description": {
       "en": "Hit 🅐 whn\ncol chges\nelem attk",
@@ -4792,7 +5043,8 @@
     "index": 35,
     "name": {
       "en": "ElmntMnEX",
-      "ja": "エレメントマンEX"
+      "ja": "エレメントマンEX",
+      "zh-Hans": "元素人EX"
     },
     "description": {
       "en": "Hit 🅐 whn\ncol chges\nelem attk",
@@ -4811,7 +5063,8 @@
     "index": 36,
     "name": {
       "en": "ElmntMnSP",
-      "ja": "エレメントマンSP"
+      "ja": "エレメントマンSP",
+      "zh-Hans": "元素人SP"
     },
     "description": {
       "en": "Hit 🅐 whn\ncol chges\nelem attk",
@@ -4830,7 +5083,8 @@
     "index": 37,
     "name": {
       "en": "Colonel",
-      "ja": "カーネル"
+      "ja": "カーネル",
+      "zh-Hans": "卡尼路"
     },
     "description": {
       "en": "Cut enmy\nlines in\nZ shape",
@@ -4849,7 +5103,8 @@
     "index": 38,
     "name": {
       "en": "ColonelEX",
-      "ja": "カーネルEX"
+      "ja": "カーネルEX",
+      "zh-Hans": "卡尼路EX"
     },
     "description": {
       "en": "Cut enmy\nlines in\nZ shape",
@@ -4868,7 +5123,8 @@
     "index": 39,
     "name": {
       "en": "ColonelSP",
-      "ja": "カーネルSP"
+      "ja": "カーネルSP",
+      "zh-Hans": "卡尼路SP"
     },
     "description": {
       "en": "Cut enmy\nlines in\nZ shape",
@@ -4887,7 +5143,8 @@
     "index": 40,
     "name": {
       "en": "HackJack",
-      "ja": "ハクシャク"
+      "ja": "ハクシャク",
+      "zh-Hans": "伯爵"
     },
     "description": {
       "en": "Rain on\nenmy then\nlance atk",
@@ -4906,7 +5163,8 @@
     "index": 41,
     "name": {
       "en": "HackJckEX",
-      "ja": "ハクシャクEX"
+      "ja": "ハクシャクEX",
+      "zh-Hans": "伯爵EX"
     },
     "description": {
       "en": "Rain on\nenmy then\nlance atk",
@@ -4925,7 +5183,8 @@
     "index": 42,
     "name": {
       "en": "HackJckSP",
-      "ja": "ハクシャクSP"
+      "ja": "ハクシャクSP",
+      "zh-Hans": "伯爵SP"
     },
     "description": {
       "en": "Rain on\nenmy then\nlance atk",
@@ -4944,7 +5203,8 @@
     "index": 43,
     "name": {
       "en": "Django",
-      "ja": "ジャンゴ"
+      "ja": "ジャンゴ",
+      "zh-Hans": "强戈"
     },
     "description": {
       "en": "Hit enmy\nwith bike\nrdng Djgo",
@@ -4963,7 +5223,8 @@
     "index": 44,
     "name": {
       "en": "Django2",
-      "ja": "ジャンゴV2"
+      "ja": "ジャンゴV2",
+      "zh-Hans": "强戈V2"
     },
     "description": {
       "en": "Hit enmy\nwith bike\nrdng Djgo",
@@ -4982,7 +5243,8 @@
     "index": 45,
     "name": {
       "en": "Django3",
-      "ja": "ジャンゴV3"
+      "ja": "ジャンゴV3",
+      "zh-Hans": "强戈V3"
     },
     "description": {
       "en": "Hit enmy\nwith bike\nrdng Djgo",
@@ -4999,7 +5261,8 @@
   {
     "name": {
       "en": "PunchArm",
-      "ja": "パンチアーム"
+      "ja": "パンチアーム",
+      "zh-Hans": "火焰拳臂"
     },
     "index": 61,
     "stars": 5,
@@ -5012,7 +5275,8 @@
   {
     "name": {
       "en": "NeedlArm",
-      "ja": "ニードルアーム"
+      "ja": "ニードルアーム",
+      "zh-Hans": "刺球针臂"
     },
     "index": 62,
     "stars": 5,
@@ -5025,7 +5289,8 @@
   {
     "name": {
       "en": "PuzzlArm",
-      "ja": "パルスアーム"
+      "ja": "パルスアーム",
+      "zh-Hans": "闪电臂"
     },
     "index": 63,
     "stars": 5,
@@ -5038,7 +5303,8 @@
   {
     "name": {
       "en": "BoomrArm",
-      "ja": "ブーメランアーム"
+      "ja": "ブーメランアーム",
+      "zh-Hans": "回旋镖臂"
     },
     "index": 64,
     "stars": 5,
@@ -5051,7 +5317,8 @@
   {
     "name": {
       "en": "SyncTrgr",
-      "ja": "シンクロトリガー"
+      "ja": "シンクロトリガー",
+      "zh-Hans": "同步触发器"
     },
     "index": 65,
     "stars": 5,
@@ -5064,7 +5331,8 @@
   {
     "name": {
       "en": "DrkSword",
-      "ja": "ダークソード"
+      "ja": "ダークソード",
+      "zh-Hans": "黑暗剑"
     },
     "codes": "ABC*",
     "index": 66,
@@ -5077,7 +5345,8 @@
   {
     "name": {
       "en": "DarkThnd",
-      "ja": "ダークサンダー"
+      "ja": "ダークサンダー",
+      "zh-Hans": "黑暗电球"
     },
     "codes": "ABC*",
     "index": 67,
@@ -5090,7 +5359,8 @@
   {
     "name": {
       "en": "DrkRecov",
-      "ja": "ダークリカバリー"
+      "ja": "ダークリカバリー",
+      "zh-Hans": "黑暗恢复"
     },
     "codes": "ABC*",
     "index": 68,
@@ -5103,7 +5373,8 @@
   {
     "name": {
       "en": "DarkInvs",
-      "ja": "ダークインビジ"
+      "ja": "ダークインビジ",
+      "zh-Hans": "黑暗隐身"
     },
     "codes": "ABC*",
     "index": 69,
@@ -5116,7 +5387,8 @@
   {
     "name": {
       "en": "DarkPlus",
-      "ja": "ダークプラス"
+      "ja": "ダークプラス",
+      "zh-Hans": "黑暗附加"
     },
     "codes": "ABC*",
     "index": 70,
@@ -5141,7 +5413,8 @@
     "index": 1,
     "name": {
       "en": "Bass",
-      "ja": "フォルテ"
+      "ja": "フォルテ",
+      "zh-Hans": "佛鲁迪"
     },
     "description": {
       "en": "Buster\nrake wide\nenmy area",
@@ -5160,7 +5433,8 @@
     "index": 2,
     "name": {
       "en": "BigHook",
-      "ja": "ギガントフック"
+      "ja": "ギガントフック",
+      "zh-Hans": "百万拳击"
     },
     "description": {
       "en": "Hook\natk 2 sq\nwide",
@@ -5179,7 +5453,8 @@
     "index": 3,
     "name": {
       "en": "DeltaRay",
-      "ja": "デルタレイエッジ"
+      "ja": "デルタレイエッジ",
+      "zh-Hans": "布鲁斯三角斩"
     },
     "description": {
       "en": "A Button\npower up\nby 3 swrd",
@@ -5198,7 +5473,8 @@
     "index": 4,
     "name": {
       "en": "ColForce",
-      "ja": "カーネルフォース"
+      "ja": "カーネルフォース",
+      "zh-Hans": "卡尼路军队"
     },
     "description": {
       "en": "Smmn Col.\narmy in\nopen pnls",
@@ -5217,7 +5493,8 @@
     "index": 5,
     "name": {
       "en": "BugRSwrd",
-      "ja": "バグライズソード"
+      "ja": "バグライズソード",
+      "zh-Hans": "碎片黑暗阔剑"
     },
     "description": {
       "en": "Use Bug\nFrag with\nDrkSword!",
@@ -5236,7 +5513,8 @@
     "index": 1,
     "name": {
       "en": "BassAnly",
-      "ja": "フォルテアナザー"
+      "ja": "フォルテアナザー",
+      "zh-Hans": "佛鲁迪+"
     },
     "description": {
       "en": "A ring\nthat hits\n4 times",
@@ -5255,7 +5533,8 @@
     "index": 2,
     "name": {
       "en": "MetrKnuk",
-      "ja": "メテオナックル"
+      "ja": "メテオナックル",
+      "zh-Hans": "流星连拳"
     },
     "description": {
       "en": "Meteors\nbombard\nfrom sky",
@@ -5274,7 +5553,8 @@
     "index": 3,
     "name": {
       "en": "CrossDiv",
-      "ja": "クロスディバイド"
+      "ja": "クロスディバイド",
+      "zh-Hans": "卡尼路交叉斩"
     },
     "description": {
       "en": "Cross-\nslice!",
@@ -5293,7 +5573,8 @@
     "index": 4,
     "name": {
       "en": "HubBatc",
-      "ja": "サイトバッチ"
+      "ja": "サイトバッチ",
+      "zh-Hans": "彩斗装甲"
     },
     "description": {
       "en": "Blend Hub\nDNA Data\nw/MegaMan",
@@ -5312,7 +5593,8 @@
     "index": 5,
     "name": {
       "en": "BgDthThd",
-      "ja": "バグデスサンダー"
+      "ja": "バグデスサンダー",
+      "zh-Hans": "碎片死亡电球"
     },
     "description": {
       "en": "Use Bug\nFrag with\nDarkThnd!",
@@ -5331,7 +5613,8 @@
     "index": 11,
     "name": {
       "en": "DblBeast",
-      "ja": "ダブルビースト"
+      "ja": "ダブルビースト",
+      "zh-Hans": "双重兽化"
     },
     "description": {
       "en": "Fang&wing\ndoubl atk\nfrenzy!",
@@ -5350,7 +5633,8 @@
     "index": 12,
     "name": {
       "en": "Gregar",
-      "ja": "グレイガ"
+      "ja": "グレイガ",
+      "zh-Hans": "凤凰"
     },
     "description": {
       "en": "Gregar's\nscorching\nbreath!",
@@ -5369,7 +5653,8 @@
     "index": 13,
     "name": {
       "en": "Falzar",
-      "ja": "ファルザー"
+      "ja": "ファルザー",
+      "zh-Hans": "麒麟"
     },
     "description": {
       "en": "Falzar's\nstorming\ntornado!",
@@ -5387,7 +5672,8 @@
   {
     "name": {
       "en": "BatCan1",
-      "ja": "バットキャノン1"
+      "ja": "バットキャノン1",
+      "zh-Hans": "蝙蝠炮1"
     },
     "description": {
       "en": "MegaBstr\nattk with\nMegaMan!",
@@ -5404,7 +5690,8 @@
   {
     "name": {
       "en": "BatCan2",
-      "ja": "バットキャノン2"
+      "ja": "バットキャノン2",
+      "zh-Hans": "蝙蝠炮2"
     },
     "description": {
       "en": "ZapRing\nattk with\nMegaMan!",
@@ -5421,7 +5708,8 @@
   {
     "name": {
       "en": "BatCan3",
-      "ja": "バットキャノン3"
+      "ja": "バットキャノン3",
+      "zh-Hans": "蝙蝠炮3"
     },
     "description": {
       "en": "LifeSrd\nattk with\nMegaMan!",
@@ -5438,7 +5726,8 @@
   {
     "name": {
       "en": "BatCan4",
-      "ja": "バットキャノン4"
+      "ja": "バットキャノン4",
+      "zh-Hans": "蝙蝠炮4"
     },
     "description": {
       "en": "Snd all 3\ntypes of\nDstb Atks",
@@ -5455,7 +5744,8 @@
   {
     "name": {
       "en": "BeastOut",
-      "ja": "ビーストアウト"
+      "ja": "ビーストアウト",
+      "zh-Hans": "兽化"
     },
     "description": {
       "en": "If Beast\nChip hits\nDstb atk!",
@@ -5474,7 +5764,8 @@
     "index": 1,
     "name": {
       "en": "GigaCan1",
-      "ja": "ギガキャノン1"
+      "ja": "ギガキャノン1",
+      "zh-Hans": "巨型加农炮1"
     },
     "description": {
       "en": "Giga lvl\ncannon\nattack!",
@@ -5508,7 +5799,8 @@
     "index": 2,
     "name": {
       "en": "GigaCan2",
-      "ja": "ギガキャノン2"
+      "ja": "ギガキャノン2",
+      "zh-Hans": "巨型加农炮2"
     },
     "description": {
       "en": "Giga lvl\ncannon\nattack!",
@@ -5542,7 +5834,8 @@
     "index": 3,
     "name": {
       "en": "GigaCan3",
-      "ja": "ギガキャノン3"
+      "ja": "ギガキャノン3",
+      "zh-Hans": "巨型加农炮3"
     },
     "description": {
       "en": "Giga lvl\ncannon\nattack!",
@@ -5576,7 +5869,8 @@
     "index": 4,
     "name": {
       "en": "WideBrn1",
-      "ja": "ワイドバーナー1"
+      "ja": "ワイドバーナー1",
+      "zh-Hans": "宽阔火焰1"
     },
     "description": {
       "en": "An expnd\n3 row\nfire attk",
@@ -5610,7 +5904,8 @@
     "index": 5,
     "name": {
       "en": "WideBrn2",
-      "ja": "ワイドバーナー2"
+      "ja": "ワイドバーナー2",
+      "zh-Hans": "宽阔火焰2"
     },
     "description": {
       "en": "An expnd\n3 row\nfire attk",
@@ -5644,7 +5939,8 @@
     "index": 6,
     "name": {
       "en": "WideBrn3",
-      "ja": "ワイドバーナー3"
+      "ja": "ワイドバーナー3",
+      "zh-Hans": "宽阔火焰3"
     },
     "description": {
       "en": "An expnd\n3 row\nfire attk",
@@ -5678,7 +5974,8 @@
     "index": 7,
     "name": {
       "en": "FlmHook1",
-      "ja": "フレイムフック1"
+      "ja": "フレイムフック1",
+      "zh-Hans": "火焰巨拳1"
     },
     "description": {
       "en": "Launch 2\nflaming\nhooks!",
@@ -5712,7 +6009,8 @@
     "index": 8,
     "name": {
       "en": "FlmHook2",
-      "ja": "フレイムフック2"
+      "ja": "フレイムフック2",
+      "zh-Hans": "火焰巨拳2"
     },
     "description": {
       "en": "Launch 2\nflaming\nhooks!",
@@ -5746,7 +6044,8 @@
     "index": 9,
     "name": {
       "en": "FlmHook3",
-      "ja": "フレイムフック3"
+      "ja": "フレイムフック3",
+      "zh-Hans": "火焰巨拳3"
     },
     "description": {
       "en": "Launch 2\nflaming\nhooks!",
@@ -5780,7 +6079,8 @@
     "index": 10,
     "name": {
       "en": "PwrWave1",
-      "ja": "パワーウェーブ1"
+      "ja": "パワーウェーブ1",
+      "zh-Hans": "能量冲击波1"
     },
     "description": {
       "en": "Send a\npwrfl wav\n3rows fwd",
@@ -5814,7 +6114,8 @@
     "index": 11,
     "name": {
       "en": "PwrWave2",
-      "ja": "パワーウェーブ2"
+      "ja": "パワーウェーブ2",
+      "zh-Hans": "能量冲击波2"
     },
     "description": {
       "en": "Send a\npwrfl wav\n3rows fwd",
@@ -5848,7 +6149,8 @@
     "index": 12,
     "name": {
       "en": "PwrWave3",
-      "ja": "パワーウェーブ3"
+      "ja": "パワーウェーブ3",
+      "zh-Hans": "能量冲击波3"
     },
     "description": {
       "en": "Send a\npwrfl wav\n3rows fwd",
@@ -5882,7 +6184,8 @@
     "index": 13,
     "name": {
       "en": "CornFsta",
-      "ja": "コーンパーティー"
+      "ja": "コーンパーティー",
+      "zh-Hans": "玉米聚会"
     },
     "description": {
       "en": "Explosive\ncorn with\n9pnl rch!",
@@ -5944,7 +6247,8 @@
     "index": 14,
     "name": {
       "en": "ParaShl",
-      "ja": "パラレルシェル"
+      "ja": "パラレルシェル",
+      "zh-Hans": "平衡铁壳"
     },
     "description": {
       "en": "Shell atk\non 5 rght\ngrid rows",
@@ -6006,7 +6310,8 @@
     "index": 15,
     "name": {
       "en": "DestPuls",
-      "ja": "デストロイパルス"
+      "ja": "デストロイパルス",
+      "zh-Hans": "破坏脉冲"
     },
     "description": {
       "en": "Fire puls\nthat caus\nstrg bug!",
@@ -6040,7 +6345,8 @@
     "index": 16,
     "name": {
       "en": "TimeBom+",
-      "ja": "ギガカウントボム"
+      "ja": "ギガカウントボム",
+      "zh-Hans": "巨型计数炸弹"
     },
     "description": {
       "en": "Set TmBm+\nin enemy\narea!",
@@ -6102,7 +6408,8 @@
     "index": 17,
     "name": {
       "en": "StreamHd",
-      "ja": "ストリームヘッド"
+      "ja": "ストリームヘッド",
+      "zh-Hans": "汹涌石脑"
     },
     "description": {
       "en": "Fire a\nstrm of 5\nAuraHeds",
@@ -6164,7 +6471,8 @@
     "index": 18,
     "name": {
       "en": "SuprSpr",
-      "ja": "スーパーワイド"
+      "ja": "スーパーワイド",
+      "zh-Hans": "超级阔水箭"
     },
     "description": {
       "en": "Fire 3\nconsec.\nWideShts",
@@ -6198,7 +6506,8 @@
     "index": 19,
     "name": {
       "en": "H-Burst",
-      "ja": "ハイパーバースト"
+      "ja": "ハイパーバースト",
+      "zh-Hans": "超级散弹枪"
     },
     "description": {
       "en": "Secondary\nexplosion\nafter hit",
@@ -6260,7 +6569,8 @@
     "index": 20,
     "name": {
       "en": "LifeSrd",
-      "ja": "ドリームソード"
+      "ja": "ドリームソード",
+      "zh-Hans": "梦幻剑"
     },
     "description": {
       "en": "Slices\n2sq wide\n3sq vrtcl",
@@ -6336,7 +6646,8 @@
     "index": 21,
     "name": {
       "en": "GreatYo",
-      "ja": "ヨーヨーグレート"
+      "ja": "ヨーヨーグレート",
+      "zh-Hans": "巨型溜溜球"
     },
     "description": {
       "en": "Moves 3sq\nvertical",
@@ -6370,7 +6681,8 @@
     "index": 22,
     "name": {
       "en": "PitHocky",
-      "ja": "ジゴクホッケー"
+      "ja": "ジゴクホッケー",
+      "zh-Hans": "地狱曲棍球"
     },
     "description": {
       "en": "Reflect\nhockey\nattack",
@@ -6404,7 +6716,8 @@
     "index": 23,
     "name": {
       "en": "PoisPhar",
-      "ja": "ポイズンファラオ"
+      "ja": "ポイズンファラオ",
+      "zh-Hans": "毒法老像"
     },
     "description": {
       "en": "Places a\npoisoned\nPharaoh",
@@ -6438,7 +6751,8 @@
     "index": 24,
     "name": {
       "en": "BodyGrd",
-      "ja": "ボディガード"
+      "ja": "ボディガード",
+      "zh-Hans": "保镖"
     },
     "description": {
       "en": "Trap enmy\nthen thrw\nstar attk",
@@ -6472,7 +6786,8 @@
     "index": 25,
     "name": {
       "en": "DblHero",
-      "ja": "ダブルヒーロー"
+      "ja": "ダブルヒーロー",
+      "zh-Hans": "双重英雄"
     },
     "description": {
       "en": "Attk with\nBtlNwk1's\nProtoMan",
@@ -6506,7 +6821,8 @@
     "index": 26,
     "name": {
       "en": "Darkness",
-      "ja": "ダークメシア"
+      "ja": "ダークメシア",
+      "zh-Hans": "暗黑救世主"
     },
     "description": {
       "en": "BtlNwk2's\nGspelBth&\nBass Swrd",
@@ -6554,7 +6870,8 @@
     "index": 27,
     "name": {
       "en": "MstrCros",
-      "ja": "マスタークロス"
+      "ja": "マスタークロス",
+      "zh-Hans": "融合大师"
     },
     "description": {
       "en": "Attk with\nall BN3's\nCros Attk",
@@ -6592,7 +6909,8 @@
     "index": 28,
     "name": {
       "en": "SunMoon",
-      "ja": "サンアンドムーン"
+      "ja": "サンアンドムーン",
+      "zh-Hans": "红日蓝月"
     },
     "description": {
       "en": "Attk 3pnl\nfwd w/BN4\nSunMn atk",
@@ -6626,7 +6944,8 @@
     "index": 29,
     "name": {
       "en": "TwinLdrs",
-      "ja": "ツインリーダーズ"
+      "ja": "ツインリーダーズ",
+      "zh-Hans": "双重领袖"
     },
     "description": {
       "en": "Dbl attk\nw/BN5 Col\nand ProtM",
@@ -6674,7 +6993,8 @@
     "index": 30,
     "name": {
       "en": "CrosOver",
-      "ja": "クロスオーバー"
+      "ja": "クロスオーバー",
+      "zh-Hans": "太阳同盟"
     },
     "description": {
       "en": "Cllbrate!\nAttk w/MM\n+ Django!",
@@ -6736,7 +7056,8 @@
   {
     "name": {
       "en": "IceCube",
-      "ja": "アイスキューブ"
+      "ja": "アイスキューブ",
+      "zh-Hans": "冰块"
     },
     "description": {
       "en": "Add an\neffect:\nConfuse",
@@ -6753,7 +7074,8 @@
   {
     "name": {
       "en": "Z Saver",
-      "ja": "Zセイバー"
+      "ja": "Zセイバー",
+      "zh-Hans": "Z圣光剑"
     },
     "description": {
       "en": "Add an\neffect:\nBlind",
@@ -6770,7 +7092,8 @@
   {
     "name": {
       "en": "WhiCapsl",
-      "ja": "ホワイトカプセル"
+      "ja": "ホワイトカプセル",
+      "zh-Hans": "白色胶囊"
     },
     "description": {
       "en": "Add an\neffect:\nParalyze",
@@ -6787,7 +7110,8 @@
   {
     "name": {
       "en": "PrpCapsl",
-      "ja": "パープルカプセル"
+      "ja": "パープルカプセル",
+      "zh-Hans": "紫色胶囊"
     },
     "description": {
       "en": "Add an\neffect:\nHP Bug",
@@ -6804,7 +7128,8 @@
   {
     "name": {
       "en": "PnkCapsl",
-      "ja": "ピンクカプセル"
+      "ja": "ピンクカプセル",
+      "zh-Hans": "粉色胶囊"
     },
     "description": {
       "en": "Add an\neffect:\nRecovery",
@@ -6838,7 +7163,8 @@
     "index": 0,
     "name": {
       "en": "HeatPres",
-      "ja": "ヒートプレス"
+      "ja": "ヒートプレス",
+      "zh-Hans": "灼热重压"
     },
     "description": {
       "en": "Sprd fire\nattk with\nDpad.3pnl",
@@ -6857,7 +7183,8 @@
     "index": 0,
     "name": {
       "en": "DElecSwd",
-      "ja": "Dエレキソード"
+      "ja": "Dエレキソード",
+      "zh-Hans": "冲刺电气剑"
     },
     "description": {
       "en": "Dash fwd\nand slash\nw/ElecSwd",
@@ -6876,7 +7203,8 @@
     "index": 0,
     "name": {
       "en": "RSlash",
-      "ja": "Rスラッシュ"
+      "ja": "Rスラッシュ",
+      "zh-Hans": "滚动切裂"
     },
     "description": {
       "en": "Slash an\nenmy whl\nrevolving",
@@ -6895,7 +7223,8 @@
     "index": 0,
     "name": {
       "en": "EDeletBm",
-      "ja": "Kデスビーム"
+      "ja": "Kデスビーム",
+      "zh-Hans": "杀手死亡光线"
     },
     "description": {
       "en": "Pierce\nfwd and\nfire beam",
@@ -6914,7 +7243,8 @@
     "index": 0,
     "name": {
       "en": "VolcChrg",
-      "ja": "ボルカノチャージ"
+      "ja": "ボルカノチャージ",
+      "zh-Hans": "火山碳充能"
     },
     "description": {
       "en": "Snd coal\nup chimny\n& hit emy",
@@ -6933,7 +7263,8 @@
     "index": 0,
     "name": {
       "en": "DripShwr",
-      "ja": "アクアシャワー"
+      "ja": "アクアシャワー",
+      "zh-Hans": "水泡淋浴"
     },
     "description": {
       "en": "Send rvlv\nshwr 3fwd\nhit 8pnls",
@@ -6952,7 +7283,8 @@
     "index": 0,
     "name": {
       "en": "ETomahwk",
-      "ja": "Eトマホーク"
+      "ja": "Eトマホーク",
+      "zh-Hans": "鹰击战斧"
     },
     "description": {
       "en": "Unleash\na giant\naxe attck",
@@ -6971,7 +7303,8 @@
     "index": 0,
     "name": {
       "en": "FTornado",
-      "ja": "Fトルネード"
+      "ja": "Fトルネード",
+      "zh-Hans": "风神龙卷"
     },
     "description": {
       "en": "Attk enmy\nw/spnning\ntwister!",
@@ -6990,7 +7323,8 @@
     "index": 0,
     "name": {
       "en": "RC Brakr",
-      "ja": "RCブレイカー"
+      "ja": "RCブレイカー",
+      "zh-Hans": "滚动钻头突"
     },
     "description": {
       "en": "DrillAtk.\nGo fwd &\nshwr rock",
@@ -7009,7 +7343,8 @@
     "index": 0,
     "name": {
       "en": "DustBrk",
-      "ja": "ダストブレイク"
+      "ja": "ダストブレイク",
+      "zh-Hans": "垃圾粉碎"
     },
     "description": {
       "en": "Draw enmy\nin, then\ncrsh attk",
@@ -7028,7 +7363,8 @@
     "index": 0,
     "name": {
       "en": "StepSwrd",
-      "ja": "フミコミザン"
+      "ja": "フミコミザン",
+      "zh-Hans": "踏前斩"
     },
     "description": {
       "en": "Use\nWideSwrd\n2sq ahead",
