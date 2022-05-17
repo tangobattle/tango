@@ -18,11 +18,11 @@ pub struct PeerConnection {
 impl PeerConnection {
     pub fn new(
         config: RtcConfig,
-    ) -> anyhow::Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionSignal>)> {
-        let (signal_tx, signal_rx) = tokio::sync::mpsc::channel(1);
+    ) -> anyhow::Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>)> {
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
         let (data_channel_tx, data_channel_rx) = tokio::sync::mpsc::channel(1);
         let pch = PeerConnectionHandler {
-            signal_tx: signal_tx,
+            event_tx,
             pending_dc_receiver: None,
             data_channel_tx,
         };
@@ -32,7 +32,7 @@ impl PeerConnection {
                 peer_conn,
                 data_channel_rx,
             },
-            signal_rx,
+            event_rx,
         ))
     }
 
@@ -91,7 +91,7 @@ impl PeerConnection {
 }
 
 struct PeerConnectionHandler {
-    signal_tx: tokio::sync::mpsc::Sender<PeerConnectionSignal>,
+    event_tx: tokio::sync::mpsc::Sender<PeerConnectionEvent>,
     pending_dc_receiver: Option<(
         tokio::sync::mpsc::Receiver<Vec<u8>>,
         std::sync::Arc<tokio::sync::Mutex<DataChannelState>>,
@@ -100,7 +100,7 @@ struct PeerConnectionHandler {
 }
 
 #[derive(Debug)]
-pub enum PeerConnectionSignal {
+pub enum PeerConnectionEvent {
     SessionDescription(SessionDescription),
     IceCandidate(IceCandidate),
     ConnectionStateChange(ConnectionState),
@@ -129,41 +129,41 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
 
     fn on_description(&mut self, sess_desc: SessionDescription) {
         let _ = self
-            .signal_tx
-            .blocking_send(PeerConnectionSignal::SessionDescription(sess_desc));
+            .event_tx
+            .blocking_send(PeerConnectionEvent::SessionDescription(sess_desc));
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
         let _ = self
-            .signal_tx
-            .blocking_send(PeerConnectionSignal::IceCandidate(cand));
+            .event_tx
+            .blocking_send(PeerConnectionEvent::IceCandidate(cand));
     }
 
     fn on_connection_state_change(&mut self, state: ConnectionState) {
         // This can called by the destructor on the same thread that Tokio is running on (horrible).
-        let signal = PeerConnectionSignal::ConnectionStateChange(state);
+        let event = PeerConnectionEvent::ConnectionStateChange(state);
         match tokio::runtime::Handle::try_current() {
             Ok(_) => {
                 // We're running in an async context, just try send it and if we can't, oh well (this is probably during destruction).
-                let _ = self.signal_tx.try_send(signal);
+                let _ = self.event_tx.try_send(event);
             }
             Err(_) => {
                 // We're not running in an async context, block on sending it.
-                let _ = self.signal_tx.blocking_send(signal);
+                let _ = self.event_tx.blocking_send(event);
             }
         }
     }
 
     fn on_gathering_state_change(&mut self, state: GatheringState) {
         let _ = self
-            .signal_tx
-            .blocking_send(PeerConnectionSignal::GatheringStateChange(state));
+            .event_tx
+            .blocking_send(PeerConnectionEvent::GatheringStateChange(state));
     }
 
     fn on_signaling_state_change(&mut self, state: SignalingState) {
         let _ = self
-            .signal_tx
-            .blocking_send(PeerConnectionSignal::SignalingStateChange(state));
+            .event_tx
+            .blocking_send(PeerConnectionEvent::SignalingStateChange(state));
     }
 
     fn on_data_channel(&mut self, dc: Box<datachannel::RtcDataChannel<Self::DCH>>) {

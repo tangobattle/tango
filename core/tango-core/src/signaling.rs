@@ -5,7 +5,7 @@ use prost::Message;
 pub async fn connect(
     addr: &str,
     peer_conn: &mut datachannel_wrapper::PeerConnection,
-    mut signal_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionSignal>,
+    mut event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
     session_id: &str,
 ) -> Result<(), anyhow::Error>
 where
@@ -15,9 +15,9 @@ where
     log::info!("negotiation started");
 
     loop {
-        if let Some(datachannel_wrapper::PeerConnectionSignal::GatheringStateChange(
+        if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
             datachannel_wrapper::GatheringState::Complete,
-        )) = signal_rx.recv().await
+        )) = event_rx.recv().await
         {
             break;
         }
@@ -41,8 +41,8 @@ where
 
     loop {
         tokio::select! {
-            signal_msg = signal_rx.recv() => {
-                let cand = if let Some(datachannel_wrapper::PeerConnectionSignal::IceCandidate(cand)) = signal_msg {
+            signal_msg = event_rx.recv() => {
+                let cand = if let Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(cand)) = signal_msg {
                     cand
                 } else {
                     anyhow::bail!("ice candidate not received")
@@ -127,9 +127,9 @@ where
     stream.close(None).await?;
 
     loop {
-        match signal_rx.recv().await {
+        match event_rx.recv().await {
             Some(signal) => match signal {
-                datachannel_wrapper::PeerConnectionSignal::ConnectionStateChange(c) => match c {
+                datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) => match c {
                     datachannel_wrapper::ConnectionState::Connected => {
                         break;
                     }
