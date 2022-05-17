@@ -20,7 +20,7 @@ export interface SetSettings {
   gameInfo: GameInfo | undefined;
   availableGames: GameInfo[];
   inputDelay: number;
-  openSetup: boolean;
+  revealSetup: boolean;
 }
 
 export interface Commit {
@@ -184,7 +184,7 @@ function createBaseSetSettings(): SetSettings {
     gameInfo: undefined,
     availableGames: [],
     inputDelay: 0,
-    openSetup: false,
+    revealSetup: false,
   };
 }
 
@@ -208,8 +208,8 @@ export const SetSettings = {
     if (message.inputDelay !== 0) {
       writer.uint32(40).uint32(message.inputDelay);
     }
-    if (message.openSetup === true) {
-      writer.uint32(48).bool(message.openSetup);
+    if (message.revealSetup === true) {
+      writer.uint32(48).bool(message.revealSetup);
     }
     return writer;
   },
@@ -237,7 +237,7 @@ export const SetSettings = {
           message.inputDelay = reader.uint32();
           break;
         case 6:
-          message.openSetup = reader.bool();
+          message.revealSetup = reader.bool();
           break;
         default:
           reader.skipType(tag & 7);
@@ -258,7 +258,9 @@ export const SetSettings = {
         ? object.availableGames.map((e: any) => GameInfo.fromJSON(e))
         : [],
       inputDelay: isSet(object.inputDelay) ? Number(object.inputDelay) : 0,
-      openSetup: isSet(object.openSetup) ? Boolean(object.openSetup) : false,
+      revealSetup: isSet(object.revealSetup)
+        ? Boolean(object.revealSetup)
+        : false,
     };
   },
 
@@ -280,7 +282,8 @@ export const SetSettings = {
     }
     message.inputDelay !== undefined &&
       (obj.inputDelay = Math.round(message.inputDelay));
-    message.openSetup !== undefined && (obj.openSetup = message.openSetup);
+    message.revealSetup !== undefined &&
+      (obj.revealSetup = message.revealSetup);
     return obj;
   },
 
@@ -297,7 +300,7 @@ export const SetSettings = {
     message.availableGames =
       object.availableGames?.map((e) => GameInfo.fromPartial(e)) || [];
     message.inputDelay = object.inputDelay ?? 0;
-    message.openSetup = object.openSetup ?? false;
+    message.revealSetup = object.revealSetup ?? false;
     return message;
   },
 };

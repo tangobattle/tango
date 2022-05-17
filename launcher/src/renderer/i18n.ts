@@ -32,9 +32,19 @@ i18n
     ns: Object.keys(locales.en.default),
     defaultNS: "common",
 
+    react: {
+      transSupportBasicHtmlNodes: false,
+    },
+
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default
     },
   });
 
 export default i18n;
+
+export const LANGUAGES = [
+  { code: "en", name: "English" },
+  { code: "ja", name: "日本語" },
+  { code: "zh-Hans", name: "简体中文" },
+];

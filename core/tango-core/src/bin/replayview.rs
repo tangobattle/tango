@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use cpal::traits::{HostTrait, StreamTrait};
+use glow::HasContext;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -56,27 +57,32 @@ fn main() -> Result<(), anyhow::Error> {
 
     let event_loop = winit::event_loop::EventLoop::new();
 
-    let window = {
+    let wb = {
         let size =
             winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3);
-        winit::window::WindowBuilder::new()
-            .with_title("tango_core replayview")
+        glutin::window::WindowBuilder::new()
+            .with_title("tango replayview")
             .with_inner_size(size)
             .with_min_inner_size(size)
-            .build(&event_loop)?
     };
 
-    let mut pixels = {
-        let window_size = window.inner_size();
-        let surface_texture =
-            pixels::SurfaceTexture::new(window_size.width, window_size.height, &window);
-        pixels::PixelsBuilder::new(
-            mgba::gba::SCREEN_WIDTH,
-            mgba::gba::SCREEN_HEIGHT,
-            surface_texture,
-        )
-        .build()?
+    let gl_window = unsafe {
+        glutin::ContextBuilder::new()
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap()
+            .make_current()
+            .unwrap()
     };
+
+    let gl = std::rc::Rc::new(unsafe {
+        glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
+    });
+    log::info!("GL version: {}", unsafe {
+        gl.get_parameter_string(glow::VERSION)
+    });
+
+    let mut fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::HOOKS
@@ -156,9 +162,20 @@ fn main() -> Result<(), anyhow::Error> {
 
             match event {
                 winit::event::Event::MainEventsCleared => {
+                    unsafe {
+                        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                        gl.clear(glow::COLOR_BUFFER_BIT);
+                    }
                     let vbuf = vbuf.lock().clone();
-                    pixels.get_frame().copy_from_slice(&vbuf);
-                    pixels.render().expect("render pixels");
+                    fb.draw(
+                        gl_window.window().inner_size(),
+                        glutin::dpi::LogicalSize {
+                            width: mgba::gba::SCREEN_WIDTH,
+                            height: mgba::gba::SCREEN_HEIGHT,
+                        },
+                        &vbuf,
+                    );
+                    gl_window.swap_buffers().unwrap();
                 }
                 winit::event::Event::WindowEvent {
                     event: ref window_event,
@@ -169,7 +186,7 @@ fn main() -> Result<(), anyhow::Error> {
                             *control_flow = winit::event_loop::ControlFlow::Exit;
                         }
                         winit::event::WindowEvent::Resized(size) => {
-                            pixels.resize_surface(size.width, size.height);
+                            gl_window.resize(*size);
                         }
                         _ => {}
                     };

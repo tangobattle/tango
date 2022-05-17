@@ -5,16 +5,16 @@ import * as _m0 from "protobufjs/minimal";
 export const protobufPackage = "tango.ipc";
 
 export interface FromCoreMessage {
-  stateInd: FromCoreMessage_StateIndication | undefined;
-  smuggleInd: FromCoreMessage_SmuggleIndication | undefined;
-  connectionQualityInd: FromCoreMessage_ConnectionQualityIndication | undefined;
+  stateEv: FromCoreMessage_StateEvent | undefined;
+  smuggleEv: FromCoreMessage_SmuggleEvent | undefined;
+  connectionQualityEv: FromCoreMessage_ConnectionQualityEvent | undefined;
 }
 
-export interface FromCoreMessage_StateIndication {
-  state: FromCoreMessage_StateIndication_State;
+export interface FromCoreMessage_StateEvent {
+  state: FromCoreMessage_StateEvent_State;
 }
 
-export enum FromCoreMessage_StateIndication_State {
+export enum FromCoreMessage_StateEvent_State {
   UNKNOWN = 0,
   RUNNING = 1,
   WAITING = 2,
@@ -23,56 +23,56 @@ export enum FromCoreMessage_StateIndication_State {
   UNRECOGNIZED = -1,
 }
 
-export function fromCoreMessage_StateIndication_StateFromJSON(
+export function fromCoreMessage_StateEvent_StateFromJSON(
   object: any
-): FromCoreMessage_StateIndication_State {
+): FromCoreMessage_StateEvent_State {
   switch (object) {
     case 0:
     case "UNKNOWN":
-      return FromCoreMessage_StateIndication_State.UNKNOWN;
+      return FromCoreMessage_StateEvent_State.UNKNOWN;
     case 1:
     case "RUNNING":
-      return FromCoreMessage_StateIndication_State.RUNNING;
+      return FromCoreMessage_StateEvent_State.RUNNING;
     case 2:
     case "WAITING":
-      return FromCoreMessage_StateIndication_State.WAITING;
+      return FromCoreMessage_StateEvent_State.WAITING;
     case 3:
     case "CONNECTING":
-      return FromCoreMessage_StateIndication_State.CONNECTING;
+      return FromCoreMessage_StateEvent_State.CONNECTING;
     case 4:
     case "STARTING":
-      return FromCoreMessage_StateIndication_State.STARTING;
+      return FromCoreMessage_StateEvent_State.STARTING;
     case -1:
     case "UNRECOGNIZED":
     default:
-      return FromCoreMessage_StateIndication_State.UNRECOGNIZED;
+      return FromCoreMessage_StateEvent_State.UNRECOGNIZED;
   }
 }
 
-export function fromCoreMessage_StateIndication_StateToJSON(
-  object: FromCoreMessage_StateIndication_State
+export function fromCoreMessage_StateEvent_StateToJSON(
+  object: FromCoreMessage_StateEvent_State
 ): string {
   switch (object) {
-    case FromCoreMessage_StateIndication_State.UNKNOWN:
+    case FromCoreMessage_StateEvent_State.UNKNOWN:
       return "UNKNOWN";
-    case FromCoreMessage_StateIndication_State.RUNNING:
+    case FromCoreMessage_StateEvent_State.RUNNING:
       return "RUNNING";
-    case FromCoreMessage_StateIndication_State.WAITING:
+    case FromCoreMessage_StateEvent_State.WAITING:
       return "WAITING";
-    case FromCoreMessage_StateIndication_State.CONNECTING:
+    case FromCoreMessage_StateEvent_State.CONNECTING:
       return "CONNECTING";
-    case FromCoreMessage_StateIndication_State.STARTING:
+    case FromCoreMessage_StateEvent_State.STARTING:
       return "STARTING";
     default:
       return "UNKNOWN";
   }
 }
 
-export interface FromCoreMessage_SmuggleIndication {
+export interface FromCoreMessage_SmuggleEvent {
   data: Uint8Array;
 }
 
-export interface FromCoreMessage_ConnectionQualityIndication {
+export interface FromCoreMessage_ConnectionQualityEvent {
   rtt: number;
 }
 
@@ -97,7 +97,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   replaysPath: string;
   replayMetadata: Uint8Array;
   rngSeed: Uint8Array;
-  opponentNickname: string;
+  opponentNickname?: string | undefined;
 }
 
 export interface ToCoreMessage_SmuggleRequest {
@@ -106,9 +106,9 @@ export interface ToCoreMessage_SmuggleRequest {
 
 function createBaseFromCoreMessage(): FromCoreMessage {
   return {
-    stateInd: undefined,
-    smuggleInd: undefined,
-    connectionQualityInd: undefined,
+    stateEv: undefined,
+    smuggleEv: undefined,
+    connectionQualityEv: undefined,
   };
 }
 
@@ -117,21 +117,21 @@ export const FromCoreMessage = {
     message: FromCoreMessage,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.stateInd !== undefined) {
-      FromCoreMessage_StateIndication.encode(
-        message.stateInd,
+    if (message.stateEv !== undefined) {
+      FromCoreMessage_StateEvent.encode(
+        message.stateEv,
         writer.uint32(10).fork()
       ).ldelim();
     }
-    if (message.smuggleInd !== undefined) {
-      FromCoreMessage_SmuggleIndication.encode(
-        message.smuggleInd,
+    if (message.smuggleEv !== undefined) {
+      FromCoreMessage_SmuggleEvent.encode(
+        message.smuggleEv,
         writer.uint32(18).fork()
       ).ldelim();
     }
-    if (message.connectionQualityInd !== undefined) {
-      FromCoreMessage_ConnectionQualityIndication.encode(
-        message.connectionQualityInd,
+    if (message.connectionQualityEv !== undefined) {
+      FromCoreMessage_ConnectionQualityEvent.encode(
+        message.connectionQualityEv,
         writer.uint32(26).fork()
       ).ldelim();
     }
@@ -146,20 +146,20 @@ export const FromCoreMessage = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.stateInd = FromCoreMessage_StateIndication.decode(
+          message.stateEv = FromCoreMessage_StateEvent.decode(
             reader,
             reader.uint32()
           );
           break;
         case 2:
-          message.smuggleInd = FromCoreMessage_SmuggleIndication.decode(
+          message.smuggleEv = FromCoreMessage_SmuggleEvent.decode(
             reader,
             reader.uint32()
           );
           break;
         case 3:
-          message.connectionQualityInd =
-            FromCoreMessage_ConnectionQualityIndication.decode(
+          message.connectionQualityEv =
+            FromCoreMessage_ConnectionQualityEvent.decode(
               reader,
               reader.uint32()
             );
@@ -174,15 +174,15 @@ export const FromCoreMessage = {
 
   fromJSON(object: any): FromCoreMessage {
     return {
-      stateInd: isSet(object.stateInd)
-        ? FromCoreMessage_StateIndication.fromJSON(object.stateInd)
+      stateEv: isSet(object.stateEv)
+        ? FromCoreMessage_StateEvent.fromJSON(object.stateEv)
         : undefined,
-      smuggleInd: isSet(object.smuggleInd)
-        ? FromCoreMessage_SmuggleIndication.fromJSON(object.smuggleInd)
+      smuggleEv: isSet(object.smuggleEv)
+        ? FromCoreMessage_SmuggleEvent.fromJSON(object.smuggleEv)
         : undefined,
-      connectionQualityInd: isSet(object.connectionQualityInd)
-        ? FromCoreMessage_ConnectionQualityIndication.fromJSON(
-            object.connectionQualityInd
+      connectionQualityEv: isSet(object.connectionQualityEv)
+        ? FromCoreMessage_ConnectionQualityEvent.fromJSON(
+            object.connectionQualityEv
           )
         : undefined,
     };
@@ -190,18 +190,18 @@ export const FromCoreMessage = {
 
   toJSON(message: FromCoreMessage): unknown {
     const obj: any = {};
-    message.stateInd !== undefined &&
-      (obj.stateInd = message.stateInd
-        ? FromCoreMessage_StateIndication.toJSON(message.stateInd)
+    message.stateEv !== undefined &&
+      (obj.stateEv = message.stateEv
+        ? FromCoreMessage_StateEvent.toJSON(message.stateEv)
         : undefined);
-    message.smuggleInd !== undefined &&
-      (obj.smuggleInd = message.smuggleInd
-        ? FromCoreMessage_SmuggleIndication.toJSON(message.smuggleInd)
+    message.smuggleEv !== undefined &&
+      (obj.smuggleEv = message.smuggleEv
+        ? FromCoreMessage_SmuggleEvent.toJSON(message.smuggleEv)
         : undefined);
-    message.connectionQualityInd !== undefined &&
-      (obj.connectionQualityInd = message.connectionQualityInd
-        ? FromCoreMessage_ConnectionQualityIndication.toJSON(
-            message.connectionQualityInd
+    message.connectionQualityEv !== undefined &&
+      (obj.connectionQualityEv = message.connectionQualityEv
+        ? FromCoreMessage_ConnectionQualityEvent.toJSON(
+            message.connectionQualityEv
           )
         : undefined);
     return obj;
@@ -211,32 +211,32 @@ export const FromCoreMessage = {
     object: I
   ): FromCoreMessage {
     const message = createBaseFromCoreMessage();
-    message.stateInd =
-      object.stateInd !== undefined && object.stateInd !== null
-        ? FromCoreMessage_StateIndication.fromPartial(object.stateInd)
+    message.stateEv =
+      object.stateEv !== undefined && object.stateEv !== null
+        ? FromCoreMessage_StateEvent.fromPartial(object.stateEv)
         : undefined;
-    message.smuggleInd =
-      object.smuggleInd !== undefined && object.smuggleInd !== null
-        ? FromCoreMessage_SmuggleIndication.fromPartial(object.smuggleInd)
+    message.smuggleEv =
+      object.smuggleEv !== undefined && object.smuggleEv !== null
+        ? FromCoreMessage_SmuggleEvent.fromPartial(object.smuggleEv)
         : undefined;
-    message.connectionQualityInd =
-      object.connectionQualityInd !== undefined &&
-      object.connectionQualityInd !== null
-        ? FromCoreMessage_ConnectionQualityIndication.fromPartial(
-            object.connectionQualityInd
+    message.connectionQualityEv =
+      object.connectionQualityEv !== undefined &&
+      object.connectionQualityEv !== null
+        ? FromCoreMessage_ConnectionQualityEvent.fromPartial(
+            object.connectionQualityEv
           )
         : undefined;
     return message;
   },
 };
 
-function createBaseFromCoreMessage_StateIndication(): FromCoreMessage_StateIndication {
+function createBaseFromCoreMessage_StateEvent(): FromCoreMessage_StateEvent {
   return { state: 0 };
 }
 
-export const FromCoreMessage_StateIndication = {
+export const FromCoreMessage_StateEvent = {
   encode(
-    message: FromCoreMessage_StateIndication,
+    message: FromCoreMessage_StateEvent,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.state !== 0) {
@@ -248,10 +248,10 @@ export const FromCoreMessage_StateIndication = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): FromCoreMessage_StateIndication {
+  ): FromCoreMessage_StateEvent {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseFromCoreMessage_StateIndication();
+    const message = createBaseFromCoreMessage_StateEvent();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -266,37 +266,37 @@ export const FromCoreMessage_StateIndication = {
     return message;
   },
 
-  fromJSON(object: any): FromCoreMessage_StateIndication {
+  fromJSON(object: any): FromCoreMessage_StateEvent {
     return {
       state: isSet(object.state)
-        ? fromCoreMessage_StateIndication_StateFromJSON(object.state)
+        ? fromCoreMessage_StateEvent_StateFromJSON(object.state)
         : 0,
     };
   },
 
-  toJSON(message: FromCoreMessage_StateIndication): unknown {
+  toJSON(message: FromCoreMessage_StateEvent): unknown {
     const obj: any = {};
     message.state !== undefined &&
-      (obj.state = fromCoreMessage_StateIndication_StateToJSON(message.state));
+      (obj.state = fromCoreMessage_StateEvent_StateToJSON(message.state));
     return obj;
   },
 
-  fromPartial<I extends Exact<DeepPartial<FromCoreMessage_StateIndication>, I>>(
+  fromPartial<I extends Exact<DeepPartial<FromCoreMessage_StateEvent>, I>>(
     object: I
-  ): FromCoreMessage_StateIndication {
-    const message = createBaseFromCoreMessage_StateIndication();
+  ): FromCoreMessage_StateEvent {
+    const message = createBaseFromCoreMessage_StateEvent();
     message.state = object.state ?? 0;
     return message;
   },
 };
 
-function createBaseFromCoreMessage_SmuggleIndication(): FromCoreMessage_SmuggleIndication {
+function createBaseFromCoreMessage_SmuggleEvent(): FromCoreMessage_SmuggleEvent {
   return { data: new Uint8Array() };
 }
 
-export const FromCoreMessage_SmuggleIndication = {
+export const FromCoreMessage_SmuggleEvent = {
   encode(
-    message: FromCoreMessage_SmuggleIndication,
+    message: FromCoreMessage_SmuggleEvent,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.data.length !== 0) {
@@ -308,10 +308,10 @@ export const FromCoreMessage_SmuggleIndication = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): FromCoreMessage_SmuggleIndication {
+  ): FromCoreMessage_SmuggleEvent {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseFromCoreMessage_SmuggleIndication();
+    const message = createBaseFromCoreMessage_SmuggleEvent();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -326,7 +326,7 @@ export const FromCoreMessage_SmuggleIndication = {
     return message;
   },
 
-  fromJSON(object: any): FromCoreMessage_SmuggleIndication {
+  fromJSON(object: any): FromCoreMessage_SmuggleEvent {
     return {
       data: isSet(object.data)
         ? bytesFromBase64(object.data)
@@ -334,7 +334,7 @@ export const FromCoreMessage_SmuggleIndication = {
     };
   },
 
-  toJSON(message: FromCoreMessage_SmuggleIndication): unknown {
+  toJSON(message: FromCoreMessage_SmuggleEvent): unknown {
     const obj: any = {};
     message.data !== undefined &&
       (obj.data = base64FromBytes(
@@ -343,22 +343,22 @@ export const FromCoreMessage_SmuggleIndication = {
     return obj;
   },
 
-  fromPartial<
-    I extends Exact<DeepPartial<FromCoreMessage_SmuggleIndication>, I>
-  >(object: I): FromCoreMessage_SmuggleIndication {
-    const message = createBaseFromCoreMessage_SmuggleIndication();
+  fromPartial<I extends Exact<DeepPartial<FromCoreMessage_SmuggleEvent>, I>>(
+    object: I
+  ): FromCoreMessage_SmuggleEvent {
+    const message = createBaseFromCoreMessage_SmuggleEvent();
     message.data = object.data ?? new Uint8Array();
     return message;
   },
 };
 
-function createBaseFromCoreMessage_ConnectionQualityIndication(): FromCoreMessage_ConnectionQualityIndication {
+function createBaseFromCoreMessage_ConnectionQualityEvent(): FromCoreMessage_ConnectionQualityEvent {
   return { rtt: 0 };
 }
 
-export const FromCoreMessage_ConnectionQualityIndication = {
+export const FromCoreMessage_ConnectionQualityEvent = {
   encode(
-    message: FromCoreMessage_ConnectionQualityIndication,
+    message: FromCoreMessage_ConnectionQualityEvent,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     if (message.rtt !== 0) {
@@ -370,10 +370,10 @@ export const FromCoreMessage_ConnectionQualityIndication = {
   decode(
     input: _m0.Reader | Uint8Array,
     length?: number
-  ): FromCoreMessage_ConnectionQualityIndication {
+  ): FromCoreMessage_ConnectionQualityEvent {
     const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
     let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseFromCoreMessage_ConnectionQualityIndication();
+    const message = createBaseFromCoreMessage_ConnectionQualityEvent();
     while (reader.pos < end) {
       const tag = reader.uint32();
       switch (tag >>> 3) {
@@ -388,22 +388,22 @@ export const FromCoreMessage_ConnectionQualityIndication = {
     return message;
   },
 
-  fromJSON(object: any): FromCoreMessage_ConnectionQualityIndication {
+  fromJSON(object: any): FromCoreMessage_ConnectionQualityEvent {
     return {
       rtt: isSet(object.rtt) ? Number(object.rtt) : 0,
     };
   },
 
-  toJSON(message: FromCoreMessage_ConnectionQualityIndication): unknown {
+  toJSON(message: FromCoreMessage_ConnectionQualityEvent): unknown {
     const obj: any = {};
     message.rtt !== undefined && (obj.rtt = Math.round(message.rtt));
     return obj;
   },
 
   fromPartial<
-    I extends Exact<DeepPartial<FromCoreMessage_ConnectionQualityIndication>, I>
-  >(object: I): FromCoreMessage_ConnectionQualityIndication {
-    const message = createBaseFromCoreMessage_ConnectionQualityIndication();
+    I extends Exact<DeepPartial<FromCoreMessage_ConnectionQualityEvent>, I>
+  >(object: I): FromCoreMessage_ConnectionQualityEvent {
+    const message = createBaseFromCoreMessage_ConnectionQualityEvent();
     message.rtt = object.rtt ?? 0;
     return message;
   },
@@ -609,7 +609,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     replaysPath: "",
     replayMetadata: new Uint8Array(),
     rngSeed: new Uint8Array(),
-    opponentNickname: "",
+    opponentNickname: undefined,
   };
 }
 
@@ -642,7 +642,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     if (message.rngSeed.length !== 0) {
       writer.uint32(66).bytes(message.rngSeed);
     }
-    if (message.opponentNickname !== "") {
+    if (message.opponentNickname !== undefined) {
       writer.uint32(74).string(message.opponentNickname);
     }
     return writer;
@@ -715,7 +715,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         : new Uint8Array(),
       opponentNickname: isSet(object.opponentNickname)
         ? String(object.opponentNickname)
-        : "",
+        : undefined,
     };
   },
 
@@ -760,7 +760,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.replaysPath = object.replaysPath ?? "";
     message.replayMetadata = object.replayMetadata ?? new Uint8Array();
     message.rngSeed = object.rngSeed ?? new Uint8Array();
-    message.opponentNickname = object.opponentNickname ?? "";
+    message.opponentNickname = object.opponentNickname ?? undefined;
     return message;
   },
 };

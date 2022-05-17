@@ -2,11 +2,11 @@
   "viewing": "再生中...",
   "exporting": "エクスポート中...",
   "export-complete": "リプレイのエクスポートに成功しました。",
-  "no-replays": "リプレイがない",
+  "no-replays": "リプレイがまだありません",
   "play": "再生",
   "show-info": "情報を表示",
   "show-file": "フォルダー内に表示",
   "export-video": "ビデオにエクスポート",
-  "replay-title": "{{linkCode}}： 対 {{nickname}}",
+  "replay-title": "{{linkCode}}：対{{nickname}}",
   "crash": "おっと、リプレイビューアーがクラッシュしたようです。バグ報告の際には、このログを提供してください。"
 }

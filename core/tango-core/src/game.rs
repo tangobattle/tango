@@ -1,5 +1,6 @@
 use crate::{audio, battle, facade, gui, hooks, ipc, tps};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use glow::HasContext;
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -25,12 +26,13 @@ pub struct Game {
     gui: gui::Gui,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
-    event_loop: Option<winit::event_loop::EventLoop<UserEvent>>,
+    event_loop: glutin::event_loop::EventLoop<UserEvent>,
     _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
-    window: winit::window::Window,
-    pixels: pixels::Pixels,
+    gl: std::rc::Rc<glow::Context>,
+    gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>,
     vbuf: Arc<Mutex<Vec<u8>>>,
+    fb: glowfb::Framebuffer,
     _stream: cpal::Stream,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     keymapping: Keymapping,
@@ -61,7 +63,7 @@ impl Game {
 
         let handle = rt.handle().clone();
 
-        let event_loop = Some(winit::event_loop::EventLoop::with_user_event());
+        let event_loop = glutin::event_loop::EventLoop::with_user_event();
 
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
@@ -69,39 +71,39 @@ impl Game {
                 as usize
         ]));
 
-        let window = {
+        let wb = {
             let size = winit::dpi::LogicalSize::new(
                 mgba::gba::SCREEN_WIDTH * 3,
                 mgba::gba::SCREEN_HEIGHT * 3,
             );
-            winit::window::WindowBuilder::new()
+            glutin::window::WindowBuilder::new()
                 .with_title(window_title.clone())
                 .with_inner_size(size)
                 .with_min_inner_size(size)
-                .build(event_loop.as_ref().expect("event loop"))?
         };
 
         let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
         let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
 
-        let (pixels, gui) = {
-            let window_size = window.inner_size();
-            let surface_texture =
-                pixels::SurfaceTexture::new(window_size.width, window_size.height, &window);
-            let pixels = pixels::PixelsBuilder::new(
-                mgba::gba::SCREEN_WIDTH,
-                mgba::gba::SCREEN_HEIGHT,
-                surface_texture,
-            )
-            .build()?;
-            let gui = gui::Gui::new(
-                window_size.width,
-                window_size.height,
-                window.scale_factor() as f32,
-                &pixels,
-            );
-            (pixels, gui)
+        let gl_window = unsafe {
+            glutin::ContextBuilder::new()
+                .with_vsync(true)
+                .build_windowed(wb, &event_loop)
+                .unwrap()
+                .make_current()
+                .unwrap()
         };
+
+        let gl = std::rc::Rc::new(unsafe {
+            glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
+        });
+        log::info!("GL version: {}", unsafe {
+            gl.get_parameter_string(glow::VERSION)
+        });
+
+        let fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
+
+        let gui = gui::Gui::new(&gl_window.window(), &gl);
 
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -133,7 +135,9 @@ impl Game {
                 joyflags.clone(),
                 facade::Facade::new(match_.clone(), cancellation_token.clone()),
             ));
-            hooks.replace_opponent_name(core.as_mut(), &match_init.settings.opponent_nickname);
+            if let Some(opponent_nickname) = match_init.settings.opponent_nickname.as_ref() {
+                hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
+            }
         }
 
         let thread = mgba::thread::Thread::new(core);
@@ -266,9 +270,10 @@ impl Game {
             keymapping,
             fps_counter,
             event_loop,
-            window,
-            pixels,
+            gl,
+            gl_window,
             vbuf,
+            fb,
             _stream: stream,
             joyflags,
             _thread: thread,
@@ -279,10 +284,10 @@ impl Game {
         self.rt.block_on(async {
             self.ipc_sender
                 .send(tango_protos::ipc::FromCoreMessage {
-                    which: Some(tango_protos::ipc::from_core_message::Which::StateInd(
-                        tango_protos::ipc::from_core_message::StateIndication {
+                    which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                        tango_protos::ipc::from_core_message::StateEvent {
                             state:
-                                tango_protos::ipc::from_core_message::state_indication::State::Running
+                                tango_protos::ipc::from_core_message::state_event::State::Running
                                     .into(),
                         },
                     )),
@@ -300,7 +305,7 @@ impl Game {
             );
         }
 
-        let el_proxy = self.event_loop.as_ref().expect("event loop").create_proxy();
+        let el_proxy = self.event_loop.create_proxy();
         std::thread::spawn(move || {
             while let Some(event) = gilrs.next_event() {
                 if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
@@ -311,112 +316,106 @@ impl Game {
 
         let mut console_key_pressed = false;
 
-        self.event_loop
-            .take()
-            .expect("event loop")
-            .run(move |event, _, control_flow| {
-                *control_flow = winit::event_loop::ControlFlow::Poll;
+        self.event_loop.run(move |event, _, control_flow| {
+            *control_flow = winit::event_loop::ControlFlow::Poll;
 
-                match event {
-                    winit::event::Event::WindowEvent {
-                        event: ref window_event,
-                        ..
-                    } => {
-                        match window_event {
-                            winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                                let mut keymask = 0u32;
-                                if input.virtual_keycode == Some(self.keymapping.left) {
-                                    keymask |= mgba::input::keys::LEFT;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.right) {
-                                    keymask |= mgba::input::keys::RIGHT;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.up) {
-                                    keymask |= mgba::input::keys::UP;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.down) {
-                                    keymask |= mgba::input::keys::DOWN;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.a) {
-                                    keymask |= mgba::input::keys::A;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.b) {
-                                    keymask |= mgba::input::keys::B;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.l) {
-                                    keymask |= mgba::input::keys::L;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.r) {
-                                    keymask |= mgba::input::keys::R;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.start) {
-                                    keymask |= mgba::input::keys::START;
-                                }
-                                if input.virtual_keycode == Some(self.keymapping.select) {
-                                    keymask |= mgba::input::keys::SELECT;
-                                }
+            match event {
+                winit::event::Event::WindowEvent {
+                    event: ref window_event,
+                    ..
+                } => {
+                    match window_event {
+                        winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                            let mut keymask = 0u32;
+                            if input.virtual_keycode == Some(self.keymapping.left) {
+                                keymask |= mgba::input::keys::LEFT;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.right) {
+                                keymask |= mgba::input::keys::RIGHT;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.up) {
+                                keymask |= mgba::input::keys::UP;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.down) {
+                                keymask |= mgba::input::keys::DOWN;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.a) {
+                                keymask |= mgba::input::keys::A;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.b) {
+                                keymask |= mgba::input::keys::B;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.l) {
+                                keymask |= mgba::input::keys::L;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.r) {
+                                keymask |= mgba::input::keys::R;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.start) {
+                                keymask |= mgba::input::keys::START;
+                            }
+                            if input.virtual_keycode == Some(self.keymapping.select) {
+                                keymask |= mgba::input::keys::SELECT;
+                            }
 
+                            match input.state {
+                                winit::event::ElementState::Pressed => {
+                                    self.joyflags
+                                        .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
+                                }
+                                winit::event::ElementState::Released => {
+                                    self.joyflags
+                                        .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
+                                }
+                            }
+
+                            if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Grave) {
                                 match input.state {
                                     winit::event::ElementState::Pressed => {
-                                        self.joyflags.fetch_or(
-                                            keymask,
-                                            std::sync::atomic::Ordering::Relaxed,
-                                        );
+                                        if console_key_pressed {
+                                            return;
+                                        }
+                                        console_key_pressed = true;
+                                        self.gui.state().toggle_debug();
                                     }
                                     winit::event::ElementState::Released => {
-                                        self.joyflags.fetch_and(
-                                            !keymask,
-                                            std::sync::atomic::Ordering::Relaxed,
-                                        );
-                                    }
-                                }
-
-                                if input.virtual_keycode
-                                    == Some(winit::event::VirtualKeyCode::Grave)
-                                {
-                                    match input.state {
-                                        winit::event::ElementState::Pressed => {
-                                            if console_key_pressed {
-                                                return;
-                                            }
-                                            console_key_pressed = true;
-                                            self.gui.state().toggle_debug();
-                                        }
-                                        winit::event::ElementState::Released => {
-                                            console_key_pressed = false;
-                                        }
+                                        console_key_pressed = false;
                                     }
                                 }
                             }
-                            winit::event::WindowEvent::CloseRequested => {
-                                *control_flow = winit::event_loop::ControlFlow::Exit;
-                            }
-                            winit::event::WindowEvent::Resized(size) => {
-                                self.pixels.resize_surface(size.width, size.height);
-                                self.gui.resize(size.width, size.height);
-                            }
-                            _ => {}
-                        };
+                        }
+                        winit::event::WindowEvent::Resized(size) => {
+                            self.gl_window.resize(*size);
+                        }
+                        winit::event::WindowEvent::CloseRequested => {
+                            *control_flow = winit::event_loop::ControlFlow::Exit;
+                        }
+                        _ => {}
+                    };
 
-                        self.gui.handle_event(window_event);
-                    }
-                    winit::event::Event::MainEventsCleared => {
-                        let vbuf = self.vbuf.lock().clone();
-                        self.pixels.get_frame().copy_from_slice(&vbuf);
-
-                        self.gui.prepare(&self.window);
-                        self.pixels
-                            .render_with(|encoder, render_target, context| {
-                                context.scaling_renderer.render(encoder, render_target);
-                                self.gui.render(encoder, render_target, context)?;
-                                Ok(())
-                            })
-                            .expect("render pixels");
-                        self.fps_counter.lock().mark();
-                    }
-                    winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
-                    _ => {}
+                    self.gui.handle_event(window_event);
                 }
-            });
+                winit::event::Event::MainEventsCleared => {
+                    unsafe {
+                        self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                        self.gl.clear(glow::COLOR_BUFFER_BIT);
+                    }
+                    let vbuf = self.vbuf.lock().clone();
+                    self.fb.draw(
+                        self.gl_window.window().inner_size(),
+                        glutin::dpi::LogicalSize {
+                            width: mgba::gba::SCREEN_WIDTH,
+                            height: mgba::gba::SCREEN_HEIGHT,
+                        },
+                        &vbuf,
+                    );
+                    self.gui.render(&self.gl_window.window(), &self.gl);
+                    self.gl_window.swap_buffers().unwrap();
+                    self.fps_counter.lock().mark();
+                }
+                winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
+                _ => {}
+            }
+        });
     }
 }

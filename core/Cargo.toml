@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "mgba",
+    "glowfb",
     "tango-core",
     "tango-protos",
     "tango-server",
@@ -9,6 +10,3 @@ members = [
     "keymaptool",
     "datachannel-wrapper",
 ]
-
-[patch.crates-io]
-datachannel = { git = "https://github.com/bigfarts/datachannel-rs", rev = "7071a240e734a99be0697b777ce367b668b85ec0" }

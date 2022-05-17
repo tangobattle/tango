@@ -18,12 +18,6 @@
     "request-keymapping": "请按【{{key}}】按钮的键盘键。",
     "tab.about": "关于",
     "tab.advanced": "高级设置",
-    "wgpu-backend": "渲染器",
-    "wgpu-backend.default": "默认",
-    "wgpu-backend.vulkan": "Vulkan",
-    "wgpu-backend.dx12": "DirectX 12",
-    "wgpu-backend.gl": "OpenGL（需要ANGLE函式库）",
-    "wgpu-backend.metal": "Metal（仅限 macOS）",
     "theme": "色彩主题",
     "theme.light": "浅色",
     "theme.dark": "深色",
@@ -31,6 +25,7 @@
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
-    "rust-log-filter": "RUST_LOG 过滤",
+    "update-channel.disabled": "禁用",
+    "rust-log-filter": "RUST_LOG过滤",
     "open-logs-folder": "打开日志文件夹"
 }

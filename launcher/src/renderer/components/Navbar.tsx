@@ -27,6 +27,17 @@ const Drawer = styled(MuiDrawer, {
   width: `calc(${theme.spacing(6)} + 1px)`,
 }));
 
+const NavbarButtonWrapper = styled(ListItemButton)(({ theme }) => ({
+  "&.Mui-selected": {
+    transition: "none",
+    borderLeft: `2px solid ${theme.palette.primary.main} !important`,
+    "& > .MuiListItemIcon-root": {
+      marginLeft: "-2px",
+      color: `${theme.palette.primary.main} !important`,
+    },
+  },
+}));
+
 function NavbarButton({
   title,
   onClick,
@@ -42,7 +53,7 @@ function NavbarButton({
 }) {
   return (
     <Tooltip title={title} enterDelay={0} placement="right">
-      <ListItemButton
+      <NavbarButtonWrapper
         onClick={onClick}
         selected={selected}
         sx={{
@@ -60,7 +71,7 @@ function NavbarButton({
         >
           {selected ? selectedIcon : unselectedIcon}
         </ListItemIcon>
-      </ListItemButton>
+      </NavbarButtonWrapper>
     </Tooltip>
   );
 }
@@ -83,7 +94,7 @@ export default function Navbar({
         {children}
       </Badge>
     ) : updateStatus == "downloaded" ? (
-      <Badge color="primary" variant="dot">
+      <Badge color="info" variant="dot">
         {children}
       </Badge>
     ) : (
@@ -92,7 +103,7 @@ export default function Navbar({
 
   return (
     <Drawer variant="permanent" open={true}>
-      <List>
+      <List sx={{ py: 0 }}>
         <NavbarButton
           selected={selected == "play"}
           onClick={() => {
@@ -112,7 +123,7 @@ export default function Navbar({
           selectedIcon={<SlowMotionVideoIcon />}
         />
       </List>
-      <List style={{ marginTop: "auto" }}>
+      <List sx={{ mt: "auto", py: 0 }}>
         <NavbarButton
           selected={selected == "settings"}
           onClick={() => {

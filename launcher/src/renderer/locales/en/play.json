@@ -34,12 +34,14 @@
   "stop": "Stop",
   "own-side": "You",
   "game": "Game",
-  "open-setup": "Open setup",
-  "unsupported-game": "Your opponent does not support this game.",
-  "mismatching-open-setup": "Does not match your opponent's open setup setting.",
+  "reveal-setup": "Reveal setup",
+  "incompatible-game": "This game is not compatible with the opponent's selected game.",
+  "no-remote-copy": "Your opponent does not have a copy of this game.",
+  "no-local-copy": "You do not have a copy of this game.",
   "mismatching-match-type": "Does not match your opponent's match type.",
   "generate-random-code": "Generate random code",
   "connection-quality": " ({{rtt}}ms)",
   "auto-input-delay": "Auto",
-  "open-setup-title": "{{opponentNickname}}'s setup"
+  "reveal-setup-title": "{{opponentNickname}}'s setup",
+  "missing-patch": "Unknown patch \"{{name}}\""
 }

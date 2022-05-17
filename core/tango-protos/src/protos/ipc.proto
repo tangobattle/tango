@@ -3,7 +3,7 @@ syntax = "proto3";
 package tango.ipc;
 
 message FromCoreMessage {
-  message StateIndication {
+  message StateEvent {
     enum State {
       UNKNOWN = 0;
       RUNNING = 1;
@@ -13,13 +13,13 @@ message FromCoreMessage {
     }
     State state = 1;
   }
-  message SmuggleIndication { bytes data = 1; }
-  message ConnectionQualityIndication { uint64 rtt = 1; }
+  message SmuggleEvent { bytes data = 1; }
+  message ConnectionQualityEvent { uint64 rtt = 1; }
 
   oneof which {
-    StateIndication state_ind = 1;
-    SmuggleIndication smuggle_ind = 2;
-    ConnectionQualityIndication connection_quality_ind = 3;
+    StateEvent state_ev = 1;
+    SmuggleEvent smuggle_ev = 2;
+    ConnectionQualityEvent connection_quality_ev = 3;
   }
 }
 
@@ -38,7 +38,7 @@ message ToCoreMessage {
       string replays_path = 6;
       bytes replay_metadata = 7;
       bytes rng_seed = 8;
-      string opponent_nickname = 9;
+      optional string opponent_nickname = 9;
     }
 
     MatchSettings settings = 4;

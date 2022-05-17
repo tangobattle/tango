@@ -21,6 +21,11 @@ export default function createTheme(mode: "dark" | "light") {
           },
         },
       },
+      MuiAccordion: {
+        defaultProps: {
+          elevation: 0,
+        },
+      },
       MuiFab: {
         styleOverrides: {
           root: {

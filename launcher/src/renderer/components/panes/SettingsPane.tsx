@@ -21,6 +21,7 @@ import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
 import { Keymaptool } from "../../../input";
+import { LANGUAGES } from "../../i18n";
 import { useConfig } from "../ConfigContext";
 
 const KEYS = [
@@ -72,10 +73,16 @@ function AboutTab({ active }: { active: boolean }) {
             {app.getName()} <small>{app.getVersion()}</small>
           </Typography>
           <Typography>
-            Tango would not be possible without the work of the many people who
+            Tango would not be a reality without the work of the many people who
             have helped make this possible.
           </Typography>
           <ul>
+            <li>
+              <Link href="https://www.capcom.com/" target="_blank">
+                CAPCOM
+              </Link>{" "}
+              for making Mega Man Battle Network!
+            </li>
             <li>
               <Link href="https://twitter.com/endrift" target="_blank">
                 endrift
@@ -152,13 +159,19 @@ function AboutTab({ active }: { active: boolean }) {
               <Link href="https://n1gp.net/" target="_blank">
                 N1GP
               </Link>{" "}
-              for their bug testing and support!
+              for their bug testing and support.
+            </li>
+            <li>
+              <Link href="https://twitter.com/seventhfonist42" target="_blank">
+                Nonstopmop
+              </Link>{" "}
+              for their contribution to the Japanese translation.
             </li>
             <li>
               <Link href="https://twitter.com/Hikari_Calyx" target="_blank">
                 Hikari Calyx
               </Link>{" "}
-              for various pieces of the Chinese translation!
+              for their contribution to the Chinese translation.
             </li>
             <li>
               <Link href="https://github.com/bigfarts" target="_blank">
@@ -240,9 +253,11 @@ function GeneralTab({ active }: { active: boolean }) {
               }}
               label={<Trans i18nKey="settings:language" />}
             >
-              <MenuItem value="en">English</MenuItem>
-              <MenuItem value="ja">日本語</MenuItem>
-              <MenuItem value="zh-Hans">简体中文</MenuItem>
+              {LANGUAGES.map(({ code, name }) => (
+                <MenuItem key={code} value={code}>
+                  {name}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
           <FormControl fullWidth size="small">
@@ -299,41 +314,6 @@ function AdvancedTab({ active }: { active: boolean }) {
             width: "500px",
           }}
         >
-          <FormControl fullWidth size="small">
-            <InputLabel id="wgpu-backend-label">
-              <Trans i18nKey="settings:wgpu-backend" />
-            </InputLabel>
-            <Select
-              labelId="wgpu-backend-label"
-              value={config.wgpuBackend ?? "default"}
-              onChange={(e) => {
-                (async () => {
-                  saveConfig((config) => ({
-                    ...config,
-                    wgpuBackend:
-                      e.target.value != "default" ? e.target.value : null,
-                  }));
-                })();
-              }}
-              label={<Trans i18nKey="settings:wgpu-backend" />}
-            >
-              <MenuItem value="default">
-                <Trans i18nKey="settings:wgpu-backend.default" />
-              </MenuItem>
-              <MenuItem value="vulkan">
-                <Trans i18nKey="settings:wgpu-backend.vulkan" />
-              </MenuItem>
-              <MenuItem value="dx12">
-                <Trans i18nKey="settings:wgpu-backend.dx12" />
-              </MenuItem>
-              <MenuItem value="gl">
-                <Trans i18nKey="settings:wgpu-backend.gl" />
-              </MenuItem>
-              <MenuItem value="metal">
-                <Trans i18nKey="settings:wgpu-backend.metal" />
-              </MenuItem>
-            </Select>
-          </FormControl>
           <TextField
             size="small"
             fullWidth
@@ -375,12 +355,15 @@ function AdvancedTab({ active }: { active: boolean }) {
               <MenuItem value="alpha">
                 <Trans i18nKey="settings:update-channel.alpha" />
               </MenuItem>
+              <MenuItem value="disabled">
+                <Trans i18nKey="settings:update-channel.disabled" />
+              </MenuItem>
             </Select>
           </FormControl>
           <Button
             fullWidth
-            variant="contained"
-            color="inherit"
+            color="primary"
+            variant="outlined"
             onClick={() => {
               shell.openPath(app.getPath("logs"));
             }}
@@ -439,10 +422,7 @@ function KeymappingTab({ active }: { active: boolean }) {
                 }
                 keymaptoolRef.current = new Keymaptool(i18n.resolvedLanguage, {
                   env: {
-                    WGPU_BACKEND:
-                      config.wgpuBackend != null
-                        ? config.wgpuBackend
-                        : undefined,
+                    RUST_BACKTRACE: "1",
                   },
                 });
                 for (const key of KEYS) {

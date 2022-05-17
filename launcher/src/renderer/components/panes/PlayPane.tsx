@@ -28,7 +28,7 @@ import { getBasePath, getSavesPath } from "../../../paths";
 import { SetSettings } from "../../../protos/lobby";
 import { KNOWN_ROMS } from "../../../rom";
 import * as bn6 from "../../../saveedit/bn6";
-import BattleStarter from "../BattleStarter";
+import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
 import { useSaves } from "../SavesContext";
@@ -77,7 +77,9 @@ export default function SavesPane({ active }: { active: boolean }) {
   const [incarnation, setIncarnation] = React.useState(0);
   const [opponentSettings, setOpponentSettings] =
     React.useState<SetSettings | null>(null);
-  const availableGames = opponentSettings?.availableGames ?? [];
+  const opponentAvailableGames = opponentSettings?.availableGames ?? [];
+
+  const getNetplayCompatibility = useGetNetplayCompatibility();
 
   const saveName =
     saveName_ != null && Object.prototype.hasOwnProperty.call(saves, saveName_)
@@ -170,11 +172,44 @@ export default function SavesPane({ active }: { active: boolean }) {
                   }
                   return (
                     <>
-                      {availableGames.length > 0 &&
-                      !availableGames.some((g) => g.rom == saves[v].romName) ? (
-                        // TODO: Distinguish between unsupported vs incompatible.
+                      {saveName != null &&
+                      opponentSettings?.gameInfo != null &&
+                      !Object.keys(patches)
+                        .filter(
+                          (p) => patches[p].forROM == saves[saveName].romName
+                        )
+                        .flatMap((p) =>
+                          Object.keys(patches[p].versions).map(
+                            (v) => patches[p].versions[v].netplayCompatibility
+                          )
+                        )
+                        .concat([
+                          KNOWN_ROMS[saves[saveName].romName]
+                            .netplayCompatibility,
+                        ])
+                        .some(
+                          (nc) =>
+                            nc ==
+                            getNetplayCompatibility(opponentSettings!.gameInfo!)
+                        ) ? (
                         <Tooltip
-                          title={<Trans i18nKey="play:unsupported-game" />}
+                          title={<Trans i18nKey="play:incompatible-game" />}
+                        >
+                          <WarningIcon
+                            color="warning"
+                            sx={{
+                              fontSize: "1em",
+                              marginRight: "8px",
+                              verticalAlign: "middle",
+                            }}
+                          />
+                        </Tooltip>
+                      ) : opponentAvailableGames.length > 0 &&
+                        !opponentAvailableGames.some(
+                          (g) => g.rom == saves[v].romName
+                        ) ? (
+                        <Tooltip
+                          title={<Trans i18nKey="play:no-remote-copy" />}
                         >
                           <WarningIcon
                             color="warning"
@@ -208,37 +243,84 @@ export default function SavesPane({ active }: { active: boolean }) {
                   setSaveName(e.target.value);
                 }}
               >
-                {romNames.map((romName) => {
+                {Object.keys(KNOWN_ROMS).flatMap((romName) => {
                   const saveNames = groupedSaves[romName] || [];
+                  if (saveNames.length == 0) {
+                    return [];
+                  }
+
                   saveNames.sort();
 
                   return [
-                    <ListSubheader key="title" sx={{ userSelect: "none" }}>
-                      {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
-                    </ListSubheader>,
-                    ...saveNames.map((v) => {
-                      return (
-                        <MenuItem key={v} value={v}>
-                          {availableGames.length > 0 &&
-                          !availableGames.some((g) => g.rom == romName) ? (
-                            // TODO: Distinguish between unsupported vs incompatible.
-                            <Tooltip
-                              title={<Trans i18nKey="play:unsupported-game" />}
-                            >
-                              <WarningIcon
-                                color="warning"
-                                sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
-                                  verticalAlign: "middle",
-                                }}
-                              />
-                            </Tooltip>
-                          ) : null}{" "}
-                          {v}
-                        </MenuItem>
-                      );
-                    }),
+                    [
+                      <ListSubheader key="title" sx={{ userSelect: "none" }}>
+                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
+                      </ListSubheader>,
+                      ...saveNames.map((v) => {
+                        return (
+                          <MenuItem
+                            key={v}
+                            value={v}
+                            disabled={romNames.indexOf(romName) == -1}
+                          >
+                            {opponentSettings?.gameInfo != null &&
+                            !Object.keys(patches)
+                              .filter(
+                                (p) => patches[p].forROM == saves[v].romName
+                              )
+                              .flatMap((p) =>
+                                Object.keys(patches[p].versions).map(
+                                  (v) =>
+                                    patches[p].versions[v].netplayCompatibility
+                                )
+                              )
+                              .concat([
+                                KNOWN_ROMS[saves[v].romName]
+                                  .netplayCompatibility,
+                              ])
+                              .some(
+                                (nc) =>
+                                  nc ==
+                                  getNetplayCompatibility(
+                                    opponentSettings!.gameInfo!
+                                  )
+                              ) ? (
+                              <Tooltip
+                                title={
+                                  <Trans i18nKey="play:incompatible-game" />
+                                }
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : opponentAvailableGames.length > 0 &&
+                              !opponentAvailableGames.some(
+                                (g) => g.rom == romName
+                              ) ? (
+                              <Tooltip
+                                title={<Trans i18nKey="play:no-remote-copy" />}
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : null}{" "}
+                            {v}
+                          </MenuItem>
+                        );
+                      }),
+                    ],
                   ];
                 })}
               </Select>
@@ -302,16 +384,34 @@ export default function SavesPane({ active }: { active: boolean }) {
                     if (patchName == null) {
                       return (
                         <>
-                          {availableGames.length > 0 &&
-                          !availableGames.some(
-                            (g) =>
-                              save != null &&
-                              g.rom == save.romName &&
-                              g.patch == null
-                          ) ? (
-                            // TODO: Distinguish between unsupported vs incompatible.
+                          {opponentSettings?.gameInfo != null &&
+                          saveName != null &&
+                          KNOWN_ROMS[saves[saveName].romName]
+                            .netplayCompatibility !=
+                            getNetplayCompatibility(
+                              opponentSettings.gameInfo
+                            ) ? (
                             <Tooltip
-                              title={<Trans i18nKey="play:unsupported-game" />}
+                              title={<Trans i18nKey="play:incompatible-game" />}
+                            >
+                              <WarningIcon
+                                color="warning"
+                                sx={{
+                                  fontSize: "1em",
+                                  marginRight: "8px",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </Tooltip>
+                          ) : opponentAvailableGames.length > 0 &&
+                            !opponentAvailableGames.some(
+                              (g) =>
+                                save != null &&
+                                g.rom == save.romName &&
+                                g.patch == null
+                            ) ? (
+                            <Tooltip
+                              title={<Trans i18nKey="play:no-remote-copy" />}
                             >
                               <WarningIcon
                                 color="warning"
@@ -329,17 +429,43 @@ export default function SavesPane({ active }: { active: boolean }) {
                     }
                     return (
                       <>
-                        {availableGames.length > 0 &&
-                        !availableGames.some(
-                          (g) =>
-                            save != null &&
-                            g.rom == save.romName &&
-                            g.patch != null &&
-                            g.patch.name == patchName
-                        ) ? (
-                          // TODO: Distinguish between unsupported vs incompatible.
+                        {opponentSettings?.gameInfo != null &&
+                        saveName != null &&
+                        !Object.keys(patches[patchName].versions)
+                          .map(
+                            (v) =>
+                              patches[patchName].versions[v]
+                                .netplayCompatibility
+                          )
+                          .some(
+                            (nc) =>
+                              nc ==
+                              getNetplayCompatibility(
+                                opponentSettings!.gameInfo!
+                              )
+                          ) ? (
                           <Tooltip
-                            title={<Trans i18nKey="play:unsupported-game" />}
+                            title={<Trans i18nKey="play:incompatible-game" />}
+                          >
+                            <WarningIcon
+                              color="warning"
+                              sx={{
+                                fontSize: "1em",
+                                marginRight: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            />
+                          </Tooltip>
+                        ) : opponentAvailableGames.length > 0 &&
+                          !opponentAvailableGames.some(
+                            (g) =>
+                              save != null &&
+                              g.rom == save.romName &&
+                              g.patch != null &&
+                              g.patch.name == patchName
+                          ) ? (
+                          <Tooltip
+                            title={<Trans i18nKey="play:no-remote-copy" />}
                           >
                             <WarningIcon
                               color="warning"
@@ -370,15 +496,30 @@ export default function SavesPane({ active }: { active: boolean }) {
                   fullWidth
                 >
                   <MenuItem value="null">
-                    {availableGames.length > 0 &&
-                    !availableGames.some(
-                      (g) =>
-                        save != null && g.rom == save.romName && g.patch == null
-                    ) ? (
-                      // TODO: Distinguish between unsupported vs incompatible.
+                    {opponentSettings?.gameInfo != null &&
+                    saveName != null &&
+                    KNOWN_ROMS[saves[saveName].romName].netplayCompatibility !=
+                      getNetplayCompatibility(opponentSettings.gameInfo) ? (
                       <Tooltip
-                        title={<Trans i18nKey="play:unsupported-game" />}
+                        title={<Trans i18nKey="play:incompatible-game" />}
                       >
+                        <WarningIcon
+                          color="warning"
+                          sx={{
+                            fontSize: "1em",
+                            marginRight: "8px",
+                            verticalAlign: "middle",
+                          }}
+                        />
+                      </Tooltip>
+                    ) : opponentAvailableGames.length > 0 &&
+                      !opponentAvailableGames.some(
+                        (g) =>
+                          save != null &&
+                          g.rom == save.romName &&
+                          g.patch == null
+                      ) ? (
+                      <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
                         <WarningIcon
                           color="warning"
                           sx={{
@@ -398,17 +539,45 @@ export default function SavesPane({ active }: { active: boolean }) {
                         <ListItemText
                           primary={
                             <>
-                              {availableGames.length > 0 &&
-                              !availableGames.some(
-                                (g) =>
-                                  save != null &&
-                                  g.rom == save.romName &&
-                                  g.patch != null &&
-                                  g.patch.name == patchName
-                              ) ? (
+                              {opponentSettings?.gameInfo != null &&
+                              !Object.keys(patches[patchName].versions)
+                                .map(
+                                  (v) =>
+                                    patches[patchName].versions[v]
+                                      .netplayCompatibility
+                                )
+                                .some(
+                                  (nc) =>
+                                    nc ==
+                                    getNetplayCompatibility(
+                                      opponentSettings!.gameInfo!
+                                    )
+                                ) ? (
                                 <Tooltip
                                   title={
-                                    <Trans i18nKey="play:unsupported-game" />
+                                    <Trans i18nKey="play:incompatible-game" />
+                                  }
+                                >
+                                  <WarningIcon
+                                    color="warning"
+                                    sx={{
+                                      fontSize: "1em",
+                                      marginRight: "8px",
+                                      verticalAlign: "middle",
+                                    }}
+                                  />
+                                </Tooltip>
+                              ) : opponentAvailableGames.length > 0 &&
+                                !opponentAvailableGames.some(
+                                  (g) =>
+                                    save != null &&
+                                    g.rom == save.romName &&
+                                    g.patch != null &&
+                                    g.patch.name == patchName
+                                ) ? (
+                                <Tooltip
+                                  title={
+                                    <Trans i18nKey="play:no-remote-copy" />
                                   }
                                 >
                                   <WarningIcon
@@ -463,19 +632,39 @@ export default function SavesPane({ active }: { active: boolean }) {
                     ? patchVersions.map((version) => {
                         return (
                           <MenuItem key={version} value={version}>
-                            {availableGames.length > 0 &&
-                            !availableGames.some(
-                              (g) =>
-                                save != null &&
-                                g.rom == save.romName &&
-                                g.patch != null &&
-                                g.patch.name == patchName &&
-                                g.patch.version == version
-                            ) ? (
+                            {opponentSettings?.gameInfo != null &&
+                            patchName != null &&
+                            patchVersion != null &&
+                            patches[patchName].versions[patchVersion]
+                              .netplayCompatibility !=
+                              getNetplayCompatibility(
+                                opponentSettings!.gameInfo!
+                              ) ? (
                               <Tooltip
                                 title={
-                                  <Trans i18nKey="play:unsupported-game" />
+                                  <Trans i18nKey="play:incompatible-game" />
                                 }
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : opponentAvailableGames.length > 0 &&
+                              !opponentAvailableGames.some(
+                                (g) =>
+                                  save != null &&
+                                  g.rom == save.romName &&
+                                  g.patch != null &&
+                                  g.patch.name == patchName &&
+                                  g.patch.version == version
+                              ) ? (
+                              <Tooltip
+                                title={<Trans i18nKey="play:no-remote-copy" />}
                               >
                                 <WarningIcon
                                   color="warning"

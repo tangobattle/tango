@@ -18,12 +18,6 @@
     "request-keymapping": "Press key for {{key}}.",
     "tab.about": "About",
     "tab.advanced": "Advanced",
-    "wgpu-backend": "Renderer",
-    "wgpu-backend.default": "Default",
-    "wgpu-backend.vulkan": "Vulkan",
-    "wgpu-backend.dx12": "DirectX 12",
-    "wgpu-backend.gl": "OpenGL (must have ANGLE libraries)",
-    "wgpu-backend.metal": "Metal (macOS only)",
     "theme": "Theme",
     "theme.light": "Light",
     "theme.dark": "Dark",
@@ -31,6 +25,7 @@
     "update-channel.latest": "Latest",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
+    "update-channel.disabled": "Disabled",
     "rust-log-filter": "RUST_LOG filter",
     "open-logs-folder": "Open logs folder"
 }

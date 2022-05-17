@@ -34,12 +34,14 @@
   "stop": "停止",
   "own-side": "自分",
   "game": "ゲーム",
-  "open-setup": "構築を公開",
-  "unsupported-game": "相手はこのゲームに対応していません。",
-  "mismatching-open-setup": "相手と自分の構築を公開の設定が一致していません。",
+  "reveal-setup": "構築を公開",
+  "incompatible-game": "選択されたゲームと相手が選択されたゲームに互換性がありません。",
+  "no-remote-copy": "相手はこのゲームを持っていません。",
+  "no-local-copy": "このゲームを持っていません。",
   "mismatching-match-type": "相手と自分のマッチタイプの設定が一致していません。",
-  "generate-random-code": "ランダムリンクコードを生成",
+  "generate-random-code": "ランダムリンクコードを作成",
   "connection-quality": "（{{rtt}}ms）",
   "auto-input-delay": "自動選択",
-  "open-setup-title": "{{opponentNickname}}の構築"
+  "reveal-setup-title": "{{opponentNickname}}さんの構築",
+  "missing-patch": "未知のパッチ「{{name}}」"
 }

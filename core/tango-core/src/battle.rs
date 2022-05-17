@@ -25,7 +25,7 @@ pub struct Settings {
     pub input_delay: u32,
     pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
-    pub opponent_nickname: String,
+    pub opponent_nickname: Option<String>,
 }
 
 pub struct RoundState {
@@ -290,6 +290,13 @@ impl Match {
                         remote_tick: input.remote_tick,
                         joyflags: input.joyflags as u16,
                     });
+                }
+                protocol::Packet::Ping(protocol::Ping { ts }) => {
+                    // Reply to pings, in case the opponent really wants a response.
+                    self.transport.lock().await.send_pong(ts).await?;
+                }
+                protocol::Packet::Pong(_) => {
+                    // Ignore stray pongs.
                 }
                 p => anyhow::bail!("unknown packet: {:?}", p),
             }
