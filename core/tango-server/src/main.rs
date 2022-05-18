@@ -14,10 +14,10 @@ struct Config {
     #[envconfig(from = "USE_X_REAL_IP", default = "false")]
     use_x_real_ip: bool,
 
-    #[envconfig(from = "SUBSPACE_CLIENT_ID")]
+    #[envconfig(from = "SUBSPACE_CLIENT_ID", default = "")]
     subspace_client_id: String,
 
-    #[envconfig(from = "SUBSPACE_CLIENT_SECRET")]
+    #[envconfig(from = "SUBSPACE_CLIENT_SECRET", default = "")]
     subspace_client_secret: String,
 }
 
