@@ -27,5 +27,6 @@
     "update-channel.alpha": "Alpha",
     "update-channel.disabled": "無効",
     "rust-log-filter": "RUST_LOGフィルター",
-    "open-logs-folder": "ログフォルダーを開く"
+    "open-logs-folder": "ログフォルダーを開く",
+    "matchmaking-server-addr": "マッチメイキングサーバーアドレス"
 }

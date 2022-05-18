@@ -328,6 +328,20 @@ function AdvancedTab({ active }: { active: boolean }) {
             }}
             label={<Trans i18nKey="settings:rust-log-filter" />}
           />
+          <TextField
+            size="small"
+            fullWidth
+            value={config.matchmakingServerAddr}
+            onChange={(e) => {
+              (async () => {
+                saveConfig((config) => ({
+                  ...config,
+                  matchmakingServerAddr: e.target.value,
+                }));
+              })();
+            }}
+            label={<Trans i18nKey="settings:matchmaking-server-addr" />}
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="update-channel-label">
               <Trans i18nKey="settings:update-channel" />
