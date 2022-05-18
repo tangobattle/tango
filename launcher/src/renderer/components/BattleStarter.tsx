@@ -263,20 +263,14 @@ async function runCallback(
   let iceServers = [...config.iceServers];
 
   try {
-    const req = await fetch(
-      `http${!config.matchmakingServer.insecure ? "s" : ""}://${
-        config.matchmakingServer.host
-      }/relay`,
-      {
-        method: "POST",
-        headers: {
-          Host: config.matchmakingServer.host,
-          "Content-Type": "application/x-protobuf",
-        },
-        body: Buffer.from(GetRequest.encode({}).finish()),
-        signal,
-      }
-    );
+    const req = await fetch(`${config.matchmakingServerAddr}/relay`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-protobuf",
+      },
+      body: Buffer.from(GetRequest.encode({}).finish()),
+      signal,
+    });
     if (req.ok) {
       iceServers = [
         ...iceServers,
@@ -292,9 +286,7 @@ async function runCallback(
 
   const core = new ipc.Core(
     config.keymapping,
-    `ws${!config.matchmakingServer.insecure ? "s" : ""}://${
-      config.matchmakingServer.host
-    }/signaling`,
+    `${config.matchmakingServerAddr.replace(/^http/, "ws")}/signaling`,
     iceServers,
     linkCode,
     {
