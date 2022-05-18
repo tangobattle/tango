@@ -8,5 +8,10 @@
   "show-file": "目录中显示",
   "export-video": "视频导出",
   "replay-title": "{{linkCode}}： 対 {{nickname}}",
-  "crash": "抱歉，回放播放器遇到崩溃。在报告错误时，请提供此日志！"
+  "crash": "抱歉，回放播放器遇到崩溃。在报告错误时，请提供此日志！",
+  "export-settings": "导出设置",
+  "output-path": "保存到",
+  "scale-factor": "缩放系数",
+  "scale-factor-suffix": "倍",
+  "start-export": "导出"
 }

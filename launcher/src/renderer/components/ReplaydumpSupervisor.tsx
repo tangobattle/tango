@@ -24,12 +24,14 @@ export default function ReplaydumpSupervisor({
   patch,
   replayPath,
   outPath,
+  scaleFactor,
   onExit,
 }: {
   romName: string;
   patch?: { name: string; version: string };
   replayPath: string;
   outPath: string;
+  scaleFactor: number;
   onExit: () => void;
 }) {
   const { config } = useConfig();
@@ -86,9 +88,10 @@ export default function ReplaydumpSupervisor({
         [
           replayPath,
           "dump-video",
-          outROMPath,
           "--ffmpeg",
           getBinPath(app, "ffmpeg"),
+          `-v=-c:v libx264 -vf scale=iw*${scaleFactor}:ih*${scaleFactor}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2`,
+          outROMPath,
           outPath,
         ],
         {
@@ -156,7 +159,7 @@ export default function ReplaydumpSupervisor({
         setDone({ exitCode, signalCode });
       });
     })();
-  }, [romPath, patchPath, outROMPath, replayPath, outPath]);
+  }, [romPath, patchPath, outROMPath, scaleFactor, replayPath, outPath]);
 
   return (
     <Modal

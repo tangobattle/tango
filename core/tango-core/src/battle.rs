@@ -332,8 +332,8 @@ impl Match {
             "starting round: local_player_index = {}",
             local_player_index
         );
-        let mut replay_filename = self.settings.replays_path.clone();
-        replay_filename.push(format!("round{}.tangoreplay", round_state.number));
+        let mut replay_filename = self.settings.replays_path.clone().as_os_str().to_owned();
+        replay_filename.push(format!("-round{}.tangoreplay", round_state.number));
         let replay_filename = std::path::Path::new(&replay_filename);
         let replay_file = std::fs::File::create(&replay_filename)?;
         log::info!("opened replay: {}", replay_filename.display());

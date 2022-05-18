@@ -6,17 +6,26 @@ import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
 import { app, BrowserWindow, dialog, shell } from "@electron/remote";
+import CloseIcon from "@mui/icons-material/Close";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
+import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
@@ -156,7 +165,8 @@ export default function ReplaysPane({ active }: { active: boolean }) {
   const [dumpingReplay, setDumpingReplay] = React.useState<{
     replay: LoadedReplay;
     outPath: string;
-    done: boolean;
+    scaleFactor: number;
+    state: "confirm" | "in-progress";
   } | null>(null);
 
   const [viewingReplay, setViewingReplay] = React.useState<LoadedReplay | null>(
@@ -252,7 +262,8 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                           ? {
                               replay: replay,
                               outPath: fn,
-                              done: false,
+                              scaleFactor: 5,
+                              state: "confirm",
                             }
                           : null
                       );
@@ -312,25 +323,138 @@ export default function ReplaysPane({ active }: { active: boolean }) {
         />
       ) : null}
       {dumpingReplay != null ? (
-        <ReplaydumpSupervisor
-          romName={path.join(dumpingReplay.replay.info.rom)}
-          patch={
-            dumpingReplay.replay.resolvedPatchVersion != null
-              ? {
-                  name: dumpingReplay.replay.info.patch!.name,
-                  version: dumpingReplay.replay.resolvedPatchVersion,
-                }
-              : undefined
-          }
-          replayPath={path.join(
-            getReplaysPath(app),
-            dumpingReplay.replay.filename
-          )}
-          outPath={dumpingReplay.outPath}
-          onExit={() => {
-            setDumpingReplay(null);
-          }}
-        />
+        dumpingReplay.state == "confirm" ? (
+          <Modal
+            open={true}
+            onClose={(_e, _reason) => {
+              setDumpingReplay(null);
+            }}
+          >
+            <Box
+              sx={{
+                position: "absolute",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              <Box
+                sx={{
+                  width: 600,
+                  bgcolor: "background.paper",
+                  boxShadow: 24,
+                  px: 3,
+                  py: 2,
+                  display: "flex",
+                }}
+              >
+                <Stack spacing={1} flexGrow={1}>
+                  <Stack direction="row">
+                    <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+                      <Trans i18nKey="replays:export-settings" />
+                    </Typography>
+                    <Tooltip title={<Trans i18nKey="common:close" />}>
+                      <IconButton
+                        sx={{ ml: "auto" }}
+                        onClick={() => {
+                          setDumpingReplay(null);
+                        }}
+                      >
+                        <CloseIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                  <Table size="small">
+                    <TableBody>
+                      <TableRow>
+                        <TableCell
+                          component="th"
+                          sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}
+                        >
+                          <Trans i18nKey="replays:output-path" />
+                        </TableCell>
+                        <TableCell sx={{ wordBreak: "break-all" }}>
+                          <code>{dumpingReplay.outPath}</code>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow>
+                        <TableCell
+                          component="th"
+                          sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}
+                        >
+                          <Trans i18nKey="replays:scale-factor" />
+                        </TableCell>
+                        <TableCell>
+                          <TextField
+                            variant="standard"
+                            type="number"
+                            value={dumpingReplay.scaleFactor}
+                            onChange={(e) => {
+                              let v = parseInt(e.target.value);
+                              if (isNaN(v)) {
+                                v = 0;
+                              }
+                              setDumpingReplay((dr) => ({
+                                ...dr!,
+                                scaleFactor: Math.min(Math.max(v, 1), 10),
+                              }));
+                            }}
+                            InputProps={{
+                              inputProps: {
+                                min: 1,
+                                max: 10,
+                                style: { textAlign: "right" },
+                              },
+                              endAdornment: (
+                                <>
+                                  <Trans i18nKey="replays:scale-factor-suffix" />
+                                </>
+                              ),
+                            }}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                  <Stack direction="row" justifyContent="flex-end">
+                    <Button
+                      variant="contained"
+                      onClick={(_e) => {
+                        setDumpingReplay((dr) => ({
+                          ...dr!,
+                          state: "in-progress",
+                        }));
+                      }}
+                    >
+                      <Trans i18nKey="replays:start-export" />
+                    </Button>
+                  </Stack>
+                </Stack>
+              </Box>
+            </Box>
+          </Modal>
+        ) : dumpingReplay.state == "in-progress" ? (
+          <ReplaydumpSupervisor
+            romName={path.join(dumpingReplay.replay.info.rom)}
+            patch={
+              dumpingReplay.replay.resolvedPatchVersion != null
+                ? {
+                    name: dumpingReplay.replay.info.patch!.name,
+                    version: dumpingReplay.replay.resolvedPatchVersion,
+                  }
+                : undefined
+            }
+            replayPath={path.join(
+              getReplaysPath(app),
+              dumpingReplay.replay.filename
+            )}
+            outPath={dumpingReplay.outPath}
+            scaleFactor={dumpingReplay.scaleFactor}
+            onExit={() => {
+              setDumpingReplay(null);
+            }}
+          />
+        ) : null
       ) : null}
       {infoDialogReplay != null ? (
         <ReplayInfoDialog

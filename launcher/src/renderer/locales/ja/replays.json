@@ -8,5 +8,10 @@
   "show-file": "フォルダー内に表示",
   "export-video": "ビデオにエクスポート",
   "replay-title": "{{linkCode}}：対{{nickname}}",
-  "crash": "おっと、リプレイビューアーがクラッシュしたようです。バグ報告の際には、このログを提供してください。"
+  "crash": "おっと、リプレイビューアーがクラッシュしたようです。バグ報告の際には、このログを提供してください。",
+  "export-settings": "エクスポート設定",
+  "output-path": "保存先",
+  "scale-factor": "スケール因子",
+  "scale-factor-suffix": "倍",
+  "start-export": "クスポート"
 }
