@@ -82,6 +82,29 @@ The launcher is written in Node + Electron.
     npm run start:main  # start electron (run this in a new terminal)
     ```
 
+### Server
+
+The server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by send WebRTC SDPs around and providing TURN credentials. Note that it doesn't actually provide a TURN server itself, so you'll need some way to get TURN credentials.
+
+If you already have Rust installed, you can build it like so:
+
+1.  Enter the core directory and build it.
+
+    ```sh
+    cd core &&
+    cargo build --release --bin tango-server
+    ```
+
+That should be it! The server should be available in the usual Rust output directory.
+
+In order to configure your server, you'll need to set the following environment variables:
+
+-   `LISTEN_ADDR`: Host/port to listen on. Defaults to `[::]:1984`. It's recommended to front this with e.g. nginx for TLS support.
+
+-   `USE_X_REAL_IP`: Whether or not the client's IP is presented in the `X-Real-IP` header. If false, will use the IP of the TCP connection. **Do not enable this if you do not have a reverse proxy (e.g. nginx) that will set this in all cases!**
+
+-   `SUBSPACE_CLIENT_ID`, `SUBSPACE_CLIENT_SECRET`: Credentials for WebRTC-CDN from <https://subspace.com>. If not set, clients will not be able to get TURN credentials and connectivity behind CGNAT will be limited.
+
 ## Language support
 
 Tango is fully internationalized and supports language switching based on your computer's language settings.
