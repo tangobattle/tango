@@ -3,6 +3,8 @@
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
 use std::io::Write;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -114,8 +116,12 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
 
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
+    #[cfg(windows)]
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
     let video_output = tempfile::NamedTempFile::new()?;
-    let mut video_child = std::process::Command::new(&args.ffmpeg)
+    let mut video_child = std::process::Command::new(&args.ffmpeg);
+    video_child
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
         // Input args.
@@ -134,11 +140,14 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
         // Output args.
         .args(shell_words::split(&args.ffmpeg_video_flags)?)
         .args(&["-f", "mp4"])
-        .arg(&video_output.path())
-        .spawn()?;
+        .arg(&video_output.path());
+    #[cfg(windows)]
+    video_child.creation_flags(CREATE_NO_WINDOW);
+    let mut video_child = video_child.spawn()?;
 
     let audio_output = tempfile::NamedTempFile::new()?;
-    let mut audio_child = std::process::Command::new(&args.ffmpeg)
+    let mut audio_child = std::process::Command::new(&args.ffmpeg);
+    audio_child
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
         // Input args.
@@ -146,8 +155,10 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
         // Output args.
         .args(shell_words::split(&args.ffmpeg_audio_flags)?)
         .args(&["-f", "mp4"])
-        .arg(&audio_output.path())
-        .spawn()?;
+        .arg(&audio_output.path());
+    #[cfg(windows)]
+    audio_child.creation_flags(CREATE_NO_WINDOW);
+    let mut audio_child = audio_child.spawn()?;
 
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
@@ -197,7 +208,8 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
     audio_child.stdin = None;
     audio_child.wait()?;
 
-    let mut mux_child = std::process::Command::new(&args.ffmpeg)
+    let mut mux_child = std::process::Command::new(&args.ffmpeg);
+    mux_child
         .args(&["-y"])
         .args(&["-i"])
         .arg(video_output.path())
@@ -205,8 +217,10 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
         .arg(audio_output.path())
         .args(&["-c:v", "copy", "-c:a", "copy"])
         .args(shell_words::split(&args.ffmpeg_mux_flags)?)
-        .arg(&args.output_path)
-        .spawn()?;
+        .arg(&args.output_path);
+    #[cfg(windows)]
+    mux_child.creation_flags(CREATE_NO_WINDOW);
+    let mut mux_child = mux_child.spawn()?;
     mux_child.wait()?;
 
     Ok(())
