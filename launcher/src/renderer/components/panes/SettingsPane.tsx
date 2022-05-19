@@ -391,7 +391,7 @@ function AdvancedTab({ active }: { active: boolean }) {
   );
 }
 
-function KeymappingTab({ active }: { active: boolean }) {
+function InputKeyboardTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { i18n, t } = useTranslation();
   const keymaptoolRef = React.useRef<Keymaptool | null>(null);
@@ -471,7 +471,7 @@ function KeymappingTab({ active }: { active: boolean }) {
   );
 }
 
-function ControllerMappingTab({ active }: { active: boolean }) {
+function InputControllerTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { i18n, t } = useTranslation();
   const keymaptoolRef = React.useRef<Keymaptool | null>(null);
@@ -576,6 +576,40 @@ function ControllerMappingTab({ active }: { active: boolean }) {
   );
 }
 
+function InputTab({ active }: { active: boolean }) {
+  const [tab, setTab] = React.useState("keyboard");
+
+  return (
+    <Box
+      sx={{
+        flexGrow: 1,
+        display: active ? "flex" : "none",
+      }}
+    >
+      <Stack flexGrow={1} flexShrink={0} sx={{ width: 0 }}>
+        <Tabs
+          sx={{ px: 1 }}
+          value={tab}
+          onChange={(e, value) => {
+            setTab(value);
+          }}
+        >
+          <Tab
+            label={<Trans i18nKey="settings:tab.input.keyboard" />}
+            value="keyboard"
+          />
+          <Tab
+            label={<Trans i18nKey="settings:tab.input.controller" />}
+            value="controller"
+          />
+        </Tabs>
+        <InputKeyboardTab active={tab == "keyboard"} />
+        <InputControllerTab active={tab == "controller"} />
+      </Stack>
+    </Box>
+  );
+}
+
 export default function SettingsPane({ active }: { active: boolean }) {
   const [tab, setTab] = React.useState("general");
 
@@ -598,14 +632,7 @@ export default function SettingsPane({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:tab.general" />}
             value="general"
           />
-          <Tab
-            label={<Trans i18nKey="settings:tab.keymapping" />}
-            value="keymapping"
-          />
-          <Tab
-            label={<Trans i18nKey="settings:tab.controller-mapping" />}
-            value="controller-mapping"
-          />
+          <Tab label={<Trans i18nKey="settings:tab.input" />} value="input" />
           <Tab
             label={<Trans i18nKey="settings:tab.advanced" />}
             value="advanced"
@@ -613,8 +640,7 @@ export default function SettingsPane({ active }: { active: boolean }) {
           <Tab label={<Trans i18nKey="settings:tab.about" />} value="about" />
         </Tabs>
         <GeneralTab active={tab == "general"} />
-        <KeymappingTab active={tab == "keymapping"} />
-        <ControllerMappingTab active={tab == "controller-mapping"} />
+        <InputTab active={tab == "input"} />
         <AdvancedTab active={tab == "advanced"} />
         <AboutTab active={tab == "about"} />
       </Stack>
