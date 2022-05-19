@@ -417,7 +417,7 @@ function KeymappingTab({ active }: { active: boolean }) {
                 <TableRow key={key}>
                   <TableCell component="th">
                     <strong>
-                      <Trans i18nKey={`settings:keymapping.${key}`} />
+                      <Trans i18nKey={`settings:input.${key}`} />
                     </strong>
                   </TableCell>
                   <TableCell sx={{ textAlign: "right" }}>
@@ -441,8 +441,8 @@ function KeymappingTab({ active }: { active: boolean }) {
                 });
                 for (const key of KEYS) {
                   const mapped = await keymaptoolRef.current.request(
-                    t("settings:request-keymapping", {
-                      key: t(`settings:keymapping.${key}`),
+                    t("settings:request-input", {
+                      key: t(`settings:input.${key}`),
                     })
                   );
                   if (mapped == null) {
