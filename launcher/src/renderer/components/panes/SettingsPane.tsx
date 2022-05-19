@@ -434,11 +434,15 @@ function KeymappingTab({ active }: { active: boolean }) {
                 if (keymaptoolRef.current != null) {
                   return;
                 }
-                keymaptoolRef.current = new Keymaptool(i18n.resolvedLanguage, {
-                  env: {
-                    RUST_BACKTRACE: "1",
-                  },
-                });
+                keymaptoolRef.current = new Keymaptool(
+                  i18n.resolvedLanguage,
+                  "keyboard",
+                  {
+                    env: {
+                      RUST_BACKTRACE: "1",
+                    },
+                  }
+                );
                 for (const key of KEYS) {
                   const mapped = await keymaptoolRef.current.request(
                     t("settings:request-input", {

@@ -72,10 +72,19 @@ impl Gui {
     }
 }
 
+#[derive(clap::ArgEnum, Clone, PartialEq)]
+enum Target {
+    Keyboard,
+    Controller,
+}
+
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
     lang: String,
+
+    #[clap(arg_enum, long)]
+    target: Target,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -119,22 +128,29 @@ fn main() -> anyhow::Result<()> {
     let mut gui = Gui::new(args.lang, gl_window.window(), &gl);
     let gui_state = gui.state();
 
-    let mut keys_pressed = [false; 255];
-
-    let mut text = "".to_owned();
-    match std::io::stdin().read_line(&mut text) {
-        Ok(n) => {
-            if n == 0 {
-                return Ok(());
+    let next = move || {
+        let mut text = "".to_owned();
+        match std::io::stdin().read_line(&mut text) {
+            Ok(n) => {
+                if n == 0 {
+                    return false;
+                }
+            }
+            Err(e) => {
+                panic!("{}", e);
             }
         }
-        Err(e) => {
-            panic!("{}", e);
-        }
+        gui_state.set_text(&text);
+        true
+    };
+    if !next() {
+        return Ok(());
     }
-    gui_state.set_text(&text);
 
     let mut gilrs = gilrs::Gilrs::new().unwrap();
+
+    let mut keys_pressed = [false; 255];
+    let mut buttons_pressed = [false; 255];
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -147,8 +163,32 @@ fn main() -> anyhow::Result<()> {
                 gl_window.swap_buffers().unwrap();
             }
             winit::event::Event::MainEventsCleared => {
-                while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
-                    log::info!("{:?}", event);
+                if args.target == Target::Controller {
+                    while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
+                        let (button, pressed) = match event {
+                            gilrs::EventType::ButtonPressed(button, _) => (button, true),
+                            gilrs::EventType::ButtonRepeated(button, _) => (button, false),
+                            _ => continue,
+                        };
+
+                        if pressed {
+                            if buttons_pressed[button as usize] {
+                                continue;
+                            }
+                            buttons_pressed[button as usize] = true;
+
+                            std::io::stdout()
+                                .write_all(serde_plain::to_string(&button).unwrap().as_bytes())
+                                .unwrap();
+                            std::io::stdout().write_all(b"\n").unwrap();
+                            if !next() {
+                                *control_flow = winit::event_loop::ControlFlow::Exit;
+                                return;
+                            }
+                        } else {
+                            buttons_pressed[button as usize] = false;
+                        }
+                    }
                 }
             }
             winit::event::Event::WindowEvent {
@@ -160,7 +200,9 @@ fn main() -> anyhow::Result<()> {
                     | winit::event::WindowEvent::Focused(false) => {
                         *control_flow = winit::event_loop::ControlFlow::Exit;
                     }
-                    winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                    winit::event::WindowEvent::KeyboardInput { input, .. }
+                        if args.target == Target::Keyboard =>
+                    {
                         let keycode = if let Some(keycode) = input.virtual_keycode {
                             keycode
                         } else {
@@ -177,20 +219,10 @@ fn main() -> anyhow::Result<()> {
                                     .write_all(serde_plain::to_string(&keycode).unwrap().as_bytes())
                                     .unwrap();
                                 std::io::stdout().write_all(b"\n").unwrap();
-                                let mut text = "".to_owned();
-                                match std::io::stdin().read_line(&mut text) {
-                                    Ok(n) => {
-                                        if n == 0 {
-                                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                                            return;
-                                        }
-                                        gl_window.window().request_redraw();
-                                    }
-                                    Err(e) => {
-                                        panic!("{}", e);
-                                    }
+                                if !next() {
+                                    *control_flow = winit::event_loop::ControlFlow::Exit;
+                                    return;
                                 }
-                                gui_state.set_text(&text);
                             }
                             winit::event::ElementState::Released => {
                                 keys_pressed[keycode as usize] = false;
