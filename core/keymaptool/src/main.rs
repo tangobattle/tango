@@ -134,7 +134,7 @@ fn main() -> anyhow::Result<()> {
     }
     gui_state.set_text(&text);
 
-    let mut _gilrs = gilrs::Gilrs::new().unwrap();
+    let mut gilrs = gilrs::Gilrs::new().unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -145,6 +145,11 @@ fn main() -> anyhow::Result<()> {
                 }
                 gui.render(gl_window.window(), &gl);
                 gl_window.swap_buffers().unwrap();
+            }
+            winit::event::Event::MainEventsCleared => {
+                while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
+                    log::info!("{:?}", event);
+                }
             }
             winit::event::Event::WindowEvent {
                 event: ref window_event,
