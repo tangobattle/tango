@@ -470,6 +470,89 @@ function KeymappingTab({ active }: { active: boolean }) {
   );
 }
 
+function ControllerMappingTab({ active }: { active: boolean }) {
+  const { config, save: saveConfig } = useConfig();
+  const { i18n, t } = useTranslation();
+  const keymaptoolRef = React.useRef<Keymaptool | null>(null);
+  return (
+    <Box
+      flexGrow={1}
+      display={active ? "block" : "none"}
+      overflow="auto"
+      sx={{ px: 1, height: 0 }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          width: "100%",
+          height: "100%",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Stack spacing={1} sx={{ width: "300px" }}>
+          <Table size="small">
+            <TableBody>
+              {KEYS.map((key) => (
+                <TableRow key={key}>
+                  <TableCell component="th">
+                    <strong>
+                      <Trans i18nKey={`settings:input.${key}`} />
+                    </strong>
+                  </TableCell>
+                  <TableCell sx={{ textAlign: "right" }}>
+                    {config.controllerMapping[key]}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <Button
+            variant="contained"
+            onClick={() => {
+              (async () => {
+                if (keymaptoolRef.current != null) {
+                  return;
+                }
+                keymaptoolRef.current = new Keymaptool(
+                  i18n.resolvedLanguage,
+                  "controller",
+                  {
+                    env: {
+                      RUST_BACKTRACE: "1",
+                    },
+                  }
+                );
+                for (const key of KEYS) {
+                  const mapped = await keymaptoolRef.current.request(
+                    t("settings:request-input", {
+                      key: t(`settings:input.${key}`),
+                    })
+                  );
+                  if (mapped == null) {
+                    break;
+                  }
+                  saveConfig((config) => ({
+                    ...config,
+                    controllerMapping: {
+                      ...config.controllerMapping,
+                      [key]: mapped,
+                    },
+                  }));
+                }
+                keymaptoolRef.current.close();
+                keymaptoolRef.current = null;
+              })();
+            }}
+          >
+            <Trans i18nKey="settings:remap" />
+          </Button>
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
 export default function SettingsPane({ active }: { active: boolean }) {
   const [tab, setTab] = React.useState("general");
 
@@ -497,6 +580,10 @@ export default function SettingsPane({ active }: { active: boolean }) {
             value="keymapping"
           />
           <Tab
+            label={<Trans i18nKey="settings:tab.controller-mapping" />}
+            value="controller-mapping"
+          />
+          <Tab
             label={<Trans i18nKey="settings:tab.advanced" />}
             value="advanced"
           />
@@ -504,6 +591,7 @@ export default function SettingsPane({ active }: { active: boolean }) {
         </Tabs>
         <GeneralTab active={tab == "general"} />
         <KeymappingTab active={tab == "keymapping"} />
+        <ControllerMappingTab active={tab == "controller-mapping"} />
         <AdvancedTab active={tab == "advanced"} />
         <AboutTab active={tab == "about"} />
       </Stack>

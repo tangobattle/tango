@@ -4,6 +4,7 @@
     "language": "言語",
     "language.default": "システムデフォルト",
     "tab.keymapping": "キーバインド",
+    "tab.controller-mapping": "コントローラバインド",
     "input.up": "上",
     "input.down": "下",
     "input.left": "左",

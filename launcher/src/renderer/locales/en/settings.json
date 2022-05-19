@@ -4,6 +4,7 @@
     "language": "Language",
     "language.default": "System default",
     "tab.keymapping": "Keymapping",
+    "tab.controller-mapping": "Controller mapping",
     "input.up": "Up",
     "input.down": "Down",
     "input.left": "Left",

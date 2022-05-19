@@ -4,6 +4,7 @@
     "language": "语言",
     "language.default": "系统默认",
     "tab.keymapping": "键盘绑定",
+    "tab.controller-mapping": "游戏控制器绑定",
     "input.up": "上",
     "input.down": "下",
     "input.left": "在",
