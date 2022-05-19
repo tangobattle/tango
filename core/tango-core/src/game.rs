@@ -40,7 +40,7 @@ pub struct Game {
     gui: gui::Gui,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
-    event_loop: glutin::event_loop::EventLoop<UserEvent>,
+    event_loop: glutin::event_loop::EventLoop<()>,
     _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
     gl: std::rc::Rc<glow::Context>,
@@ -52,10 +52,6 @@ pub struct Game {
     keymapping: Keymapping,
     controller_mapping: ControllerMapping,
     _thread: mgba::thread::Thread,
-}
-
-enum UserEvent {
-    Gilrs(gilrs::Event),
 }
 
 impl Game {
@@ -79,7 +75,7 @@ impl Game {
 
         let handle = rt.handle().clone();
 
-        let event_loop = glutin::event_loop::EventLoop::with_user_event();
+        let event_loop = glutin::event_loop::EventLoop::new();
 
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
@@ -322,15 +318,6 @@ impl Game {
             );
         }
 
-        let el_proxy = self.event_loop.create_proxy();
-        std::thread::spawn(move || {
-            while let Some(event) = gilrs.next_event() {
-                if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
-                    break;
-                }
-            }
-        });
-
         let mut console_key_pressed = false;
 
         self.event_loop.run(move |event, _, control_flow| {
@@ -411,6 +398,49 @@ impl Game {
                     self.gui.handle_event(window_event);
                 }
                 winit::event::Event::MainEventsCleared => {
+                    while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
+                        let (button, pressed) = match event {
+                            gilrs::EventType::ButtonPressed(button, _) => (button, true),
+                            gilrs::EventType::ButtonReleased(button, _) => (button, false),
+                            _ => {
+                                return;
+                            }
+                        };
+
+                        let keymask = // Prevent rustfmt from moving this line up.
+                            if button == self.controller_mapping.left {
+                                mgba::input::keys::LEFT
+                            } else if button == self.controller_mapping.right {
+                                mgba::input::keys::RIGHT
+                            } else if button == self.controller_mapping.up {
+                                mgba::input::keys::UP
+                            } else if button == self.controller_mapping.down {
+                                mgba::input::keys::DOWN
+                            } else if button == self.controller_mapping.a {
+                                mgba::input::keys::A
+                            } else if button == self.controller_mapping.b {
+                                mgba::input::keys::B
+                            } else if button == self.controller_mapping.l {
+                                mgba::input::keys::L
+                            } else if button == self.controller_mapping.r {
+                                mgba::input::keys::R
+                            } else if button == self.controller_mapping.start {
+                                mgba::input::keys::START
+                            } else if button == self.controller_mapping.select {
+                                mgba::input::keys::SELECT
+                            } else {
+                                return;
+                            };
+
+                        if pressed {
+                            self.joyflags
+                                .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
+                        } else {
+                            self.joyflags
+                                .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
+
                     unsafe {
                         self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
                         self.gl.clear(glow::COLOR_BUFFER_BIT);
@@ -427,48 +457,6 @@ impl Game {
                     self.gui.render(&self.gl_window.window(), &self.gl);
                     self.gl_window.swap_buffers().unwrap();
                     self.fps_counter.lock().mark();
-                }
-                winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {
-                    let (button, pressed) = match gilrs_ev.event {
-                        gilrs::EventType::ButtonPressed(button, _) => (button, true),
-                        gilrs::EventType::ButtonReleased(button, _) => (button, false),
-                        _ => {
-                            return;
-                        }
-                    };
-
-                    let keymask = // Prevent rustfmt from moving this line up.
-                        if button == self.controller_mapping.left {
-                            mgba::input::keys::LEFT
-                        } else if button == self.controller_mapping.right {
-                            mgba::input::keys::RIGHT
-                        } else if button == self.controller_mapping.up {
-                            mgba::input::keys::UP
-                        } else if button == self.controller_mapping.down {
-                            mgba::input::keys::DOWN
-                        } else if button == self.controller_mapping.a {
-                            mgba::input::keys::A
-                        } else if button == self.controller_mapping.b {
-                            mgba::input::keys::B
-                        } else if button == self.controller_mapping.l {
-                            mgba::input::keys::L
-                        } else if button == self.controller_mapping.r {
-                            mgba::input::keys::R
-                        } else if button == self.controller_mapping.start {
-                            mgba::input::keys::START
-                        } else if button == self.controller_mapping.select {
-                            mgba::input::keys::SELECT
-                        } else {
-                            return;
-                        };
-
-                    if pressed {
-                        self.joyflags
-                            .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
-                    } else {
-                        self.joyflags
-                            .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
-                    }
                 }
                 _ => {}
             }

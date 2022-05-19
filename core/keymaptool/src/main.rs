@@ -72,10 +72,6 @@ impl Gui {
     }
 }
 
-enum UserEvent {
-    Gilrs(gilrs::Event),
-}
-
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
@@ -89,7 +85,7 @@ fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
-    let event_loop = winit::event_loop::EventLoop::with_user_event();
+    let event_loop = winit::event_loop::EventLoop::new();
 
     let handle = event_loop.primary_monitor().unwrap();
     let monitor_size = handle.size();
@@ -138,15 +134,7 @@ fn main() -> anyhow::Result<()> {
     }
     gui_state.set_text(&text);
 
-    let el_proxy = event_loop.create_proxy();
-    let mut gilrs = gilrs::Gilrs::new().unwrap();
-    std::thread::spawn(move || {
-        while let Some(event) = gilrs.next_event() {
-            if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
-                break;
-            }
-        }
-    });
+    let mut _gilrs = gilrs::Gilrs::new().unwrap();
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -207,7 +195,6 @@ fn main() -> anyhow::Result<()> {
                     _ => {}
                 };
             }
-            winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
             _ => {}
         };
     });
