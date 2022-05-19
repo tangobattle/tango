@@ -185,6 +185,7 @@ fn main() -> anyhow::Result<()> {
                                 *control_flow = winit::event_loop::ControlFlow::Exit;
                                 return;
                             }
+                            gl_window.window().request_redraw();
                         } else {
                             buttons_pressed[button as usize] = false;
                         }
@@ -223,6 +224,7 @@ fn main() -> anyhow::Result<()> {
                                     *control_flow = winit::event_loop::ControlFlow::Exit;
                                     return;
                                 }
+                                gl_window.window().request_redraw();
                             }
                             winit::event::ElementState::Released => {
                                 keys_pressed[keycode as usize] = false;
