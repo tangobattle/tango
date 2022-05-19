@@ -595,11 +595,11 @@ function InputTab({ active }: { active: boolean }) {
           }}
         >
           <Tab
-            label={<Trans i18nKey="settings:tab.input.keyboard" />}
+            label={<Trans i18nKey="settings:tab.controls.keyboard" />}
             value="keyboard"
           />
           <Tab
-            label={<Trans i18nKey="settings:tab.input.controller" />}
+            label={<Trans i18nKey="settings:tab.controls.controller" />}
             value="controller"
           />
         </Tabs>
@@ -632,7 +632,10 @@ export default function SettingsPane({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:tab.general" />}
             value="general"
           />
-          <Tab label={<Trans i18nKey="settings:tab.input" />} value="input" />
+          <Tab
+            label={<Trans i18nKey="settings:tab.controls" />}
+            value="input"
+          />
           <Tab
             label={<Trans i18nKey="settings:tab.advanced" />}
             value="advanced"
