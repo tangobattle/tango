@@ -97,7 +97,12 @@ impl super::Backend for Backend {
                 })
                 .collect(),
             expires_at: std::time::Instant::now()
-                + std::time::Duration::from_secs(webrtc_resp.ttl as u64) / 2,
+                + std::cmp::max(
+                    // Use the TTL we get minus 10 minutes to account for any clock inaccuracy.
+                    std::time::Duration::from_secs(webrtc_resp.ttl as u64)
+                        - std::time::Duration::from_secs(10 * 60),
+                    std::time::Duration::from_secs(0),
+                ),
         })
     }
 }
