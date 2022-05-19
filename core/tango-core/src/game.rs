@@ -33,6 +33,8 @@ pub struct ControllerMapping {
     pub r: gilrs::Button,
     pub select: gilrs::Button,
     pub start: gilrs::Button,
+    #[serde(rename = "enableLeftStick")]
+    pub enable_left_stick: bool,
 }
 
 pub struct Game {
@@ -402,6 +404,54 @@ impl Game {
                         let (button, pressed) = match event {
                             gilrs::EventType::ButtonPressed(button, _) => (button, true),
                             gilrs::EventType::ButtonReleased(button, _) => (button, false),
+                            gilrs::EventType::AxisChanged(axis, v, _)
+                                if self.controller_mapping.enable_left_stick =>
+                            {
+                                const STICK_THRESHOLD: f32 = 0.5;
+                                match axis {
+                                    gilrs::Axis::LeftStickX => {
+                                        if v <= -STICK_THRESHOLD {
+                                            self.joyflags.fetch_or(
+                                                mgba::input::keys::LEFT,
+                                                std::sync::atomic::Ordering::Relaxed,
+                                            );
+                                        } else if v >= STICK_THRESHOLD {
+                                            self.joyflags.fetch_or(
+                                                mgba::input::keys::RIGHT,
+                                                std::sync::atomic::Ordering::Relaxed,
+                                            );
+                                        } else {
+                                            self.joyflags.fetch_and(
+                                                !(mgba::input::keys::LEFT
+                                                    | mgba::input::keys::RIGHT),
+                                                std::sync::atomic::Ordering::Relaxed,
+                                            );
+                                        }
+                                    }
+                                    gilrs::Axis::LeftStickY => {
+                                        if v <= -STICK_THRESHOLD {
+                                            self.joyflags.fetch_or(
+                                                mgba::input::keys::DOWN,
+                                                std::sync::atomic::Ordering::Relaxed,
+                                            );
+                                        } else if v >= STICK_THRESHOLD {
+                                            self.joyflags.fetch_or(
+                                                mgba::input::keys::UP,
+                                                std::sync::atomic::Ordering::Relaxed,
+                                            );
+                                        } else {
+                                            self.joyflags.fetch_and(
+                                                !(mgba::input::keys::UP | mgba::input::keys::DOWN),
+                                                std::sync::atomic::Ordering::Relaxed,
+                                            );
+                                        }
+                                    }
+                                    _ => {
+                                        continue;
+                                    }
+                                };
+                                continue;
+                            }
                             _ => {
                                 return;
                             }

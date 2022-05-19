@@ -15,6 +15,7 @@
     "input.r": "R",
     "input.select": "SELECT",
     "input.start": "START",
+    "input.enable-left-stick": "Enable left stick directional input",
     "remap": "Remap",
     "request-input": "Press input for {{key}}.",
     "tab.about": "About",

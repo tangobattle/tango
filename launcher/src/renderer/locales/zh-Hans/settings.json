@@ -15,6 +15,7 @@
     "input.r": "R",
     "input.select": "SELECT",
     "input.start": "START",
+    "input.enable-left-stick": "启用左摇杆方向性输入",
     "remap": "重新绑定",
     "request-input": "请按【{{key}}】按钮的输入。",
     "tab.about": "关于",

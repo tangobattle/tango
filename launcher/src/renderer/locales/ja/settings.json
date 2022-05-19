@@ -15,6 +15,7 @@
     "input.r": "R",
     "input.select": "SELECT",
     "input.start": "START",
+    "input.enable-left-stick": "左スティックの方向入力の有効",
     "remap": "リマップ",
     "request-input": "「{{key}}」の入力を押してください。",
     "tab.about": "Tangoについて",

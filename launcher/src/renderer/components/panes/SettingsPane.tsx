@@ -10,6 +10,7 @@ import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import Switch from "@mui/material/Switch";
 import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -505,6 +506,28 @@ function ControllerMappingTab({ active }: { active: boolean }) {
                   </TableCell>
                 </TableRow>
               ))}
+              <TableRow>
+                <TableCell component="th">
+                  <strong>
+                    <Trans i18nKey={`settings:input.enable-left-stick`} />
+                  </strong>
+                </TableCell>
+                <TableCell sx={{ textAlign: "right" }}>
+                  <Switch
+                    size="small"
+                    checked={config.controllerMapping.enableLeftStick}
+                    onChange={(_e, v) => {
+                      saveConfig((config) => ({
+                        ...config,
+                        controllerMapping: {
+                          ...config.controllerMapping,
+                          enableLeftStick: v,
+                        },
+                      }));
+                    }}
+                  />
+                </TableCell>
+              </TableRow>
             </TableBody>
           </Table>
           <Button

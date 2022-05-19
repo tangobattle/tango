@@ -25,6 +25,7 @@ export interface ControllerMapping {
   r: string;
   select: string;
   start: string;
+  enableLeftStick: boolean;
 }
 
 export interface Config {
@@ -68,6 +69,7 @@ export const DEFAULT: Config = {
     r: "RightTrigger",
     select: "Select",
     start: "Start",
+    enableLeftStick: true,
   },
   matchmakingServerAddr: "https://lets.tangobattle.com",
   iceServers: [
