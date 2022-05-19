@@ -14,6 +14,19 @@ export interface Keymapping {
   start: string;
 }
 
+export interface ControllerMapping {
+  up: string;
+  down: string;
+  left: string;
+  right: string;
+  a: string;
+  b: string;
+  l: string;
+  r: string;
+  select: string;
+  start: string;
+}
+
 export interface Config {
   nickname: string | null;
   theme: "dark" | "light";
@@ -21,6 +34,7 @@ export interface Config {
   updateChannel: string;
   rustLogFilter: string;
   keymapping: Keymapping;
+  controllerMapping: ControllerMapping;
   matchmakingServerAddr: string;
   iceServers: string[];
 }
@@ -42,6 +56,18 @@ export const DEFAULT: Config = {
     r: "S",
     select: "Back",
     start: "Return",
+  },
+  controllerMapping: {
+    up: "DPadUp",
+    down: "DPadDown",
+    left: "DPadLeft",
+    right: "DPadRight",
+    a: "East",
+    b: "South",
+    l: "LeftTrigger",
+    r: "RightTrigger",
+    select: "Select",
+    start: "Start",
   },
   matchmakingServerAddr: "https://lets.tangobattle.com",
   iceServers: [

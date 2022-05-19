@@ -1293,6 +1293,7 @@ dependencies = [
  "fnv",
  "gilrs-core",
  "log",
+ "serde",
  "uuid",
  "vec_map",
 ]
@@ -1310,6 +1311,7 @@ dependencies = [
  "log",
  "nix 0.23.1",
  "rusty-xinput",
+ "serde",
  "stdweb 0.4.20",
  "uuid",
  "vec_map",

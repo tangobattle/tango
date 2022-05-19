@@ -8,6 +8,9 @@ struct Cli {
     keymapping: String,
 
     #[clap(long)]
+    controller_mapping: String,
+
+    #[clap(long)]
     signaling_connect_addr: String,
 
     #[clap(long)]
@@ -28,6 +31,7 @@ fn main() -> Result<(), anyhow::Error> {
     let args = Cli::parse();
 
     let keymapping = serde_json::from_str(&args.keymapping)?;
+    let controller_mapping = serde_json::from_str(&args.controller_mapping)?;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -158,6 +162,7 @@ fn main() -> Result<(), anyhow::Error> {
         ipc_sender,
         window_title,
         keymapping,
+        controller_mapping,
         rom_path.into(),
         save_path.into(),
         match pvp_init {

@@ -21,6 +21,20 @@ pub struct Keymapping {
     pub start: winit::event::VirtualKeyCode,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct ControllerMapping {
+    pub up: gilrs::Button,
+    pub down: gilrs::Button,
+    pub left: gilrs::Button,
+    pub right: gilrs::Button,
+    pub a: gilrs::Button,
+    pub b: gilrs::Button,
+    pub l: gilrs::Button,
+    pub r: gilrs::Button,
+    pub select: gilrs::Button,
+    pub start: gilrs::Button,
+}
+
 pub struct Game {
     rt: tokio::runtime::Runtime,
     gui: gui::Gui,
@@ -36,6 +50,7 @@ pub struct Game {
     _stream: cpal::Stream,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     keymapping: Keymapping,
+    controller_mapping: ControllerMapping,
     _thread: mgba::thread::Thread,
 }
 
@@ -49,6 +64,7 @@ impl Game {
         ipc_sender: ipc::Sender,
         window_title: String,
         keymapping: Keymapping,
+        controller_mapping: ControllerMapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
         match_init: Option<battle::MatchInit>,
@@ -268,6 +284,7 @@ impl Game {
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
             keymapping,
+            controller_mapping,
             fps_counter,
             event_loop,
             gl,
@@ -325,52 +342,50 @@ impl Game {
                     ..
                 } => {
                     match window_event {
-                        winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                            let mut keymask = 0u32;
-                            if input.virtual_keycode == Some(self.keymapping.left) {
-                                keymask |= mgba::input::keys::LEFT;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.right) {
-                                keymask |= mgba::input::keys::RIGHT;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.up) {
-                                keymask |= mgba::input::keys::UP;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.down) {
-                                keymask |= mgba::input::keys::DOWN;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.a) {
-                                keymask |= mgba::input::keys::A;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.b) {
-                                keymask |= mgba::input::keys::B;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.l) {
-                                keymask |= mgba::input::keys::L;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.r) {
-                                keymask |= mgba::input::keys::R;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.start) {
-                                keymask |= mgba::input::keys::START;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.select) {
-                                keymask |= mgba::input::keys::SELECT;
+                        &winit::event::WindowEvent::KeyboardInput {
+                            input:
+                                winit::event::KeyboardInput {
+                                    virtual_keycode: Some(virtual_keycode),
+                                    state,
+                                    ..
+                                },
+                            ..
+                        } => {
+                            let keymask = // Prevent rustfmt from moving this line up.
+                                if virtual_keycode == self.keymapping.left {
+                                    mgba::input::keys::LEFT
+                                } else if virtual_keycode == self.keymapping.right {
+                                    mgba::input::keys::RIGHT
+                                } else if virtual_keycode == self.keymapping.up {
+                                    mgba::input::keys::UP
+                                } else if virtual_keycode == self.keymapping.down {
+                                    mgba::input::keys::DOWN
+                                } else if virtual_keycode == self.keymapping.a {
+                                    mgba::input::keys::A
+                                } else if virtual_keycode == self.keymapping.b {
+                                    mgba::input::keys::B
+                                } else if virtual_keycode == self.keymapping.l {
+                                    mgba::input::keys::L
+                                } else if virtual_keycode == self.keymapping.r {
+                                    mgba::input::keys::R
+                                } else if virtual_keycode == self.keymapping.start {
+                                    mgba::input::keys::START
+                                } else if virtual_keycode == self.keymapping.select {
+                                    mgba::input::keys::SELECT
+                                } else {
+                                    return;
+                                };
+
+                            if state == winit::event::ElementState::Pressed {
+                                self.joyflags
+                                    .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
+                            } else {
+                                self.joyflags
+                                    .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
                             }
 
-                            match input.state {
-                                winit::event::ElementState::Pressed => {
-                                    self.joyflags
-                                        .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
-                                }
-                                winit::event::ElementState::Released => {
-                                    self.joyflags
-                                        .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
-                                }
-                            }
-
-                            if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Grave) {
-                                match input.state {
+                            if virtual_keycode == winit::event::VirtualKeyCode::Grave {
+                                match state {
                                     winit::event::ElementState::Pressed => {
                                         if console_key_pressed {
                                             return;
@@ -413,7 +428,48 @@ impl Game {
                     self.gl_window.swap_buffers().unwrap();
                     self.fps_counter.lock().mark();
                 }
-                winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
+                winit::event::Event::UserEvent(UserEvent::Gilrs(gilrs_ev)) => {
+                    let (button, pressed) = match gilrs_ev.event {
+                        gilrs::EventType::ButtonPressed(button, _) => (button, true),
+                        gilrs::EventType::ButtonReleased(button, _) => (button, false),
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    let keymask = // Prevent rustfmt from moving this line up.
+                        if button == self.controller_mapping.left {
+                            mgba::input::keys::LEFT
+                        } else if button == self.controller_mapping.right {
+                            mgba::input::keys::RIGHT
+                        } else if button == self.controller_mapping.up {
+                            mgba::input::keys::UP
+                        } else if button == self.controller_mapping.down {
+                            mgba::input::keys::DOWN
+                        } else if button == self.controller_mapping.a {
+                            mgba::input::keys::A
+                        } else if button == self.controller_mapping.b {
+                            mgba::input::keys::B
+                        } else if button == self.controller_mapping.l {
+                            mgba::input::keys::L
+                        } else if button == self.controller_mapping.r {
+                            mgba::input::keys::R
+                        } else if button == self.controller_mapping.start {
+                            mgba::input::keys::START
+                        } else if button == self.controller_mapping.select {
+                            mgba::input::keys::SELECT
+                        } else {
+                            return;
+                        };
+
+                    if pressed {
+                        self.joyflags
+                            .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
+                    } else {
+                        self.joyflags
+                            .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
+                    }
+                }
                 _ => {}
             }
         });

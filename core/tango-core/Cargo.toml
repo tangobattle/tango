@@ -38,7 +38,7 @@ serde_plain = "1.0"
 egui = "0.17"
 egui-winit = { version = "0.17", default-features = false }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
-gilrs = "0.8"
+gilrs = { version = "0.8", features = ["serde-serialize"] }
 tokio-tungstenite = { version = "0.17.1", features = ["native-tls"] }
 prost = "0.10"
 bytes = "1.1.0"
