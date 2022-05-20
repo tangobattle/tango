@@ -195,6 +195,7 @@ impl Game {
                 |_| audio_mux.clone(),
             )
             .unwrap();
+        log::info!("audio spec: {:?}", audio_device.spec());
         audio_device.resume();
 
         if let Some(match_init) = match_init {
@@ -270,7 +271,12 @@ impl Game {
             });
         }
 
-        let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+        let mut canvas = window
+            .into_canvas()
+            .accelerated()
+            .present_vsync()
+            .build()
+            .unwrap();
         canvas
             .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
             .unwrap();
@@ -323,14 +329,13 @@ impl Game {
             .unwrap();
 
         let texture_creator = self.canvas.texture_creator();
-        let mut texture = sdl2::surface::Surface::new(
-            mgba::gba::SCREEN_WIDTH,
-            mgba::gba::SCREEN_HEIGHT,
-            sdl2::pixels::PixelFormatEnum::ABGR8888,
-        )
-        .unwrap()
-        .as_texture(&texture_creator)
-        .unwrap();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl2::pixels::PixelFormatEnum::ABGR8888,
+                mgba::gba::SCREEN_WIDTH,
+                mgba::gba::SCREEN_HEIGHT,
+            )
+            .unwrap();
 
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
@@ -461,14 +466,14 @@ impl Game {
                 }
             }
 
-            self.canvas.clear();
             texture
                 .update(
-                    sdl2::rect::Rect::new(0, 0, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
+                    None,
                     &*self.vbuf.lock(),
                     mgba::gba::SCREEN_WIDTH as usize * 4,
                 )
                 .unwrap();
+
             self.canvas.copy(&texture, None, None).unwrap();
 
             if show_debug {

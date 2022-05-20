@@ -133,22 +133,25 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut event_loop = sdl.event_pump().unwrap();
     {
-        let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+        let mut canvas = window
+            .into_canvas()
+            .present_vsync()
+            .present_vsync()
+            .build()
+            .unwrap();
         canvas
             .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
             .unwrap();
         canvas.set_integer_scale(true).unwrap();
 
         let texture_creator = canvas.texture_creator();
-
-        let mut texture = sdl2::surface::Surface::new(
+        let mut texture = texture_creator
+        .create_texture_streaming(
+            sdl2::pixels::PixelFormatEnum::ABGR8888,
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
-            sdl2::pixels::PixelFormatEnum::ABGR8888,
         )
         .unwrap()
-        .as_texture(&texture_creator)
-        .unwrap();
 
         let vbuf = vbuf.clone();
         'toplevel: loop {
@@ -162,13 +165,8 @@ fn main() -> Result<(), anyhow::Error> {
                 break 'toplevel;
             }
 
-            canvas.clear();
             texture
-                .update(
-                    sdl2::rect::Rect::new(0, 0, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
-                    &*vbuf.lock(),
-                    mgba::gba::SCREEN_WIDTH as usize * 4,
-                )
+                .update(None, &*vbuf.lock(), mgba::gba::SCREEN_WIDTH as usize * 4)
                 .unwrap();
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
