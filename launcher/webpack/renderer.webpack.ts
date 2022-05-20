@@ -16,7 +16,6 @@ const config: Configuration = {
   },
   entry: path.resolve(rootPath, "src/renderer", "index.tsx"),
   target: "electron-renderer",
-  externals: ["fsevents"],
   devtool: "source-map",
   module: {
     rules: [

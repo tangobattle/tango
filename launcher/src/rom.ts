@@ -1,5 +1,7 @@
 import * as crc32 from "crc-32";
-import { readFile } from "fs/promises";
+import { readdir, readFile } from "fs/promises";
+import mkdirp from "mkdirp";
+import path from "path";
 
 import _roms from "./roms.json";
 
@@ -23,16 +25,48 @@ export interface KnownROM {
   netplayCompatibility: string;
 }
 
-export async function getROMName(path: string): Promise<string | null> {
-  const romInfo = getROMInfo((await readFile(path)).buffer);
-  const knownROM = KNOWN_ROMS[romInfo.name];
-  if (knownROM == null) {
-    return null;
+export async function scan(dir: string) {
+  const games = {} as { [name: string]: string };
+
+  let romNames: string[];
+  try {
+    romNames = await readdir(dir);
+  } catch (e) {
+    if ((e as any).code == "ENOENT") {
+      await mkdirp(dir);
+      romNames = [];
+    } else {
+      throw e;
+    }
   }
-  if (romInfo.crc32 != knownROM.crc32) {
-    throw `mismatched crc32: expected ${knownROM.crc32
-      .toString(16)
-      .padStart(8, "0")}, got ${romInfo.crc32.toString(16).padStart(8, "0")}`;
+
+  for (const result of await Promise.allSettled(
+    romNames.map(async (romName) => {
+      try {
+        const romInfo = getROMInfo(
+          (await readFile(path.join(dir, romName))).buffer
+        );
+        const knownROM = KNOWN_ROMS[romInfo.name];
+        if (knownROM == null) {
+          throw `unknown rom name: ${romInfo.name}`;
+        }
+        if (romInfo.crc32 != knownROM.crc32) {
+          throw `mismatched crc32: expected ${knownROM.crc32
+            .toString(16)
+            .padStart(8, "0")}, got ${romInfo.crc32
+            .toString(16)
+            .padStart(8, "0")}`;
+        }
+
+        games[romInfo.name] = romName;
+      } catch (e) {
+        throw `failed to scan rom ${romName}: ${e}`;
+      }
+    })
+  )) {
+    if (result.status == "rejected") {
+      console.warn("rom skipped:", result.reason);
+    }
   }
-  return romInfo.name;
+  return games;
 }

@@ -7,7 +7,7 @@ import { useROMs } from "./components/ROMsContext";
 
 export function useGetROMPath() {
   const { roms } = useROMs();
-  return (romName: string) => path.join(getROMsPath(app), roms[romName][0]);
+  return (romName: string) => path.join(getROMsPath(app), roms[romName]);
 }
 
 export function useGetPatchPath() {

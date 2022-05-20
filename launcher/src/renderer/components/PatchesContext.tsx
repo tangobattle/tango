@@ -1,111 +1,62 @@
-import { Mutex } from "async-mutex";
-import { watch } from "chokidar";
-import mkdirp from "mkdirp";
-import path from "path";
 import React, { useContext } from "react";
 
 import { app } from "@electron/remote";
 
-import { getPatchInfo, PatchInfos } from "../../patch";
+import { PatchInfos, scan } from "../../patch";
 import { getPatchesPath } from "../../paths";
 
 export interface PatchesValue {
+  rescan(): Promise<void>;
   patches: PatchInfos;
 }
 
 const Context = React.createContext(null! as PatchesValue);
+
+function makeScanPatches() {
+  let status: "pending" | "error" | "ok" = "pending";
+  let result: PatchesValue["patches"];
+  let err: any;
+  const promise = (async () => {
+    try {
+      result = await scan(getPatchesPath(app));
+    } catch (e) {
+      console.error(e);
+      err = e;
+      status = "error";
+    }
+    status = "ok";
+  })();
+  return () => {
+    switch (status) {
+      case "pending":
+        throw promise;
+      case "error":
+        throw err;
+      case "ok":
+        return result;
+    }
+  };
+}
+
+const scanPatches = makeScanPatches();
 
 export const PatchesProvider = ({
   children,
 }: {
   children?: React.ReactNode;
 } = {}) => {
-  const [currentPatches, setCurrentPatches] = React.useState<PatchInfos>({});
-  const dir = getPatchesPath(app);
-
-  React.useEffect(() => {
-    const stateMu = new Mutex();
-
-    const remove = async (fn: string) => {
-      setCurrentPatches((currentPatches) => {
-        currentPatches = { ...currentPatches };
-        delete currentPatches[fn];
-        return currentPatches;
-      });
-    };
-
-    const upsert = async (fn: string) => {
-      try {
-        const patchInfo = await getPatchInfo(path.join(dir, fn));
-        if (patchInfo == null) {
-          return;
-        }
-        setCurrentPatches((currentPatches) => ({
-          ...currentPatches,
-          [fn]: patchInfo,
-        }));
-      } catch (e) {
-        console.error(`failed to scan ${fn}`, e);
-        await remove(fn);
-      }
-    };
-
-    const watcher = watch(dir);
-    watcher.on("add", (p) => {
-      const fn = path.relative(dir, p).split(path.sep)[0];
-      (async () => {
-        const release = await stateMu.acquire();
-        try {
-          await upsert(fn);
-        } finally {
-          release();
-        }
-      })();
-    });
-    watcher.on("change", (p) => {
-      const fn = path.relative(dir, p).split(path.sep)[0];
-      (async () => {
-        const release = await stateMu.acquire();
-        try {
-          await upsert(fn);
-        } finally {
-          release();
-        }
-      })();
-    });
-    watcher.on("unlink", (p) => {
-      const fn = path.relative(dir, p).split(path.sep)[0];
-      (async () => {
-        const release = await stateMu.acquire();
-        try {
-          await upsert(fn);
-        } finally {
-          release();
-        }
-      })();
-    });
-    watcher.on("unlinkDir", (p) => {
-      const fn = path.relative(dir, p).split(path.sep)[0];
-      (async () => {
-        const release = await stateMu.acquire();
-        try {
-          await remove(fn);
-        } finally {
-          release();
-        }
-      })();
-    });
-    (async () => {
-      await mkdirp(dir);
-    })();
-    return () => {
-      watcher.close();
-    };
-  }, []);
+  const [currentPatches, setCurrentPatches] = React.useState(scanPatches());
 
   return (
     <Context.Provider
       value={{
+        async rescan() {
+          try {
+            setCurrentPatches(await scan(getPatchesPath(app)));
+          } catch (e) {
+            console.error(e);
+          }
+        },
         patches: currentPatches,
       }}
     >
