@@ -1,28 +1,38 @@
-use egui::Context;
-
 pub struct Gui {
-    egui_glow: egui_glow::EguiGlow,
+    painter: egui_sdl2_gl::painter::Painter,
+    egui_state: egui_sdl2_gl::EguiStateHandler,
+    egui_ctx: egui::CtxRef,
     state: std::sync::Arc<State>,
 }
 
 impl Gui {
-    pub fn new(window: &winit::window::Window, gl: &glow::Context) -> Self {
-        let egui_glow = egui_glow::EguiGlow::new(window, gl);
+    pub fn new(window: &sdl2::video::Window) -> Self {
+        let (painter, egui_state) = egui_sdl2_gl::with_sdl2(
+            window,
+            egui_sdl2_gl::ShaderVersion::Adaptive,
+            egui_sdl2_gl::DpiScaling::Default,
+        );
         Self {
-            egui_glow,
+            painter,
+            egui_state,
+            egui_ctx: egui::CtxRef::default(),
             state: std::sync::Arc::new(State::new()),
         }
     }
 
-    pub fn handle_event(&mut self, event: &glutin::event::WindowEvent) -> bool {
-        self.egui_glow.on_event(event)
+    pub fn handle_event(&mut self, window: &sdl2::video::Window, event: sdl2::event::Event) {
+        self.egui_state
+            .process_input(window, event, &mut self.painter);
     }
 
-    pub fn render(&mut self, window: &winit::window::Window, gl: &glow::Context) {
-        self.egui_glow.run(window, |ctx| {
-            self.state.layout(ctx);
-        });
-        self.egui_glow.paint(window, gl);
+    pub fn render(&mut self, window: &sdl2::video::Window) {
+        self.egui_ctx.begin_frame(self.egui_state.input.take());
+        self.state.layout(&mut self.egui_ctx);
+        let (egui_output, paint_cmds) = self.egui_ctx.end_frame();
+        self.egui_state.process_output(window, &egui_output);
+        let paint_jobs = self.egui_ctx.tessellate(paint_cmds);
+        self.painter
+            .paint_jobs(None, paint_jobs, &self.egui_ctx.font_image());
     }
 
     pub fn state(&self) -> std::sync::Arc<State> {
@@ -71,7 +81,7 @@ impl State {
             .fetch_xor(true, std::sync::atomic::Ordering::Relaxed);
     }
 
-    fn layout(&self, ctx: &Context) {
+    fn layout(&self, ctx: &egui::CtxRef) {
         ctx.set_visuals(egui::Visuals::light());
         let mut show_debug = self.show_debug.load(std::sync::atomic::Ordering::Relaxed);
         egui::Window::new("Debug")

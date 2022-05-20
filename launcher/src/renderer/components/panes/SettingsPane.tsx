@@ -36,7 +36,7 @@ const KEYS = [
   "r",
   "select",
   "start",
-] as (keyof Config["keymapping"])[];
+] as (keyof Config["controls"]["keyboard"])[];
 
 function AboutTab({ active }: { active: boolean }) {
   return (
@@ -422,7 +422,7 @@ function InputKeyboardTab({ active }: { active: boolean }) {
                     </strong>
                   </TableCell>
                   <TableCell sx={{ textAlign: "right" }}>
-                    {config.keymapping[key]}
+                    {config.controls.keyboard[key]}
                   </TableCell>
                 </TableRow>
               ))}
@@ -453,9 +453,16 @@ function InputKeyboardTab({ active }: { active: boolean }) {
                   if (mapped == null) {
                     break;
                   }
+
                   saveConfig((config) => ({
                     ...config,
-                    keymapping: { ...config.keymapping, [key]: mapped },
+                    controls: {
+                      ...config.controls,
+                      keyboard: {
+                        ...config.controls.keyboard,
+                        [key]: mapped,
+                      },
+                    },
                   }));
                 }
                 keymaptoolRef.current.close();
@@ -502,7 +509,7 @@ function InputControllerTab({ active }: { active: boolean }) {
                     </strong>
                   </TableCell>
                   <TableCell sx={{ textAlign: "right" }}>
-                    {config.controllerMapping[key]}
+                    {config.controls.controller[key]}
                   </TableCell>
                 </TableRow>
               ))}
@@ -515,13 +522,16 @@ function InputControllerTab({ active }: { active: boolean }) {
                 <TableCell sx={{ textAlign: "right" }}>
                   <Switch
                     size="small"
-                    checked={config.controllerMapping.enableLeftStick}
+                    checked={config.controls.controller.enableLeftStick}
                     onChange={(_e, v) => {
                       saveConfig((config) => ({
                         ...config,
-                        controllerMapping: {
-                          ...config.controllerMapping,
-                          enableLeftStick: v,
+                        controls: {
+                          ...config.controls,
+                          controller: {
+                            ...config.controls.controller,
+                            enableLeftStick: v,
+                          },
                         },
                       }));
                     }}
@@ -557,9 +567,12 @@ function InputControllerTab({ active }: { active: boolean }) {
                   }
                   saveConfig((config) => ({
                     ...config,
-                    controllerMapping: {
-                      ...config.controllerMapping,
-                      [key]: mapped,
+                    controls: {
+                      ...config.controls,
+                      controller: {
+                        ...config.controls.controller,
+                        [key]: mapped,
+                      },
                     },
                   }));
                 }

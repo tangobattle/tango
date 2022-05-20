@@ -2,6 +2,71 @@
 
 use clap::StructOpt;
 
+#[derive(Clone, serde::Deserialize)]
+pub struct Keymapping {
+    pub up: String,
+    pub down: String,
+    pub left: String,
+    pub right: String,
+    pub a: String,
+    pub b: String,
+    pub l: String,
+    pub r: String,
+    pub select: String,
+    pub start: String,
+}
+
+impl Into<tango_core::game::Keymapping> for Keymapping {
+    fn into(self) -> tango_core::game::Keymapping {
+        tango_core::game::Keymapping {
+            up: sdl2::keyboard::Scancode::from_name(&self.up),
+            down: sdl2::keyboard::Scancode::from_name(&self.down),
+            left: sdl2::keyboard::Scancode::from_name(&self.left),
+            right: sdl2::keyboard::Scancode::from_name(&self.right),
+            a: sdl2::keyboard::Scancode::from_name(&self.a),
+            b: sdl2::keyboard::Scancode::from_name(&self.b),
+            l: sdl2::keyboard::Scancode::from_name(&self.l),
+            r: sdl2::keyboard::Scancode::from_name(&self.r),
+            select: sdl2::keyboard::Scancode::from_name(&self.select),
+            start: sdl2::keyboard::Scancode::from_name(&self.start),
+        }
+    }
+}
+
+#[derive(Clone, serde::Deserialize)]
+pub struct ControllerMapping {
+    pub up: String,
+    pub down: String,
+    pub left: String,
+    pub right: String,
+    pub a: String,
+    pub b: String,
+    pub l: String,
+    pub r: String,
+    pub select: String,
+    pub start: String,
+    #[serde(rename = "enableLeftStick")]
+    pub enable_left_stick: bool,
+}
+
+impl Into<tango_core::game::ControllerMapping> for ControllerMapping {
+    fn into(self) -> tango_core::game::ControllerMapping {
+        tango_core::game::ControllerMapping {
+            up: sdl2::controller::Button::from_string(&self.up),
+            down: sdl2::controller::Button::from_string(&self.down),
+            left: sdl2::controller::Button::from_string(&self.left),
+            right: sdl2::controller::Button::from_string(&self.right),
+            a: sdl2::controller::Button::from_string(&self.a),
+            b: sdl2::controller::Button::from_string(&self.b),
+            l: sdl2::controller::Button::from_string(&self.l),
+            r: sdl2::controller::Button::from_string(&self.r),
+            select: sdl2::controller::Button::from_string(&self.select),
+            start: sdl2::controller::Button::from_string(&self.start),
+            enable_left_stick: self.enable_left_stick,
+        }
+    }
+}
+
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
@@ -30,8 +95,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let keymapping = serde_json::from_str(&args.keymapping)?;
-    let controller_mapping = serde_json::from_str(&args.controller_mapping)?;
+    let keymapping = serde_json::from_str::<Keymapping>(&args.keymapping)?;
+    let controller_mapping = serde_json::from_str::<ControllerMapping>(&args.controller_mapping)?;
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -161,8 +226,8 @@ fn main() -> Result<(), anyhow::Error> {
         rt,
         ipc_sender,
         window_title,
-        keymapping,
-        controller_mapping,
+        keymapping.into(),
+        controller_mapping.into(),
         rom_path.into(),
         save_path.into(),
         match pvp_init {

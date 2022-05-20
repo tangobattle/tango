@@ -34,8 +34,10 @@ export interface Config {
   language: string | null;
   updateChannel: string;
   rustLogFilter: string;
-  keymapping: Keymapping;
-  controllerMapping: ControllerMapping;
+  controls: {
+    keyboard: Keymapping;
+    controller: ControllerMapping;
+  };
   matchmakingServerAddr: string;
   iceServers: string[];
 }
@@ -46,30 +48,32 @@ export const DEFAULT: Config = {
   language: null,
   updateChannel: "latest",
   rustLogFilter: "",
-  keymapping: {
-    up: "Up",
-    down: "Down",
-    left: "Left",
-    right: "Right",
-    a: "Z",
-    b: "X",
-    l: "A",
-    r: "S",
-    select: "Back",
-    start: "Return",
-  },
-  controllerMapping: {
-    up: "DPadUp",
-    down: "DPadDown",
-    left: "DPadLeft",
-    right: "DPadRight",
-    a: "South",
-    b: "East",
-    l: "LeftTrigger",
-    r: "RightTrigger",
-    select: "Select",
-    start: "Start",
-    enableLeftStick: true,
+  controls: {
+    keyboard: {
+      up: "Up",
+      down: "Down",
+      left: "Left",
+      right: "Right",
+      a: "Z",
+      b: "X",
+      l: "A",
+      r: "S",
+      select: "Backspace",
+      start: "Return",
+    },
+    controller: {
+      up: "dpup",
+      down: "dpdown",
+      left: "dpleft",
+      right: "dpright",
+      a: "a",
+      b: "b",
+      l: "leftshoulder",
+      r: "rightshoulder",
+      select: "back",
+      start: "start",
+      enableLeftStick: true,
+    },
   },
   matchmakingServerAddr: "https://lets.tangobattle.com",
   iceServers: [

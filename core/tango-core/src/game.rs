@@ -7,34 +7,89 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone)]
 pub struct Keymapping {
-    pub up: winit::event::VirtualKeyCode,
-    pub down: winit::event::VirtualKeyCode,
-    pub left: winit::event::VirtualKeyCode,
-    pub right: winit::event::VirtualKeyCode,
-    pub a: winit::event::VirtualKeyCode,
-    pub b: winit::event::VirtualKeyCode,
-    pub l: winit::event::VirtualKeyCode,
-    pub r: winit::event::VirtualKeyCode,
-    pub select: winit::event::VirtualKeyCode,
-    pub start: winit::event::VirtualKeyCode,
+    pub up: Option<sdl2::keyboard::Scancode>,
+    pub down: Option<sdl2::keyboard::Scancode>,
+    pub left: Option<sdl2::keyboard::Scancode>,
+    pub right: Option<sdl2::keyboard::Scancode>,
+    pub a: Option<sdl2::keyboard::Scancode>,
+    pub b: Option<sdl2::keyboard::Scancode>,
+    pub l: Option<sdl2::keyboard::Scancode>,
+    pub r: Option<sdl2::keyboard::Scancode>,
+    pub select: Option<sdl2::keyboard::Scancode>,
+    pub start: Option<sdl2::keyboard::Scancode>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+impl Keymapping {
+    fn to_mgba_keys(&self, scancode: sdl2::keyboard::Scancode) -> u32 {
+        if Some(scancode) == self.left {
+            mgba::input::keys::LEFT
+        } else if Some(scancode) == self.right {
+            mgba::input::keys::RIGHT
+        } else if Some(scancode) == self.up {
+            mgba::input::keys::UP
+        } else if Some(scancode) == self.down {
+            mgba::input::keys::DOWN
+        } else if Some(scancode) == self.a {
+            mgba::input::keys::A
+        } else if Some(scancode) == self.b {
+            mgba::input::keys::B
+        } else if Some(scancode) == self.l {
+            mgba::input::keys::L
+        } else if Some(scancode) == self.r {
+            mgba::input::keys::R
+        } else if Some(scancode) == self.start {
+            mgba::input::keys::START
+        } else if Some(scancode) == self.select {
+            mgba::input::keys::SELECT
+        } else {
+            0
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct ControllerMapping {
-    pub up: gilrs::Button,
-    pub down: gilrs::Button,
-    pub left: gilrs::Button,
-    pub right: gilrs::Button,
-    pub a: gilrs::Button,
-    pub b: gilrs::Button,
-    pub l: gilrs::Button,
-    pub r: gilrs::Button,
-    pub select: gilrs::Button,
-    pub start: gilrs::Button,
-    #[serde(rename = "enableLeftStick")]
+    pub up: Option<sdl2::controller::Button>,
+    pub down: Option<sdl2::controller::Button>,
+    pub left: Option<sdl2::controller::Button>,
+    pub right: Option<sdl2::controller::Button>,
+    pub a: Option<sdl2::controller::Button>,
+    pub b: Option<sdl2::controller::Button>,
+    pub l: Option<sdl2::controller::Button>,
+    pub r: Option<sdl2::controller::Button>,
+    pub select: Option<sdl2::controller::Button>,
+    pub start: Option<sdl2::controller::Button>,
     pub enable_left_stick: bool,
+}
+
+impl ControllerMapping {
+    fn to_mgba_keys(&self, button: sdl2::controller::Button) -> u32 {
+        if Some(button) == self.left {
+            mgba::input::keys::LEFT
+        } else if Some(button) == self.right {
+            mgba::input::keys::RIGHT
+        } else if Some(button) == self.up {
+            mgba::input::keys::UP
+        } else if Some(button) == self.down {
+            mgba::input::keys::DOWN
+        } else if Some(button) == self.a {
+            mgba::input::keys::A
+        } else if Some(button) == self.b {
+            mgba::input::keys::B
+        } else if Some(button) == self.l {
+            mgba::input::keys::L
+        } else if Some(button) == self.r {
+            mgba::input::keys::R
+        } else if Some(button) == self.start {
+            mgba::input::keys::START
+        } else if Some(button) == self.select {
+            mgba::input::keys::SELECT
+        } else {
+            0
+        }
+    }
 }
 
 pub struct Game {
@@ -42,11 +97,15 @@ pub struct Game {
     gui: gui::Gui,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
-    event_loop: glutin::event_loop::EventLoop<()>,
+    event_loop: sdl2::EventPump,
     _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
+    _sdl: sdl2::Sdl,
+    _video: sdl2::VideoSubsystem,
+    game_controller: sdl2::GameControllerSubsystem,
     gl: std::rc::Rc<glow::Context>,
-    gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>,
+    _gl_context: sdl2::video::GLContext,
+    window: sdl2::video::Window,
     vbuf: Arc<Mutex<Vec<u8>>>,
     fb: glowfb::Framebuffer,
     _stream: cpal::Stream,
@@ -77,47 +136,46 @@ impl Game {
 
         let handle = rt.handle().clone();
 
-        let event_loop = glutin::event_loop::EventLoop::new();
-
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
                 as usize
         ]));
 
-        let wb = {
-            let size = winit::dpi::LogicalSize::new(
+        let sdl = sdl2::init().unwrap();
+        let video = sdl.video().unwrap();
+        let game_controller = sdl.game_controller().unwrap();
+
+        let event_loop = sdl.event_pump().unwrap();
+
+        let window = video
+            .window(
+                &window_title,
                 mgba::gba::SCREEN_WIDTH * 3,
                 mgba::gba::SCREEN_HEIGHT * 3,
-            );
-            glutin::window::WindowBuilder::new()
-                .with_title(window_title.clone())
-                .with_inner_size(size)
-                .with_min_inner_size(size)
-        };
+            )
+            .opengl()
+            .resizable()
+            .build()
+            .unwrap();
 
-        let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
-        let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
-
-        let gl_window = unsafe {
-            glutin::ContextBuilder::new()
-                .with_vsync(true)
-                .build_windowed(wb, &event_loop)
-                .unwrap()
-                .make_current()
-                .unwrap()
-        };
-
+        let gl_context = window.gl_create_context().unwrap();
+        video
+            .gl_set_swap_interval(sdl2::video::SwapInterval::VSync)
+            .unwrap();
         let gl = std::rc::Rc::new(unsafe {
-            glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
+            glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
         });
         log::info!("GL version: {}", unsafe {
             gl.get_parameter_string(glow::VERSION)
         });
 
+        let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
+        let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
+
         let fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
 
-        let gui = gui::Gui::new(&gl_window.window(), &gl);
+        let gui = gui::Gui::new(&window);
 
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -285,8 +343,12 @@ impl Game {
             controller_mapping,
             fps_counter,
             event_loop,
+            _sdl: sdl,
+            _video: video,
+            game_controller,
             gl,
-            gl_window,
+            _gl_context: gl_context,
+            window,
             vbuf,
             fb,
             _stream: stream,
@@ -311,202 +373,122 @@ impl Game {
             anyhow::Result::<()>::Ok(())
         })?;
 
-        let mut gilrs = gilrs::Gilrs::new().unwrap();
-        for (_id, gamepad) in gilrs.gamepads() {
-            log::info!(
-                "found gamepad: {} is {:?}",
-                gamepad.name(),
-                gamepad.power_info()
-            );
-        }
-
         let mut console_key_pressed = false;
 
-        self.event_loop.run(move |event, _, control_flow| {
-            *control_flow = winit::event_loop::ControlFlow::Poll;
+        'toplevel: loop {
+            for event in self.event_loop.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. } => break 'toplevel,
+                    sdl2::event::Event::KeyDown {
+                        scancode: Some(scancode),
+                        ..
+                    } => {
+                        self.joyflags.fetch_or(
+                            self.keymapping.to_mgba_keys(scancode),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
 
-            match event {
-                winit::event::Event::WindowEvent {
-                    event: ref window_event,
-                    ..
-                } => {
-                    match window_event {
-                        &winit::event::WindowEvent::KeyboardInput {
-                            input:
-                                winit::event::KeyboardInput {
-                                    virtual_keycode: Some(virtual_keycode),
-                                    state,
-                                    ..
-                                },
-                            ..
-                        } => {
-                            let keymask = // Prevent rustfmt from moving this line up.
-                                if virtual_keycode == self.keymapping.left {
-                                    mgba::input::keys::LEFT
-                                } else if virtual_keycode == self.keymapping.right {
-                                    mgba::input::keys::RIGHT
-                                } else if virtual_keycode == self.keymapping.up {
-                                    mgba::input::keys::UP
-                                } else if virtual_keycode == self.keymapping.down {
-                                    mgba::input::keys::DOWN
-                                } else if virtual_keycode == self.keymapping.a {
-                                    mgba::input::keys::A
-                                } else if virtual_keycode == self.keymapping.b {
-                                    mgba::input::keys::B
-                                } else if virtual_keycode == self.keymapping.l {
-                                    mgba::input::keys::L
-                                } else if virtual_keycode == self.keymapping.r {
-                                    mgba::input::keys::R
-                                } else if virtual_keycode == self.keymapping.start {
-                                    mgba::input::keys::START
-                                } else if virtual_keycode == self.keymapping.select {
-                                    mgba::input::keys::SELECT
-                                } else {
-                                    return;
-                                };
-
-                            if state == winit::event::ElementState::Pressed {
-                                self.joyflags
-                                    .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
-                            } else {
-                                self.joyflags
-                                    .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
-                            }
-
-                            if virtual_keycode == winit::event::VirtualKeyCode::Grave {
-                                match state {
-                                    winit::event::ElementState::Pressed => {
-                                        if console_key_pressed {
-                                            return;
-                                        }
-                                        console_key_pressed = true;
-                                        self.gui.state().toggle_debug();
-                                    }
-                                    winit::event::ElementState::Released => {
-                                        console_key_pressed = false;
-                                    }
-                                }
-                            }
-                        }
-                        winit::event::WindowEvent::Resized(size) => {
-                            self.gl_window.resize(*size);
-                        }
-                        winit::event::WindowEvent::CloseRequested => {
-                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                        }
-                        _ => {}
-                    };
-
-                    self.gui.handle_event(window_event);
-                }
-                winit::event::Event::MainEventsCleared => {
-                    while let Some(gilrs::Event { event, .. }) = gilrs.next_event() {
-                        let (button, pressed) = match event {
-                            gilrs::EventType::ButtonPressed(button, _) => (button, true),
-                            gilrs::EventType::ButtonReleased(button, _) => (button, false),
-                            gilrs::EventType::AxisChanged(axis, v, _)
-                                if self.controller_mapping.enable_left_stick =>
-                            {
-                                const STICK_THRESHOLD: f32 = 0.5;
-                                match axis {
-                                    gilrs::Axis::LeftStickX => {
-                                        if v <= -STICK_THRESHOLD {
-                                            self.joyflags.fetch_or(
-                                                mgba::input::keys::LEFT,
-                                                std::sync::atomic::Ordering::Relaxed,
-                                            );
-                                        } else if v >= STICK_THRESHOLD {
-                                            self.joyflags.fetch_or(
-                                                mgba::input::keys::RIGHT,
-                                                std::sync::atomic::Ordering::Relaxed,
-                                            );
-                                        } else {
-                                            self.joyflags.fetch_and(
-                                                !(mgba::input::keys::LEFT
-                                                    | mgba::input::keys::RIGHT),
-                                                std::sync::atomic::Ordering::Relaxed,
-                                            );
-                                        }
-                                    }
-                                    gilrs::Axis::LeftStickY => {
-                                        if v <= -STICK_THRESHOLD {
-                                            self.joyflags.fetch_or(
-                                                mgba::input::keys::DOWN,
-                                                std::sync::atomic::Ordering::Relaxed,
-                                            );
-                                        } else if v >= STICK_THRESHOLD {
-                                            self.joyflags.fetch_or(
-                                                mgba::input::keys::UP,
-                                                std::sync::atomic::Ordering::Relaxed,
-                                            );
-                                        } else {
-                                            self.joyflags.fetch_and(
-                                                !(mgba::input::keys::UP | mgba::input::keys::DOWN),
-                                                std::sync::atomic::Ordering::Relaxed,
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        continue;
-                                    }
-                                };
+                        if scancode == sdl2::keyboard::Scancode::Grave {
+                            if console_key_pressed {
                                 continue;
                             }
-                            _ => {
-                                return;
-                            }
-                        };
-
-                        let keymask = // Prevent rustfmt from moving this line up.
-                            if button == self.controller_mapping.left {
-                                mgba::input::keys::LEFT
-                            } else if button == self.controller_mapping.right {
-                                mgba::input::keys::RIGHT
-                            } else if button == self.controller_mapping.up {
-                                mgba::input::keys::UP
-                            } else if button == self.controller_mapping.down {
-                                mgba::input::keys::DOWN
-                            } else if button == self.controller_mapping.a {
-                                mgba::input::keys::A
-                            } else if button == self.controller_mapping.b {
-                                mgba::input::keys::B
-                            } else if button == self.controller_mapping.l {
-                                mgba::input::keys::L
-                            } else if button == self.controller_mapping.r {
-                                mgba::input::keys::R
-                            } else if button == self.controller_mapping.start {
-                                mgba::input::keys::START
-                            } else if button == self.controller_mapping.select {
-                                mgba::input::keys::SELECT
-                            } else {
-                                return;
-                            };
-
-                        if pressed {
-                            self.joyflags
-                                .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
-                        } else {
-                            self.joyflags
-                                .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
+                            console_key_pressed = true;
+                            self.gui.state().toggle_debug();
                         }
                     }
-
-                    unsafe {
-                        self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                        self.gl.clear(glow::COLOR_BUFFER_BIT);
+                    sdl2::event::Event::KeyUp {
+                        scancode: Some(scancode),
+                        ..
+                    } => {
+                        self.joyflags.fetch_and(
+                            !self.keymapping.to_mgba_keys(scancode),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                        if scancode == sdl2::keyboard::Scancode::Grave {
+                            console_key_pressed = false;
+                        }
                     }
-                    let vbuf = self.vbuf.lock().clone();
-                    self.fb.draw(
-                        self.gl_window.window().inner_size().into(),
-                        (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
-                        &vbuf,
-                    );
-                    self.gui.render(&self.gl_window.window(), &self.gl);
-                    self.gl_window.swap_buffers().unwrap();
-                    self.fps_counter.lock().mark();
+                    sdl2::event::Event::ControllerAxisMotion { axis, value, .. }
+                        if self.controller_mapping.enable_left_stick =>
+                    {
+                        const STICK_THRESHOLD: i16 = 16384;
+                        match axis {
+                            sdl2::controller::Axis::LeftX => {
+                                if value <= -STICK_THRESHOLD {
+                                    self.joyflags.fetch_or(
+                                        mgba::input::keys::LEFT,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                } else if value >= STICK_THRESHOLD {
+                                    self.joyflags.fetch_or(
+                                        mgba::input::keys::RIGHT,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                } else {
+                                    self.joyflags.fetch_and(
+                                        !(mgba::input::keys::LEFT | mgba::input::keys::RIGHT),
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                }
+                            }
+                            sdl2::controller::Axis::LeftY => {
+                                if value <= -STICK_THRESHOLD {
+                                    self.joyflags.fetch_or(
+                                        mgba::input::keys::UP,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                } else if value >= STICK_THRESHOLD {
+                                    self.joyflags.fetch_or(
+                                        mgba::input::keys::DOWN,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                } else {
+                                    self.joyflags.fetch_and(
+                                        !(mgba::input::keys::UP | mgba::input::keys::DOWN),
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                }
+                            }
+                            _ => {
+                                continue;
+                            }
+                        };
+                    }
+                    sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                        let _ = self.game_controller.open(which);
+                    }
+                    sdl2::event::Event::ControllerButtonDown { button, .. } => {
+                        self.joyflags.fetch_or(
+                            self.controller_mapping.to_mgba_keys(button),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                    }
+                    sdl2::event::Event::ControllerButtonUp { button, .. } => {
+                        self.joyflags.fetch_and(
+                            !self.controller_mapping.to_mgba_keys(button),
+                            std::sync::atomic::Ordering::Relaxed,
+                        );
+                    }
+                    _ => {}
                 }
-                _ => {}
+                self.gui.handle_event(&self.window, event);
             }
-        });
+
+            unsafe {
+                self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                self.gl.clear(glow::COLOR_BUFFER_BIT);
+            }
+            let vbuf = self.vbuf.lock().clone();
+            self.fb.draw(
+                self.window.size(),
+                (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
+                &vbuf,
+            );
+            self.gui.render(&self.window);
+            self.window.gl_swap_window();
+            self.fps_counter.lock().mark();
+        }
+
+        Ok(())
     }
 }
