@@ -31,6 +31,7 @@ fn main() -> anyhow::Result<()> {
 
     let window = video
         .window("keymaptool", 400, 100)
+        .set_window_flags(sdl2::sys::SDL_WindowFlags::SDL_WINDOW_ALWAYS_ON_TOP as u32)
         .position_centered()
         .borderless()
         .build()
@@ -57,7 +58,8 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut keys_pressed = [false; sdl2::keyboard::Scancode::Num as usize];
-    let mut buttons_pressed = [false; 255];
+    let mut buttons_pressed =
+        [false; sdl2::sys::SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX as usize];
 
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
 
