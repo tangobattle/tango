@@ -92,7 +92,6 @@ impl ControllerMapping {
 
 pub struct Game {
     rt: tokio::runtime::Runtime,
-    // gui: gui::Gui,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: sdl2::EventPump,
@@ -146,8 +145,6 @@ impl Game {
 
         let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
         let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
-
-        // let gui = gui::Gui::new(&window);
 
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -321,7 +318,6 @@ impl Game {
 
         Ok(Game {
             rt,
-            // gui,
             ipc_sender,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
