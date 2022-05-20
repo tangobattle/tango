@@ -32,6 +32,7 @@
     "@mui/icons-material": "^5.6.2",
     "@mui/material": "^5.5.3",
     "async-mutex": "^0.3.2",
+    "chokidar": "^3.5.3",
     "crc-32": "^1.2.2",
     "date-fns": "^2.28.0",
     "discord-rpc": "^4.0.1",

@@ -2,7 +2,6 @@ import React, { Suspense } from "react";
 import { Trans, useTranslation, withTranslation } from "react-i18next";
 
 import { app, shell } from "@electron/remote";
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -54,8 +53,8 @@ function SetupAppBody() {
   const { i18n, t } = useTranslation();
 
   const { config, save: saveConfig } = useConfig();
-  const { roms, rescan: rescanROMs } = useROMs();
-  const { saves, rescan: rescanSaves } = useSaves();
+  const { roms } = useROMs();
+  const { saves } = useSaves();
 
   const activeStep =
     config.nickname != null
@@ -67,12 +66,6 @@ function SetupAppBody() {
       : 0;
 
   const [nickname, setNickname] = React.useState("");
-  const [romsScanState, setROMsScanState] = React.useState<
-    "init" | "pending" | "done"
-  >("init");
-  const [savesScanState, setSavesScanState] = React.useState<
-    "init" | "pending" | "done"
-  >("init");
 
   return (
     <Box
@@ -170,11 +163,6 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:step-2-description" />
               </Typography>
-              {romsScanState == "done" && activeStep == 1 ? (
-                <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-2-error" />
-                </Alert>
-              ) : null}
               <Stack spacing={1} direction="row">
                 <Button
                   variant="outlined"
@@ -184,20 +172,6 @@ function SetupAppBody() {
                   }}
                 >
                   <Trans i18nKey="setup:open-folder" />
-                </Button>
-                <Button
-                  variant="contained"
-                  size="small"
-                  disabled={romsScanState == "pending"}
-                  onClick={() => {
-                    setROMsScanState("pending");
-                    (async () => {
-                      await rescanROMs();
-                      setROMsScanState("done");
-                    })();
-                  }}
-                >
-                  <Trans i18nKey="setup:next" />
                 </Button>
               </Stack>
             </StepContent>
@@ -213,34 +187,15 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:step-3-description" />
               </Typography>
-              {savesScanState == "done" && activeStep == 2 ? (
-                <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-3-error" />
-                </Alert>
-              ) : null}
               <Stack spacing={1} direction="row">
                 <Button
                   variant="outlined"
                   size="small"
-                  disabled={savesScanState == "pending"}
                   onClick={() => {
                     shell.openPath(getSavesPath(app));
                   }}
                 >
                   <Trans i18nKey="setup:open-folder" />
-                </Button>
-                <Button
-                  variant="contained"
-                  size="small"
-                  onClick={() => {
-                    setSavesScanState("pending");
-                    (async () => {
-                      await rescanSaves();
-                      setSavesScanState("done");
-                    })();
-                  }}
-                >
-                  <Trans i18nKey="setup:next" />
                 </Button>
               </Stack>
             </StepContent>

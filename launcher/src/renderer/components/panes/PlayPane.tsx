@@ -8,7 +8,6 @@ import { app, shell } from "@electron/remote";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
-import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
@@ -65,9 +64,9 @@ function SaveViewerWrapper({
 }
 
 export default function SavesPane({ active }: { active: boolean }) {
-  const { saves, rescan: rescanSaves } = useSaves();
-  const { patches, rescan: rescanPatches } = usePatches();
-  const { roms, rescan: rescanROMs } = useROMs();
+  const { saves } = useSaves();
+  const { patches } = usePatches();
+  const { roms } = useROMs();
   const { i18n } = useTranslation();
 
   const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
@@ -82,7 +81,9 @@ export default function SavesPane({ active }: { active: boolean }) {
   const getNetplayCompatibility = useGetNetplayCompatibility();
 
   const saveName =
-    saveName_ != null && Object.prototype.hasOwnProperty.call(saves, saveName_)
+    saveName_ != null &&
+    Object.prototype.hasOwnProperty.call(saves, saveName_) &&
+    Object.prototype.hasOwnProperty.call(roms, saves[saveName_].romName)
       ? saveName_
       : null;
 
@@ -99,7 +100,13 @@ export default function SavesPane({ active }: { active: boolean }) {
     return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
   });
 
-  const [patchName, setPatchName] = React.useState<string | null>(null);
+  const [patchName_, setPatchName] = React.useState<string | null>(null);
+  const patchName =
+    patchName_ != null &&
+    Object.prototype.hasOwnProperty.call(patches, patchName_)
+      ? patchName_
+      : null;
+
   const save = saveName != null ? saves[saveName] : null;
 
   const eligiblePatchNames = React.useMemo(() => {
@@ -119,7 +126,17 @@ export default function SavesPane({ active }: { active: boolean }) {
     [patchInfo]
   );
 
-  const [patchVersion, setPatchVersion] = React.useState<string | null>(null);
+  const [patchVersion_, setPatchVersion] = React.useState<string | null>(null);
+  const patchVersion =
+    patchName != null &&
+    patchVersion_ != null &&
+    Object.prototype.hasOwnProperty.call(
+      patches[patchName].versions,
+      patchVersion_
+    )
+      ? patchVersion_
+      : null;
+
   React.useEffect(() => {
     if (patchVersions == null) {
       setPatchVersion(null);
@@ -338,21 +355,6 @@ export default function SavesPane({ active }: { active: boolean }) {
                 }}
               >
                 <FolderOpenIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={<Trans i18nKey="play:rescan" />}>
-              <IconButton
-                onClick={() => {
-                  (async () => {
-                    await Promise.allSettled([
-                      rescanROMs(),
-                      rescanPatches(),
-                      rescanSaves(),
-                    ]);
-                  })();
-                }}
-              >
-                <RefreshIcon />
               </IconButton>
             </Tooltip>
           </Stack>

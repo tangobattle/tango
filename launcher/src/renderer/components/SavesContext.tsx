@@ -1,62 +1,101 @@
+import { Mutex } from "async-mutex";
+import { watch } from "chokidar";
+import mkdirp from "mkdirp";
+import path from "path";
 import React, { useContext } from "react";
 
 import { app } from "@electron/remote";
 
 import { getSavesPath } from "../../paths";
-import { SaveInfo, scan } from "../../saves";
+import { getSaveInfo, SaveInfo } from "../../saves";
 
 export interface SavesValue {
-  rescan(): Promise<void>;
   saves: { [filename: string]: SaveInfo };
 }
 
 const Context = React.createContext(null! as SavesValue);
-
-function makeSaveScans() {
-  let status: "pending" | "error" | "ok" = "pending";
-  let result: SavesValue["saves"];
-  let err: any;
-  const promise = (async () => {
-    try {
-      result = await scan(getSavesPath(app));
-    } catch (e) {
-      console.error(e);
-      err = e;
-      status = "error";
-    }
-    status = "ok";
-  })();
-  return () => {
-    switch (status) {
-      case "pending":
-        throw promise;
-      case "error":
-        throw err;
-      case "ok":
-        return result;
-    }
-  };
-}
-
-const scanSaves = makeSaveScans();
 
 export const SavesProvider = ({
   children,
 }: {
   children?: React.ReactNode;
 } = {}) => {
-  const [currentSaves, setCurrentSaves] = React.useState(scanSaves());
+  const [currentSaves, setCurrentSaves] = React.useState<{
+    [filename: string]: SaveInfo;
+  }>({});
+  const dir = getSavesPath(app);
 
+  React.useEffect(() => {
+    const stateMu = new Mutex();
+
+    const remove = async (fn: string) => {
+      setCurrentSaves((currentSaves) => {
+        currentSaves = { ...currentSaves };
+        delete currentSaves[fn];
+        return currentSaves;
+      });
+    };
+
+    const upsert = async (fn: string) => {
+      try {
+        const saveInfo = await getSaveInfo(path.join(dir, fn));
+        if (saveInfo == null) {
+          return;
+        }
+        setCurrentSaves((currentSaves) => ({
+          ...currentSaves,
+          [fn]: saveInfo,
+        }));
+      } catch (e) {
+        console.error(`failed to scan ${fn}`, e);
+        await remove(fn);
+      }
+    };
+
+    const watcher = watch(dir);
+    watcher.on("add", (p) => {
+      const fn = path.relative(dir, p);
+      (async () => {
+        const release = await stateMu.acquire();
+        try {
+          await upsert(fn);
+        } finally {
+          release();
+        }
+      })();
+    });
+    watcher.on("change", (p) => {
+      const fn = path.relative(dir, p);
+      (async () => {
+        const release = await stateMu.acquire();
+        try {
+          await upsert(fn);
+        } finally {
+          release();
+        }
+      })();
+    });
+    watcher.on("unlink", (p) => {
+      const fn = path.relative(dir, p);
+      (async () => {
+        const release = await stateMu.acquire();
+        try {
+          await remove(fn);
+        } finally {
+          release();
+        }
+      })();
+    });
+    (async () => {
+      await mkdirp(dir);
+    })();
+    return () => {
+      watcher.close();
+    };
+  }, []);
   return (
     <Context.Provider
       value={{
-        async rescan() {
-          try {
-            setCurrentSaves(await scan(getSavesPath(app)));
-          } catch (e) {
-            console.error(e);
-          }
-        },
         saves: currentSaves,
       }}
     >
