@@ -146,12 +146,12 @@ fn main() -> Result<(), anyhow::Error> {
 
         let texture_creator = canvas.texture_creator();
         let mut texture = texture_creator
-        .create_texture_streaming(
-            sdl2::pixels::PixelFormatEnum::ABGR8888,
-            mgba::gba::SCREEN_WIDTH,
-            mgba::gba::SCREEN_HEIGHT,
-        )
-        .unwrap()
+            .create_texture_streaming(
+                sdl2::pixels::PixelFormatEnum::ABGR8888,
+                mgba::gba::SCREEN_WIDTH,
+                mgba::gba::SCREEN_HEIGHT,
+            )
+            .unwrap();
 
         let vbuf = vbuf.clone();
         'toplevel: loop {
