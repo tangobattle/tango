@@ -335,12 +335,11 @@ impl Game {
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
 
-        loop {
+        'toplevel: loop {
             for event in self.event_loop.poll_iter() {
                 match event {
                     sdl2::event::Event::Quit { .. } => {
-                        // HACK: We can't shut down safely, so we do this.
-                        std::process::exit(0);
+                        break 'toplevel;
                     }
                     sdl2::event::Event::KeyDown {
                         scancode: Some(scancode),
@@ -517,5 +516,7 @@ impl Game {
             self.canvas.present();
             self.fps_counter.lock().mark();
         }
+
+        Ok(())
     }
 }

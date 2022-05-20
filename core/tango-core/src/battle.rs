@@ -64,7 +64,7 @@ pub struct Match {
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
-    dc_rx: tokio::sync::Mutex<datachannel_wrapper::DataChannelReceiver>,
+    dc_rx: tokio::sync::Mutex<Option<datachannel_wrapper::DataChannelReceiver>>,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     settings: Settings,
@@ -175,7 +175,7 @@ impl Match {
             rom_path,
             hooks,
             _peer_conn: peer_conn,
-            dc_rx: tokio::sync::Mutex::new(dc_rx),
+            dc_rx: tokio::sync::Mutex::new(Some(dc_rx)),
             transport: std::sync::Arc::new(tokio::sync::Mutex::new(transport::Transport::new(
                 dc_tx,
             ))),
@@ -216,7 +216,7 @@ impl Match {
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
-        let mut dc_rx = self.dc_rx.lock().await;
+        let mut dc_rx = self.dc_rx.lock().await.take().unwrap();
         let mut last_round_number = 0;
         loop {
             match protocol::Packet::deserialize(
