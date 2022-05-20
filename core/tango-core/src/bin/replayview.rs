@@ -144,7 +144,7 @@ fn main() -> Result<(), anyhow::Error> {
         let mut texture = sdl2::surface::Surface::new(
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
-            sdl2::pixels::PixelFormatEnum::RGBA32,
+            sdl2::pixels::PixelFormatEnum::ABGR8888,
         )
         .unwrap()
         .as_texture(&texture_creator)
