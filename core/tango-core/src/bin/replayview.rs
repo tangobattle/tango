@@ -63,6 +63,7 @@ fn main() -> Result<(), anyhow::Error> {
             mgba::gba::SCREEN_WIDTH * 3,
             mgba::gba::SCREEN_HEIGHT * 3,
         )
+        .opengl()
         .resizable()
         .build()
         .unwrap();

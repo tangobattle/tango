@@ -65,6 +65,10 @@ impl super::Stream for MuxStream {
             }
             stream.fill(buf);
         }
-        mux.streams.get_mut(&current_id).unwrap().fill(buf)
+        if let Some(stream) = mux.streams.get_mut(&current_id) {
+            stream.fill(buf)
+        } else {
+            0
+        }
     }
 }

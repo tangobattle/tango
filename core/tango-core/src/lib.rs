@@ -6,7 +6,7 @@ pub mod battle;
 pub mod facade;
 pub mod fastforwarder;
 pub mod game;
-pub mod gui;
+// pub mod gui;
 pub mod hooks;
 pub mod input;
 pub mod ipc;

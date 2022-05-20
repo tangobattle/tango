@@ -1,6 +1,5 @@
-use crate::{audio, battle, facade, gui, hooks, ipc, tps};
+use crate::{audio, battle, facade, hooks, ipc, tps};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use glow::HasContext;
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -94,20 +93,15 @@ impl ControllerMapping {
 
 pub struct Game {
     rt: tokio::runtime::Runtime,
-    gui: gui::Gui,
+    // gui: gui::Gui,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: sdl2::EventPump,
     _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
-    _sdl: sdl2::Sdl,
-    _video: sdl2::VideoSubsystem,
     game_controller: sdl2::GameControllerSubsystem,
-    gl: std::rc::Rc<glow::Context>,
-    _gl_context: sdl2::video::GLContext,
-    window: sdl2::video::Window,
+    canvas: sdl2::render::Canvas<sdl2::video::Window>,
     vbuf: Arc<Mutex<Vec<u8>>>,
-    fb: glowfb::Framebuffer,
     _stream: cpal::Stream,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     keymapping: Keymapping,
@@ -159,23 +153,10 @@ impl Game {
             .build()
             .unwrap();
 
-        let gl_context = window.gl_create_context().unwrap();
-        video
-            .gl_set_swap_interval(sdl2::video::SwapInterval::VSync)
-            .unwrap();
-        let gl = std::rc::Rc::new(unsafe {
-            glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
-        });
-        log::info!("GL version: {}", unsafe {
-            gl.get_parameter_string(glow::VERSION)
-        });
-
         let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
         let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
 
-        let fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
-
-        let gui = gui::Gui::new(&window);
+        // let gui = gui::Gui::new(&window);
 
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -291,51 +272,57 @@ impl Game {
         let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
         stream.play()?;
 
-        let gui_state = gui.state();
-        {
-            let match_ = Arc::downgrade(&match_);
-            let fps_counter = fps_counter.clone();
-            let emu_tps_counter = emu_tps_counter.clone();
-            let handle = handle;
-            gui_state.set_debug_stats_getter(Some(Box::new(move || {
-                handle.block_on(async {
-                    let emu_tps_counter = emu_tps_counter.lock();
-                    let fps_counter = fps_counter.lock();
-                    Some(gui::DebugStats {
-                        fps: 1.0 / fps_counter.mean_duration().as_secs_f32(),
-                        emu_tps: 1.0 / emu_tps_counter.mean_duration().as_secs_f32(),
-                        match_: {
-                            match match_.upgrade() {
-                                Some(match_) => match &*match_.lock().await {
-                                    Some(match_) => Some(gui::MatchDebugStats {
-                                        round: {
-                                            let round_state = match_.lock_round_state().await;
-                                            match &round_state.round {
-                                                Some(round) => Some(gui::RoundDebugStats {
-                                                    local_player_index: round.local_player_index(),
-                                                    local_qlen: round.local_queue_length(),
-                                                    remote_qlen: round.remote_queue_length(),
-                                                    local_delay: round.local_delay(),
-                                                    remote_delay: round.remote_delay(),
-                                                    tps_adjustment: round.tps_adjustment(),
-                                                }),
-                                                None => None,
-                                            }
-                                        },
-                                    }),
-                                    None => None,
-                                },
-                                None => None,
-                            }
-                        },
-                    })
-                })
-            })));
-        }
+        // let gui_state = gui.state();
+        // {
+        //     let match_ = Arc::downgrade(&match_);
+        //     let fps_counter = fps_counter.clone();
+        //     let emu_tps_counter = emu_tps_counter.clone();
+        //     let handle = handle;
+        //     gui_state.set_debug_stats_getter(Some(Box::new(move || {
+        //         handle.block_on(async {
+        //             let emu_tps_counter = emu_tps_counter.lock();
+        //             let fps_counter = fps_counter.lock();
+        //             Some(gui::DebugStats {
+        //                 fps: 1.0 / fps_counter.mean_duration().as_secs_f32(),
+        //                 emu_tps: 1.0 / emu_tps_counter.mean_duration().as_secs_f32(),
+        //                 match_: {
+        //                     match match_.upgrade() {
+        //                         Some(match_) => match &*match_.lock().await {
+        //                             Some(match_) => Some(gui::MatchDebugStats {
+        //                                 round: {
+        //                                     let round_state = match_.lock_round_state().await;
+        //                                     match &round_state.round {
+        //                                         Some(round) => Some(gui::RoundDebugStats {
+        //                                             local_player_index: round.local_player_index(),
+        //                                             local_qlen: round.local_queue_length(),
+        //                                             remote_qlen: round.remote_queue_length(),
+        //                                             local_delay: round.local_delay(),
+        //                                             remote_delay: round.remote_delay(),
+        //                                             tps_adjustment: round.tps_adjustment(),
+        //                                         }),
+        //                                         None => None,
+        //                                     }
+        //                                 },
+        //                             }),
+        //                             None => None,
+        //                         },
+        //                         None => None,
+        //                     }
+        //                 },
+        //             })
+        //         })
+        //     })));
+        // }
+
+        let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+        canvas
+            .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+            .unwrap();
+        canvas.set_integer_scale(true).unwrap();
 
         Ok(Game {
             rt,
-            gui,
+            // gui,
             ipc_sender,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
@@ -343,14 +330,9 @@ impl Game {
             controller_mapping,
             fps_counter,
             event_loop,
-            _sdl: sdl,
-            _video: video,
             game_controller,
-            gl,
-            _gl_context: gl_context,
-            window,
+            canvas,
             vbuf,
-            fb,
             _stream: stream,
             joyflags,
             _thread: thread,
@@ -373,7 +355,17 @@ impl Game {
             anyhow::Result::<()>::Ok(())
         })?;
 
-        let mut console_key_pressed = false;
+        let mut debug_key_pressed = false;
+
+        let texture_creator = self.canvas.texture_creator();
+        let mut texture = sdl2::surface::Surface::new(
+            mgba::gba::SCREEN_WIDTH,
+            mgba::gba::SCREEN_HEIGHT,
+            sdl2::pixels::PixelFormatEnum::RGBA32,
+        )
+        .unwrap()
+        .as_texture(&texture_creator)
+        .unwrap();
 
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
@@ -389,11 +381,11 @@ impl Game {
                         );
 
                         if scancode == sdl2::keyboard::Scancode::Grave {
-                            if console_key_pressed {
+                            if debug_key_pressed {
                                 continue;
                             }
-                            console_key_pressed = true;
-                            self.gui.state().toggle_debug();
+                            debug_key_pressed = true;
+                            // self.gui.state().toggle_debug();
                         }
                     }
                     sdl2::event::Event::KeyUp {
@@ -405,7 +397,7 @@ impl Game {
                             std::sync::atomic::Ordering::Relaxed,
                         );
                         if scancode == sdl2::keyboard::Scancode::Grave {
-                            console_key_pressed = false;
+                            debug_key_pressed = false;
                         }
                     }
                     sdl2::event::Event::ControllerAxisMotion { axis, value, .. }
@@ -471,21 +463,19 @@ impl Game {
                     }
                     _ => {}
                 }
-                self.gui.handle_event(&self.window, event);
+                // self.gui.handle_event(&self.window, event);
             }
 
-            unsafe {
-                self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                self.gl.clear(glow::COLOR_BUFFER_BIT);
-            }
-            let vbuf = self.vbuf.lock().clone();
-            self.fb.draw(
-                self.window.size(),
-                (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
-                &vbuf,
-            );
-            self.gui.render(&self.window);
-            self.window.gl_swap_window();
+            self.canvas.clear();
+            texture
+                .update(
+                    sdl2::rect::Rect::new(0, 0, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
+                    &*self.vbuf.lock(),
+                    mgba::gba::SCREEN_WIDTH as usize * 4,
+                )
+                .unwrap();
+            self.canvas.copy(&texture, None, None).unwrap();
+            self.canvas.present();
             self.fps_counter.lock().mark();
         }
 
