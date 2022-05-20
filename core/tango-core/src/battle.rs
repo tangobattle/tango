@@ -60,7 +60,7 @@ impl RoundState {
 
 pub struct Match {
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
-    audio_supported_config: cpal::SupportedStreamConfig,
+    audio_sample_rate: i32,
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
@@ -147,7 +147,7 @@ const MAX_QUEUE_LENGTH: usize = 120;
 
 impl Match {
     pub fn new(
-        audio_supported_config: cpal::SupportedStreamConfig,
+        audio_sample_rate: i32,
         rom_path: std::path::PathBuf,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         audio_mux: audio::mux_stream::MuxStream,
@@ -171,7 +171,7 @@ impl Match {
                 won_last_round,
                 rng.clone(),
             )?)),
-            audio_supported_config,
+            audio_sample_rate,
             rom_path,
             hooks,
             _peer_conn: peer_conn,
@@ -358,7 +358,7 @@ impl Match {
             self.audio_mux
                 .open_stream(audio::mgba_stream::MGBAStream::new(
                     audio_core_handle.clone(),
-                    self.audio_supported_config.sample_rate(),
+                    self.audio_sample_rate,
                 ));
 
         log::info!("loading our state into audio core");

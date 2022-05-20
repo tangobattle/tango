@@ -27,7 +27,10 @@ struct InnerMuxHandle {
 pub struct MuxStream(std::sync::Arc<parking_lot::Mutex<InnerMuxStream>>);
 
 struct InnerMuxStream {
-    streams: std::collections::HashMap<usize, Box<dyn super::Stream + Send + 'static>>,
+    streams: std::collections::HashMap<
+        usize,
+        Box<dyn sdl2::audio::AudioCallback<Channel = i16> + Send + 'static>,
+    >,
     current_id: usize,
     next_id: usize,
 }
@@ -43,7 +46,10 @@ impl MuxStream {
         )))
     }
 
-    pub fn open_stream(&self, stream: impl super::Stream + Send + 'static) -> MuxHandle {
+    pub fn open_stream(
+        &self,
+        stream: impl sdl2::audio::AudioCallback<Channel = i16> + Send + 'static,
+    ) -> MuxHandle {
         let mut mux = self.0.lock();
         let id = mux.next_id;
         mux.streams.insert(id, Box::new(stream));
@@ -55,20 +61,20 @@ impl MuxStream {
     }
 }
 
-impl super::Stream for MuxStream {
-    fn fill(&mut self, buf: &mut [i16]) -> usize {
+impl sdl2::audio::AudioCallback for MuxStream {
+    type Channel = i16;
+
+    fn callback(&mut self, buf: &mut [i16]) {
         let mut mux = self.0.lock();
         let current_id = mux.current_id;
         for (id, stream) in mux.streams.iter_mut() {
             if *id == current_id {
                 continue;
             }
-            stream.fill(buf);
+            stream.callback(buf);
         }
         if let Some(stream) = mux.streams.get_mut(&current_id) {
-            stream.fill(buf)
-        } else {
-            0
+            stream.callback(buf);
         }
     }
 }

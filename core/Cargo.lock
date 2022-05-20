@@ -46,28 +46,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "alsa"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5915f52fe2cf65e83924d037b6c5290b7cee097c6b5c8700746e6168a343fd6b"
-dependencies = [
- "alsa-sys",
- "bitflags",
- "libc",
- "nix 0.23.1",
-]
-
-[[package]]
-name = "alsa-sys"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db8fee663d06c4e303404ef5f40488a53e062f89ba8bfed81f42325aafad1527"
-dependencies = [
- "libc",
- "pkg-config",
-]
-
-[[package]]
 name = "android_glue"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -223,25 +201,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "bindgen"
-version = "0.56.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2da379dbebc0b76ef63ca68d8fc6e71c0f13e59432e0987e508c1820e6ab5239"
-dependencies = [
- "bitflags",
- "cexpr 0.4.0",
- "clang-sys",
- "lazy_static",
- "lazycell",
- "peeking_take_while",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash",
- "shlex 0.1.1",
 ]
 
 [[package]]
@@ -669,50 +628,6 @@ dependencies = [
  "core-graphics 0.19.2",
  "libc",
  "objc",
-]
-
-[[package]]
-name = "coreaudio-rs"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11894b20ebfe1ff903cbdc52259693389eea03b94918a2def2c30c3bf227ad88"
-dependencies = [
- "bitflags",
- "coreaudio-sys",
-]
-
-[[package]]
-name = "coreaudio-sys"
-version = "0.2.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca4679a59dbd8c15f064c012dfe8c1163b9453224238b59bb9328c142b8b248b"
-dependencies = [
- "bindgen 0.56.0",
-]
-
-[[package]]
-name = "cpal"
-version = "0.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74117836a5124f3629e4b474eed03e479abaf98988b4bb317e29f08cfe0e4116"
-dependencies = [
- "alsa",
- "core-foundation-sys 0.8.3",
- "coreaudio-rs",
- "jni",
- "js-sys",
- "lazy_static",
- "libc",
- "mach 0.3.2",
- "ndk 0.6.0",
- "ndk-glue 0.6.1",
- "nix 0.23.1",
- "oboe",
- "parking_lot 0.11.2",
- "stdweb 0.1.3",
- "thiserror",
- "web-sys",
- "winapi",
 ]
 
 [[package]]
@@ -1381,7 +1296,7 @@ dependencies = [
  "nix 0.23.1",
  "rusty-xinput",
  "serde",
- "stdweb 0.4.20",
+ "stdweb",
  "uuid",
  "vec_map",
  "winapi",
@@ -1719,7 +1634,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f21dcc74995dd4cd090b147e79789f8d65959cbfb5f0b118002db869ea3bd0a0"
 dependencies = [
  "core-foundation-sys 0.6.2",
- "mach 0.2.3",
+ "mach",
 ]
 
 [[package]]
@@ -1881,15 +1796,6 @@ name = "mach"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86dd2487cdfea56def77b88438a2c915fb45113c5319bfe7e14306ca4cd0b0e1"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "mach"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b823e83b2affd8f40a9ee8c29dbc56404c1e34cd2710921f2801e2cf29527afa"
 dependencies = [
  "libc",
 ]
@@ -2169,26 +2075,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-derive"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "num-traits"
-version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
 name = "num_cpus"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2255,29 +2141,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c92d4ddb4bd7b50d730c215ff871754d0da6b2178849f8a2a2ab69712d0c073b"
 dependencies = [
  "objc",
-]
-
-[[package]]
-name = "oboe"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2463c8f2e19b4e0d0710a21f8e4011501ff28db1c95d7a5482a553b2100502d2"
-dependencies = [
- "jni",
- "ndk 0.6.0",
- "ndk-glue 0.6.1",
- "num-derive",
- "num-traits",
- "oboe-sys",
-]
-
-[[package]]
-name = "oboe-sys"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3370abb7372ed744232c12954d920d1a40f1c4686de9e79e800021ef492294bd"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -3187,12 +3050,6 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stdweb"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5430c8e36b713e13b48a9f709cc21e046723fe44ce34587b73a830203b533e"
-
-[[package]]
-name = "stdweb"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d022496b16281348b52d0e30ae99e01a73d737b2f45d38fed4edf79f9325a1d5"
@@ -3280,7 +3137,6 @@ dependencies = [
  "byteorder",
  "bytes",
  "clap 3.1.8",
- "cpal",
  "datachannel-wrapper",
  "egui 0.16.1",
  "egui-winit 0.16.0",

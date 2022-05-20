@@ -1,5 +1,4 @@
 use crate::{audio, battle, facade, hooks, ipc, tps};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -97,12 +96,11 @@ pub struct Game {
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
     event_loop: sdl2::EventPump,
-    _audio_device: cpal::Device,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
     game_controller: sdl2::GameControllerSubsystem,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
+    _audio_device: sdl2::audio::AudioDevice<crate::audio::mux_stream::MuxStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
-    _stream: cpal::Stream,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     keymapping: Keymapping,
     controller_mapping: ControllerMapping,
@@ -120,14 +118,6 @@ impl Game {
         save_path: std::path::PathBuf,
         match_init: Option<battle::MatchInit>,
     ) -> Result<Game, anyhow::Error> {
-        let audio_device = cpal::default_host()
-            .default_output_device()
-            .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-        log::info!(
-            "supported audio output configs: {:?}",
-            audio_device.supported_output_configs()?.collect::<Vec<_>>()
-        );
-
         let handle = rt.handle().clone();
 
         let vbuf = Arc::new(Mutex::new(vec![
@@ -139,6 +129,7 @@ impl Game {
         let sdl = sdl2::init().unwrap();
         let video = sdl.video().unwrap();
         let game_controller = sdl.game_controller().unwrap();
+        let audio = sdl.audio().unwrap();
 
         let event_loop = sdl.event_pump().unwrap();
 
@@ -176,9 +167,6 @@ impl Game {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let audio_supported_config = audio::get_supported_config(&audio_device)?;
-        log::info!("selected audio config: {:?}", audio_supported_config);
-
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
@@ -196,9 +184,23 @@ impl Game {
         let thread = mgba::thread::Thread::new(core);
 
         let audio_mux = audio::mux_stream::MuxStream::new();
+
+        let audio_device = audio
+            .open_playback(
+                None,
+                &sdl2::audio::AudioSpecDesired {
+                    freq: Some(48000),
+                    channels: Some(2),
+                    samples: Some(512),
+                },
+                |_| audio_mux.clone(),
+            )
+            .unwrap();
+        audio_device.resume();
+
         let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
             thread.handle(),
-            audio_supported_config.sample_rate(),
+            audio_device.spec().freq,
         ));
 
         if let Some(match_init) = match_init {
@@ -216,7 +218,7 @@ impl Game {
                     .expect("rng seed");
                 *match_.lock().await = Some(
                     battle::Match::new(
-                        audio_supported_config.clone(),
+                        audio_device.spec().freq,
                         rom_path.clone(),
                         hooks,
                         audio_mux.clone(),
@@ -269,8 +271,8 @@ impl Game {
             });
         }
 
-        let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
-        stream.play()?;
+        // let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
+        // stream.play()?;
 
         // let gui_state = gui.state();
         // {
@@ -333,7 +335,6 @@ impl Game {
             game_controller,
             canvas,
             vbuf,
-            _stream: stream,
             joyflags,
             _thread: thread,
         })

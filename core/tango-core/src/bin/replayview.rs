@@ -118,9 +118,9 @@ fn main() -> Result<(), anyhow::Error> {
             &sdl2::audio::AudioSpecDesired {
                 freq: Some(48000),
                 channels: Some(2),
-                samples: Some(2048),
+                samples: Some(512),
             },
-            |spec| tango_core::audio::mgba_stream::MGBASDL2Stream::new(thread.handle(), spec.freq),
+            |spec| tango_core::audio::mgba_stream::MGBAStream::new(thread.handle(), spec.freq),
         )
         .unwrap();
     device.resume();
