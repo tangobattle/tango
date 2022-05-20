@@ -158,6 +158,10 @@ fn main() -> Result<(), anyhow::Error> {
                     _ => {}
                 }
             }
+            if done.load(std::sync::atomic::Ordering::Relaxed) {
+                break 'toplevel;
+            }
+
             canvas.clear();
             texture
                 .update(
