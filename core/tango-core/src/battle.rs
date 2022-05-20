@@ -221,7 +221,10 @@ impl Match {
         loop {
             match protocol::Packet::deserialize(
                 match dc_rx.receive().await {
-                    None => break,
+                    None => {
+                        log::info!("data channel closed");
+                        break;
+                    }
                     Some(buf) => buf,
                 }
                 .as_slice(),
