@@ -94,6 +94,8 @@ pub struct Game {
     rt: tokio::runtime::Runtime,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
+    emu_tps_counter: Arc<Mutex<tps::Counter>>,
+    match_: std::sync::Weak<tokio::sync::Mutex<Option<Arc<battle::Match>>>>,
     event_loop: sdl2::EventPump,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
     game_controller: sdl2::GameControllerSubsystem,
@@ -268,48 +270,6 @@ impl Game {
             });
         }
 
-        // let gui_state = gui.state();
-        // {
-        //     let match_ = Arc::downgrade(&match_);
-        //     let fps_counter = fps_counter.clone();
-        //     let emu_tps_counter = emu_tps_counter.clone();
-        //     let handle = handle;
-        //     gui_state.set_debug_stats_getter(Some(Box::new(move || {
-        //         handle.block_on(async {
-        //             let emu_tps_counter = emu_tps_counter.lock();
-        //             let fps_counter = fps_counter.lock();
-        //             Some(gui::DebugStats {
-        //                 fps: 1.0 / fps_counter.mean_duration().as_secs_f32(),
-        //                 emu_tps: 1.0 / emu_tps_counter.mean_duration().as_secs_f32(),
-        //                 match_: {
-        //                     match match_.upgrade() {
-        //                         Some(match_) => match &*match_.lock().await {
-        //                             Some(match_) => Some(gui::MatchDebugStats {
-        //                                 round: {
-        //                                     let round_state = match_.lock_round_state().await;
-        //                                     match &round_state.round {
-        //                                         Some(round) => Some(gui::RoundDebugStats {
-        //                                             local_player_index: round.local_player_index(),
-        //                                             local_qlen: round.local_queue_length(),
-        //                                             remote_qlen: round.remote_queue_length(),
-        //                                             local_delay: round.local_delay(),
-        //                                             remote_delay: round.remote_delay(),
-        //                                             tps_adjustment: round.tps_adjustment(),
-        //                                         }),
-        //                                         None => None,
-        //                                     }
-        //                                 },
-        //                             }),
-        //                             None => None,
-        //                         },
-        //                         None => None,
-        //                     }
-        //                 },
-        //             })
-        //         })
-        //     })));
-        // }
-
         let mut canvas = window.into_canvas().present_vsync().build().unwrap();
         canvas
             .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
@@ -324,11 +284,13 @@ impl Game {
             keymapping,
             controller_mapping,
             fps_counter,
+            emu_tps_counter,
             event_loop,
             game_controller,
             canvas,
             vbuf,
             joyflags,
+            match_: Arc::downgrade(&match_),
             _thread: thread,
         })
     }
@@ -351,6 +313,14 @@ impl Game {
 
         let mut debug_key_pressed = false;
         let mut show_debug = false;
+
+        let ttf = sdl2::ttf::init().unwrap();
+        let font = ttf
+            .load_font_from_rwops(
+                sdl2::rwops::RWops::from_bytes(include_bytes!("fonts/04B_03__.TTF")).unwrap(),
+                8,
+            )
+            .unwrap();
 
         let texture_creator = self.canvas.texture_creator();
         let mut texture = sdl2::surface::Surface::new(
@@ -383,7 +353,7 @@ impl Game {
                                 continue;
                             }
                             debug_key_pressed = true;
-                            show_debug = true;
+                            show_debug = !show_debug;
                         }
                     }
                     sdl2::event::Event::KeyUp {
@@ -478,7 +448,68 @@ impl Game {
                 .unwrap();
             self.canvas.copy(&texture, None, None).unwrap();
 
-            if show_debug {}
+            if show_debug {
+                let mut lines = vec![format!(
+                    "fps: {:.0}",
+                    1.0 / self.fps_counter.lock().mean_duration().as_secs_f32()
+                )];
+
+                let tps_adjustment = if let Some(match_) = self.match_.upgrade() {
+                    self.rt.block_on(async {
+                        if let Some(match_) = &*match_.lock().await {
+                            lines.push("match active".to_string());
+                            let round_state = match_.lock_round_state().await;
+                            if let Some(round) = round_state.round.as_ref() {
+                                lines.push(format!(
+                                    "local player index: {}",
+                                    round.local_player_index()
+                                ));
+                                lines.push(format!(
+                                    "qlen: {} (-{}) vs {} (-{})",
+                                    round.local_queue_length(),
+                                    round.local_delay(),
+                                    round.remote_queue_length(),
+                                    round.remote_delay(),
+                                ));
+                                round.tps_adjustment()
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        }
+                    })
+                } else {
+                    0
+                };
+
+                lines.push(format!(
+                    "emu tps: {:.0} (-{})",
+                    1.0 / self.emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                    tps_adjustment
+                ));
+
+                for (i, line) in lines.iter().enumerate() {
+                    let surface = font
+                        .render(line)
+                        .shaded(
+                            sdl2::pixels::Color::RGBA(255, 255, 255, 255),
+                            sdl2::pixels::Color::RGBA(0, 0, 0, 255),
+                        )
+                        .unwrap();
+                    let texture = texture_creator
+                        .create_texture_from_surface(&surface)
+                        .unwrap();
+                    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+                    self.canvas
+                        .copy(
+                            &texture,
+                            None,
+                            Some(sdl2::rect::Rect::new(1, 1 + i as i32 * 8, width, height)),
+                        )
+                        .unwrap();
+                }
+            }
 
             self.canvas.present();
             self.fps_counter.lock().mark();

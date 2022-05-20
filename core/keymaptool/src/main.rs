@@ -25,6 +25,10 @@ fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let game_controller = sdl.game_controller().unwrap();
+
     let ttf = sdl2::ttf::init().unwrap();
     let font = ttf
         .load_font_from_rwops(
@@ -37,10 +41,6 @@ fn main() -> anyhow::Result<()> {
             32,
         )
         .unwrap();
-
-    let sdl = sdl2::init().unwrap();
-    let video = sdl.video().unwrap();
-    let game_controller = sdl.game_controller().unwrap();
 
     let window = video
         .window("keymaptool", 400, 100)
@@ -73,7 +73,10 @@ fn main() -> anyhow::Result<()> {
 
                 let surface = font
                     .render(&text.trim_end())
-                    .blended(sdl2::pixels::Color::RGBA(0, 0, 0, 255))
+                    .blended_wrapped(
+                        sdl2::pixels::Color::RGBA(0, 0, 0, 255),
+                        canvas.window().drawable_size().0,
+                    )
                     .unwrap();
                 let texture = texture_creator
                     .create_texture_from_surface(&surface)
