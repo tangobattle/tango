@@ -1,7 +1,6 @@
 #![windows_subsystem = "windows"]
 
 use clap::Parser;
-use cpal::traits::{HostTrait, StreamTrait};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -50,12 +49,7 @@ fn main() -> Result<(), anyhow::Error> {
             as usize
     ]));
 
-    let audio_device = cpal::default_host()
-        .default_output_device()
-        .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-
-    let supported_config = tango_core::audio::get_supported_config(&audio_device)?;
-    log::info!("selected audio config: {:?}", supported_config);
+    let audio = sdl.audio().unwrap();
 
     let window = video
         .window(
@@ -118,15 +112,18 @@ fn main() -> Result<(), anyhow::Error> {
         });
     }
 
-    let stream = tango_core::audio::open_stream(
-        &audio_device,
-        &supported_config,
-        tango_core::audio::mgba_stream::MGBAStream::new(
-            thread.handle(),
-            supported_config.sample_rate(),
-        ),
-    )?;
-    stream.play()?;
+    let device = audio
+        .open_playback(
+            None,
+            &sdl2::audio::AudioSpecDesired {
+                freq: Some(48000),
+                channels: Some(2),
+                samples: Some(2048),
+            },
+            |spec| tango_core::audio::mgba_stream::MGBASDL2Stream::new(thread.handle(), spec.freq),
+        )
+        .unwrap();
+    device.resume();
 
     thread.handle().run_on_core(move |mut core| {
         core.load_state(replay.local_state.as_ref().unwrap())
