@@ -33,6 +33,14 @@ The core is written in Rust. Despite being for Windows, you must have a POSIX-y 
     sudo apt-get install -y mingw-w64
     ```
 
+1.  Dowload the DLLs for SDL2.
+
+    ```sh
+    pushd core &&
+    ./get-windows-sdl.sh &&
+    popd
+    ```
+
 1.  Ensure mingw-w64 is using the POSIX threading model.
 
     ```sh
