@@ -1370,8 +1370,13 @@ export default function BattleStarter({
                                   negotiatedState,
                                 },
                               }));
-                              setChangingCommitment(false);
-                            })();
+                            })()
+                              .catch((e) => {
+                                console.error("failed to change commitment", e);
+                              })
+                              .finally(() => {
+                                setChangingCommitment(false);
+                              });
                           }}
                         />
                       }
