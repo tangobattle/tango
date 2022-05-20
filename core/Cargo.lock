@@ -1433,7 +1433,6 @@ version = "0.35.2"
 source = "git+https://github.com/Rust-SDL2/rust-sdl2?rev=541f49af58fb55b678d0b209fc354a13a54318dd#541f49af58fb55b678d0b209fc354a13a54318dd"
 dependencies = [
  "cfg-if",
- "cmake",
  "libc",
  "version-compare",
 ]

@@ -25,6 +25,19 @@ fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
+    let ttf = sdl2::ttf::init().unwrap();
+    let font = ttf
+        .load_font_from_rwops(
+            sdl2::rwops::RWops::from_bytes(match args.lang.as_str() {
+                "ja" => include_bytes!("fonts/NotoSansJP-Regular.otf"),
+                "zh-Hans" => include_bytes!("fonts/NotoSansSC-Regular.otf"),
+                _ => include_bytes!("fonts/NotoSans-Regular.ttf"),
+            })
+            .unwrap(),
+            32,
+        )
+        .unwrap();
+
     let sdl = sdl2::init().unwrap();
     let video = sdl.video().unwrap();
     let game_controller = sdl.game_controller().unwrap();
@@ -33,19 +46,55 @@ fn main() -> anyhow::Result<()> {
         .window("keymaptool", 400, 100)
         .set_window_flags(sdl2::sys::SDL_WindowFlags::SDL_WINDOW_ALWAYS_ON_TOP as u32)
         .position_centered()
+        .allow_highdpi()
         .borderless()
         .build()
         .unwrap();
 
     let mut event_loop = sdl.event_pump().unwrap();
 
-    let next = move || {
+    let mut keys_pressed = [false; sdl2::keyboard::Scancode::Num as usize];
+    let mut buttons_pressed =
+        [false; sdl2::sys::SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX as usize];
+
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    let texture_creator = canvas.texture_creator();
+
+    let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
+        std::collections::HashMap::new();
+
+    let mut next = move || {
         let mut text = "".to_owned();
         match std::io::stdin().read_line(&mut text) {
             Ok(n) => {
                 if n == 0 {
                     return false;
                 }
+
+                let surface = font
+                    .render(&text.trim_end())
+                    .blended(sdl2::pixels::Color::RGBA(0, 0, 0, 255))
+                    .unwrap();
+                let texture = texture_creator
+                    .create_texture_from_surface(&surface)
+                    .unwrap();
+                let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+
+                canvas.set_draw_color(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xff));
+                canvas.clear();
+                canvas
+                    .copy(
+                        &texture,
+                        None,
+                        Some(sdl2::rect::Rect::new(
+                            ((canvas.window().drawable_size().0 as i32 - width as i32) / 2),
+                            ((canvas.window().drawable_size().1 as i32 - height as i32) / 2),
+                            width,
+                            height,
+                        )),
+                    )
+                    .unwrap();
+                canvas.present();
             }
             Err(e) => {
                 panic!("{}", e);
@@ -53,18 +102,10 @@ fn main() -> anyhow::Result<()> {
         }
         true
     };
+
     if !next() {
         return Ok(());
     }
-
-    let mut keys_pressed = [false; sdl2::keyboard::Scancode::Num as usize];
-    let mut buttons_pressed =
-        [false; sdl2::sys::SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX as usize];
-
-    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
-
-    let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
-        std::collections::HashMap::new();
 
     'toplevel: loop {
         for event in event_loop.poll_iter() {
@@ -84,11 +125,9 @@ fn main() -> anyhow::Result<()> {
                         .unwrap();
                     std::io::stdout().write_all(b"\n").unwrap();
 
-                    canvas.clear();
                     if !next() {
                         break 'toplevel;
                     }
-                    canvas.present();
                 }
                 sdl2::event::Event::KeyUp {
                     scancode: Some(scancode),
@@ -117,11 +156,9 @@ fn main() -> anyhow::Result<()> {
                         .unwrap();
                     std::io::stdout().write_all(b"\n").unwrap();
 
-                    canvas.clear();
                     if !next() {
                         break 'toplevel;
                     }
-                    canvas.present();
                 }
                 sdl2::event::Event::ControllerButtonUp { button, .. }
                     if args.target == Target::Controller =>
