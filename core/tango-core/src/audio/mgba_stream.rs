@@ -51,5 +51,9 @@ impl sdl2::audio::AudioCallback for MGBAStream {
             self.sample_rate as f64 * faux_clock as f64,
         );
         right.read_samples(&mut buf[1..], available, true);
+
+        for i in &mut buf[available as usize * NUM_CHANNELS..] {
+            *i = 0;
+        }
     }
 }
