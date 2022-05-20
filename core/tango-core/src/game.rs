@@ -497,11 +497,8 @@ impl Game {
                     }
                     let vbuf = self.vbuf.lock().clone();
                     self.fb.draw(
-                        self.gl_window.window().inner_size(),
-                        glutin::dpi::LogicalSize {
-                            width: mgba::gba::SCREEN_WIDTH,
-                            height: mgba::gba::SCREEN_HEIGHT,
-                        },
+                        self.gl_window.window().inner_size().into(),
+                        (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
                         &vbuf,
                     );
                     self.gui.render(&self.gl_window.window(), &self.gl);

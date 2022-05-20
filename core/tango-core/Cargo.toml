@@ -46,6 +46,7 @@ glutin = "0.28.0"
 glow = "0.11"
 egui_glow = "0.17"
 glowfb = { path = "../glowfb" }
+sdl2 = { version = "0.35", features = ["bundled", "static-link"] }
 
 [build-dependencies]
 winres = "0.1"

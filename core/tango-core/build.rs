@@ -13,4 +13,8 @@ fn main() {
             .compile()
             .unwrap();
     }
+
+    if target_os == "macos" {
+        println!("cargo:rustc-link-lib=framework=CoreHaptics");
+    }
 }

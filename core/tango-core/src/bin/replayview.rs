@@ -35,6 +35,9 @@ fn main() -> Result<(), anyhow::Error> {
         replay.local_state.as_ref().unwrap().rom_crc32()
     );
 
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+
     let mut core = mgba::core::Core::new_gba("tango_core")?;
 
     let vf = mgba::vfile::VFile::open(&args.rom_path, mgba::vfile::flags::O_RDONLY)?;
@@ -55,28 +58,23 @@ fn main() -> Result<(), anyhow::Error> {
     let supported_config = tango_core::audio::get_supported_config(&audio_device)?;
     log::info!("selected audio config: {:?}", supported_config);
 
-    let event_loop = winit::event_loop::EventLoop::new();
+    let window = video
+        .window(
+            "tango replayview",
+            mgba::gba::SCREEN_WIDTH * 3,
+            mgba::gba::SCREEN_HEIGHT * 3,
+        )
+        .opengl()
+        .resizable()
+        .build()
+        .unwrap();
 
-    let wb = {
-        let size =
-            winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3);
-        glutin::window::WindowBuilder::new()
-            .with_title("tango replayview")
-            .with_inner_size(size)
-            .with_min_inner_size(size)
-    };
-
-    let gl_window = unsafe {
-        glutin::ContextBuilder::new()
-            .with_vsync(true)
-            .build_windowed(wb, &event_loop)
-            .unwrap()
-            .make_current()
-            .unwrap()
-    };
-
+    let _gl_context = window.gl_create_context().unwrap();
+    video
+        .gl_set_swap_interval(sdl2::video::SwapInterval::VSync)
+        .unwrap();
     let gl = std::rc::Rc::new(unsafe {
-        glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
+        glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
     });
     log::info!("GL version: {}", unsafe {
         gl.get_parameter_string(glow::VERSION)
@@ -150,49 +148,30 @@ fn main() -> Result<(), anyhow::Error> {
     });
     thread.handle().unpause();
 
+    let mut event_loop = sdl.event_pump().unwrap();
     {
         let vbuf = vbuf.clone();
-        event_loop.run(move |event, _, control_flow| {
-            *control_flow = winit::event_loop::ControlFlow::Poll;
-
-            if done.load(std::sync::atomic::Ordering::Relaxed) {
-                *control_flow = winit::event_loop::ControlFlow::Exit;
-                return;
+        'toplevel: loop {
+            for event in event_loop.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. } => break 'toplevel,
+                    _ => {}
+                }
             }
 
-            match event {
-                winit::event::Event::MainEventsCleared => {
-                    unsafe {
-                        gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                        gl.clear(glow::COLOR_BUFFER_BIT);
-                    }
-                    let vbuf = vbuf.lock().clone();
-                    fb.draw(
-                        gl_window.window().inner_size(),
-                        glutin::dpi::LogicalSize {
-                            width: mgba::gba::SCREEN_WIDTH,
-                            height: mgba::gba::SCREEN_HEIGHT,
-                        },
-                        &vbuf,
-                    );
-                    gl_window.swap_buffers().unwrap();
-                }
-                winit::event::Event::WindowEvent {
-                    event: ref window_event,
-                    ..
-                } => {
-                    match window_event {
-                        winit::event::WindowEvent::CloseRequested => {
-                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                        }
-                        winit::event::WindowEvent::Resized(size) => {
-                            gl_window.resize(*size);
-                        }
-                        _ => {}
-                    };
-                }
-                _ => {}
+            unsafe {
+                gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
             }
-        });
+            let vbuf = vbuf.lock().clone();
+            fb.draw(
+                window.size(),
+                (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
+                &vbuf,
+            );
+            window.gl_swap_window();
+        }
     }
+
+    Ok(())
 }

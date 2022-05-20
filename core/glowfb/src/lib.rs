@@ -167,24 +167,19 @@ impl Framebuffer {
         }
     }
 
-    pub fn draw(
-        &mut self,
-        viewport_size: glutin::dpi::PhysicalSize<u32>,
-        buffer_size: glutin::dpi::LogicalSize<u32>,
-        pixels: &[u8],
-    ) {
+    pub fn draw(&mut self, viewport_size: (u32, u32), buffer_size: (u32, u32), pixels: &[u8]) {
         unsafe {
             let scaling_factor = std::cmp::min(
-                viewport_size.width / buffer_size.width,
-                viewport_size.height / buffer_size.height,
+                viewport_size.0 / buffer_size.0,
+                viewport_size.1 / buffer_size.1,
             );
 
-            let width = buffer_size.width * scaling_factor;
-            let height = buffer_size.height * scaling_factor;
+            let width = buffer_size.0 * scaling_factor;
+            let height = buffer_size.1 * scaling_factor;
 
             self.gl.viewport(
-                ((viewport_size.width - width) / 2) as i32,
-                ((viewport_size.height - height) / 2) as i32,
+                ((viewport_size.0 - width) / 2) as i32,
+                ((viewport_size.1 - height) / 2) as i32,
                 width as i32,
                 height as i32,
             );
@@ -196,8 +191,8 @@ impl Framebuffer {
                 glow::TEXTURE_2D,
                 0,
                 glow::RGBA8 as i32,
-                buffer_size.width as i32,
-                buffer_size.height as i32,
+                buffer_size.0 as i32,
+                buffer_size.1 as i32,
                 0,
                 glow::RGBA,
                 glow::UNSIGNED_BYTE,
