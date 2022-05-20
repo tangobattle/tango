@@ -354,6 +354,7 @@ impl Game {
         })?;
 
         let mut debug_key_pressed = false;
+        let mut show_debug = false;
 
         let texture_creator = self.canvas.texture_creator();
         let mut texture = sdl2::surface::Surface::new(
@@ -386,7 +387,7 @@ impl Game {
                                 continue;
                             }
                             debug_key_pressed = true;
-                            // self.gui.state().toggle_debug();
+                            show_debug = true;
                         }
                     }
                     sdl2::event::Event::KeyUp {
@@ -469,7 +470,6 @@ impl Game {
                     }
                     _ => {}
                 }
-                // self.gui.handle_event(&self.window, event);
             }
 
             self.canvas.clear();
@@ -481,6 +481,9 @@ impl Game {
                 )
                 .unwrap();
             self.canvas.copy(&texture, None, None).unwrap();
+
+            if show_debug {}
+
             self.canvas.present();
             self.fps_counter.lock().mark();
         }

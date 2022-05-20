@@ -87,8 +87,8 @@ fn main() -> anyhow::Result<()> {
                         &texture,
                         None,
                         Some(sdl2::rect::Rect::new(
-                            ((canvas.window().drawable_size().0 as i32 - width as i32) / 2),
-                            ((canvas.window().drawable_size().1 as i32 - height as i32) / 2),
+                            (canvas.window().drawable_size().0 as i32 - width as i32) / 2,
+                            (canvas.window().drawable_size().1 as i32 - height as i32) / 2,
                             width,
                             height,
                         )),
