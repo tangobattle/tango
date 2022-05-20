@@ -2,7 +2,6 @@
 
 use clap::Parser;
 use cpal::traits::{HostTrait, StreamTrait};
-use glow::HasContext;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -64,23 +63,9 @@ fn main() -> Result<(), anyhow::Error> {
             mgba::gba::SCREEN_WIDTH * 3,
             mgba::gba::SCREEN_HEIGHT * 3,
         )
-        .opengl()
         .resizable()
         .build()
         .unwrap();
-
-    let _gl_context = window.gl_create_context().unwrap();
-    video
-        .gl_set_swap_interval(sdl2::video::SwapInterval::VSync)
-        .unwrap();
-    let gl = std::rc::Rc::new(unsafe {
-        glow::Context::from_loader_function(|s| video.gl_get_proc_address(s) as *const _)
-    });
-    log::info!("GL version: {}", unsafe {
-        gl.get_parameter_string(glow::VERSION)
-    });
-
-    let mut fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::HOOKS
@@ -150,6 +135,23 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut event_loop = sdl.event_pump().unwrap();
     {
+        let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+        canvas
+            .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+            .unwrap();
+        canvas.set_integer_scale(true).unwrap();
+
+        let texture_creator = canvas.texture_creator();
+
+        let mut texture = sdl2::surface::Surface::new(
+            mgba::gba::SCREEN_WIDTH,
+            mgba::gba::SCREEN_HEIGHT,
+            sdl2::pixels::PixelFormatEnum::RGBA32,
+        )
+        .unwrap()
+        .as_texture(&texture_creator)
+        .unwrap();
+
         let vbuf = vbuf.clone();
         'toplevel: loop {
             for event in event_loop.poll_iter() {
@@ -158,18 +160,16 @@ fn main() -> Result<(), anyhow::Error> {
                     _ => {}
                 }
             }
-
-            unsafe {
-                gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                gl.clear(glow::COLOR_BUFFER_BIT);
-            }
-            let vbuf = vbuf.lock().clone();
-            fb.draw(
-                window.size(),
-                (mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
-                &vbuf,
-            );
-            window.gl_swap_window();
+            canvas.clear();
+            texture
+                .update(
+                    sdl2::rect::Rect::new(0, 0, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT),
+                    &*vbuf.lock(),
+                    mgba::gba::SCREEN_WIDTH as usize * 4,
+                )
+                .unwrap();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
         }
     }
 
