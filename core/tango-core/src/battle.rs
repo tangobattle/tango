@@ -64,7 +64,6 @@ pub struct Match {
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
-    dc_rx: tokio::sync::Mutex<Option<datachannel_wrapper::DataChannelReceiver>>,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     settings: Settings,
@@ -152,14 +151,13 @@ impl Match {
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         audio_mux: audio::mux_stream::MuxStream,
         peer_conn: datachannel_wrapper::PeerConnection,
-        dc: datachannel_wrapper::DataChannel,
+        dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
-        let (dc_rx, dc_tx) = dc.split();
         let did_polite_win_last_round = rng.gen::<bool>();
         let won_last_round = did_polite_win_last_round == is_offerer;
         let match_ = std::sync::Arc::new(Self {
@@ -175,7 +173,6 @@ impl Match {
             rom_path,
             hooks,
             _peer_conn: peer_conn,
-            dc_rx: tokio::sync::Mutex::new(Some(dc_rx)),
             transport: std::sync::Arc::new(tokio::sync::Mutex::new(transport::Transport::new(
                 dc_tx,
             ))),
@@ -215,8 +212,10 @@ impl Match {
             .advance_until_first_committed_state()
     }
 
-    pub async fn run(&self) -> anyhow::Result<()> {
-        let mut dc_rx = self.dc_rx.lock().await.take().unwrap();
+    pub async fn run(
+        &self,
+        mut dc_rx: datachannel_wrapper::DataChannelReceiver,
+    ) -> anyhow::Result<()> {
         let mut last_round_number = 0;
         loop {
             match protocol::Packet::deserialize(

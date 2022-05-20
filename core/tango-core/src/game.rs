@@ -201,6 +201,8 @@ impl Game {
         if let Some(match_init) = match_init {
             let _ = std::fs::create_dir_all(&match_init.settings.replays_path);
 
+            let (dc_rx, dc_tx) = match_init.dc.split();
+
             let match_ = match_.clone();
             handle.block_on(async {
                 let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
@@ -218,7 +220,7 @@ impl Game {
                         hooks,
                         audio_mux.clone(),
                         match_init.peer_conn,
-                        match_init.dc,
+                        dc_tx,
                         rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                         is_offerer,
                         thread.handle(),
@@ -232,7 +234,7 @@ impl Game {
                 {
                     let match_ = match_.lock().await.clone().unwrap();
                     tokio::select! {
-                        Err(e) = match_.run() => {
+                        Err(e) = match_.run(dc_rx) => {
                             log::info!("match thread ending: {:?}", e);
                         }
                         _ = cancellation_token.cancelled() => {
