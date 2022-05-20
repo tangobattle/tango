@@ -57,9 +57,9 @@ function SetupAppBody() {
   const { saves } = useSaves();
 
   const activeStep =
-    config.nickname != null
-      ? Object.keys(roms).length > 0
-        ? Object.keys(saves).length > 0
+    Object.keys(roms).length > 0
+      ? Object.keys(saves).length > 0
+        ? config.nickname != null
           ? 3
           : 2
         : 1
@@ -115,13 +115,61 @@ function SetupAppBody() {
           <Trans i18nKey="setup:welcome-2" />
         </Typography>
         <Stepper orientation="vertical" activeStep={activeStep}>
-          <Step completed={config.nickname != null}>
+          <Step completed={Object.keys(roms).length > 0}>
             <StepLabel>
-              <Trans i18nKey="setup:step-1-title" />
+              <Trans
+                i18nKey="setup:roms-step-title"
+                values={{ path: getROMsPath(app) }}
+              />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-1-description" />
+                <Trans i18nKey="setup:roms-step-description" />
+              </Typography>
+              <Stack spacing={1} direction="row">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    shell.openPath(getROMsPath(app));
+                  }}
+                >
+                  <Trans i18nKey="setup:open-folder" />
+                </Button>
+              </Stack>
+            </StepContent>
+          </Step>
+          <Step completed={Object.keys(saves).length > 0}>
+            <StepLabel>
+              <Trans
+                i18nKey="setup:saves-step-title"
+                values={{ path: getSavesPath(app) }}
+              />
+            </StepLabel>
+            <StepContent>
+              <Typography sx={{ mb: 2 }}>
+                <Trans i18nKey="setup:saves-step-description" />
+              </Typography>
+              <Stack spacing={1} direction="row">
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() => {
+                    shell.openPath(getSavesPath(app));
+                  }}
+                >
+                  <Trans i18nKey="setup:open-folder" />
+                </Button>
+              </Stack>
+            </StepContent>
+          </Step>
+          <Step completed={config.nickname != null}>
+            <StepLabel>
+              <Trans i18nKey="setup:nicknames-step-title" />
+            </StepLabel>
+            <StepContent>
+              <Typography sx={{ mb: 2 }}>
+                <Trans i18nKey="setup:nicknames-step-description" />
               </Typography>
               <Stack
                 spacing={1}
@@ -152,59 +200,6 @@ function SetupAppBody() {
               </Stack>
             </StepContent>
           </Step>
-          <Step completed={Object.keys(roms).length > 0}>
-            <StepLabel>
-              <Trans
-                i18nKey="setup:step-2-title"
-                values={{ path: getROMsPath(app) }}
-              />
-            </StepLabel>
-            <StepContent>
-              <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-2-description" />
-              </Typography>
-              <Stack spacing={1} direction="row">
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => {
-                    shell.openPath(getROMsPath(app));
-                  }}
-                >
-                  <Trans i18nKey="setup:open-folder" />
-                </Button>
-              </Stack>
-            </StepContent>
-          </Step>
-          <Step completed={Object.keys(saves).length > 0}>
-            <StepLabel>
-              <Trans
-                i18nKey="setup:step-3-title"
-                values={{ path: getSavesPath(app) }}
-              />
-            </StepLabel>
-            <StepContent>
-              <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-3-description" />
-              </Typography>
-              <Stack spacing={1} direction="row">
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={() => {
-                    shell.openPath(getSavesPath(app));
-                  }}
-                >
-                  <Trans i18nKey="setup:open-folder" />
-                </Button>
-              </Stack>
-            </StepContent>
-          </Step>
-          <Step completed={activeStep > 3}>
-            <StepLabel>
-              <Trans i18nKey="setup:step-4-title" />
-            </StepLabel>
-          </Step>
         </Stepper>
       </Box>
     </Box>
@@ -213,16 +208,7 @@ function SetupAppBody() {
 
 function AppBody() {
   const { config } = useConfig();
-  const { roms } = useROMs();
-  const { saves } = useSaves();
-
-  return config.nickname != null &&
-    Object.keys(roms).length > 0 &&
-    Object.keys(saves).length > 0 ? (
-    <ReadyAppBody />
-  ) : (
-    <SetupAppBody />
-  );
+  return config.nickname != null ? <ReadyAppBody /> : <SetupAppBody />;
 }
 
 const AppWrapper = withTranslation()(() => {
