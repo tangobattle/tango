@@ -96,7 +96,7 @@ export const SavesProvider = ({
     return () => {
       watcher.close();
     };
-  }, [dir]);
+  }, []);
   return (
     <Context.Provider
       value={{
