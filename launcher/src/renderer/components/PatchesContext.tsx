@@ -1,5 +1,7 @@
 import { Mutex } from "async-mutex";
 import { watch } from "chokidar";
+import { constants } from "fs";
+import { access } from "fs/promises";
 import mkdirp from "mkdirp";
 import path from "path";
 import React, { useContext } from "react";
@@ -78,6 +80,11 @@ export const PatchesProvider = ({
       (async () => {
         const release = await stateMu.acquire();
         try {
+          try {
+            await access(path.join(dir, p), constants.R_OK);
+          } catch (e) {
+            return;
+          }
           await upsert(fn);
         } finally {
           release();
@@ -101,7 +108,7 @@ export const PatchesProvider = ({
     return () => {
       watcher.close();
     };
-  }, []);
+  }, [dir]);
 
   return (
     <Context.Provider
