@@ -335,6 +335,9 @@ impl Game {
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
 
+        let mut dpad_x_active = false;
+        let mut dpad_y_active = false;
+
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
                 match event {
@@ -386,7 +389,7 @@ impl Game {
                                         mgba::input::keys::RIGHT,
                                         std::sync::atomic::Ordering::Relaxed,
                                     );
-                                } else {
+                                } else if !dpad_x_active {
                                     self.joyflags.fetch_and(
                                         !(mgba::input::keys::LEFT | mgba::input::keys::RIGHT),
                                         std::sync::atomic::Ordering::Relaxed,
@@ -404,7 +407,7 @@ impl Game {
                                         mgba::input::keys::DOWN,
                                         std::sync::atomic::Ordering::Relaxed,
                                     );
-                                } else {
+                                } else if !dpad_y_active {
                                     self.joyflags.fetch_and(
                                         !(mgba::input::keys::UP | mgba::input::keys::DOWN),
                                         std::sync::atomic::Ordering::Relaxed,
@@ -425,16 +428,34 @@ impl Game {
                         controllers.remove(&which);
                     }
                     sdl2::event::Event::ControllerButtonDown { button, .. } => {
+                        let mask = self.controller_mapping.to_mgba_keys(button);
+                        if mask & mgba::input::keys::LEFT != 0
+                            || mask & mgba::input::keys::RIGHT != 0
+                        {
+                            dpad_x_active = true;
+                        }
+                        if mask & mgba::input::keys::UP != 0 || mask & mgba::input::keys::DOWN != 0
+                        {
+                            dpad_y_active = true;
+                        }
                         self.joyflags.fetch_or(
                             self.controller_mapping.to_mgba_keys(button),
                             std::sync::atomic::Ordering::Relaxed,
                         );
                     }
                     sdl2::event::Event::ControllerButtonUp { button, .. } => {
-                        self.joyflags.fetch_and(
-                            !self.controller_mapping.to_mgba_keys(button),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
+                        let mask = self.controller_mapping.to_mgba_keys(button);
+                        if mask & mgba::input::keys::LEFT != 0
+                            || mask & mgba::input::keys::RIGHT != 0
+                        {
+                            dpad_x_active = false;
+                        }
+                        if mask & mgba::input::keys::UP != 0 || mask & mgba::input::keys::DOWN != 0
+                        {
+                            dpad_y_active = false;
+                        }
+                        self.joyflags
+                            .fetch_and(!mask, std::sync::atomic::Ordering::Relaxed);
                     }
                     _ => {}
                 }
