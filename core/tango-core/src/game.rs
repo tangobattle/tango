@@ -198,11 +198,6 @@ impl Game {
             .unwrap();
         audio_device.resume();
 
-        let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
-            thread.handle(),
-            audio_device.spec().freq,
-        ));
-
         if let Some(match_init) = match_init {
             let _ = std::fs::create_dir_all(&match_init.settings.replays_path);
 
@@ -255,6 +250,11 @@ impl Game {
             .sync_mut()
             .set_fps_target(EXPECTED_FPS as f32);
 
+        let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
+            thread.handle(),
+            audio_device.spec().freq,
+        ));
+
         {
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
@@ -270,9 +270,6 @@ impl Game {
                 emu_tps_counter.mark();
             });
         }
-
-        // let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
-        // stream.play()?;
 
         // let gui_state = gui.state();
         // {
@@ -368,6 +365,9 @@ impl Game {
         .as_texture(&texture_creator)
         .unwrap();
 
+        let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
+            std::collections::HashMap::new();
+
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
                 match event {
@@ -448,7 +448,12 @@ impl Game {
                         };
                     }
                     sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
-                        let _ = self.game_controller.open(which);
+                        let controller = self.game_controller.open(which).unwrap();
+                        log::info!("controller added: {}", controller.name());
+                        controllers.insert(which, controller);
+                    }
+                    sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                        controllers.remove(&which);
                     }
                     sdl2::event::Event::ControllerButtonDown { button, .. } => {
                         self.joyflags.fetch_or(
