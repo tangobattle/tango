@@ -210,11 +210,11 @@ function SetupAppBody() {
           </Step>
           <Step completed={config.nickname != null}>
             <StepLabel>
-              <Trans i18nKey="setup:nicknames-step-title" />
+              <Trans i18nKey="setup:nickname-step-title" />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:nicknames-step-description" />
+                <Trans i18nKey="setup:nickname-step-description" />
               </Typography>
               <Stack
                 spacing={1}
