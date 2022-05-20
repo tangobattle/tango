@@ -50,7 +50,7 @@ export const PatchesProvider = ({
       }
     };
 
-    const watcher = watch(dir, { depth: 1 });
+    const watcher = watch(dir);
     watcher.on("add", (p) => {
       const fn = path.relative(dir, p).split(path.sep)[0];
       (async () => {
