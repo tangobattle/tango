@@ -13,4 +13,5 @@ fn main() {
             .compile()
             .unwrap();
     }
+    println!("cargo:rustc-link-search=external/sdl2");
 }

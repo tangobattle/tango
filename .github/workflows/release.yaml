@@ -52,7 +52,10 @@ jobs:
           sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-g++ x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix 90 &&
           sudo update-alternatives --config x86_64-w64-mingw32-g++
 
-      - run: cd core && BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${{ matrix.sysroot }}" cargo build --release --target ${{ matrix.rust-target }}
+      - run: >
+        cd core &&
+        ./get-windows-sdl.sh &&
+        BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${{ matrix.sysroot }}" cargo build --release --target ${{ matrix.rust-target }}
 
       - run: >
           mkdir launcher/bin &&
