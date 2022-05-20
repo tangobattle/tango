@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "mgba",
-    "glowfb",
     "tango-core",
     "tango-protos",
     "tango-server",
@@ -10,3 +9,6 @@ members = [
     "keymaptool",
     "datachannel-wrapper",
 ]
+
+[patch.crates-io]
+sdl2 = { git = "https://github.com/Rust-SDL2/rust-sdl2", rev = "541f49af58fb55b678d0b209fc354a13a54318dd" }

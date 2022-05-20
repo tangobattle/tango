@@ -7,16 +7,10 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-winit = { version = "0.26.1", features = ["serde"] }
 env_logger = "0.9.0"
 log = "0.4"
 serde_plain = "1.0"
 serde = "1.0"
-gilrs = { version = "0.8", features = ["serde-serialize"] }
 clap = { version = "3.1", features = ["derive"] }
-egui = "0.17"
-egui-winit = { version = "0.17", default-features = false }
 parking_lot = { version = "0.12.0" }
-egui_glow = "0.17"
-glow = "0.11"
-glutin = "0.28.0"
+sdl2 = { version = "0.35", features = ["bundled", "static-link", "ttf"] }
