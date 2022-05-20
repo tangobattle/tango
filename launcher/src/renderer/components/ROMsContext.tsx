@@ -11,7 +11,6 @@ import { getROMName } from "../../rom";
 
 export interface ROMsValue {
   roms: { [name: string]: string[] };
-  hasErrors: boolean;
 }
 
 const Context = React.createContext(null! as ROMsValue);
@@ -24,8 +23,6 @@ export const ROMsProvider = ({
   const [currentROMs, setCurrentROMs] = React.useState<{
     [name: string]: string[];
   }>({});
-  const [hasErrors, setHasErrors] = React.useState(false);
-
   const dir = getROMsPath(app);
 
   React.useEffect(() => {
@@ -59,7 +56,6 @@ export const ROMsProvider = ({
         }));
       } catch (e) {
         console.error(`failed to scan ${fn}`, e);
-        setHasErrors(true);
         await remove(fn);
       }
     };
@@ -110,7 +106,6 @@ export const ROMsProvider = ({
     <Context.Provider
       value={{
         roms: currentROMs,
-        hasErrors,
       }}
     >
       {children}

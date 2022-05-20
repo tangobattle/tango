@@ -27,7 +27,7 @@ export async function getROMName(path: string): Promise<string | null> {
   const romInfo = getROMInfo((await readFile(path)).buffer);
   const knownROM = KNOWN_ROMS[romInfo.name];
   if (knownROM == null) {
-    throw `unknown rom: ${romInfo.name}`;
+    return null;
   }
   if (romInfo.crc32 != knownROM.crc32) {
     throw `mismatched crc32: expected ${knownROM.crc32

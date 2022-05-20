@@ -11,7 +11,6 @@ import { getSaveInfo, SaveInfo } from "../../saves";
 
 export interface SavesValue {
   saves: { [filename: string]: SaveInfo };
-  hasErrors: boolean;
 }
 
 const Context = React.createContext(null! as SavesValue);
@@ -24,8 +23,6 @@ export const SavesProvider = ({
   const [currentSaves, setCurrentSaves] = React.useState<{
     [filename: string]: SaveInfo;
   }>({});
-  const [hasErrors, setHasErrors] = React.useState(false);
-
   const dir = getSavesPath(app);
 
   React.useEffect(() => {
@@ -51,7 +48,6 @@ export const SavesProvider = ({
         }));
       } catch (e) {
         console.error(`failed to scan ${fn}`, e);
-        setHasErrors(true);
         await remove(fn);
       }
     };
@@ -101,7 +97,6 @@ export const SavesProvider = ({
     <Context.Provider
       value={{
         saves: currentSaves,
-        hasErrors,
       }}
     >
       {children}

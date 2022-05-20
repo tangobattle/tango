@@ -2,7 +2,6 @@ import React, { Suspense } from "react";
 import { Trans, useTranslation, withTranslation } from "react-i18next";
 
 import { app, shell } from "@electron/remote";
-import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -54,8 +53,8 @@ function SetupAppBody() {
   const { i18n, t } = useTranslation();
 
   const { config, save: saveConfig } = useConfig();
-  const { roms, hasErrors: romsHasErrors } = useROMs();
-  const { saves, hasErrors: savesHasErrors } = useSaves();
+  const { roms } = useROMs();
+  const { saves } = useSaves();
 
   const activeStep =
     Object.keys(roms).length > 0
@@ -127,11 +126,6 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:roms-step-description" />
               </Typography>
-              {romsHasErrors ? (
-                <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:roms-step-error" />
-                </Alert>
-              ) : null}
               <Stack spacing={1} direction="row">
                 <Button
                   variant="outlined"
@@ -156,11 +150,6 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:saves-step-description" />
               </Typography>
-              {savesHasErrors ? (
-                <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:saves-step-error" />
-                </Alert>
-              ) : null}
               <Stack spacing={1} direction="row">
                 <Button
                   variant="outlined"
@@ -176,11 +165,11 @@ function SetupAppBody() {
           </Step>
           <Step completed={config.nickname != null}>
             <StepLabel>
-              <Trans i18nKey="setup:nickname-step-title" />
+              <Trans i18nKey="setup:nicknames-step-title" />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:nickname-step-description" />
+                <Trans i18nKey="setup:nicknames-step-description" />
               </Typography>
               <Stack
                 spacing={1}
