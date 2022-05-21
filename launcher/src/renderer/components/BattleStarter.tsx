@@ -285,8 +285,7 @@ async function runCallback(
   }
 
   const core = new ipc.Core(
-    config.controls.keyboard,
-    config.controls.controller,
+    config.inputMapping,
     `${config.matchmakingServerAddr.replace(/^http/, "ws")}/signaling`,
     iceServers,
     linkCode,

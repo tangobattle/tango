@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PhysicalInput {
     Key(sdl2::keyboard::Scancode),
     Button(sdl2::controller::Button),
     Axis(sdl2::controller::Axis, i16),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct InputMapping {
     pub up: Vec<PhysicalInput>,
     pub down: Vec<PhysicalInput>,
@@ -331,6 +331,12 @@ impl Game {
 
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
+        // Preemptively enumerate controllers.
+        for which in 0..self.game_controller.num_joysticks().unwrap() {
+            let controller = self.game_controller.open(which).unwrap();
+            log::info!("controller added: {}", controller.name());
+            controllers.insert(which, controller);
+        }
         let mut input_state = sdl2_input_helper::State::new();
 
         'toplevel: loop {
@@ -350,7 +356,8 @@ impl Game {
                     _ => {}
                 }
 
-                if input_state.handle_event(event) {
+                if input_state.handle_event(&event) {
+                    log::info!("{:?}", event);
                     let last_show_debug_pressed = show_debug_pressed;
                     show_debug_pressed =
                         input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);

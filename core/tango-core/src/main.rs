@@ -3,58 +3,52 @@
 use clap::StructOpt;
 
 #[derive(Clone, serde::Deserialize)]
-pub struct Keymapping {
-    pub up: String,
-    pub down: String,
-    pub left: String,
-    pub right: String,
-    pub a: String,
-    pub b: String,
-    pub l: String,
-    pub r: String,
-    pub select: String,
-    pub start: String,
+pub enum PhysicalInput {
+    Key(String),
+    Button(String),
+    Axis(String, i16),
 }
 
 #[derive(Clone, serde::Deserialize)]
-pub struct ControllerMapping {
-    pub up: String,
-    pub down: String,
-    pub left: String,
-    pub right: String,
-    pub a: String,
-    pub b: String,
-    pub l: String,
-    pub r: String,
-    pub select: String,
-    pub start: String,
-    #[serde(rename = "enableLeftStick")]
-    pub enable_left_stick: bool,
+pub struct InputMapping {
+    pub up: Vec<PhysicalInput>,
+    pub down: Vec<PhysicalInput>,
+    pub left: Vec<PhysicalInput>,
+    pub right: Vec<PhysicalInput>,
+    pub a: Vec<PhysicalInput>,
+    pub b: Vec<PhysicalInput>,
+    pub l: Vec<PhysicalInput>,
+    pub r: Vec<PhysicalInput>,
+    pub select: Vec<PhysicalInput>,
+    pub start: Vec<PhysicalInput>,
 }
 
-fn parse_controller_input(s: &str) -> Option<tango_core::game::PhysicalInput> {
+fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::game::PhysicalInput> {
     const THRESHOLD: i16 = 0x4000;
-    match s {
-        "lefttrigger" => Some(tango_core::game::PhysicalInput::Axis(
-            sdl2::controller::Axis::TriggerLeft,
-            THRESHOLD,
+    match input {
+        PhysicalInput::Key(key) => Some(tango_core::game::PhysicalInput::Key(
+            sdl2::keyboard::Scancode::from_name(&key)?,
         )),
-        "righttrigger" => Some(tango_core::game::PhysicalInput::Axis(
-            sdl2::controller::Axis::TriggerLeft,
-            THRESHOLD,
+        PhysicalInput::Button(button) => Some(tango_core::game::PhysicalInput::Button(
+            sdl2::controller::Button::from_string(&button)?,
         )),
-        s => sdl2::controller::Button::from_string(s)
-            .map(|button| tango_core::game::PhysicalInput::Button(button)),
+        PhysicalInput::Axis(axis, sign) => Some(tango_core::game::PhysicalInput::Axis(
+            sdl2::controller::Axis::from_string(&axis)?,
+            if *sign > 0 {
+                THRESHOLD
+            } else if *sign < 0 {
+                -THRESHOLD
+            } else {
+                None?
+            },
+        )),
     }
 }
 
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
-    keymapping: String,
-
-    #[clap(long)]
-    controller_mapping: String,
+    input_mapping: String,
 
     #[clap(long)]
     signaling_connect_addr: String,
@@ -76,142 +70,61 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let keymapping = serde_json::from_str::<Keymapping>(&args.keymapping)?;
-    let controller_mapping = serde_json::from_str::<ControllerMapping>(&args.controller_mapping)?;
+    let raw_input_mapping = serde_json::from_str::<InputMapping>(&args.input_mapping)?;
     let input_mapping = tango_core::game::InputMapping {
-        up: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.up)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.up)
-                .into_iter()
-                .collect(),
-            if controller_mapping.enable_left_stick {
-                vec![tango_core::game::PhysicalInput::Axis(
-                    sdl2::controller::Axis::LeftY,
-                    -STICK_THRESHOLD,
-                )]
-            } else {
-                vec![]
-            },
-        ]
-        .concat(),
-        down: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.down)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.down)
-                .into_iter()
-                .collect(),
-            if controller_mapping.enable_left_stick {
-                vec![tango_core::game::PhysicalInput::Axis(
-                    sdl2::controller::Axis::LeftY,
-                    STICK_THRESHOLD,
-                )]
-            } else {
-                vec![]
-            },
-        ]
-        .concat(),
-        left: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.left)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.left)
-                .into_iter()
-                .collect(),
-            if controller_mapping.enable_left_stick {
-                vec![tango_core::game::PhysicalInput::Axis(
-                    sdl2::controller::Axis::LeftX,
-                    -STICK_THRESHOLD,
-                )]
-            } else {
-                vec![]
-            },
-        ]
-        .concat(),
-        right: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.right)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.right)
-                .into_iter()
-                .collect(),
-            if controller_mapping.enable_left_stick {
-                vec![tango_core::game::PhysicalInput::Axis(
-                    sdl2::controller::Axis::LeftX,
-                    STICK_THRESHOLD,
-                )]
-            } else {
-                vec![]
-            },
-        ]
-        .concat(),
-        a: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.a)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.a)
-                .into_iter()
-                .collect::<Vec<_>>(),
-        ]
-        .concat(),
-        b: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.b)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.b)
-                .into_iter()
-                .collect::<Vec<_>>(),
-        ]
-        .concat(),
-        l: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.l)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.l)
-                .into_iter()
-                .collect::<Vec<_>>(),
-        ]
-        .concat(),
-        r: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.r)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.r)
-                .into_iter()
-                .collect::<Vec<_>>(),
-        ]
-        .concat(),
-        select: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.select)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.select)
-                .into_iter()
-                .collect::<Vec<_>>(),
-        ]
-        .concat(),
-        start: vec![
-            sdl2::keyboard::Scancode::from_name(&keymapping.start)
-                .into_iter()
-                .map(|scancode| tango_core::game::PhysicalInput::Key(scancode))
-                .collect(),
-            parse_controller_input(&controller_mapping.start)
-                .into_iter()
-                .collect::<Vec<_>>(),
-        ]
-        .concat(),
+        up: raw_input_mapping
+            .up
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        down: raw_input_mapping
+            .down
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        left: raw_input_mapping
+            .left
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        right: raw_input_mapping
+            .right
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        a: raw_input_mapping
+            .a
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        b: raw_input_mapping
+            .b
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        l: raw_input_mapping
+            .l
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        r: raw_input_mapping
+            .r
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        select: raw_input_mapping
+            .select
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        start: raw_input_mapping
+            .start
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
     };
+
+    log::info!("input mapping: {:?}", input_mapping);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -371,8 +284,6 @@ fn main() -> Result<(), anyhow::Error> {
     };
 
     mgba::log::init();
-
-    const STICK_THRESHOLD: i16 = 0x4000;
 
     let g = tango_core::game::Game::new(
         rt,

@@ -35,24 +35,24 @@ impl State {
         }
     }
 
-    pub fn handle_event(&mut self, event: sdl2::event::Event) -> bool {
+    pub fn handle_event(&mut self, event: &sdl2::event::Event) -> bool {
         match event {
             sdl2::event::Event::KeyDown {
                 scancode: Some(scancode),
                 repeat: false,
                 ..
             } => {
-                self.keys_pressed[scancode as usize] = true;
+                self.keys_pressed[*scancode as usize] = true;
             }
             sdl2::event::Event::KeyUp {
                 scancode: Some(scancode),
                 repeat: false,
                 ..
             } => {
-                self.keys_pressed[scancode as usize] = false;
+                self.keys_pressed[*scancode as usize] = false;
             }
             sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
-                self.controllers.insert(which, ControllerState::new());
+                self.controllers.insert(*which, ControllerState::new());
             }
             sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
                 self.controllers.remove(&which);
@@ -65,7 +65,7 @@ impl State {
                 } else {
                     return false;
                 };
-                controller.axes[axis as usize] = value;
+                controller.axes[*axis as usize] = *value;
             }
             sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                 let controller = if let Some(controller) = self.controllers.get_mut(&which) {
@@ -73,7 +73,7 @@ impl State {
                 } else {
                     return false;
                 };
-                controller.buttons_pressed[button as usize] = true;
+                controller.buttons_pressed[*button as usize] = true;
             }
             sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
                 let controller = if let Some(controller) = self.controllers.get_mut(&which) {
@@ -81,7 +81,7 @@ impl State {
                 } else {
                     return false;
                 };
-                controller.buttons_pressed[button as usize] = false;
+                controller.buttons_pressed[*button as usize] = false;
             }
             _ => {
                 return false;

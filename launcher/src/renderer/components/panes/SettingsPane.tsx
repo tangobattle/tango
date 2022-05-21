@@ -2,15 +2,17 @@ import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { app, shell } from "@electron/remote";
+import AddIcon from "@mui/icons-material/Add";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
-import Switch from "@mui/material/Switch";
+import { styled } from "@mui/material/styles";
 import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -21,10 +23,18 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
-import { Keymaptool } from "../../../input";
+import { captureInput } from "../../../input";
 import { LANGUAGES } from "../../i18n";
 import { useConfig } from "../ConfigContext";
 
+const AddChip = styled(Chip)(() => ({
+  "&": {
+    borderRadius: "12px",
+  },
+  "& .MuiChip-label": {
+    padding: "0",
+  },
+}));
 const KEYS = [
   "up",
   "down",
@@ -36,7 +46,7 @@ const KEYS = [
   "r",
   "select",
   "start",
-] as (keyof Config["controls"]["keyboard"])[];
+] as (keyof Config["inputMapping"])[];
 
 function AboutTab({ active }: { active: boolean }) {
   return (
@@ -391,234 +401,114 @@ function AdvancedTab({ active }: { active: boolean }) {
   );
 }
 
-function InputKeyboardTab({ active }: { active: boolean }) {
-  const { config, save: saveConfig } = useConfig();
-  const { i18n, t } = useTranslation();
-  const keymaptoolRef = React.useRef<Keymaptool | null>(null);
-  return (
-    <Box
-      flexGrow={1}
-      display={active ? "block" : "none"}
-      overflow="auto"
-      sx={{ px: 1, height: 0 }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          width: "100%",
-          height: "100%",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Stack spacing={1} sx={{ width: "300px" }}>
-          <Table size="small">
-            <TableBody>
-              {KEYS.map((key) => (
-                <TableRow key={key}>
-                  <TableCell component="th">
-                    <strong>
-                      <Trans i18nKey={`settings:input.${key}`} />
-                    </strong>
-                  </TableCell>
-                  <TableCell sx={{ textAlign: "right" }}>
-                    {config.controls.keyboard[key]}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <Button
-            variant="contained"
-            onClick={() => {
-              (async () => {
-                if (keymaptoolRef.current != null) {
-                  return;
-                }
-                keymaptoolRef.current = new Keymaptool(
-                  i18n.resolvedLanguage,
-                  "keyboard",
-                  {
-                    env: {
-                      RUST_BACKTRACE: "1",
-                    },
-                  }
-                );
-                for (const key of KEYS) {
-                  const mapped = await keymaptoolRef.current.request(
-                    t("settings:request-input", {
-                      key: t(`settings:input.${key}`),
-                    })
-                  );
-                  if (mapped == null) {
-                    break;
-                  }
-
-                  saveConfig((config) => ({
-                    ...config,
-                    controls: {
-                      ...config.controls,
-                      keyboard: {
-                        ...config.controls.keyboard,
-                        [key]: mapped,
-                      },
-                    },
-                  }));
-                }
-                keymaptoolRef.current.close();
-                keymaptoolRef.current = null;
-              })();
-            }}
-          >
-            <Trans i18nKey="settings:remap" />
-          </Button>
-        </Stack>
-      </Box>
-    </Box>
-  );
-}
-
-function InputControllerTab({ active }: { active: boolean }) {
-  const { config, save: saveConfig } = useConfig();
-  const { i18n, t } = useTranslation();
-  const keymaptoolRef = React.useRef<Keymaptool | null>(null);
-  return (
-    <Box
-      flexGrow={1}
-      display={active ? "block" : "none"}
-      overflow="auto"
-      sx={{ px: 1, height: 0 }}
-    >
-      <Box
-        sx={{
-          display: "flex",
-          width: "100%",
-          height: "100%",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Stack spacing={1} sx={{ width: "300px" }}>
-          <Table size="small">
-            <TableBody>
-              {KEYS.map((key) => (
-                <TableRow key={key}>
-                  <TableCell component="th">
-                    <strong>
-                      <Trans i18nKey={`settings:input.${key}`} />
-                    </strong>
-                  </TableCell>
-                  <TableCell sx={{ textAlign: "right" }}>
-                    {config.controls.controller[key]}
-                  </TableCell>
-                </TableRow>
-              ))}
-              <TableRow>
-                <TableCell component="th">
-                  <strong>
-                    <Trans i18nKey={`settings:input.enable-left-stick`} />
-                  </strong>
-                </TableCell>
-                <TableCell sx={{ textAlign: "right" }}>
-                  <Switch
-                    size="small"
-                    checked={config.controls.controller.enableLeftStick}
-                    onChange={(_e, v) => {
-                      saveConfig((config) => ({
-                        ...config,
-                        controls: {
-                          ...config.controls,
-                          controller: {
-                            ...config.controls.controller,
-                            enableLeftStick: v,
-                          },
-                        },
-                      }));
-                    }}
-                  />
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-          <Button
-            variant="contained"
-            onClick={() => {
-              (async () => {
-                if (keymaptoolRef.current != null) {
-                  return;
-                }
-                keymaptoolRef.current = new Keymaptool(
-                  i18n.resolvedLanguage,
-                  "controller",
-                  {
-                    env: {
-                      RUST_BACKTRACE: "1",
-                    },
-                  }
-                );
-                for (const key of KEYS) {
-                  const mapped = await keymaptoolRef.current.request(
-                    t("settings:request-input", {
-                      key: t(`settings:input.${key}`),
-                    })
-                  );
-                  if (mapped == null) {
-                    break;
-                  }
-                  saveConfig((config) => ({
-                    ...config,
-                    controls: {
-                      ...config.controls,
-                      controller: {
-                        ...config.controls.controller,
-                        [key]: mapped,
-                      },
-                    },
-                  }));
-                }
-                keymaptoolRef.current.close();
-                keymaptoolRef.current = null;
-              })();
-            }}
-          >
-            <Trans i18nKey="settings:remap" />
-          </Button>
-        </Stack>
-      </Box>
-    </Box>
-  );
-}
-
 function InputTab({ active }: { active: boolean }) {
-  const [tab, setTab] = React.useState("keyboard");
-
+  const { config, save: saveConfig } = useConfig();
+  const { i18n, t } = useTranslation();
   return (
     <Box
-      sx={{
-        flexGrow: 1,
-        display: active ? "flex" : "none",
-      }}
+      flexGrow={1}
+      display={active ? "block" : "none"}
+      overflow="auto"
+      sx={{ px: 1, height: 0 }}
     >
-      <Stack flexGrow={1} flexShrink={0} sx={{ width: 0 }}>
-        <Tabs
-          sx={{ px: 1 }}
-          value={tab}
-          onChange={(e, value) => {
-            setTab(value);
-          }}
-        >
-          <Tab
-            label={<Trans i18nKey="settings:tab.controls.keyboard" />}
-            value="keyboard"
-          />
-          <Tab
-            label={<Trans i18nKey="settings:tab.controls.controller" />}
-            value="controller"
-          />
-        </Tabs>
-        <InputKeyboardTab active={tab == "keyboard"} />
-        <InputControllerTab active={tab == "controller"} />
-      </Stack>
+      <Box
+        sx={{
+          display: "flex",
+          py: 4,
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        <Stack spacing={1} sx={{ width: "500px" }}>
+          <Table size="small">
+            <TableBody>
+              {KEYS.map((key) => (
+                <TableRow key={key}>
+                  <TableCell
+                    component="th"
+                    sx={{ width: "100px", verticalAlign: "top" }}
+                  >
+                    <strong>
+                      <Trans i18nKey={`settings:input.${key}`} />
+                    </strong>
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ mt: -1 }}>
+                      {config.inputMapping[key].map((k, i) => (
+                        <Chip
+                          key={i}
+                          sx={{ mr: 1, mt: 1 }}
+                          label={
+                            "Key" in k ? (
+                              <Trans
+                                i18nKey="settings:input-key"
+                                values={{ key: k.Key }}
+                              />
+                            ) : "Button" in k ? (
+                              <Trans
+                                i18nKey="settings:input-button"
+                                values={{ button: k.Button }}
+                              />
+                            ) : "Axis" in k ? (
+                              <Trans
+                                i18nKey="settings:input-axis"
+                                values={{
+                                  axis: `${k.Axis[0]}${
+                                    k.Axis[1] > 0 ? "+" : "-"
+                                  }`,
+                                }}
+                              />
+                            ) : (
+                              ""
+                            )
+                          }
+                          onDelete={() => {
+                            saveConfig((config) => ({
+                              ...config,
+                              inputMapping: {
+                                ...config.inputMapping,
+                                [key]: config.inputMapping[key].filter(
+                                  (_, j) => i != j
+                                ),
+                              },
+                            }));
+                          }}
+                        />
+                      ))}
+                      <AddChip
+                        size="small"
+                        sx={{ mr: 1, mt: 1 }}
+                        variant="outlined"
+                        label={<AddIcon />}
+                        onClick={() => {
+                          (async () => {
+                            const input = await captureInput(
+                              i18n.language,
+                              t("settings:request-input", {
+                                key: t(`settings:input.${key}`),
+                              })
+                            );
+                            if (input == null) {
+                              return;
+                            }
+                            saveConfig((config) => ({
+                              ...config,
+                              inputMapping: {
+                                ...config.inputMapping,
+                                [key]: [...config.inputMapping[key], input],
+                              },
+                            }));
+                          })();
+                        }}
+                      />
+                    </Box>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Stack>
+      </Box>
     </Box>
   );
 }
