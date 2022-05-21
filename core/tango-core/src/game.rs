@@ -342,8 +342,8 @@ impl Game {
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
 
-        let mut dpad_x_active = false;
-        let mut dpad_y_active = false;
+        let mut keys_pressed = [0u8; 32];
+        let mut stick = (0i16, 0i16);
 
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
@@ -353,12 +353,20 @@ impl Game {
                     }
                     sdl2::event::Event::KeyDown {
                         scancode: Some(scancode),
+                        repeat: false,
                         ..
                     } => {
-                        self.joyflags.fetch_or(
-                            self.keymapping.to_mgba_keys(scancode),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
+                        let mask = self.keymapping.to_mgba_keys(scancode);
+                        for v in
+                            bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(&mask)
+                                .iter_ones()
+                        {
+                            keys_pressed[v] += 1;
+                        }
+                        log::info!("KeyDown: pressed: {:?}", keys_pressed);
+
+                        self.joyflags
+                            .fetch_or(mask, std::sync::atomic::Ordering::Relaxed);
 
                         if scancode == sdl2::keyboard::Scancode::Grave {
                             if debug_key_pressed {
@@ -370,12 +378,24 @@ impl Game {
                     }
                     sdl2::event::Event::KeyUp {
                         scancode: Some(scancode),
+                        repeat: false,
                         ..
                     } => {
-                        self.joyflags.fetch_and(
-                            !self.keymapping.to_mgba_keys(scancode),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
+                        let mut mask = self.keymapping.to_mgba_keys(scancode);
+                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
+                            &mask.clone(),
+                        )
+                        .iter_ones()
+                        {
+                            keys_pressed[v] -= 1;
+                            if keys_pressed[v] > 0 {
+                                mask = mask & !(1 << v);
+                            }
+                        }
+                        log::info!("KeyUp: pressed: {:?}", keys_pressed);
+
+                        self.joyflags
+                            .fetch_and(!mask, std::sync::atomic::Ordering::Relaxed);
                         if scancode == sdl2::keyboard::Scancode::Grave {
                             debug_key_pressed = false;
                         }
@@ -384,47 +404,71 @@ impl Game {
                         if self.controller_mapping.enable_left_stick =>
                     {
                         const STICK_THRESHOLD: i16 = 16384;
+
+                        let last_mask = if stick.0 < -STICK_THRESHOLD {
+                            mgba::input::keys::LEFT
+                        } else if stick.0 > STICK_THRESHOLD {
+                            mgba::input::keys::RIGHT
+                        } else {
+                            0
+                        } | if stick.1 < -STICK_THRESHOLD {
+                            mgba::input::keys::UP
+                        } else if stick.1 > STICK_THRESHOLD {
+                            mgba::input::keys::DOWN
+                        } else {
+                            0
+                        };
+
                         match axis {
                             sdl2::controller::Axis::LeftX => {
-                                if value <= -STICK_THRESHOLD {
-                                    self.joyflags.fetch_or(
-                                        mgba::input::keys::LEFT,
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                } else if value >= STICK_THRESHOLD {
-                                    self.joyflags.fetch_or(
-                                        mgba::input::keys::RIGHT,
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                } else if !dpad_x_active {
-                                    self.joyflags.fetch_and(
-                                        !(mgba::input::keys::LEFT | mgba::input::keys::RIGHT),
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                }
+                                stick.0 = value;
                             }
                             sdl2::controller::Axis::LeftY => {
-                                if value <= -STICK_THRESHOLD {
-                                    self.joyflags.fetch_or(
-                                        mgba::input::keys::UP,
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                } else if value >= STICK_THRESHOLD {
-                                    self.joyflags.fetch_or(
-                                        mgba::input::keys::DOWN,
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                } else if !dpad_y_active {
-                                    self.joyflags.fetch_and(
-                                        !(mgba::input::keys::UP | mgba::input::keys::DOWN),
-                                        std::sync::atomic::Ordering::Relaxed,
-                                    );
-                                }
+                                stick.1 = value;
                             }
                             _ => {
                                 continue;
                             }
+                        }
+
+                        let mask = if stick.0 < -STICK_THRESHOLD {
+                            mgba::input::keys::LEFT
+                        } else if stick.0 > STICK_THRESHOLD {
+                            mgba::input::keys::RIGHT
+                        } else {
+                            0
+                        } | if stick.1 < -STICK_THRESHOLD {
+                            mgba::input::keys::UP
+                        } else if stick.1 > STICK_THRESHOLD {
+                            mgba::input::keys::DOWN
+                        } else {
+                            0
                         };
+
+                        let mut keys_off = last_mask & !mask;
+                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
+                            &keys_off.clone(),
+                        )
+                        .iter_ones()
+                        {
+                            keys_pressed[v] -= 1;
+                            if keys_pressed[v] > 0 {
+                                keys_off = keys_off & !(1 << v);
+                            }
+                        }
+                        self.joyflags
+                            .fetch_and(!keys_off, std::sync::atomic::Ordering::Relaxed);
+
+                        let keys_on = mask & !last_mask;
+                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
+                            &keys_on,
+                        )
+                        .iter_ones()
+                        {
+                            keys_pressed[v] += 1;
+                        }
+                        self.joyflags
+                            .fetch_or(keys_on, std::sync::atomic::Ordering::Relaxed);
                     }
                     sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                         let controller = self.game_controller.open(which).unwrap();
@@ -436,31 +480,33 @@ impl Game {
                     }
                     sdl2::event::Event::ControllerButtonDown { button, .. } => {
                         let mask = self.controller_mapping.to_mgba_keys(button);
-                        if mask & mgba::input::keys::LEFT != 0
-                            || mask & mgba::input::keys::RIGHT != 0
+                        for v in
+                            bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(&mask)
+                                .iter_ones()
                         {
-                            dpad_x_active = true;
+                            keys_pressed[v] += 1;
                         }
-                        if mask & mgba::input::keys::UP != 0 || mask & mgba::input::keys::DOWN != 0
-                        {
-                            dpad_y_active = true;
-                        }
+                        log::info!("ControllerButtonDown: pressed: {:?}", keys_pressed);
+
                         self.joyflags.fetch_or(
                             self.controller_mapping.to_mgba_keys(button),
                             std::sync::atomic::Ordering::Relaxed,
                         );
                     }
                     sdl2::event::Event::ControllerButtonUp { button, .. } => {
-                        let mask = self.controller_mapping.to_mgba_keys(button);
-                        if mask & mgba::input::keys::LEFT != 0
-                            || mask & mgba::input::keys::RIGHT != 0
+                        let mut mask = self.controller_mapping.to_mgba_keys(button);
+                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
+                            &mask.clone(),
+                        )
+                        .iter_ones()
                         {
-                            dpad_x_active = false;
+                            keys_pressed[v] -= 1;
+                            if keys_pressed[v] > 0 {
+                                mask = mask & !(1 << v);
+                            }
                         }
-                        if mask & mgba::input::keys::UP != 0 || mask & mgba::input::keys::DOWN != 0
-                        {
-                            dpad_y_active = false;
-                        }
+                        log::info!("ControllerButtonUp: pressed: {:?}", keys_pressed);
+
                         self.joyflags
                             .fetch_and(!mask, std::sync::atomic::Ordering::Relaxed);
                     }
