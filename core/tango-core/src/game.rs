@@ -30,11 +30,13 @@ impl InputMapping {
     fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
         let pred = |c: &PhysicalInput| match *c {
             PhysicalInput::Key(key) => input.is_key_pressed(key),
-            PhysicalInput::Button(button) => input.is_button_pressed(button),
-            PhysicalInput::Axis(axis, threshold) => {
-                (threshold > 0 && input.axis(axis) >= threshold)
-                    || (threshold < 0 && input.axis(axis) <= threshold)
-            }
+            PhysicalInput::Button(button) => input
+                .iter_controllers()
+                .any(|(_, c)| c.is_button_pressed(button)),
+            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
+                (threshold > 0 && c.axis(axis) >= threshold)
+                    || (threshold < 0 && c.axis(axis) <= threshold)
+            }),
         };
 
         (if self.left.iter().any(pred) {
