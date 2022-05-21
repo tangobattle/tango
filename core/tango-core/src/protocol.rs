@@ -1,6 +1,6 @@
 use bincode::Options;
 
-pub const VERSION: u8 = 0x13;
+pub const VERSION: u8 = 0x14;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
@@ -18,6 +18,7 @@ lazy_static! {
 pub enum Packet {
     Hello(Hello),
     Smuggle(Smuggle),
+    Hola(Hola),
     Ping(Ping),
     Pong(Pong),
     Input(Input),
@@ -37,6 +38,9 @@ impl Packet {
 pub struct Hello {
     pub protocol_version: u8,
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct Hola {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Smuggle {

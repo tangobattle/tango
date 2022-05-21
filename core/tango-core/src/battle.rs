@@ -293,13 +293,6 @@ impl Match {
                         joyflags: input.joyflags as u16,
                     });
                 }
-                protocol::Packet::Ping(protocol::Ping { ts }) => {
-                    // Reply to pings, in case the opponent really wants a response.
-                    self.transport.lock().await.send_pong(ts).await?;
-                }
-                protocol::Packet::Pong(_) => {
-                    // Ignore stray pongs.
-                }
                 p => anyhow::bail!("unknown packet: {:?}", p),
             }
         }

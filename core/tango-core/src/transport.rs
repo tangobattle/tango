@@ -30,15 +30,4 @@ impl Transport {
             .await?;
         Ok(())
     }
-
-    pub async fn send_pong(&mut self, ts: u64) -> anyhow::Result<()> {
-        self.dc_tx
-            .send(
-                protocol::Packet::Pong(protocol::Pong { ts })
-                    .serialize()?
-                    .as_slice(),
-            )
-            .await?;
-        Ok(())
-    }
 }
