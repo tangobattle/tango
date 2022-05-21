@@ -51,7 +51,7 @@ import { FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest } from "..
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/lobby";
 import { GetRequest, GetResponse } from "../../protos/relay";
 import randomCode from "../../randomcode";
-import { ReplayInfo } from "../../replay";
+import { ReplayMetadata } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import * as bn6 from "../../saveedit/bn6";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
@@ -644,7 +644,7 @@ async function runCallback(
                     }
                   : null,
             },
-          } as ReplayInfo)
+          } as ReplayMetadata)
         ),
         rngSeed,
       },

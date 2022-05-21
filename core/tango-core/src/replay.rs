@@ -15,6 +15,7 @@ const HEADER: &[u8] = b"TOOT";
 const VERSION: u8 = 0x0f;
 
 pub struct Replay {
+    pub is_complete: bool,
     pub metadata: Vec<u8>,
     pub local_player_index: u8,
     pub local_state: Option<mgba::state::State>,
@@ -52,12 +53,6 @@ impl Replay {
         }
 
         let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
-        if num_inputs == 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "replay was not finished",
-            ));
-        }
 
         let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
         let mut metadata = vec![0u8; metadata_len as usize];
@@ -85,21 +80,67 @@ impl Replay {
 
         let mut input_pairs = vec![];
 
-        for _ in 0..num_inputs {
-            let local_tick = zr.read_u32::<byteorder::LittleEndian>()?;
-            let remote_tick = zr.read_u32::<byteorder::LittleEndian>()?;
+        loop {
+            let local_tick = if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
+                v
+            } else {
+                break;
+            };
+            let remote_tick = if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
+                v
+            } else {
+                break;
+            };
 
-            let p1_joyflags = zr.read_u16::<byteorder::LittleEndian>()?;
-            let p2_joyflags = zr.read_u16::<byteorder::LittleEndian>()?;
+            let p1_joyflags = if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
+                v
+            } else {
+                break;
+            };
+            let p2_joyflags = if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
+                v
+            } else {
+                break;
+            };
 
-            let p1_custom_screen_state = zr.read_u8()?;
-            let p2_custom_screen_state = zr.read_u8()?;
+            let p1_custom_screen_state = if let Ok(v) = zr.read_u8() {
+                v
+            } else {
+                break;
+            };
+            let p2_custom_screen_state = if let Ok(v) = zr.read_u8() {
+                v
+            } else {
+                break;
+            };
 
-            let mut p1_turn = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
-            zr.read_exact(&mut p1_turn)?;
+            let mut p1_turn = vec![
+                0u8;
+                if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
+                    v
+                } else {
+                    break;
+                } as usize
+            ];
+            if let Ok(_) = zr.read_exact(&mut p1_turn) {
+                // Do nothing.
+            } else {
+                break;
+            }
 
-            let mut p2_turn = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
-            zr.read_exact(&mut p2_turn)?;
+            let mut p2_turn = vec![
+                0u8;
+                if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
+                    v
+                } else {
+                    break;
+                } as usize
+            ];
+            if let Ok(_) = zr.read_exact(&mut p2_turn) {
+                // Do nothing.
+            } else {
+                break;
+            }
 
             let p1_input = input::Input {
                 local_tick,
@@ -127,6 +168,7 @@ impl Replay {
         }
 
         Ok(Self {
+            is_complete: num_inputs as usize == input_pairs.len(),
             metadata,
             local_player_index,
             local_state,
