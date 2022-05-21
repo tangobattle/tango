@@ -73,6 +73,7 @@ pub struct Match {
     audio_mux: audio::mux_stream::MuxStream,
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
+    transport_rendezvous_tx: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 #[derive(Debug)]
@@ -158,6 +159,7 @@ impl Match {
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
+        let (transport_rendezvous_tx, transport_rendezvous_rx) = tokio::sync::oneshot::channel();
         let did_polite_win_last_round = rng.gen::<bool>();
         let won_last_round = did_polite_win_last_round == is_offerer;
         let match_ = std::sync::Arc::new(Self {
@@ -175,7 +177,9 @@ impl Match {
             _peer_conn: peer_conn,
             transport: std::sync::Arc::new(tokio::sync::Mutex::new(transport::Transport::new(
                 dc_tx,
+                transport_rendezvous_rx,
             ))),
+            transport_rendezvous_tx: tokio::sync::Mutex::new(Some(transport_rendezvous_tx)),
             rng: tokio::sync::Mutex::new(rng),
             settings,
             round_state: tokio::sync::Mutex::new(RoundState {
@@ -229,6 +233,13 @@ impl Match {
                 .as_slice(),
             )? {
                 protocol::Packet::Input(input) => {
+                    // We need to sync on the first input so we don't end up wildly out of sync.
+                    if let Some(transport_rendezvous_tx) =
+                        self.transport_rendezvous_tx.lock().await.take()
+                    {
+                        transport_rendezvous_tx.send(()).unwrap();
+                    }
+
                     // We need to wait for the next round to start to avoid dropping inputs on the floor.
                     if input.round_number != last_round_number {
                         let round_number =
