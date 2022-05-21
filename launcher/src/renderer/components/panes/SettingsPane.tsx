@@ -451,24 +451,22 @@ function InputTab({ active }: { active: boolean }) {
                           }
                           label={
                             "Key" in k ? (
-                              <Trans
-                                i18nKey="settings:input-key"
-                                values={{ key: k.Key }}
-                              />
+                              <Trans i18nKey={`input-keys:${k.Key}`}>
+                                {k.Key}
+                              </Trans>
                             ) : "Button" in k ? (
-                              <Trans
-                                i18nKey="settings:input-button"
-                                values={{ button: k.Button }}
-                              />
+                              <Trans i18nKey={`input-buttons:${k.Button}`}>
+                                {k.Button}
+                              </Trans>
                             ) : "Axis" in k ? (
                               <Trans
-                                i18nKey="settings:input-axis"
-                                values={{
-                                  axis: `${k.Axis[0]}${
-                                    k.Axis[1] > 0 ? "+" : "-"
-                                  }`,
-                                }}
-                              />
+                                i18nKey={`input-axes:${k.Axis[0]}${
+                                  k.Axis[1] > 0 ? "+" : "-"
+                                }`}
+                              >
+                                {k.Axis[0]}
+                                {k.Axis[1] > 0 ? "+" : "-"}
+                              </Trans>
                             ) : (
                               ""
                             )

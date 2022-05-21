@@ -1,0 +1,18 @@
+{
+  "dpup": "DPad ⬆",
+  "dpdown": "DPad ⬇",
+  "dpleft": "DPad ⬅",
+  "dpright": "DPad ⮕",
+  "a": "A",
+  "b": "B",
+  "x": "X",
+  "y": "Y",
+  "leftstick": "LStick Press",
+  "rightstick": "RStick Press",
+  "leftshoulder": "LBumper",
+  "rightshoulder": "RBumper",
+  "back": "Back",
+  "guide": "Guide",
+  "start": "Start",
+  "touchpad": "Touchpad"
+}
