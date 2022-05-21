@@ -5,6 +5,24 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
+fn stick_to_mgba_keys(stick: (i16, i16)) -> u32 {
+    const STICK_THRESHOLD: i16 = 16384;
+
+    (if stick.0 < -STICK_THRESHOLD {
+        mgba::input::keys::LEFT
+    } else if stick.0 > STICK_THRESHOLD {
+        mgba::input::keys::RIGHT
+    } else {
+        0
+    }) | (if stick.1 < -STICK_THRESHOLD {
+        mgba::input::keys::UP
+    } else if stick.1 > STICK_THRESHOLD {
+        mgba::input::keys::DOWN
+    } else {
+        0
+    })
+}
+
 #[derive(Clone)]
 pub struct Keymapping {
     pub up: Option<sdl2::keyboard::Scancode>,
@@ -343,7 +361,9 @@ impl Game {
             std::collections::HashMap::new();
 
         let mut keys_pressed = [0u8; 32];
+
         let mut stick = (0i16, 0i16);
+        let mut triggers = (0i16, 0i16);
 
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
@@ -403,21 +423,19 @@ impl Game {
                     sdl2::event::Event::ControllerAxisMotion { axis, value, .. }
                         if self.controller_mapping.enable_left_stick =>
                     {
-                        const STICK_THRESHOLD: i16 = 16384;
+                        const TRIGGER_THRESHOLD: i16 = 16384;
 
-                        let last_mask = if stick.0 < -STICK_THRESHOLD {
-                            mgba::input::keys::LEFT
-                        } else if stick.0 > STICK_THRESHOLD {
-                            mgba::input::keys::RIGHT
-                        } else {
-                            0
-                        } | if stick.1 < -STICK_THRESHOLD {
-                            mgba::input::keys::UP
-                        } else if stick.1 > STICK_THRESHOLD {
-                            mgba::input::keys::DOWN
-                        } else {
-                            0
-                        };
+                        let last_mask = stick_to_mgba_keys(stick)
+                            | if triggers.0 > TRIGGER_THRESHOLD {
+                                mgba::input::keys::L
+                            } else {
+                                0
+                            }
+                            | if triggers.1 > TRIGGER_THRESHOLD {
+                                mgba::input::keys::R
+                            } else {
+                                0
+                            };
 
                         match axis {
                             sdl2::controller::Axis::LeftX => {
@@ -426,24 +444,28 @@ impl Game {
                             sdl2::controller::Axis::LeftY => {
                                 stick.1 = value;
                             }
+                            sdl2::controller::Axis::TriggerLeft => {
+                                triggers.0 = value;
+                            }
+                            sdl2::controller::Axis::TriggerRight => {
+                                triggers.1 = value;
+                            }
                             _ => {
                                 continue;
                             }
                         }
 
-                        let mask = if stick.0 < -STICK_THRESHOLD {
-                            mgba::input::keys::LEFT
-                        } else if stick.0 > STICK_THRESHOLD {
-                            mgba::input::keys::RIGHT
-                        } else {
-                            0
-                        } | if stick.1 < -STICK_THRESHOLD {
-                            mgba::input::keys::UP
-                        } else if stick.1 > STICK_THRESHOLD {
-                            mgba::input::keys::DOWN
-                        } else {
-                            0
-                        };
+                        let mask = stick_to_mgba_keys(stick)
+                            | if triggers.0 > TRIGGER_THRESHOLD {
+                                mgba::input::keys::L
+                            } else {
+                                0
+                            }
+                            | if triggers.1 > TRIGGER_THRESHOLD {
+                                mgba::input::keys::R
+                            } else {
+                                0
+                            };
 
                         let mut keys_off = last_mask & !mask;
                         for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
