@@ -69,19 +69,21 @@ fn main() {
     )
     .unwrap();
 
-    let mut flags = vec![];
+    let mut flags = None;
     for line in std::io::BufReader::new(flags_file).lines() {
-        flags = if let Some(rest) = line.unwrap().strip_prefix("C_DEFINES = ") {
-            shell_words::split(rest).unwrap()
-        } else {
-            continue;
-        }
+        flags = Some(
+            if let Some(rest) = line.unwrap().strip_prefix("C_DEFINES = ") {
+                shell_words::split(rest).unwrap()
+            } else {
+                continue;
+            },
+        )
     }
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
         .clang_args(&["-Iexternal/mgba/include", "-D__STDC_NO_THREADS__=1"])
-        .clang_args(&flags)
+        .clang_args(&flags.unwrap())
         // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
         .parse_callbacks(Box::new(ignored_macros))
         .generate()
