@@ -190,8 +190,6 @@ impl Game {
         audio_device.resume();
 
         if let Some(match_init) = match_init {
-            let _ = std::fs::create_dir_all(&match_init.settings.replays_path);
-
             let (dc_rx, dc_tx) = match_init.dc.split();
 
             let match_ = match_.clone();
