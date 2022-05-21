@@ -357,7 +357,9 @@ impl Game {
                         controllers.insert(which, controller);
                     }
                     sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
-                        controllers.remove(&which);
+                        if let Some(controller) = controllers.remove(&which) {
+                            log::info!("controller removed: {}", controller.name());
+                        }
                     }
                     _ => {}
                 }
