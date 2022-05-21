@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub enum PhysicalInput {
     Key(sdl2::keyboard::Scancode),
     Button(sdl2::controller::Button),
