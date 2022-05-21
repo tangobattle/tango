@@ -168,7 +168,7 @@ impl Replay {
         }
 
         Ok(Self {
-            is_complete: num_inputs as usize == input_pairs.len(),
+            is_complete: num_inputs > 0 && num_inputs as usize == input_pairs.len(),
             metadata,
             local_player_index,
             local_state,

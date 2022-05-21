@@ -12,6 +12,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
+import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -128,25 +129,38 @@ function ReplayItem({
     >
       <ListItemText
         primary={
-          replay.info.metadata.linkCode != null ? (
-            <>
-              <Trans
-                i18nKey="replays:replay-title"
-                values={{
-                  formattedDate: dateFormat.format(
-                    new Date(replay.info.metadata.ts)
-                  ),
-                  nickname: replay.info.metadata.remote!.nickname,
-                  linkCode: replay.info.metadata.linkCode,
-                }}
-              />{" "}
-              <small>
-                {dateFormat.format(new Date(replay.info.metadata.ts))}
-              </small>
-            </>
-          ) : (
-            <>{dateFormat.format(new Date(replay.info.metadata.ts))}</>
-          )
+          <>
+            {!replay.info.isComplete ? (
+              <Tooltip title={<Trans i18nKey="replays:incomplete" />}>
+                <WarningIcon
+                  color="warning"
+                  sx={{
+                    fontSize: "1em",
+                    verticalAlign: "middle",
+                  }}
+                />
+              </Tooltip>
+            ) : null}{" "}
+            {replay.info.metadata.linkCode != null ? (
+              <>
+                <Trans
+                  i18nKey="replays:replay-title"
+                  values={{
+                    formattedDate: dateFormat.format(
+                      new Date(replay.info.metadata.ts)
+                    ),
+                    nickname: replay.info.metadata.remote!.nickname,
+                    linkCode: replay.info.metadata.linkCode,
+                  }}
+                />{" "}
+                <small>
+                  {dateFormat.format(new Date(replay.info.metadata.ts))}
+                </small>
+              </>
+            ) : (
+              <>{dateFormat.format(new Date(replay.info.metadata.ts))}</>
+            )}
+          </>
         }
         secondary={<>{replay.filename}</>}
       />
@@ -197,7 +211,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           } catch (e) {
             console.error("failed to get replay data", filename, e);
           }
-          if (replayInfo == null || !replayInfo.isComplete) {
+          if (replayInfo == null) {
             continue;
           }
           replays.push({
