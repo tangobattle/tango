@@ -1305,78 +1305,78 @@ export default function BattleStarter({
                           onChange={(_e, v) => {
                             setChangingCommitment(true);
                             (async () => {
-                              let commitment: Uint8Array | null = null;
-                              let negotiatedState: NegotiatedState | null =
-                                null;
+                              try {
+                                let commitment: Uint8Array | null = null;
+                                let negotiatedState: NegotiatedState | null =
+                                  null;
 
-                              if (v) {
-                                const saveData = await readFile(
-                                  path.join(getSavesPath(app), saveName!)
-                                );
-                                const nonce = crypto.getRandomValues(
-                                  new Uint8Array(16)
-                                );
+                                if (v) {
+                                  const saveData = await readFile(
+                                    path.join(getSavesPath(app), saveName!)
+                                  );
+                                  const nonce = crypto.getRandomValues(
+                                    new Uint8Array(16)
+                                  );
 
-                                negotiatedState = {
-                                  nonce,
-                                  saveData,
-                                };
+                                  negotiatedState = {
+                                    nonce,
+                                    saveData,
+                                  };
 
-                                commitment = makeCommitment(
-                                  Buffer.from(
-                                    NegotiatedState.encode(
-                                      negotiatedState
-                                    ).finish()
-                                  )
-                                );
-                              }
+                                  commitment = makeCommitment(
+                                    Buffer.from(
+                                      NegotiatedState.encode(
+                                        negotiatedState
+                                      ).finish()
+                                    )
+                                  );
+                                }
 
-                              if (commitment != null) {
-                                // eslint-disable-next-line no-console
-                                console.info("sending commit to core");
-                                await coreRef.current!.send({
-                                  smuggleReq: {
-                                    data: Message.encode({
-                                      setSettings: undefined,
-                                      commit: {
-                                        commitment,
-                                      },
-                                      uncommit: undefined,
-                                      chunk: undefined,
-                                    }).finish(),
+                                if (commitment != null) {
+                                  // eslint-disable-next-line no-console
+                                  console.info("sending commit to core");
+                                  await coreRef.current!.send({
+                                    smuggleReq: {
+                                      data: Message.encode({
+                                        setSettings: undefined,
+                                        commit: {
+                                          commitment,
+                                        },
+                                        uncommit: undefined,
+                                        chunk: undefined,
+                                      }).finish(),
+                                    },
+                                    startReq: undefined,
+                                  });
+                                } else {
+                                  // eslint-disable-next-line no-console
+                                  console.info("sending uncommit to core");
+                                  await coreRef.current!.send({
+                                    smuggleReq: {
+                                      data: Message.encode({
+                                        setSettings: undefined,
+                                        commit: undefined,
+                                        uncommit: {},
+                                        chunk: undefined,
+                                      }).finish(),
+                                    },
+                                    startReq: undefined,
+                                  });
+                                }
+
+                                setPendingStates((pendingStates) => ({
+                                  ...pendingStates!,
+                                  own: {
+                                    ...pendingStates!.own!,
+                                    negotiatedState,
                                   },
-                                  startReq: undefined,
-                                });
-                              } else {
-                                // eslint-disable-next-line no-console
-                                console.info("sending uncommit to core");
-                                await coreRef.current!.send({
-                                  smuggleReq: {
-                                    data: Message.encode({
-                                      setSettings: undefined,
-                                      commit: undefined,
-                                      uncommit: {},
-                                      chunk: undefined,
-                                    }).finish(),
-                                  },
-                                  startReq: undefined,
-                                });
-                              }
-
-                              setPendingStates((pendingStates) => ({
-                                ...pendingStates!,
-                                own: {
-                                  ...pendingStates!.own!,
-                                  negotiatedState,
-                                },
-                              }));
-                            })()
-                              .catch((e) => {
+                                }));
+                              } catch (e) {
                                 console.error("failed to change commitment", e);
-                              })
-                              .finally(() => {
+                              } finally {
                                 setChangingCommitment(false);
-                              });
+                              }
+                            })();
                           }}
                         />
                       }
