@@ -69,16 +69,29 @@ pub struct ControllerMapping {
     pub enable_left_stick: bool,
 }
 
+fn parse_controller_input(s: &str) -> Option<tango_core::game::ControllerInput> {
+    const THRESHOLD: i16 = 16384;
+    match s {
+        "lefttrigger" => Some(tango_core::game::ControllerInput::Axis(
+            sdl2::controller::Axis::TriggerLeft,
+            THRESHOLD,
+        )),
+        "righttrigger" => Some(tango_core::game::ControllerInput::Axis(
+            sdl2::controller::Axis::TriggerLeft,
+            THRESHOLD,
+        )),
+        s => sdl2::controller::Button::from_string(s)
+            .map(|button| tango_core::game::ControllerInput::Button(button)),
+    }
+}
+
 impl Into<tango_core::game::ControllerMapping> for ControllerMapping {
     fn into(self) -> tango_core::game::ControllerMapping {
         const STICK_THRESHOLD: i16 = 16384;
 
         tango_core::game::ControllerMapping {
             up: vec![
-                sdl2::controller::Button::from_string(&self.up)
-                    .into_iter()
-                    .map(|button| tango_core::game::ControllerInput::Button(button))
-                    .collect(),
+                parse_controller_input(&self.up).into_iter().collect(),
                 if self.enable_left_stick {
                     vec![tango_core::game::ControllerInput::Axis(
                         sdl2::controller::Axis::LeftY,
@@ -90,10 +103,7 @@ impl Into<tango_core::game::ControllerMapping> for ControllerMapping {
             ]
             .concat(),
             down: vec![
-                sdl2::controller::Button::from_string(&self.down)
-                    .into_iter()
-                    .map(|button| tango_core::game::ControllerInput::Button(button))
-                    .collect(),
+                parse_controller_input(&self.down).into_iter().collect(),
                 if self.enable_left_stick {
                     vec![tango_core::game::ControllerInput::Axis(
                         sdl2::controller::Axis::LeftY,
@@ -105,10 +115,7 @@ impl Into<tango_core::game::ControllerMapping> for ControllerMapping {
             ]
             .concat(),
             left: vec![
-                sdl2::controller::Button::from_string(&self.left)
-                    .into_iter()
-                    .map(|button| tango_core::game::ControllerInput::Button(button))
-                    .collect(),
+                parse_controller_input(&self.left).into_iter().collect(),
                 if self.enable_left_stick {
                     vec![tango_core::game::ControllerInput::Axis(
                         sdl2::controller::Axis::LeftX,
@@ -120,10 +127,7 @@ impl Into<tango_core::game::ControllerMapping> for ControllerMapping {
             ]
             .concat(),
             right: vec![
-                sdl2::controller::Button::from_string(&self.right)
-                    .into_iter()
-                    .map(|button| tango_core::game::ControllerInput::Button(button))
-                    .collect(),
+                parse_controller_input(&self.right).into_iter().collect(),
                 if self.enable_left_stick {
                     vec![tango_core::game::ControllerInput::Axis(
                         sdl2::controller::Axis::LeftX,
@@ -134,30 +138,12 @@ impl Into<tango_core::game::ControllerMapping> for ControllerMapping {
                 },
             ]
             .concat(),
-            a: sdl2::controller::Button::from_string(&self.a)
-                .into_iter()
-                .map(|button| tango_core::game::ControllerInput::Button(button))
-                .collect(),
-            b: sdl2::controller::Button::from_string(&self.b)
-                .into_iter()
-                .map(|button| tango_core::game::ControllerInput::Button(button))
-                .collect(),
-            l: sdl2::controller::Button::from_string(&self.l)
-                .into_iter()
-                .map(|button| tango_core::game::ControllerInput::Button(button))
-                .collect(),
-            r: sdl2::controller::Button::from_string(&self.r)
-                .into_iter()
-                .map(|button| tango_core::game::ControllerInput::Button(button))
-                .collect(),
-            select: sdl2::controller::Button::from_string(&self.select)
-                .into_iter()
-                .map(|button| tango_core::game::ControllerInput::Button(button))
-                .collect(),
-            start: sdl2::controller::Button::from_string(&self.start)
-                .into_iter()
-                .map(|button| tango_core::game::ControllerInput::Button(button))
-                .collect(),
+            a: parse_controller_input(&self.a).into_iter().collect(),
+            b: parse_controller_input(&self.b).into_iter().collect(),
+            l: parse_controller_input(&self.l).into_iter().collect(),
+            r: parse_controller_input(&self.r).into_iter().collect(),
+            select: parse_controller_input(&self.select).into_iter().collect(),
+            start: parse_controller_input(&self.start).into_iter().collect(),
         }
     }
 }

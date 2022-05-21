@@ -53,10 +53,6 @@ fn main() -> anyhow::Result<()> {
 
     let mut event_loop = sdl.event_pump().unwrap();
 
-    let mut keys_pressed = [false; sdl2::keyboard::Scancode::Num as usize];
-    let mut buttons_pressed =
-        [false; sdl2::sys::SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX as usize];
-
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     let texture_creator = canvas.texture_creator();
 
@@ -110,6 +106,11 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let mut keys_pressed = [false; sdl2::keyboard::Scancode::Num as usize];
+    let mut buttons_pressed =
+        [false; sdl2::sys::SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX as usize];
+    let mut triggers_pressed = [false; 2];
+
     'toplevel: loop {
         for event in event_loop.poll_iter() {
             match event {
@@ -161,6 +162,32 @@ fn main() -> anyhow::Result<()> {
 
                     if !next() {
                         break 'toplevel;
+                    }
+                }
+                sdl2::event::Event::ControllerAxisMotion { axis, value, .. }
+                    if args.target == Target::Controller =>
+                {
+                    const THRESHOLD: i16 = 16384;
+                    let (i, name) = match axis {
+                        sdl2::controller::Axis::TriggerLeft => (0, "lefttrigger"),
+                        sdl2::controller::Axis::TriggerRight => (1, "righttrigger"),
+                        _ => {
+                            continue;
+                        }
+                    };
+
+                    let was_pressed = triggers_pressed[i];
+                    triggers_pressed[i] = value >= THRESHOLD;
+
+                    if !was_pressed && triggers_pressed[i] {
+                        std::io::stdout()
+                            .write_all(name.to_string().as_bytes())
+                            .unwrap();
+                        std::io::stdout().write_all(b"\n").unwrap();
+
+                        if !next() {
+                            break 'toplevel;
+                        }
                     }
                 }
                 sdl2::event::Event::ControllerButtonUp { button, .. }
