@@ -3,6 +3,7 @@
   "exporting": "エクスポート中...",
   "export-complete": "リプレイのエクスポートに成功しました。",
   "no-replays": "リプレイがまだありません",
+  "incomplete": "このリプレイは不完全です。",
   "play": "再生",
   "show-info": "情報を表示",
   "show-file": "フォルダー内に表示",
