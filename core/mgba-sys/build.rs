@@ -49,6 +49,11 @@ fn main() {
             "FP_NORMAL".into(),
             "FP_SUBNORMAL".into(),
             "FP_ZERO".into(),
+            "FP_INT_UPWARD".into(),
+            "FP_INT_DOWNWARD".into(),
+            "FP_INT_TOWARDZERO".into(),
+            "FP_INT_TONEARESTFROMZERO".into(),
+            "FP_INT_TONEAREST".into(),
             "IPPORT_RESERVED".into(),
         ]
         .into_iter()
@@ -66,11 +71,11 @@ fn main() {
 
     let mut flags = vec![];
     for line in std::io::BufReader::new(flags_file).lines() {
-        let line = line.unwrap();
-        if !line.starts_with("C_DEFINES = ") {
+        flags = if let Some(rest) = line.unwrap().strip_prefix("C_DEFINES = ") {
+            shell_words::split(rest).unwrap()
+        } else {
             continue;
         }
-        flags = shell_words::split(line.strip_prefix("C_DEFINES = ").unwrap()).unwrap();
     }
 
     let bindings = bindgen::Builder::default()
