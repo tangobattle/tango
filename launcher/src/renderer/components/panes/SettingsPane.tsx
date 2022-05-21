@@ -3,6 +3,8 @@ import { Trans, useTranslation } from "react-i18next";
 
 import { app, shell } from "@electron/remote";
 import AddIcon from "@mui/icons-material/Add";
+import KeyboardIcon from "@mui/icons-material/Keyboard";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -438,6 +440,15 @@ function InputTab({ active }: { active: boolean }) {
                         <Chip
                           key={i}
                           sx={{ mr: 1, mt: 1 }}
+                          icon={
+                            "Key" in k ? (
+                              <KeyboardIcon />
+                            ) : "Button" in k ? (
+                              <SportsEsportsIcon />
+                            ) : "Axis" in k ? (
+                              <SportsEsportsIcon />
+                            ) : undefined
+                          }
                           label={
                             "Key" in k ? (
                               <Trans
