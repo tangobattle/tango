@@ -5,112 +5,35 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
-#[derive(Clone)]
-pub struct Keymapping {
-    pub up: Vec<sdl2::keyboard::Scancode>,
-    pub down: Vec<sdl2::keyboard::Scancode>,
-    pub left: Vec<sdl2::keyboard::Scancode>,
-    pub right: Vec<sdl2::keyboard::Scancode>,
-    pub a: Vec<sdl2::keyboard::Scancode>,
-    pub b: Vec<sdl2::keyboard::Scancode>,
-    pub l: Vec<sdl2::keyboard::Scancode>,
-    pub r: Vec<sdl2::keyboard::Scancode>,
-    pub select: Vec<sdl2::keyboard::Scancode>,
-    pub start: Vec<sdl2::keyboard::Scancode>,
-}
-
-impl Keymapping {
-    fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
-        let pred = |c: &sdl2::keyboard::Scancode| input.is_key_pressed(*c);
-
-        if self.left.iter().any(pred) {
-            mgba::input::keys::LEFT
-        } else if self.right.iter().any(pred) {
-            mgba::input::keys::RIGHT
-        } else if self.up.iter().any(pred) {
-            mgba::input::keys::UP
-        } else if self.down.iter().any(pred) {
-            mgba::input::keys::DOWN
-        } else if self.a.iter().any(pred) {
-            mgba::input::keys::A
-        } else if self.b.iter().any(pred) {
-            mgba::input::keys::B
-        } else if self.l.iter().any(pred) {
-            mgba::input::keys::L
-        } else if self.r.iter().any(pred) {
-            mgba::input::keys::R
-        } else if self.start.iter().any(pred) {
-            mgba::input::keys::START
-        } else if self.select.iter().any(pred) {
-            mgba::input::keys::SELECT
-        } else {
-            0
-        }
-    }
-}
-
 #[derive(Clone, PartialEq)]
-pub enum ControllerInput {
+pub enum PhysicalInput {
+    Key(sdl2::keyboard::Scancode),
     Button(sdl2::controller::Button),
     Axis(sdl2::controller::Axis, i16),
 }
 
 #[derive(Clone)]
-pub struct ControllerMapping {
-    pub up: Vec<ControllerInput>,
-    pub down: Vec<ControllerInput>,
-    pub left: Vec<ControllerInput>,
-    pub right: Vec<ControllerInput>,
-    pub a: Vec<ControllerInput>,
-    pub b: Vec<ControllerInput>,
-    pub l: Vec<ControllerInput>,
-    pub r: Vec<ControllerInput>,
-    pub select: Vec<ControllerInput>,
-    pub start: Vec<ControllerInput>,
+pub struct InputMapping {
+    pub up: Vec<PhysicalInput>,
+    pub down: Vec<PhysicalInput>,
+    pub left: Vec<PhysicalInput>,
+    pub right: Vec<PhysicalInput>,
+    pub a: Vec<PhysicalInput>,
+    pub b: Vec<PhysicalInput>,
+    pub l: Vec<PhysicalInput>,
+    pub r: Vec<PhysicalInput>,
+    pub select: Vec<PhysicalInput>,
+    pub start: Vec<PhysicalInput>,
 }
 
-impl ControllerMapping {
-    fn buttons_to_mgba_keys(&self, input: &input::InputState) -> u32 {
-        let pred = |c: &ControllerInput| {
-            if let ControllerInput::Button(button) = *c {
-                input.is_button_pressed(button)
-            } else {
-                false
-            }
-        };
-
-        if self.left.iter().any(pred) {
-            mgba::input::keys::LEFT
-        } else if self.right.iter().any(pred) {
-            mgba::input::keys::RIGHT
-        } else if self.up.iter().any(pred) {
-            mgba::input::keys::UP
-        } else if self.down.iter().any(pred) {
-            mgba::input::keys::DOWN
-        } else if self.a.iter().any(pred) {
-            mgba::input::keys::A
-        } else if self.b.iter().any(pred) {
-            mgba::input::keys::B
-        } else if self.l.iter().any(pred) {
-            mgba::input::keys::L
-        } else if self.r.iter().any(pred) {
-            mgba::input::keys::R
-        } else if self.start.iter().any(pred) {
-            mgba::input::keys::START
-        } else if self.select.iter().any(pred) {
-            mgba::input::keys::SELECT
-        } else {
-            0
-        }
-    }
-
-    fn axes_to_mgba_keys(&self, input: &input::InputState) -> u32 {
-        let pred = |c: &ControllerInput| {
-            if let ControllerInput::Axis(axis, threshold) = *c {
+impl InputMapping {
+    fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
+        let pred = |c: &PhysicalInput| match *c {
+            PhysicalInput::Key(key) => input.is_key_pressed(key),
+            PhysicalInput::Button(button) => input.is_button_pressed(button),
+            PhysicalInput::Axis(axis, threshold) => {
                 (threshold > 0 && input.axis(axis) >= threshold)
                     || (threshold < 0 && input.axis(axis) <= threshold)
-            } else {
-                false
             }
         };
 
@@ -156,10 +79,6 @@ impl ControllerMapping {
             0
         })
     }
-
-    fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
-        self.buttons_to_mgba_keys(input) | self.axes_to_mgba_keys(input)
-    }
 }
 
 pub struct Game {
@@ -175,8 +94,7 @@ pub struct Game {
     _audio_device: sdl2::audio::AudioDevice<crate::audio::mux_stream::MuxStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
-    keymapping: Keymapping,
-    controller_mapping: ControllerMapping,
+    input_mapping: InputMapping,
     _thread: mgba::thread::Thread,
 }
 
@@ -185,8 +103,7 @@ impl Game {
         rt: tokio::runtime::Runtime,
         ipc_sender: ipc::Sender,
         window_title: String,
-        keymapping: Keymapping,
-        controller_mapping: ControllerMapping,
+        input_mapping: InputMapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
         match_init: Option<battle::MatchInit>,
@@ -361,8 +278,7 @@ impl Game {
             ipc_sender,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
-            keymapping,
-            controller_mapping,
+            input_mapping,
             fps_counter,
             emu_tps_counter,
             event_loop,
@@ -440,8 +356,7 @@ impl Game {
                         show_debug = !show_debug;
                     }
                     self.joyflags.store(
-                        self.keymapping.to_mgba_keys(&input_state)
-                            | self.controller_mapping.to_mgba_keys(&input_state),
+                        self.input_mapping.to_mgba_keys(&input_state),
                         std::sync::atomic::Ordering::Relaxed,
                     );
                 }

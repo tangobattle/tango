@@ -167,7 +167,7 @@ fn main() -> anyhow::Result<()> {
                 sdl2::event::Event::ControllerAxisMotion { axis, value, .. }
                     if args.target == Target::Controller =>
                 {
-                    const THRESHOLD: i16 = 16384;
+                    const THRESHOLD: i16 = 0x4000;
                     let (i, name) = match axis {
                         sdl2::controller::Axis::TriggerLeft => (0, "lefttrigger"),
                         sdl2::controller::Axis::TriggerRight => (1, "righttrigger"),
