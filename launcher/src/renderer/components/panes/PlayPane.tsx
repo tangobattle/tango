@@ -99,7 +99,13 @@ export default function SavesPane({ active }: { active: boolean }) {
     return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
   });
 
-  const [patchName, setPatchName] = React.useState<string | null>(null);
+  const [patchName_, setPatchName] = React.useState<string | null>(null);
+  const patchName =
+    patchName_ != null &&
+    Object.prototype.hasOwnProperty.call(patches, patchName_)
+      ? patchName_
+      : null;
+
   const save = saveName != null ? saves[saveName] : null;
 
   const eligiblePatchNames = React.useMemo(() => {
@@ -119,7 +125,17 @@ export default function SavesPane({ active }: { active: boolean }) {
     [patchInfo]
   );
 
-  const [patchVersion, setPatchVersion] = React.useState<string | null>(null);
+  const [patchVersion_, setPatchVersion] = React.useState<string | null>(null);
+  const patchVersion =
+    patchName != null &&
+    patchVersion_ != null &&
+    Object.prototype.hasOwnProperty.call(
+      patches[patchName].versions,
+      patchVersion_
+    )
+      ? patchVersion_
+      : null;
+
   React.useEffect(() => {
     if (patchVersions == null) {
       setPatchVersion(null);
