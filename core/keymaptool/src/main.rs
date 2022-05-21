@@ -35,6 +35,9 @@ fn main() -> anyhow::Result<()> {
         std::collections::HashMap::new();
     // Preemptively enumerate controllers.
     for which in 0..game_controller.num_joysticks().unwrap() {
+        if !game_controller.is_game_controller(which) {
+            continue;
+        }
         let controller = game_controller.open(which).unwrap();
         log::info!("controller added: {}", controller.name());
         controllers.insert(which, controller);
@@ -127,6 +130,9 @@ fn main() -> anyhow::Result<()> {
                     break 'toplevel;
                 }
                 sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                    if !game_controller.is_game_controller(which) {
+                        continue;
+                    }
                     let controller = game_controller.open(which).unwrap();
                     log::info!("controller added: {}", controller.name());
                     controllers.insert(which, controller);
