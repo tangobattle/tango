@@ -1,0 +1,16 @@
+{
+  "welcome": "Parece que esta es la primera vez que usas Tango. ¡Bienvenido!",
+  "welcome-2": "Debemos seguir algunos pasos antes de empezar a jugar.",
+  "nickname": "Apodo",
+  "step-1-title": "Elige un apodo",
+  "step-1-description": "Puedes cambiarlo en cualquier momento.",
+  "step-2-title": "Pon tus ROMs en {{path}}",
+  "step-2-description": "Asegurate que sean versiones limpias y pristinas de tus ROMs.",
+  "step-2-error": "No se encontró ninguna ROM compatible. ¡Asegurate de que no hayan sido parchadas!",
+  "step-3-title": "Pon tus partidas guardadas en {{path}}",
+  "step-3-description": "Asegurate que sean compatibles con los juegos que pusiste en tu carpeta de ROMs. Deberían ser .sav o .sa1.",
+  "step-3-error": "No se pudo encontrar ninguna partida guardada compatible. Asegurate de que sean compatibles con tus juegos",
+  "step-4-title": "¡Listos para comenzar!",
+  "open-folder": "Abrir carpeta",
+  "next": "¡Estoy listo/a!"
+}

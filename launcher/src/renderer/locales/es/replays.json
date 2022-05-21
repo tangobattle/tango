@@ -1,0 +1,17 @@
+{
+  "viewing": "Video en progreso...",
+  "exporting": "Exportación en progreso...",
+  "export-complete": "Tu repetición fue exportada con exito.",
+  "no-replays": "Sin repeticiones (¡por ahora!)",
+  "play": "Reproducir",
+  "show-info": "Mostrar info",
+  "show-file": "Mostrar en carpeta",
+  "export-video": "Exportar a video",
+  "replay-title": "{{linkCode}}: vs {{nickname}}",
+  "crash": "¡Oops, parece que el reproductor exploto! ¡Por favor entrega este log para cuando reportes el bug!",
+  "export-settings": "Exportar configuración",
+  "output-path": "Guardar en",
+  "scale-factor": "Multiplicador de escalaje",
+  "scale-factor-suffix": "x",
+  "start-export": "¡Vamos!"
+}
