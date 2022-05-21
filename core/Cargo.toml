@@ -8,6 +8,7 @@ members = [
     "mgba-sys",
     "keymaptool",
     "datachannel-wrapper",
+    "sdl2-input-helper",
 ]
 
 [patch.crates-io]

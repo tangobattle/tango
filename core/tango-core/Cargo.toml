@@ -37,6 +37,7 @@ tokio-tungstenite = { version = "0.16.1", features = ["native-tls"] }
 prost = "0.10"
 bytes = "1.1.0"
 sdl2 = { version = "0.35", features = ["ttf"] }
+sdl2-input-helper = { path = "../sdl2-input-helper" }
 
 [build-dependencies]
 winres = "0.1"

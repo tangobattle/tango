@@ -1,4 +1,4 @@
-use crate::{audio, battle, facade, hooks, input, ipc, tps};
+use crate::{audio, battle, facade, hooks, ipc, tps};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -27,7 +27,7 @@ pub struct InputMapping {
 }
 
 impl InputMapping {
-    fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
+    fn to_mgba_keys(&self, input: &sdl2_input_helper::State) -> u32 {
         let pred = |c: &PhysicalInput| match *c {
             PhysicalInput::Key(key) => input.is_key_pressed(key),
             PhysicalInput::Button(button) => input
@@ -331,7 +331,7 @@ impl Game {
 
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
-        let mut input_state = input::InputState::new();
+        let mut input_state = sdl2_input_helper::State::new();
 
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {

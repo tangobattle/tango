@@ -106,10 +106,7 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let mut keys_pressed = [false; sdl2::keyboard::Scancode::Num as usize];
-    let mut buttons_pressed =
-        [false; sdl2::sys::SDL_GameControllerButton::SDL_CONTROLLER_BUTTON_MAX as usize];
-    let mut triggers_pressed = [false; 2];
+    let mut input_state = sdl2_input_helper::State::new();
 
     'toplevel: loop {
         for event in event_loop.poll_iter() {
@@ -119,10 +116,9 @@ fn main() -> anyhow::Result<()> {
                     scancode: Some(scancode),
                     ..
                 } if args.target == Target::Keyboard => {
-                    if keys_pressed[scancode as usize] {
+                    if input_state.is_key_pressed(scancode) {
                         continue;
                     }
-                    keys_pressed[scancode as usize] = true;
 
                     std::io::stdout()
                         .write_all(scancode.name().as_bytes())
@@ -132,12 +128,6 @@ fn main() -> anyhow::Result<()> {
                     if !next() {
                         break 'toplevel;
                     }
-                }
-                sdl2::event::Event::KeyUp {
-                    scancode: Some(scancode),
-                    ..
-                } => {
-                    keys_pressed[scancode as usize] = false;
                 }
                 sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                     let controller = game_controller.open(which).unwrap();
@@ -150,10 +140,12 @@ fn main() -> anyhow::Result<()> {
                 sdl2::event::Event::ControllerButtonDown { button, .. }
                     if args.target == Target::Controller =>
                 {
-                    if buttons_pressed[button as usize] {
+                    if input_state
+                        .iter_controllers()
+                        .any(|(_, c)| c.is_button_pressed(button))
+                    {
                         continue;
                     }
-                    buttons_pressed[button as usize] = true;
 
                     std::io::stdout()
                         .write_all(button.string().as_bytes())
@@ -168,18 +160,22 @@ fn main() -> anyhow::Result<()> {
                     if args.target == Target::Controller =>
                 {
                     const THRESHOLD: i16 = 0x4000;
-                    let (i, name) = match axis {
-                        sdl2::controller::Axis::TriggerLeft => (0, "lefttrigger"),
-                        sdl2::controller::Axis::TriggerRight => (1, "righttrigger"),
+                    if input_state
+                        .iter_controllers()
+                        .any(|(_, c)| c.axis(axis) >= THRESHOLD)
+                    {
+                        continue;
+                    }
+
+                    let name = match axis {
+                        sdl2::controller::Axis::TriggerLeft => "lefttrigger",
+                        sdl2::controller::Axis::TriggerRight => "righttrigger",
                         _ => {
                             continue;
                         }
                     };
 
-                    let was_pressed = triggers_pressed[i];
-                    triggers_pressed[i] = value >= THRESHOLD;
-
-                    if !was_pressed && triggers_pressed[i] {
+                    if value >= THRESHOLD {
                         std::io::stdout()
                             .write_all(name.to_string().as_bytes())
                             .unwrap();
@@ -190,11 +186,6 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                 }
-                sdl2::event::Event::ControllerButtonUp { button, .. }
-                    if args.target == Target::Controller =>
-                {
-                    buttons_pressed[button as usize] = false;
-                }
                 sdl2::event::Event::Window {
                     win_event: sdl2::event::WindowEvent::FocusLost,
                     ..
@@ -203,6 +194,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 _ => {}
             }
+            input_state.handle_event(event);
         }
     }
 
