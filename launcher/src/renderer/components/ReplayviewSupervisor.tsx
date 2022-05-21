@@ -109,7 +109,7 @@ export default function ReplayviewSupervisor({
           );
           return stderr;
         });
-        if (exitCode == 0 || signalCode == "SIGTERM") {
+        if (exitCode == 0 || exitCode == -1 || signalCode == "SIGTERM") {
           onExitRef.current();
         } else {
           setExitLingering(true);

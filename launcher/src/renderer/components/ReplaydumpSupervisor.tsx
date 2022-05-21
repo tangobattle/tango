@@ -149,7 +149,7 @@ export default function ReplaydumpSupervisor({
           );
           return stderr;
         });
-        if (signalCode == "SIGTERM") {
+        if (exitCode == 0 || exitCode == -1 || signalCode == "SIGTERM") {
           onExitRef.current();
           return;
         }
@@ -160,6 +160,11 @@ export default function ReplaydumpSupervisor({
       });
     })();
   }, [romPath, patchPath, outROMPath, scaleFactor, replayPath, outPath]);
+
+  const pct =
+    maxProgressRef.current > 0
+      ? ((maxProgressRef.current - progress) * 100) / maxProgressRef.current
+      : 0;
 
   return (
     <Modal
@@ -200,15 +205,17 @@ export default function ReplaydumpSupervisor({
                   <Trans i18nKey="replays:exporting" />
                 </Typography>
               </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={
-                  maxProgressRef.current > 0
-                    ? ((maxProgressRef.current - progress) * 100) /
-                      maxProgressRef.current
-                    : 0
-                }
-              />
+              <Stack direction="row" sx={{ alignItems: "center" }}>
+                <Box sx={{ width: "100%", mr: 1 }}>
+                  <LinearProgress variant="determinate" value={pct} />
+                </Box>
+                <Box sx={{ minWidth: 35 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                  >{`${Math.round(pct)}%`}</Typography>
+                </Box>
+              </Stack>
               <Stack direction="row" justifyContent="flex-end">
                 <Button
                   variant="contained"
@@ -259,7 +266,7 @@ export default function ReplaydumpSupervisor({
               </Stack>
             </Stack>
           </Box>
-        ) : (
+        ) : done.exitCode != -1 && done.signalCode != "SIGTERM" ? (
           <Box
             sx={{
               width: 600,
@@ -319,7 +326,7 @@ export default function ReplaydumpSupervisor({
               </Stack>
             </Stack>
           </Box>
-        )}
+        ) : null}
       </Box>
     </Modal>
   );
