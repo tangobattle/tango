@@ -1012,6 +1012,7 @@ impl hooks::Hooks for BN6 {
                         let ip = match ff_state.peek_input_pair() {
                             Some(ip) => ip,
                             None => {
+                                ff_state.on_inputs_exhausted();
                                 return;
                             }
                         };
