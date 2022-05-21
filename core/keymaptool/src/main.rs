@@ -40,19 +40,6 @@ fn main() -> anyhow::Result<()> {
         controllers.insert(which, controller);
     }
 
-    let ttf = sdl2::ttf::init().unwrap();
-    let font = ttf
-        .load_font_from_rwops(
-            sdl2::rwops::RWops::from_bytes(match args.lang.as_str() {
-                "ja" => include_bytes!("fonts/NotoSansJP-Regular.otf"),
-                "zh-Hans" => include_bytes!("fonts/NotoSansSC-Regular.otf"),
-                _ => include_bytes!("fonts/NotoSans-Regular.ttf"),
-            })
-            .unwrap(),
-            32,
-        )
-        .unwrap();
-
     let window = video
         .window("keymaptool", 400, 100)
         .set_window_flags(sdl2::sys::SDL_WindowFlags::SDL_WINDOW_ALWAYS_ON_TOP as u32)
@@ -67,6 +54,19 @@ fn main() -> anyhow::Result<()> {
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     let texture_creator = canvas.texture_creator();
 
+    let ttf = sdl2::ttf::init().unwrap();
+    let font = ttf
+        .load_font_from_rwops(
+            sdl2::rwops::RWops::from_bytes(match args.lang.as_str() {
+                "ja" => include_bytes!("fonts/NotoSansJP-Regular.otf"),
+                "zh-Hans" => include_bytes!("fonts/NotoSansSC-Regular.otf"),
+                _ => include_bytes!("fonts/NotoSans-Regular.ttf"),
+            })
+            .unwrap(),
+            20 * (canvas.window().drawable_size().0 / canvas.window().size().0) as u16,
+        )
+        .unwrap();
+
     let surface = font
         .render(&args.text.trim_end())
         .blended_wrapped(
@@ -79,8 +79,19 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
     let sdl2::render::TextureQuery { width, height, .. } = texture.query();
 
-    canvas.set_draw_color(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xff));
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(0x00, 0x00, 0x00, 0xff));
     canvas.clear();
+
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xff));
+    canvas
+        .fill_rect(sdl2::rect::Rect::new(
+            2,
+            2,
+            canvas.window().drawable_size().0 - 4,
+            canvas.window().drawable_size().1 - 4,
+        ))
+        .unwrap();
+
     canvas
         .copy(
             &texture,
