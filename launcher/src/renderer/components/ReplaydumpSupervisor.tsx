@@ -139,7 +139,9 @@ export default function ReplaydumpSupervisor({
           stderr.push(err.toString());
           return stderr;
         });
-        setDone({ exitCode: -1, signalCode: null });
+        setDone((done) =>
+          done == null ? { exitCode: -1, signalCode: null } : done
+        );
       });
 
       proc.on("exit", (exitCode, signalCode) => {
@@ -149,7 +151,7 @@ export default function ReplaydumpSupervisor({
           );
           return stderr;
         });
-        if (exitCode == 0 || exitCode == -1 || signalCode == "SIGTERM") {
+        if (signalCode == "SIGTERM") {
           onExitRef.current();
           return;
         }
@@ -266,7 +268,7 @@ export default function ReplaydumpSupervisor({
               </Stack>
             </Stack>
           </Box>
-        ) : done.exitCode != -1 && done.signalCode != "SIGTERM" ? (
+        ) : done.signalCode != "SIGTERM" ? (
           <Box
             sx={{
               width: 600,
