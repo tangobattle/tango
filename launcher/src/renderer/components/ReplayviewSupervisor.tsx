@@ -71,7 +71,7 @@ export default function ReplayviewSupervisor({
         throw e;
       }
 
-      const proc = spawn(app, "replayview", [outROMPath, replayPath], {
+      const proc = spawn(app, "replayview", ["--", outROMPath, replayPath], {
         env: {
           RUST_LOG: configRef.current.rustLogFilter,
           RUST_BACKTRACE: "1",

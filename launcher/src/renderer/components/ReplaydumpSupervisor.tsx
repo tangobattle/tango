@@ -88,9 +88,9 @@ export default function ReplaydumpSupervisor({
         [
           replayPath,
           "dump-video",
-          "--ffmpeg",
-          getBinPath(app, "ffmpeg"),
+          `--ffmpeg=${getBinPath(app, "ffmpeg")}`,
           `-v=-c:v libx264 -vf scale=iw*${scaleFactor}:ih*${scaleFactor}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2`,
+          "--",
           outROMPath,
           outPath,
         ],

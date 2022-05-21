@@ -45,10 +45,10 @@ export class Core extends EventEmitter {
       app,
       "tango-core",
       [
-        ["--input-mapping", JSON.stringify(inputMapping)],
-        ["--signaling-connect-addr", signalingConnectAddr],
-        ...iceServers.map((iceServer) => ["--ice-servers", iceServer]),
-        sessionId != "" ? ["--session-id", sessionId] : [],
+        [`--input-mapping=${JSON.stringify(inputMapping)}`],
+        [`--signaling-connect-addr=${signalingConnectAddr}`],
+        ...iceServers.map((iceServer) => [`--ice-servers=${iceServer}`]),
+        sessionId != "" ? [`--session-id=${sessionId}`] : [],
       ].flat(),
       {
         signal,
