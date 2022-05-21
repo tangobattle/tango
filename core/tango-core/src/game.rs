@@ -1,63 +1,47 @@
-use crate::{audio, battle, facade, hooks, ipc, tps};
+use crate::{audio, battle, facade, hooks, input, ipc, tps};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
-fn stick_to_mgba_keys(stick: (i16, i16)) -> u32 {
-    const STICK_THRESHOLD: i16 = 16384;
-
-    (if stick.0 < -STICK_THRESHOLD {
-        mgba::input::keys::LEFT
-    } else if stick.0 > STICK_THRESHOLD {
-        mgba::input::keys::RIGHT
-    } else {
-        0
-    }) | (if stick.1 < -STICK_THRESHOLD {
-        mgba::input::keys::UP
-    } else if stick.1 > STICK_THRESHOLD {
-        mgba::input::keys::DOWN
-    } else {
-        0
-    })
-}
-
 #[derive(Clone)]
 pub struct Keymapping {
-    pub up: Option<sdl2::keyboard::Scancode>,
-    pub down: Option<sdl2::keyboard::Scancode>,
-    pub left: Option<sdl2::keyboard::Scancode>,
-    pub right: Option<sdl2::keyboard::Scancode>,
-    pub a: Option<sdl2::keyboard::Scancode>,
-    pub b: Option<sdl2::keyboard::Scancode>,
-    pub l: Option<sdl2::keyboard::Scancode>,
-    pub r: Option<sdl2::keyboard::Scancode>,
-    pub select: Option<sdl2::keyboard::Scancode>,
-    pub start: Option<sdl2::keyboard::Scancode>,
+    pub up: Vec<sdl2::keyboard::Scancode>,
+    pub down: Vec<sdl2::keyboard::Scancode>,
+    pub left: Vec<sdl2::keyboard::Scancode>,
+    pub right: Vec<sdl2::keyboard::Scancode>,
+    pub a: Vec<sdl2::keyboard::Scancode>,
+    pub b: Vec<sdl2::keyboard::Scancode>,
+    pub l: Vec<sdl2::keyboard::Scancode>,
+    pub r: Vec<sdl2::keyboard::Scancode>,
+    pub select: Vec<sdl2::keyboard::Scancode>,
+    pub start: Vec<sdl2::keyboard::Scancode>,
 }
 
 impl Keymapping {
-    fn to_mgba_keys(&self, scancode: sdl2::keyboard::Scancode) -> u32 {
-        if Some(scancode) == self.left {
+    fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
+        let pred = |c: &sdl2::keyboard::Scancode| input.is_key_pressed(*c);
+
+        if self.left.iter().any(pred) {
             mgba::input::keys::LEFT
-        } else if Some(scancode) == self.right {
+        } else if self.right.iter().any(pred) {
             mgba::input::keys::RIGHT
-        } else if Some(scancode) == self.up {
+        } else if self.up.iter().any(pred) {
             mgba::input::keys::UP
-        } else if Some(scancode) == self.down {
+        } else if self.down.iter().any(pred) {
             mgba::input::keys::DOWN
-        } else if Some(scancode) == self.a {
+        } else if self.a.iter().any(pred) {
             mgba::input::keys::A
-        } else if Some(scancode) == self.b {
+        } else if self.b.iter().any(pred) {
             mgba::input::keys::B
-        } else if Some(scancode) == self.l {
+        } else if self.l.iter().any(pred) {
             mgba::input::keys::L
-        } else if Some(scancode) == self.r {
+        } else if self.r.iter().any(pred) {
             mgba::input::keys::R
-        } else if Some(scancode) == self.start {
+        } else if self.start.iter().any(pred) {
             mgba::input::keys::START
-        } else if Some(scancode) == self.select {
+        } else if self.select.iter().any(pred) {
             mgba::input::keys::SELECT
         } else {
             0
@@ -65,46 +49,116 @@ impl Keymapping {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub enum ControllerInput {
+    Button(sdl2::controller::Button),
+    Axis(sdl2::controller::Axis, i16),
+}
+
 #[derive(Clone)]
 pub struct ControllerMapping {
-    pub up: Option<sdl2::controller::Button>,
-    pub down: Option<sdl2::controller::Button>,
-    pub left: Option<sdl2::controller::Button>,
-    pub right: Option<sdl2::controller::Button>,
-    pub a: Option<sdl2::controller::Button>,
-    pub b: Option<sdl2::controller::Button>,
-    pub l: Option<sdl2::controller::Button>,
-    pub r: Option<sdl2::controller::Button>,
-    pub select: Option<sdl2::controller::Button>,
-    pub start: Option<sdl2::controller::Button>,
-    pub enable_left_stick: bool,
+    pub up: Vec<ControllerInput>,
+    pub down: Vec<ControllerInput>,
+    pub left: Vec<ControllerInput>,
+    pub right: Vec<ControllerInput>,
+    pub a: Vec<ControllerInput>,
+    pub b: Vec<ControllerInput>,
+    pub l: Vec<ControllerInput>,
+    pub r: Vec<ControllerInput>,
+    pub select: Vec<ControllerInput>,
+    pub start: Vec<ControllerInput>,
 }
 
 impl ControllerMapping {
-    fn to_mgba_keys(&self, button: sdl2::controller::Button) -> u32 {
-        if Some(button) == self.left {
+    fn buttons_to_mgba_keys(&self, input: &input::InputState) -> u32 {
+        let pred = |c: &ControllerInput| {
+            if let ControllerInput::Button(button) = *c {
+                input.is_button_pressed(button)
+            } else {
+                false
+            }
+        };
+
+        if self.left.iter().any(pred) {
             mgba::input::keys::LEFT
-        } else if Some(button) == self.right {
+        } else if self.right.iter().any(pred) {
             mgba::input::keys::RIGHT
-        } else if Some(button) == self.up {
+        } else if self.up.iter().any(pred) {
             mgba::input::keys::UP
-        } else if Some(button) == self.down {
+        } else if self.down.iter().any(pred) {
             mgba::input::keys::DOWN
-        } else if Some(button) == self.a {
+        } else if self.a.iter().any(pred) {
             mgba::input::keys::A
-        } else if Some(button) == self.b {
+        } else if self.b.iter().any(pred) {
             mgba::input::keys::B
-        } else if Some(button) == self.l {
+        } else if self.l.iter().any(pred) {
             mgba::input::keys::L
-        } else if Some(button) == self.r {
+        } else if self.r.iter().any(pred) {
             mgba::input::keys::R
-        } else if Some(button) == self.start {
+        } else if self.start.iter().any(pred) {
             mgba::input::keys::START
-        } else if Some(button) == self.select {
+        } else if self.select.iter().any(pred) {
             mgba::input::keys::SELECT
         } else {
             0
         }
+    }
+
+    fn axes_to_mgba_keys(&self, input: &input::InputState) -> u32 {
+        let pred = |c: &ControllerInput| {
+            if let ControllerInput::Axis(axis, threshold) = *c {
+                (threshold > 0 && input.axis(axis) >= threshold)
+                    || (threshold < 0 && input.axis(axis) <= threshold)
+            } else {
+                false
+            }
+        };
+
+        (if self.left.iter().any(pred) {
+            mgba::input::keys::LEFT
+        } else {
+            0
+        }) | (if self.right.iter().any(pred) {
+            mgba::input::keys::RIGHT
+        } else {
+            0
+        }) | (if self.up.iter().any(pred) {
+            mgba::input::keys::UP
+        } else {
+            0
+        }) | (if self.down.iter().any(pred) {
+            mgba::input::keys::DOWN
+        } else {
+            0
+        }) | (if self.a.iter().any(pred) {
+            mgba::input::keys::A
+        } else {
+            0
+        }) | (if self.b.iter().any(pred) {
+            mgba::input::keys::B
+        } else {
+            0
+        }) | (if self.l.iter().any(pred) {
+            mgba::input::keys::L
+        } else {
+            0
+        }) | (if self.r.iter().any(pred) {
+            mgba::input::keys::R
+        } else {
+            0
+        }) | (if self.select.iter().any(pred) {
+            mgba::input::keys::SELECT
+        } else {
+            0
+        }) | (if self.start.iter().any(pred) {
+            mgba::input::keys::START
+        } else {
+            0
+        })
+    }
+
+    fn to_mgba_keys(&self, input: &input::InputState) -> u32 {
+        self.buttons_to_mgba_keys(input) | self.axes_to_mgba_keys(input)
     }
 }
 
@@ -337,7 +391,7 @@ impl Game {
             anyhow::Result::<()>::Ok(())
         })?;
 
-        let mut debug_key_pressed = false;
+        let mut show_debug_pressed = false;
         let mut show_debug = false;
 
         let ttf = sdl2::ttf::init().unwrap();
@@ -359,138 +413,13 @@ impl Game {
 
         let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
             std::collections::HashMap::new();
-
-        let mut keys_pressed = [0u8; 32];
-
-        let mut stick = (0i16, 0i16);
-        let mut triggers = (0i16, 0i16);
+        let mut input_state = input::InputState::new();
 
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
                 match event {
                     sdl2::event::Event::Quit { .. } => {
                         break 'toplevel;
-                    }
-                    sdl2::event::Event::KeyDown {
-                        scancode: Some(scancode),
-                        repeat: false,
-                        ..
-                    } => {
-                        let mask = self.keymapping.to_mgba_keys(scancode);
-                        for v in
-                            bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(&mask)
-                                .iter_ones()
-                        {
-                            keys_pressed[v] += 1;
-                        }
-                        log::info!("KeyDown: pressed: {:?}", keys_pressed);
-
-                        self.joyflags
-                            .fetch_or(mask, std::sync::atomic::Ordering::Relaxed);
-
-                        if scancode == sdl2::keyboard::Scancode::Grave {
-                            if debug_key_pressed {
-                                continue;
-                            }
-                            debug_key_pressed = true;
-                            show_debug = !show_debug;
-                        }
-                    }
-                    sdl2::event::Event::KeyUp {
-                        scancode: Some(scancode),
-                        repeat: false,
-                        ..
-                    } => {
-                        let mut mask = self.keymapping.to_mgba_keys(scancode);
-                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
-                            &mask.clone(),
-                        )
-                        .iter_ones()
-                        {
-                            keys_pressed[v] -= 1;
-                            if keys_pressed[v] > 0 {
-                                mask = mask & !(1 << v);
-                            }
-                        }
-                        log::info!("KeyUp: pressed: {:?}", keys_pressed);
-
-                        self.joyflags
-                            .fetch_and(!mask, std::sync::atomic::Ordering::Relaxed);
-                        if scancode == sdl2::keyboard::Scancode::Grave {
-                            debug_key_pressed = false;
-                        }
-                    }
-                    sdl2::event::Event::ControllerAxisMotion { axis, value, .. }
-                        if self.controller_mapping.enable_left_stick =>
-                    {
-                        const TRIGGER_THRESHOLD: i16 = 16384;
-
-                        let last_mask = stick_to_mgba_keys(stick)
-                            | if triggers.0 > TRIGGER_THRESHOLD {
-                                mgba::input::keys::L
-                            } else {
-                                0
-                            }
-                            | if triggers.1 > TRIGGER_THRESHOLD {
-                                mgba::input::keys::R
-                            } else {
-                                0
-                            };
-
-                        match axis {
-                            sdl2::controller::Axis::LeftX => {
-                                stick.0 = value;
-                            }
-                            sdl2::controller::Axis::LeftY => {
-                                stick.1 = value;
-                            }
-                            sdl2::controller::Axis::TriggerLeft => {
-                                triggers.0 = value;
-                            }
-                            sdl2::controller::Axis::TriggerRight => {
-                                triggers.1 = value;
-                            }
-                            _ => {
-                                continue;
-                            }
-                        }
-
-                        let mask = stick_to_mgba_keys(stick)
-                            | if triggers.0 > TRIGGER_THRESHOLD {
-                                mgba::input::keys::L
-                            } else {
-                                0
-                            }
-                            | if triggers.1 > TRIGGER_THRESHOLD {
-                                mgba::input::keys::R
-                            } else {
-                                0
-                            };
-
-                        let mut keys_off = last_mask & !mask;
-                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
-                            &keys_off.clone(),
-                        )
-                        .iter_ones()
-                        {
-                            keys_pressed[v] -= 1;
-                            if keys_pressed[v] > 0 {
-                                keys_off = keys_off & !(1 << v);
-                            }
-                        }
-                        self.joyflags
-                            .fetch_and(!keys_off, std::sync::atomic::Ordering::Relaxed);
-
-                        let keys_on = mask & !last_mask;
-                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
-                            &keys_on,
-                        )
-                        .iter_ones()
-                        {
-                            keys_pressed[v] += 1;
-                        }
-                        self.joyflags
-                            .fetch_or(keys_on, std::sync::atomic::Ordering::Relaxed);
                     }
                     sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                         let controller = self.game_controller.open(which).unwrap();
@@ -500,39 +429,21 @@ impl Game {
                     sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
                         controllers.remove(&which);
                     }
-                    sdl2::event::Event::ControllerButtonDown { button, .. } => {
-                        let mask = self.controller_mapping.to_mgba_keys(button);
-                        for v in
-                            bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(&mask)
-                                .iter_ones()
-                        {
-                            keys_pressed[v] += 1;
-                        }
-                        log::info!("ControllerButtonDown: pressed: {:?}", keys_pressed);
-
-                        self.joyflags.fetch_or(
-                            self.controller_mapping.to_mgba_keys(button),
-                            std::sync::atomic::Ordering::Relaxed,
-                        );
-                    }
-                    sdl2::event::Event::ControllerButtonUp { button, .. } => {
-                        let mut mask = self.controller_mapping.to_mgba_keys(button);
-                        for v in bitvec::slice::BitSlice::<_, bitvec::order::Lsb0>::from_element(
-                            &mask.clone(),
-                        )
-                        .iter_ones()
-                        {
-                            keys_pressed[v] -= 1;
-                            if keys_pressed[v] > 0 {
-                                mask = mask & !(1 << v);
-                            }
-                        }
-                        log::info!("ControllerButtonUp: pressed: {:?}", keys_pressed);
-
-                        self.joyflags
-                            .fetch_and(!mask, std::sync::atomic::Ordering::Relaxed);
-                    }
                     _ => {}
+                }
+
+                if input_state.handle_event(event) {
+                    let last_show_debug_pressed = show_debug_pressed;
+                    show_debug_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
+                    if show_debug_pressed && !last_show_debug_pressed {
+                        show_debug = !show_debug;
+                    }
+                    self.joyflags.store(
+                        self.keymapping.to_mgba_keys(&input_state)
+                            | self.controller_mapping.to_mgba_keys(&input_state),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                 }
             }
 
