@@ -363,7 +363,6 @@ impl Game {
                 }
 
                 if input_state.handle_event(&event) {
-                    log::info!("{:?}", event);
                     let last_show_debug_pressed = show_debug_pressed;
                     show_debug_pressed =
                         input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
