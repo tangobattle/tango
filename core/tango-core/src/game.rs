@@ -161,6 +161,7 @@ impl Game {
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         if let Some(match_init) = match_init.as_ref() {
+            let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
             core.set_traps(hooks.primary_traps(
                 handle.clone(),
                 joyflags.clone(),
