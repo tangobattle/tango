@@ -6,7 +6,7 @@
   "nickname-step-description": "你可以在任何时候改变你的昵称。",
   "roms-step-title": "请将你的ROM放入 {{path}}",
   "roms-step-description": "确保ROM是原始和没打补丁的。",
-  "roms-step-error": "文件夹中有文件但是找不到任何支持的ROM。请确保ROM是没打补丁的!",
+  "roms-step-error": "找不到任何支持的ROM。请确保ROM是没打补丁的!",
   "saves-step-title": "文件夹中有文件但是请将你的游戏存档放入 {{path}}",
   "saves-step-description": "确保游戏存档与你放在ROM文件夹中的游戏兼容。游戏存档应该是.sav或.sa1文件。",
   "saves-step-error": "找不到任何支持的游戏存档。请确保游戏存档与你的ROM兼容。",

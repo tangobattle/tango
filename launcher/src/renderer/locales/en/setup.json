@@ -6,10 +6,10 @@
   "nickname-step-description": "You can change this at any time.",
   "roms-step-title": "Place your ROMs in {{path}}",
   "roms-step-description": "Make sure they're pristine, unpatched ROMs.",
-  "roms-step-error": "Found files, but could not find any supported ROMs. Please make sure they're unpatched!",
+  "roms-step-error": "Could not find any supported ROMs. Please make sure they're unpatched!",
   "saves-step-title": "Place your saves in {{path}}",
   "saves-step-description": "Make sure they're compatible with the games you've put in the ROMs folder. They should be .sav or .sa1 files.",
-  "saves-step-error": "Found files, but could not find any supported saves. Please make sure they compatible.",
+  "saves-step-error": "Could not find any supported saves. Please make sure they compatible.",
   "open-folder": "Open folder",
   "next": "I'm done!"
 }
