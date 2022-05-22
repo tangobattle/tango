@@ -133,9 +133,9 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:roms-step-description" />
               </Typography>
-              {romsScanState == "done" && activeStep == 1 ? (
+              {romsScanState == "done" && activeStep == 0 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-2-error" />
+                  <Trans i18nKey="setup:roms-step-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
@@ -176,9 +176,9 @@ function SetupAppBody() {
               <Typography sx={{ mb: 2 }}>
                 <Trans i18nKey="setup:saves-step-description" />
               </Typography>
-              {savesScanState == "done" && activeStep == 2 ? (
+              {savesScanState == "done" && activeStep == 1 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-3-error" />
+                  <Trans i18nKey="setup:saves-step-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
