@@ -44,7 +44,7 @@ export default function ReplayInfoDialog({
           "dump-ewram",
         ],
         {
-          env: { ...process.env, ...env },
+          env: { ...process.env },
         }
       );
 

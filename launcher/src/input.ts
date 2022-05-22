@@ -9,7 +9,7 @@ export async function captureInput(lang: string, message: string) {
     "keymaptool",
     ["--lang", lang, "--", message],
     {
-      env: { ...process.env, ...env }
+      env: { ...process.env }
     }
   );
   (async () => {

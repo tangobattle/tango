@@ -96,10 +96,9 @@ export default function ReplaydumpSupervisor({
         ],
         {
           env: {
+            ...process.env,
             RUST_LOG: configRef.current.rustLogFilter,
             RUST_BACKTRACE: "1",
-            ...process.env,
-            ...env,
           },
           signal: abortControllerRef.current.signal,
         }
