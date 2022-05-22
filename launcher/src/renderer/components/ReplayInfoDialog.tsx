@@ -36,10 +36,17 @@ export default function ReplayInfoDialog({
 
   React.useEffect(() => {
     (async () => {
-      const proc = spawn(app, "replaydump", [
-        path.join(getReplaysPath(app), filename),
-        "dump-ewram",
-      ]);
+      const proc = spawn(
+        app,
+        "replaydump",
+        [
+          path.join(getReplaysPath(app), filename),
+          "dump-ewram",
+        ],
+        {
+          env: { ...process.env, ...env },
+        }
+      );
 
       (async () => {
         for await (const buf of proc.stderr) {

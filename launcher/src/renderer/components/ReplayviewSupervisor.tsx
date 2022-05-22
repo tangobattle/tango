@@ -75,6 +75,8 @@ export default function ReplayviewSupervisor({
         env: {
           RUST_LOG: configRef.current.rustLogFilter,
           RUST_BACKTRACE: "1",
+          ...process.env,
+          ...env,
         },
         signal: abortControllerRef.current.signal,
       });

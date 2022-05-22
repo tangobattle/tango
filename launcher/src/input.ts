@@ -4,7 +4,14 @@ import { PhysicalInput } from "./config";
 import { spawn } from "./process";
 
 export async function captureInput(lang: string, message: string) {
-  const proc = spawn(app, "keymaptool", ["--lang", lang, "--", message]);
+  const proc = spawn(
+    app,
+    "keymaptool",
+    ["--lang", lang, "--", message],
+    {
+      env: { ...process.env, ...env }
+    }
+  );
   (async () => {
     for await (const data of proc.stderr) {
       for (const line of data.toString().split(/\r?\n/g)) {
