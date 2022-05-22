@@ -12,6 +12,7 @@
   "repository": "https://github.com/tangobattle/tango",
   "scripts": {
     "build": "npm-run-all build:main build:renderer && ./update-bin.sh",
+    "build:linux": "npm-run-all build:main build:renderer",
     "build:main": "cross-env NODE_ENV=production webpack --config webpack/main.webpack.ts --mode=production",
     "build:renderer": "cross-env NODE_ENV=production webpack --config webpack/renderer.webpack.ts --mode=production",
     "generate:protos": "(mkdir src/protos 2> /dev/null || true) && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos --ts_proto_opt=esModuleInterop=true -I../core/tango-protos/src/protos ipc.proto lobby.proto relay.proto",
@@ -21,7 +22,8 @@
     "pack": "npm run build && electron-builder --dir",
     "pack:win32-x64": "npm run build && electron-builder --dir --win --x64",
     "dist": "npm run build && electron-builder",
-    "dist:win32-x64": "npm run build && electron-builder --win --x64"
+    "dist:win32-x64": "npm run build && electron-builder --win --x64",
+    "dist:linux": "npm run build:linux && electron-builder"
   },
   "keywords": [],
   "license": "AGPL-3.0",
@@ -94,6 +96,21 @@
     "appId": "com.tangobattle.tango",
     "win": {
       "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "extraFiles": [
+        {
+          "from": "/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0",
+          "to": "usr/lib/libSDL2-2.0.so.0"
+        },
+        {
+          "from": "/usr/lib/x86_64-linux-gnu/libSDL2_ttf-2.0.so.0",
+          "to": "usr/lib/libSDL2_ttf-2.0.so.0"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

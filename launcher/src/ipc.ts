@@ -52,7 +52,7 @@ export class Core extends EventEmitter {
       ].flat(),
       {
         signal,
-        env,
+        env: { ...process.env, ...env },
       }
     );
 
