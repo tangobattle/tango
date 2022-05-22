@@ -16,6 +16,7 @@ import { getReplaysPath } from "../../paths";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
 import { Editor } from "../../saveedit/bn6";
+import { useConfig } from "./ConfigContext";
 import SaveViewer from "./SaveViewer";
 
 export default function ReplayInfoDialog({
@@ -28,6 +29,7 @@ export default function ReplayInfoDialog({
   onClose: () => void;
 }) {
   const [editor, setEditor] = React.useState<Editor | null>(null);
+  const { config } = useConfig();
   const { i18n } = useTranslation();
   const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     dateStyle: "medium",
@@ -39,12 +41,13 @@ export default function ReplayInfoDialog({
       const proc = spawn(
         app,
         "replaydump",
-        [
-          path.join(getReplaysPath(app), filename),
-          "dump-ewram",
-        ],
+        [path.join(getReplaysPath(app), filename), "dump-ewram"],
         {
-          env: { ...process.env },
+          env: {
+            ...process.env,
+            RUST_LOG: config.rustLogFilter,
+            RUST_BACKTRACE: "1",
+          },
         }
       );
 
@@ -65,7 +68,7 @@ export default function ReplayInfoDialog({
         new Editor(new Uint8Array(buf).buffer, replayInfo.metadata.rom, false)
       );
     })();
-  }, [filename, replayInfo]);
+  }, [config, filename, replayInfo]);
 
   return (
     <Modal
