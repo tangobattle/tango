@@ -30,9 +30,9 @@ unsafe extern "C" fn c_log<VaList>(
     category: i32,
     level: u32,
     fmt: *const std::os::raw::c_char,
-    args: VaList,
+    args: *mut VaList,
 ) {
-    // LOG_FUNC.lock().as_ref()(category, level, vsprintf::vsprintf(fmt, args).unwrap());
+    LOG_FUNC.lock().as_ref()(category, level, vsprintf::vsprintf(fmt, args).unwrap());
 }
 
 pub fn init() {
