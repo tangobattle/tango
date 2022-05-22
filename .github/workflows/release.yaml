@@ -6,15 +6,8 @@ on:
             - "v*.*.*"
 
 jobs:
-    release:
+    release-win32-x64:
         runs-on: ubuntu-latest
-
-        strategy:
-            matrix:
-                include:
-                    - rust-target: x86_64-pc-windows-gnu
-                      electron-target: win32-x64
-                      sysroot: /usr/x86_64-w64-mingw32/
 
         steps:
             - uses: actions/checkout@v2
@@ -36,7 +29,7 @@ jobs:
             - uses: actions-rs/toolchain@v1
               with:
                   toolchain: stable
-                  target: ${{ matrix.rust-target }}
+                  target: x86_64-pc-windows-gnu
 
             - run: >
                   sudo dpkg --add-architecture i386 &&
@@ -55,7 +48,7 @@ jobs:
             - run: >
                   cd core &&
                   ./get-windows-sdl.sh &&
-                  BINDGEN_EXTRA_CLANG_ARGS="--sysroot=${{ matrix.sysroot }}" cargo build --release --target ${{ matrix.rust-target }}
+                  BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr/x86_64-w64-mingw32/" cargo build --release --target x86_64-pc-windows-gnu
 
             - run: >
                   mkdir launcher/bin &&
@@ -70,6 +63,6 @@ jobs:
             - run: >
                   cd launcher &&
                   npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" npm run "dist:${{ matrix.electron-target }}" -- --publish always
+                  GITHUB_TOKEN="${{ secrets.github_token }}" npm run dist:win32-x64 -- --publish always
               env:
                   NODE_OPTIONS: --max-old-space-size=8192
