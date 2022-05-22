@@ -44,6 +44,7 @@ export default function ReplayInfoDialog({
         [path.join(getReplaysPath(app), filename), "dump-ewram"],
         {
           env: {
+            ...process.env,
             RUST_LOG: config.rustLogFilter,
             RUST_BACKTRACE: "1",
           },
