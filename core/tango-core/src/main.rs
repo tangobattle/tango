@@ -148,7 +148,7 @@ fn main() -> Result<(), anyhow::Error> {
             let mut ping_timer = tokio::time::interval(std::time::Duration::from_secs(1));
             let mut hola_received = false;
 
-            loop {
+            let start_req = loop {
                 tokio::select! {
                     msg = ipc_receiver.receive() => {
                         match msg?.which {
@@ -159,35 +159,7 @@ fn main() -> Result<(), anyhow::Error> {
                             },
                             Some(tango_protos::ipc::to_core_message::Which::StartReq(start_req)) => {
                                 dc_tx.send(&tango_core::protocol::Packet::Hola(tango_core::protocol::Hola {}).serialize()?).await?;
-                                if !hola_received {
-                                    loop {
-                                        match dc_rx.receive().await {
-                                            Some(msg) => {
-                                                match tango_core::protocol::Packet::deserialize(&msg)? {
-                                                    tango_core::protocol::Packet::Hola(_) => {
-                                                        break;
-                                                    }
-                                                    tango_core::protocol::Packet::Ping(tango_core::protocol::Ping { ts }) => {
-                                                        // Reply to pings, in case the opponent really wants a response.
-                                                        dc_tx.send(&tango_core::protocol::Packet::Pong(tango_core::protocol::Pong {
-                                                            ts
-                                                        }).serialize()?).await?;
-                                                    }
-                                                    tango_core::protocol::Packet::Pong(_) => {
-                                                        // Ignore stray pongs.
-                                                    }
-                                                    p => {
-                                                        anyhow::bail!("unexpected packet: {:?}", p);
-                                                    }
-                                                }
-                                            }
-                                            None => {
-                                                anyhow::bail!("data channel closed");
-                                            },
-                                        }
-                                    }
-                                }
-                                return Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))))
+                                break start_req;
                             },
                             None => {
                                 anyhow::bail!("ipc channel closed");
@@ -247,7 +219,36 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                     }
                 }
+            };
+
+            if !hola_received {
+                // If we haven't received an Hola, pull packets until we do.
+                loop {
+                    match dc_rx.receive().await {
+                        Some(msg) => {
+                            match tango_core::protocol::Packet::deserialize(&msg)? {
+                                tango_core::protocol::Packet::Hola(_) => {
+                                    break;
+                                }
+                                tango_core::protocol::Packet::Ping(_) => {
+                                    // Ignore stray pings.
+                                }
+                                tango_core::protocol::Packet::Pong(_) => {
+                                    // Ignore stray pongs.
+                                }
+                                p => {
+                                    anyhow::bail!("unexpected packet: {:?}", p);
+                                }
+                            }
+                        }
+                        None => {
+                            anyhow::bail!("data channel closed");
+                        },
+                    }
+                }
             }
+
+            return Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))))
         })?
     } else {
         rt.block_on(async {

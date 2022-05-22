@@ -23,6 +23,8 @@ where
         }
     }
 
+    log::info!("candidates gathered");
+
     let local_description = peer_conn.local_description().unwrap();
     stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
