@@ -11,7 +11,7 @@
   "main": "./dist/main.js",
   "repository": "https://github.com/tangobattle/tango",
   "scripts": {
-    "build": "npm-run-all build:main build:renderer && ./update-bin.sh",
+    "build:win32-x64": "npm-run-all build:main build:renderer && ./update-bin.sh",
     "build:linux": "npm-run-all build:main build:renderer",
     "build:main": "cross-env NODE_ENV=production webpack --config webpack/main.webpack.ts --mode=production",
     "build:renderer": "cross-env NODE_ENV=production webpack --config webpack/renderer.webpack.ts --mode=production",
@@ -19,10 +19,8 @@
     "start": "npm run start:renderer",
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only ./src/main/main.ts",
     "start:renderer": "cross-env NODE_ENV=development webpack serve --config webpack/renderer.webpack.ts --mode=development",
-    "pack": "npm run build && electron-builder --dir",
-    "pack:win32-x64": "npm run build && electron-builder --dir --win --x64",
-    "dist": "npm run build && electron-builder",
-    "dist:win32-x64": "npm run build && electron-builder --win --x64",
+    "pack:win32-x64": "npm run build:win32-x64 && electron-builder --dir --win --x64",
+    "dist:win32-x64": "npm run build:win32-x64 && electron-builder --win --x64",
     "dist:linux": "npm run build:linux && electron-builder"
   },
   "keywords": [],
