@@ -31,5 +31,8 @@ export function spawn(
     // eslint-disable-next-line no-console
     console.info("catchsegv NOT available, will NOT wrap process");
   }
-  return origSpawn(command, realArgs, options);
+  return origSpawn(command, realArgs, {
+    ...options,
+    env: { ...process.env, ...options?.env },
+  });
 }

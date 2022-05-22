@@ -194,21 +194,22 @@ function AboutTab({ active }: { active: boolean }) {
             </li>
           </ul>
           <Typography>Thank you!</Typography>
-          <Typography>
-            <small>
-              Tango is licensed under the terms of the{" "}
-              <Link
-                href="https://tldrlegal.com/license/gnu-affero-general-public-license-v3-(agpl-3.0)"
-                target="_blank"
-              >
-                GNU Affero General Public License v3
-              </Link>
-              . That means you’re free to modify the{" "}
-              <Link href="https://github.com/tangobattle" target="_blank">
-                source code
-              </Link>{" "}
-              of Tango, as long as you contribute your changes back!
-            </small>
+          <Typography variant="body2">
+            Versions: {JSON.stringify(process.versions, null, 1)}
+          </Typography>
+          <Typography variant="body2">
+            Tango is licensed under the terms of the{" "}
+            <Link
+              href="https://tldrlegal.com/license/gnu-affero-general-public-license-v3-(agpl-3.0)"
+              target="_blank"
+            >
+              GNU Affero General Public License v3
+            </Link>
+            . That means you’re free to modify the{" "}
+            <Link href="https://github.com/tangobattle" target="_blank">
+              source code
+            </Link>{" "}
+            of Tango, as long as you contribute your changes back!
           </Typography>
         </Stack>
       </Box>
