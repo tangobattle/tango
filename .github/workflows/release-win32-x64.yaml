@@ -63,6 +63,6 @@ jobs:
             - run: >
                   cd launcher &&
                   npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" npm run dist:win32-x64 -- --publish always
+                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:win32-x64 -- --publish always
               env:
                   NODE_OPTIONS: --max-old-space-size=8192
