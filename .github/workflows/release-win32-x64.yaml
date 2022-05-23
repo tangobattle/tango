@@ -1,4 +1,4 @@
-name: release
+name: release-win32-x64
 
 on:
     push:
