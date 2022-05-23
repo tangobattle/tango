@@ -440,7 +440,7 @@ function InputTab({ active }: { active: boolean }) {
                     <Box sx={{ mt: -1 }}>
                       {config.inputMapping[key].map((k, i) => (
                         <Chip
-                          key={i}
+                          key={JSON.stringify(k)}
                           sx={{ mr: 1, mt: 1 }}
                           icon={
                             "Key" in k ? (
