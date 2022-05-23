@@ -1,0 +1,52 @@
+name: release-linux-x64
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+jobs:
+    release-linux:
+        runs-on: ubuntu-20.04
+
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                  submodules: recursive
+
+            - uses: pat-s/always-upload-cache@v2
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      core/target
+                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+            - uses: actions/setup-node@v1
+              with:
+                  node-version: 18
+
+            - uses: actions-rs/toolchain@v1
+              with:
+                  toolchain: stable
+                  target: x86_64-unknown-linux-gnu
+
+            - run: >
+                  sudo apt-get update -y &&
+                  sudo apt-get upgrade -y &&
+                  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl git libnss3 libsdl2-dev libsdl2-ttf-dev pkgconf sudo
+
+            - run: >
+                  cd core &&
+                  cargo build --release --target x86_64-unknown-linux-gnu
+
+            - run: >
+                  mkdir launcher/bin &&
+                  cp core/target/x86_64-unknown-linux-gnu/release/{tango-core,replayview,replaydump,keymaptool} ./launcher/bin/
+
+            - run: >
+                  cd launcher &&
+                  npm install &&
+                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:linux -- --publish always
+              env:
+                  NODE_OPTIONS: --max-old-space-size=8192
