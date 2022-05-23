@@ -1,4 +1,4 @@
-import random from "random";
+import crypto from "crypto";
 
 const STARTS = [
   "adjective",
@@ -487,7 +487,7 @@ const ENDS = [
 ];
 
 export default function randomCode() {
-  return `${STARTS[random.int(0, STARTS.length - 1)]}-${
-    MIDDLES[random.int(0, MIDDLES.length - 1)]
-  }-${ENDS[random.int(0, ENDS.length - 1)]}`.slice(0, 40);
+  return `${STARTS[crypto.randomInt(0, STARTS.length)]}-${
+    MIDDLES[crypto.randomInt(0, MIDDLES.length)]
+  }-${ENDS[crypto.randomInt(0, ENDS.length)]}`.slice(0, 40);
 }
