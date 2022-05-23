@@ -1,3 +1,4 @@
+import { sortBy } from "lodash-es";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -505,7 +506,17 @@ function InputTab({ active }: { active: boolean }) {
                               ...config,
                               inputMapping: {
                                 ...config.inputMapping,
-                                [key]: [...config.inputMapping[key], input],
+                                [key]: sortBy(
+                                  [...config.inputMapping[key], input],
+                                  (v) =>
+                                    "Key" in v
+                                      ? [0, v.Key]
+                                      : "Button" in v
+                                      ? [1, v.Button]
+                                      : "Axis" in v
+                                      ? [2, ...v.Axis]
+                                      : null
+                                ),
                               },
                             }));
                           })();
