@@ -1,4 +1,4 @@
-import { sortBy } from "lodash-es";
+import { isEqual, sortBy } from "lodash-es";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -507,7 +507,12 @@ function InputTab({ active }: { active: boolean }) {
                               inputMapping: {
                                 ...config.inputMapping,
                                 [key]: sortBy(
-                                  [...config.inputMapping[key], input],
+                                  [
+                                    ...config.inputMapping[key].filter(
+                                      (v) => !isEqual(v, input)
+                                    ),
+                                    input,
+                                  ],
                                   (v) =>
                                     "Key" in v
                                       ? [0, v.Key]
