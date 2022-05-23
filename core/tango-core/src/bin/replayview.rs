@@ -163,7 +163,7 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .unwrap();
 
-        let vbuf = vbuf.clone();
+        let vbuf = vbuf;
         'toplevel: loop {
             for event in event_loop.poll_iter() {
                 match event {

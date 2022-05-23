@@ -173,7 +173,7 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    write!(std::io::stdout(), "{}\n", ff_state.inputs_pairs_left())?;
+    writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
     while !done.load(std::sync::atomic::Ordering::Relaxed) {
         core.as_mut().run_frame();
         let clock_rate = core.as_ref().frequency();
@@ -204,13 +204,13 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
             .write_all(vbuf.as_slice())?;
 
         let mut audio_bytes = vec![0u8; samples.len() * 2];
-        LittleEndian::write_i16_into(&samples, &mut audio_bytes[..]);
+        LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
         audio_child
             .stdin
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
-        write!(std::io::stdout(), "{}\n", ff_state.inputs_pairs_left())?;
+        writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
     }
 
     video_child.stdin = None;

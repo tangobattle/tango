@@ -64,7 +64,7 @@ impl Replay {
 
         let mut local_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut local_state)?;
-        let local_state = if local_state.len() > 0 {
+        let local_state = if !local_state.is_empty() {
             Some(mgba::state::State::from_slice(&local_state))
         } else {
             None
@@ -72,7 +72,7 @@ impl Replay {
 
         let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut remote_state)?;
-        let remote_state = if remote_state.len() > 0 {
+        let remote_state = if !remote_state.is_empty() {
             Some(mgba::state::State::from_slice(&remote_state))
         } else {
             None

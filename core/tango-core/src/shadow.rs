@@ -205,7 +205,7 @@ impl Shadow {
         log::info!("loaded shadow game: {}", core.as_ref().game_title());
 
         let save_vf = mgba::vfile::VFile::open(
-            &save_path,
+            save_path,
             mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
         )?;
         core.as_mut().load_save(save_vf)?;
@@ -227,7 +227,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err.into());
+                return Err(err);
             }
             if let Some(buf) = self.state.0.pending_out_init.lock().take() {
                 log::info!("init exchanged!");
@@ -253,7 +253,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err.into());
+                return Err(err);
             }
 
             let round_state = self.state.lock_round_state();
@@ -262,7 +262,7 @@ impl Shadow {
                 .as_ref()
                 .and_then(|round| round.first_committed_state.as_ref())
             {
-                self.core.as_mut().load_state(&state).expect("load state");
+                self.core.as_mut().load_state(state).expect("load state");
                 log::info!("advanced to committed state!");
                 return Ok(state.clone());
             }
@@ -275,7 +275,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err.into());
+                return Err(err);
             }
 
             let round_state = self.state.lock_round_state();
@@ -310,7 +310,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err.into());
+                return Err(err);
             }
             if let Some(applied_state) = self.state.0.applied_state.lock().take() {
                 self.core

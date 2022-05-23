@@ -55,12 +55,12 @@ impl State {
                 self.controllers.insert(*which, ControllerState::new());
             }
             sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
-                self.controllers.remove(&which);
+                self.controllers.remove(which);
             }
             sdl2::event::Event::ControllerAxisMotion {
                 axis, value, which, ..
             } => {
-                let controller = if let Some(controller) = self.controllers.get_mut(&which) {
+                let controller = if let Some(controller) = self.controllers.get_mut(which) {
                     controller
                 } else {
                     return false;
@@ -68,7 +68,7 @@ impl State {
                 controller.axes[*axis as usize] = *value;
             }
             sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
-                let controller = if let Some(controller) = self.controllers.get_mut(&which) {
+                let controller = if let Some(controller) = self.controllers.get_mut(which) {
                     controller
                 } else {
                     return false;
@@ -76,7 +76,7 @@ impl State {
                 controller.buttons_pressed[*button as usize] = true;
             }
             sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
-                let controller = if let Some(controller) = self.controllers.get_mut(&which) {
+                let controller = if let Some(controller) = self.controllers.get_mut(which) {
                     controller
                 } else {
                     return false;

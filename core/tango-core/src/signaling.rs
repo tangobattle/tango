@@ -112,7 +112,7 @@ where
 
                         peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Answer,
-                            sdp: datachannel_wrapper::parse_sdp(&answer.sdp.to_string(), false)?,
+                            sdp: datachannel_wrapper::parse_sdp(&answer.sdp, false)?,
                         })?;
                         break;
                     }

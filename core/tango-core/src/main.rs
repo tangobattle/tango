@@ -27,13 +27,13 @@ fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::game::Physi
     const THRESHOLD: i16 = 0x4000;
     match input {
         PhysicalInput::Key(key) => Some(tango_core::game::PhysicalInput::Key(
-            sdl2::keyboard::Scancode::from_name(&key)?,
+            sdl2::keyboard::Scancode::from_name(key)?,
         )),
         PhysicalInput::Button(button) => Some(tango_core::game::PhysicalInput::Button(
-            sdl2::controller::Button::from_string(&button)?,
+            sdl2::controller::Button::from_string(button)?,
         )),
         PhysicalInput::Axis(axis, sign) => Some(tango_core::game::PhysicalInput::Axis(
-            sdl2::controller::Axis::from_string(&axis)?,
+            sdl2::controller::Axis::from_string(axis)?,
             if *sign > 0 {
                 THRESHOLD
             } else if *sign < 0 {
@@ -137,7 +137,7 @@ fn main() -> Result<(), anyhow::Error> {
         rt.block_on(async {
             let (dc, peer_conn) = tango_core::negotiation::negotiate(
                 &mut ipc_sender,
-                &session_id,
+                session_id,
                 &args.signaling_connect_addr,
                 &args.ice_servers,
             )
@@ -248,7 +248,7 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
 
-            return Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))))
+            Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))))
         })?
     } else {
         rt.block_on(async {
@@ -267,7 +267,7 @@ fn main() -> Result<(), anyhow::Error> {
             let msg = ipc_receiver.receive().await;
             match msg?.which {
                 Some(tango_protos::ipc::to_core_message::Which::StartReq(start_req)) => {
-                    return Ok((
+                    Ok((
                         start_req.window_title,
                         start_req.rom_path,
                         start_req.save_path,

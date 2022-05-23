@@ -71,7 +71,7 @@ fn main() -> anyhow::Result<()> {
         .unwrap();
 
     let surface = font
-        .render(&args.text.to_string_lossy().trim_end())
+        .render(args.text.to_string_lossy().trim_end())
         .blended_wrapped(
             sdl2::pixels::Color::RGBA(0, 0, 0, 255),
             canvas.window().drawable_size().0 - 4,

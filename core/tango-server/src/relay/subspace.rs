@@ -82,7 +82,7 @@ impl super::Backend for Backend {
                 .ice_servers
                 .into_iter()
                 .flat_map(|ice_server| {
-                    let (proto, rest) = if let Some(parts) = ice_server.urls.split_once(":") {
+                    let (proto, rest) = if let Some(parts) = ice_server.urls.split_once(':') {
                         parts
                     } else {
                         return vec![];
