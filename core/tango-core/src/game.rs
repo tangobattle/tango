@@ -385,6 +385,7 @@ impl Game {
                 )
                 .unwrap();
 
+            self.canvas.clear();
             self.canvas.copy(&texture, None, None).unwrap();
 
             if show_debug {

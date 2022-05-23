@@ -178,6 +178,7 @@ fn main() -> Result<(), anyhow::Error> {
             texture
                 .update(None, &*vbuf.lock(), mgba::gba::SCREEN_WIDTH as usize * 4)
                 .unwrap();
+            canvas.clear();
             canvas.copy(&texture, None, None).unwrap();
             canvas.present();
         }
