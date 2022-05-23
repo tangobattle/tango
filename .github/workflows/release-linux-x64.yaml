@@ -1,4 +1,4 @@
-name: release-linux
+name: release-linux-x64
 
 on:
     push:
