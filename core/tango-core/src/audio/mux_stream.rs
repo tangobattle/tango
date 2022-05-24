@@ -66,6 +66,13 @@ impl sdl2::audio::AudioCallback for MuxStream {
 
     fn callback(&mut self, buf: &mut [i16]) {
         let mut mux = self.0.lock();
+        if mux.streams.is_empty() {
+            for i in buf {
+                *i = 0;
+            }
+            return;
+        }
+
         let current_id = mux.current_id;
         for (id, stream) in mux.streams.iter_mut() {
             if *id == current_id {
