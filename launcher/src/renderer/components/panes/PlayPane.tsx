@@ -28,6 +28,7 @@ import { getBasePath, getSavesPath } from "../../../paths";
 import { SetSettings } from "../../../protos/lobby";
 import { KNOWN_ROMS } from "../../../rom";
 import * as bn6 from "../../../saveedit/bn6";
+import { fallbackLng } from "../../i18n";
 import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
@@ -94,8 +95,12 @@ export default function SavesPane({ active }: { active: boolean }) {
 
   const romNames = Object.keys(roms);
   romNames.sort((k1, k2) => {
-    const title1 = KNOWN_ROMS[k1].title[i18n.resolvedLanguage];
-    const title2 = KNOWN_ROMS[k2].title[i18n.resolvedLanguage];
+    const title1 =
+      KNOWN_ROMS[k1].title[i18n.resolvedLanguage] ||
+      KNOWN_ROMS[k1].title[fallbackLng];
+    const title2 =
+      KNOWN_ROMS[k2].title[i18n.resolvedLanguage] ||
+      KNOWN_ROMS[k2].title[fallbackLng];
     return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
   });
 
@@ -239,11 +244,9 @@ export default function SavesPane({ active }: { active: boolean }) {
                       ) : null}
                       {v}{" "}
                       <small>
-                        {
-                          KNOWN_ROMS[saves[v].romName].title[
-                            i18n.resolvedLanguage
-                          ]
-                        }
+                        {KNOWN_ROMS[saves[v].romName].title[
+                          i18n.resolvedLanguage
+                        ] || KNOWN_ROMS[saves[v].romName].title[fallbackLng]}
                       </small>
                     </>
                   );
@@ -270,7 +273,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                   return [
                     [
                       <ListSubheader key="title" sx={{ userSelect: "none" }}>
-                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage]}
+                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
+                          KNOWN_ROMS[romName].title[fallbackLng]}
                       </ListSubheader>,
                       ...saveNames.map((v) => {
                         return (

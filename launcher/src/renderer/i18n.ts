@@ -47,4 +47,5 @@ export const LANGUAGES = [
   { code: "en", name: "English" },
   { code: "ja", name: "日本語" },
   { code: "zh-Hans", name: "简体中文" },
+  { code: "es", name: "Español" },
 ];
