@@ -1118,10 +1118,10 @@ export default function BattleStarter({
                         }
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,
-                          inputDelay: Math.min(Math.max(v, 1), 10),
+                          inputDelay: Math.min(Math.max(v, 2), 10),
                         });
                       }}
-                      InputProps={{ inputProps: { min: 1, max: 10 } }}
+                      InputProps={{ inputProps: { min: 2, max: 10 } }}
                     />{" "}
                     <Button
                       disabled={
@@ -1137,7 +1137,7 @@ export default function BattleStarter({
                           inputDelay: Math.min(
                             10,
                             Math.max(
-                              1,
+                              2,
                               Math.round(
                                 ((rtt! / 1000 / 1000 / 2) * 60) / 1000
                               ) +
