@@ -926,6 +926,7 @@ export default function BattleStarter({
             onOpponentSettingsChange(null);
             setRevealedSetupEditor(null);
             setPendingStates(null);
+            setState(FromCoreMessage_StateEvent_State.UNKNOWN);
             coreRef.current = null;
             onExit();
           })();
