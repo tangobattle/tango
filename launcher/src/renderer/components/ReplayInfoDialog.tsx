@@ -16,6 +16,7 @@ import { getReplaysPath } from "../../paths";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
 import { Editor } from "../../saveedit/bn6";
+import { useConfig } from "./ConfigContext";
 import SaveViewer from "./SaveViewer";
 
 export default function ReplayInfoDialog({
@@ -28,6 +29,7 @@ export default function ReplayInfoDialog({
   onClose: () => void;
 }) {
   const [editor, setEditor] = React.useState<Editor | null>(null);
+  const { config } = useConfig();
   const { i18n } = useTranslation();
   const dateFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     dateStyle: "medium",
@@ -36,10 +38,18 @@ export default function ReplayInfoDialog({
 
   React.useEffect(() => {
     (async () => {
-      const proc = spawn(app, "replaydump", [
-        path.join(getReplaysPath(app), filename),
-        "dump-ewram",
-      ]);
+      const proc = spawn(
+        app,
+        "replaydump",
+        [path.join(getReplaysPath(app), filename), "dump-ewram"],
+        {
+          env: {
+            ...process.env,
+            RUST_LOG: config.rustLogFilter,
+            RUST_BACKTRACE: "1",
+          },
+        }
+      );
 
       (async () => {
         for await (const buf of proc.stderr) {
@@ -54,9 +64,11 @@ export default function ReplayInfoDialog({
       }
 
       const buf = Buffer.concat(bufs);
-      setEditor(new Editor(new Uint8Array(buf).buffer, replayInfo.rom, false));
+      setEditor(
+        new Editor(new Uint8Array(buf).buffer, replayInfo.metadata.rom, false)
+      );
     })();
-  }, [filename, replayInfo]);
+  }, [config, filename, replayInfo]);
 
   return (
     <Modal
@@ -84,26 +96,28 @@ export default function ReplayInfoDialog({
         >
           <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
             <Box>
-              {replayInfo.linkCode != null ? (
+              {replayInfo.metadata.linkCode != null ? (
                 <>
                   <Typography variant="h6" component="h2" sx={{ px: 1 }}>
                     <Trans
                       i18nKey="replays:replay-title"
                       values={{
                         formattedDate: dateFormat.format(
-                          new Date(replayInfo.ts)
+                          new Date(replayInfo.metadata.ts)
                         ),
-                        nickname: replayInfo.remote!.nickname,
-                        linkCode: replayInfo.linkCode,
+                        nickname: replayInfo.metadata.remote!.nickname,
+                        linkCode: replayInfo.metadata.linkCode,
                       }}
                     />
                     <br />
-                    <small>{dateFormat.format(new Date(replayInfo.ts))}</small>
+                    <small>
+                      {dateFormat.format(new Date(replayInfo.metadata.ts))}
+                    </small>
                   </Typography>
                 </>
               ) : (
                 <Typography variant="h6" component="h2" sx={{ px: 1 }}>
-                  {dateFormat.format(new Date(replayInfo.ts))}
+                  {dateFormat.format(new Date(replayInfo.metadata.ts))}
                 </Typography>
               )}
             </Box>

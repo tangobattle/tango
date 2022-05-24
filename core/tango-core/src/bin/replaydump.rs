@@ -89,20 +89,30 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
 
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(parking_lot::Mutex::new(false));
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let input_pairs = replay.input_pairs.clone();
 
     let ff_state = {
-        let done = done.clone();
         tango_core::fastforwarder::State::new(
             replay.local_player_index,
             input_pairs,
             0,
             0,
-            Box::new(move || {
-                *done.lock() = true;
-            }),
+            {
+                let done = done.clone();
+                Box::new(move || {
+                    if !replay.is_complete {
+                        done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                })
+            },
+            {
+                let done = done.clone();
+                Box::new(move || {
+                    done.store(true, std::sync::atomic::Ordering::Relaxed);
+                })
+            },
         )
     };
     let hooks = tango_core::hooks::HOOKS
@@ -163,8 +173,8 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    write!(std::io::stdout(), "{}\n", ff_state.inputs_pairs_left())?;
-    while !*done.lock() {
+    writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
+    while !done.load(std::sync::atomic::Ordering::Relaxed) {
         core.as_mut().run_frame();
         let clock_rate = core.as_ref().frequency();
         let n = {
@@ -194,13 +204,13 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
             .write_all(vbuf.as_slice())?;
 
         let mut audio_bytes = vec![0u8; samples.len() * 2];
-        LittleEndian::write_i16_into(&samples, &mut audio_bytes[..]);
+        LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
         audio_child
             .stdin
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
-        write!(std::io::stdout(), "{}\n", ff_state.inputs_pairs_left())?;
+        writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
     }
 
     video_child.stdin = None;

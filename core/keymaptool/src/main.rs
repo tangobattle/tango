@@ -2,84 +2,22 @@
 use std::io::Write;
 
 use clap::StructOpt;
-use glow::HasContext;
 
-struct GuiState {
-    text: parking_lot::Mutex<String>,
-}
-
-impl GuiState {
-    fn new() -> Self {
-        Self {
-            text: parking_lot::Mutex::new("".to_owned()),
-        }
-    }
-
-    fn set_text(&self, text: &str) {
-        *self.text.lock() = text.to_owned();
-    }
-
-    fn layout(&self, ctx: &egui::Context) {
-        ctx.set_visuals(egui::Visuals::light());
-        egui::panel::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                ui.label(egui::RichText::new(self.text.lock().clone()).size(32.0));
-            });
-        });
-    }
-}
-
-struct Gui {
-    egui_glow: egui_glow::EguiGlow,
-    state: std::sync::Arc<GuiState>,
-}
-
-impl Gui {
-    pub fn new(lang: String, window: &winit::window::Window, gl: &glow::Context) -> Self {
-        let egui_glow = egui_glow::EguiGlow::new(window, gl);
-
-        let mut fonts = egui::FontDefinitions::default();
-        let font = match lang.as_str() {
-            "ja" => egui::FontData::from_static(include_bytes!("fonts/NotoSansJP-Regular.otf")),
-            "zh-Hans" => {
-                egui::FontData::from_static(include_bytes!("fonts/NotoSansSC-Regular.otf"))
-            }
-            _ => egui::FontData::from_static(include_bytes!("fonts/NotoSans-Regular.ttf")),
-        };
-        fonts.font_data.insert("main".to_owned(), font);
-        *fonts
-            .families
-            .get_mut(&egui::FontFamily::Proportional)
-            .unwrap() = vec!["main".to_owned()];
-
-        egui_glow.egui_ctx.set_fonts(fonts);
-
-        Self {
-            egui_glow,
-            state: std::sync::Arc::new(GuiState::new()),
-        }
-    }
-
-    pub fn render(&mut self, window: &winit::window::Window, gl: &glow::Context) {
-        self.egui_glow.run(window, |ctx| {
-            self.state.layout(ctx);
-        });
-        self.egui_glow.paint(window, gl);
-    }
-
-    pub fn state(&self) -> std::sync::Arc<GuiState> {
-        self.state.clone()
-    }
-}
-
-enum UserEvent {
-    Gilrs(gilrs::Event),
+// NOTE: This should match the same struct as in tango-core. Why it's here is just a goofy quirk.
+#[derive(Clone, serde::Serialize)]
+pub enum PhysicalInput {
+    Key(String),
+    Button(String),
+    Axis(String, i16),
 }
 
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
     lang: String,
+
+    #[clap()]
+    text: std::ffi::OsString,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -89,126 +27,160 @@ fn main() -> anyhow::Result<()> {
 
     let args = Cli::parse();
 
-    let event_loop = winit::event_loop::EventLoop::with_user_event();
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let game_controller = sdl.game_controller().unwrap();
 
-    let handle = event_loop.primary_monitor().unwrap();
-    let monitor_size = handle.size();
-    let size = winit::dpi::LogicalSize::new(400u32, 100u32);
-    let wb = winit::window::WindowBuilder::new()
-        .with_title("keymaptool")
-        .with_position(winit::dpi::PhysicalPosition {
-            x: monitor_size.width / 2 - 400 / 2,
-            y: monitor_size.height / 2 - 100 / 2,
-        })
-        .with_inner_size(size)
-        .with_min_inner_size(size)
-        .with_always_on_top(true)
-        .with_decorations(false);
-
-    let gl_window = unsafe {
-        glutin::ContextBuilder::new()
-            .with_double_buffer(Some(true))
-            .with_vsync(true)
-            .build_windowed(wb, &event_loop)
-            .unwrap()
-            .make_current()
-            .unwrap()
-    };
-
-    let gl = unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) };
-    log::info!("GL version: {}", unsafe {
-        gl.get_parameter_string(glow::VERSION)
-    });
-
-    let mut gui = Gui::new(args.lang, gl_window.window(), &gl);
-    let gui_state = gui.state();
-
-    let mut keys_pressed = [false; 255];
-
-    let mut text = "".to_owned();
-    match std::io::stdin().read_line(&mut text) {
-        Ok(n) => {
-            if n == 0 {
-                return Ok(());
-            }
+    let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
+        std::collections::HashMap::new();
+    // Preemptively enumerate controllers.
+    for which in 0..game_controller.num_joysticks().unwrap() {
+        if !game_controller.is_game_controller(which) {
+            continue;
         }
-        Err(e) => {
-            panic!("{}", e);
+        let controller = game_controller.open(which).unwrap();
+        log::info!("controller added: {}", controller.name());
+        controllers.insert(which, controller);
+    }
+
+    let window = video
+        .window("keymaptool", 400, 100)
+        .set_window_flags(sdl2::sys::SDL_WindowFlags::SDL_WINDOW_ALWAYS_ON_TOP as u32)
+        .position_centered()
+        .allow_highdpi()
+        .borderless()
+        .build()
+        .unwrap();
+
+    let mut event_loop = sdl.event_pump().unwrap();
+
+    let mut canvas = window.into_canvas().present_vsync().build().unwrap();
+    let texture_creator = canvas.texture_creator();
+
+    let ttf = sdl2::ttf::init().unwrap();
+    let font = ttf
+        .load_font_from_rwops(
+            sdl2::rwops::RWops::from_bytes(match args.lang.as_str() {
+                "ja" => include_bytes!("fonts/NotoSansJP-Regular.otf"),
+                "zh-Hans" => include_bytes!("fonts/NotoSansSC-Regular.otf"),
+                _ => include_bytes!("fonts/NotoSans-Regular.ttf"),
+            })
+            .unwrap(),
+            20 * (canvas.window().drawable_size().0 / canvas.window().size().0) as u16,
+        )
+        .unwrap();
+
+    let surface = font
+        .render(args.text.to_string_lossy().trim_end())
+        .blended_wrapped(
+            sdl2::pixels::Color::RGBA(0, 0, 0, 255),
+            canvas.window().drawable_size().0 - 4,
+        )
+        .unwrap();
+    let texture = texture_creator
+        .create_texture_from_surface(&surface)
+        .unwrap();
+    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(0x00, 0x00, 0x00, 0xff));
+    canvas.clear();
+
+    canvas.set_draw_color(sdl2::pixels::Color::RGBA(0xff, 0xff, 0xff, 0xff));
+    canvas
+        .fill_rect(sdl2::rect::Rect::new(
+            2,
+            2,
+            canvas.window().drawable_size().0 - 4,
+            canvas.window().drawable_size().1 - 4,
+        ))
+        .unwrap();
+
+    canvas
+        .copy(
+            &texture,
+            None,
+            Some(sdl2::rect::Rect::new(
+                (canvas.window().drawable_size().0 as i32 - width as i32) / 2,
+                (canvas.window().drawable_size().1 as i32 - height as i32) / 2,
+                width,
+                height,
+            )),
+        )
+        .unwrap();
+    canvas.present();
+
+    'toplevel: loop {
+        for event in event_loop.poll_iter() {
+            match event {
+                sdl2::event::Event::Quit { .. } => break 'toplevel,
+                sdl2::event::Event::KeyDown {
+                    scancode: Some(scancode),
+                    ..
+                } => {
+                    std::io::stdout()
+                        .write_all(
+                            serde_json::to_string(&PhysicalInput::Key(
+                                scancode.name().to_string(),
+                            ))?
+                            .as_bytes(),
+                        )
+                        .unwrap();
+                    std::io::stdout().write_all(b"\n").unwrap();
+
+                    break 'toplevel;
+                }
+                sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                    if !game_controller.is_game_controller(which) {
+                        continue;
+                    }
+                    let controller = game_controller.open(which).unwrap();
+                    log::info!("controller added: {}", controller.name());
+                    controllers.insert(which, controller);
+                }
+                sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                    controllers.remove(&which);
+                }
+                sdl2::event::Event::ControllerButtonDown { button, .. } => {
+                    std::io::stdout()
+                        .write_all(
+                            serde_json::to_string(&PhysicalInput::Button(button.string()))?
+                                .as_bytes(),
+                        )
+                        .unwrap();
+                    std::io::stdout().write_all(b"\n").unwrap();
+
+                    break 'toplevel;
+                }
+                sdl2::event::Event::ControllerAxisMotion { axis, value, .. } => {
+                    const THRESHOLD: i16 = 0x4000;
+                    let sign = if value >= THRESHOLD {
+                        1
+                    } else if value <= -THRESHOLD {
+                        -1
+                    } else {
+                        continue;
+                    };
+
+                    std::io::stdout()
+                        .write_all(
+                            serde_json::to_string(&PhysicalInput::Axis(axis.string(), sign))?
+                                .as_bytes(),
+                        )
+                        .unwrap();
+                    std::io::stdout().write_all(b"\n").unwrap();
+
+                    break 'toplevel;
+                }
+                sdl2::event::Event::Window {
+                    win_event: sdl2::event::WindowEvent::FocusLost,
+                    ..
+                } => {
+                    break 'toplevel;
+                }
+                _ => {}
+            }
         }
     }
-    gui_state.set_text(&text);
 
-    let el_proxy = event_loop.create_proxy();
-    let mut gilrs = gilrs::Gilrs::new().unwrap();
-    std::thread::spawn(move || {
-        while let Some(event) = gilrs.next_event() {
-            if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
-                break;
-            }
-        }
-    });
-
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            winit::event::Event::RedrawRequested(_) => {
-                unsafe {
-                    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                    gl.clear(glow::COLOR_BUFFER_BIT);
-                }
-                gui.render(gl_window.window(), &gl);
-                gl_window.swap_buffers().unwrap();
-            }
-            winit::event::Event::WindowEvent {
-                event: ref window_event,
-                ..
-            } => {
-                match window_event {
-                    winit::event::WindowEvent::CloseRequested
-                    | winit::event::WindowEvent::Focused(false) => {
-                        *control_flow = winit::event_loop::ControlFlow::Exit;
-                    }
-                    winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                        let keycode = if let Some(keycode) = input.virtual_keycode {
-                            keycode
-                        } else {
-                            return;
-                        };
-                        match input.state {
-                            winit::event::ElementState::Pressed => {
-                                if keys_pressed[keycode as usize] {
-                                    return;
-                                }
-                                keys_pressed[keycode as usize] = true;
-
-                                std::io::stdout()
-                                    .write_all(serde_plain::to_string(&keycode).unwrap().as_bytes())
-                                    .unwrap();
-                                std::io::stdout().write_all(b"\n").unwrap();
-                                let mut text = "".to_owned();
-                                match std::io::stdin().read_line(&mut text) {
-                                    Ok(n) => {
-                                        if n == 0 {
-                                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                                            return;
-                                        }
-                                        gl_window.window().request_redraw();
-                                    }
-                                    Err(e) => {
-                                        panic!("{}", e);
-                                    }
-                                }
-                                gui_state.set_text(&text);
-                            }
-                            winit::event::ElementState::Released => {
-                                keys_pressed[keycode as usize] = false;
-                            }
-                        }
-                    }
-                    _ => {}
-                };
-            }
-            winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
-            _ => {}
-        };
-    });
+    Ok(())
 }

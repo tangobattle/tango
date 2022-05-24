@@ -60,11 +60,10 @@ impl RoundState {
 
 pub struct Match {
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
-    audio_supported_config: cpal::SupportedStreamConfig,
+    audio_sample_rate: i32,
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
-    dc_rx: tokio::sync::Mutex<datachannel_wrapper::DataChannelReceiver>,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     settings: Settings,
@@ -74,6 +73,7 @@ pub struct Match {
     audio_mux: audio::mux_stream::MuxStream,
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
+    transport_rendezvous_tx: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 #[derive(Debug)]
@@ -147,19 +147,19 @@ const MAX_QUEUE_LENGTH: usize = 120;
 
 impl Match {
     pub fn new(
-        audio_supported_config: cpal::SupportedStreamConfig,
+        audio_sample_rate: i32,
         rom_path: std::path::PathBuf,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         audio_mux: audio::mux_stream::MuxStream,
         peer_conn: datachannel_wrapper::PeerConnection,
-        dc: datachannel_wrapper::DataChannel,
+        dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
-        let (dc_rx, dc_tx) = dc.split();
+        let (transport_rendezvous_tx, transport_rendezvous_rx) = tokio::sync::oneshot::channel();
         let did_polite_win_last_round = rng.gen::<bool>();
         let won_last_round = did_polite_win_last_round == is_offerer;
         let match_ = std::sync::Arc::new(Self {
@@ -171,14 +171,15 @@ impl Match {
                 won_last_round,
                 rng.clone(),
             )?)),
-            audio_supported_config,
+            audio_sample_rate,
             rom_path,
             hooks,
             _peer_conn: peer_conn,
-            dc_rx: tokio::sync::Mutex::new(dc_rx),
             transport: std::sync::Arc::new(tokio::sync::Mutex::new(transport::Transport::new(
                 dc_tx,
+                transport_rendezvous_rx,
             ))),
+            transport_rendezvous_tx: tokio::sync::Mutex::new(Some(transport_rendezvous_tx)),
             rng: tokio::sync::Mutex::new(rng),
             settings,
             round_state: tokio::sync::Mutex::new(RoundState {
@@ -215,18 +216,30 @@ impl Match {
             .advance_until_first_committed_state()
     }
 
-    pub async fn run(&self) -> anyhow::Result<()> {
-        let mut dc_rx = self.dc_rx.lock().await;
+    pub async fn run(
+        &self,
+        mut dc_rx: datachannel_wrapper::DataChannelReceiver,
+    ) -> anyhow::Result<()> {
         let mut last_round_number = 0;
         loop {
             match protocol::Packet::deserialize(
                 match dc_rx.receive().await {
-                    None => break,
+                    None => {
+                        log::info!("data channel closed");
+                        break;
+                    }
                     Some(buf) => buf,
                 }
                 .as_slice(),
             )? {
                 protocol::Packet::Input(input) => {
+                    // We need to sync on the first input so we don't end up wildly out of sync.
+                    if let Some(transport_rendezvous_tx) =
+                        self.transport_rendezvous_tx.lock().await.take()
+                    {
+                        transport_rendezvous_tx.send(()).unwrap();
+                    }
+
                     // We need to wait for the next round to start to avoid dropping inputs on the floor.
                     if input.round_number != last_round_number {
                         let round_number =
@@ -291,13 +304,6 @@ impl Match {
                         joyflags: input.joyflags as u16,
                     });
                 }
-                protocol::Packet::Ping(protocol::Ping { ts }) => {
-                    // Reply to pings, in case the opponent really wants a response.
-                    self.transport.lock().await.send_pong(ts).await?;
-                }
-                protocol::Packet::Pong(_) => {
-                    // Ignore stray pongs.
-                }
                 p => anyhow::bail!("unknown packet: {:?}", p),
             }
         }
@@ -358,7 +364,7 @@ impl Match {
             self.audio_mux
                 .open_stream(audio::mgba_stream::MGBAStream::new(
                     audio_core_handle.clone(),
-                    self.audio_supported_config.sample_rate(),
+                    self.audio_sample_rate,
                 ));
 
         log::info!("loading our state into audio core");

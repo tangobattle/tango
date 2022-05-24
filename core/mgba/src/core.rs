@@ -322,7 +322,7 @@ impl<'a> CoreMutRef<'a> {
 
     pub unsafe fn from_ptr(ptr: *mut mgba_sys::mCore) -> Self {
         CoreMutRef {
-            ptr: ptr,
+            ptr,
             _lifetime: std::marker::PhantomData,
         }
     }

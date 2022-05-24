@@ -23,6 +23,8 @@ where
         }
     }
 
+    log::info!("candidates gathered");
+
     let local_description = peer_conn.local_description().unwrap();
     stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -42,27 +44,28 @@ where
     loop {
         tokio::select! {
             signal_msg = event_rx.recv() => {
-                let cand = if let Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(cand)) = signal_msg {
+                let _cand = if let Some(datachannel_wrapper::PeerConnectionEvent::IceCandidate(cand)) = signal_msg {
                     cand
                 } else {
                     anyhow::bail!("ice candidate not received")
                 };
 
-                stream
-                    .send(tokio_tungstenite::tungstenite::Message::Binary(
-                        tango_protos::signaling::Packet {
-                            which: Some(
-                                tango_protos::signaling::packet::Which::IceCandidate(
-                                    tango_protos::signaling::packet::IceCandidate {
-                                        candidate: cand.candidate,
-                                        mid: cand.mid,
-                                    },
-                                ),
-                            ),
-                        }
-                        .encode_to_vec(),
-            ))
-                    .await?;
+                // TODO: Support trickle ICE.
+                // stream
+                //     .send(tokio_tungstenite::tungstenite::Message::Binary(
+                //         tango_protos::signaling::Packet {
+                //             which: Some(
+                //                 tango_protos::signaling::packet::Which::IceCandidate(
+                //                     tango_protos::signaling::packet::IceCandidate {
+                //                         candidate: cand.candidate,
+                //                         mid: cand.mid,
+                //                     },
+                //                 ),
+                //             ),
+                //         }
+                //         .encode_to_vec(),
+                // ))
+                //     .await?;
             }
             ws_msg = stream.try_next() => {
                 let raw = if let Some(raw) = ws_msg? {
@@ -109,7 +112,7 @@ where
 
                         peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Answer,
-                            sdp: datachannel_wrapper::parse_sdp(&answer.sdp.to_string(), false)?,
+                            sdp: datachannel_wrapper::parse_sdp(&answer.sdp, false)?,
                         })?;
                         break;
                     }

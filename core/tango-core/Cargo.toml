@@ -8,8 +8,6 @@ default-run = "tango-core"
 [dependencies]
 anyhow = "1.0"
 env_logger = "0.9.0"
-winit = { version = "0.26.1", features = ["serde"] }
-cpal = "0.13.5"
 zstd = "0.11.1"
 lazy_static = "1.4.0"
 log = "0.4"
@@ -34,18 +32,12 @@ tempfile = "3.3.0"
 shell-words = "1.1"
 serde_json = "1.0"
 url = "2.2"
-serde_plain = "1.0"
-egui = "0.17"
-egui-winit = { version = "0.17", default-features = false }
 datachannel-wrapper = { path = "../datachannel-wrapper" }
-gilrs = "0.8"
-tokio-tungstenite = { version = "0.17.1", features = ["native-tls"] }
+tokio-tungstenite = { version = "0.16.1", features = ["native-tls"] }
 prost = "0.10"
 bytes = "1.1.0"
-glutin = "0.28.0"
-glow = "0.11"
-egui_glow = "0.17"
-glowfb = { path = "../glowfb" }
+sdl2 = { version = "0.35", features = ["ttf"] }
+sdl2-input-helper = { path = "../sdl2-input-helper" }
 
 [build-dependencies]
 winres = "0.1"

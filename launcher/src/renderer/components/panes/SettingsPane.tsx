@@ -1,15 +1,21 @@
+import { isEqual, sortBy } from "lodash-es";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
 import { app, shell } from "@electron/remote";
+import AddIcon from "@mui/icons-material/Add";
+import KeyboardIcon from "@mui/icons-material/Keyboard";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
+import { styled } from "@mui/material/styles";
 import Tab from "@mui/material/Tab";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -20,10 +26,18 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
-import { Keymaptool } from "../../../input";
+import { captureInput } from "../../../input";
 import { LANGUAGES } from "../../i18n";
 import { useConfig } from "../ConfigContext";
 
+const AddChip = styled(Chip)(() => ({
+  "&": {
+    borderRadius: "12px",
+  },
+  "& .MuiChip-label": {
+    padding: "0",
+  },
+}));
 const KEYS = [
   "up",
   "down",
@@ -35,7 +49,7 @@ const KEYS = [
   "r",
   "select",
   "start",
-] as (keyof Config["keymapping"])[];
+] as (keyof Config["inputMapping"])[];
 
 function AboutTab({ active }: { active: boolean }) {
   return (
@@ -181,21 +195,22 @@ function AboutTab({ active }: { active: boolean }) {
             </li>
           </ul>
           <Typography>Thank you!</Typography>
-          <Typography>
-            <small>
-              Tango is licensed under the terms of the{" "}
-              <Link
-                href="https://tldrlegal.com/license/gnu-affero-general-public-license-v3-(agpl-3.0)"
-                target="_blank"
-              >
-                GNU Affero General Public License v3
-              </Link>
-              . That means you’re free to modify the{" "}
-              <Link href="https://github.com/tangobattle" target="_blank">
-                source code
-              </Link>{" "}
-              of Tango, as long as you contribute your changes back!
-            </small>
+          <Typography variant="body2">
+            Versions: {JSON.stringify(process.versions, null, 1)}
+          </Typography>
+          <Typography variant="body2">
+            Tango is licensed under the terms of the{" "}
+            <Link
+              href="https://tldrlegal.com/license/gnu-affero-general-public-license-v3-(agpl-3.0)"
+              target="_blank"
+            >
+              GNU Affero General Public License v3
+            </Link>
+            . That means you’re free to modify the{" "}
+            <Link href="https://github.com/tangobattle" target="_blank">
+              source code
+            </Link>{" "}
+            of Tango, as long as you contribute your changes back!
           </Typography>
         </Stack>
       </Box>
@@ -390,10 +405,9 @@ function AdvancedTab({ active }: { active: boolean }) {
   );
 }
 
-function KeymappingTab({ active }: { active: boolean }) {
+function InputTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { i18n, t } = useTranslation();
-  const keymaptoolRef = React.useRef<Keymaptool | null>(null);
   return (
     <Box
       flexGrow={1}
@@ -404,62 +418,121 @@ function KeymappingTab({ active }: { active: boolean }) {
       <Box
         sx={{
           display: "flex",
+          py: 4,
           width: "100%",
-          height: "100%",
-          alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <Stack spacing={1} sx={{ width: "300px" }}>
+        <Stack spacing={1} sx={{ width: "500px" }}>
           <Table size="small">
             <TableBody>
               {KEYS.map((key) => (
                 <TableRow key={key}>
-                  <TableCell component="th">
+                  <TableCell
+                    component="th"
+                    sx={{ width: "100px", verticalAlign: "top" }}
+                  >
                     <strong>
-                      <Trans i18nKey={`settings:keymapping.${key}`} />
+                      <Trans i18nKey={`settings:input.${key}`} />
                     </strong>
                   </TableCell>
-                  <TableCell sx={{ textAlign: "right" }}>
-                    {config.keymapping[key]}
+                  <TableCell>
+                    <Box sx={{ mt: -1 }}>
+                      {config.inputMapping[key].map((k, i) => (
+                        <Chip
+                          key={JSON.stringify(k)}
+                          sx={{ mr: 1, mt: 1 }}
+                          icon={
+                            "Key" in k ? (
+                              <KeyboardIcon />
+                            ) : "Button" in k ? (
+                              <SportsEsportsIcon />
+                            ) : "Axis" in k ? (
+                              <SportsEsportsIcon />
+                            ) : undefined
+                          }
+                          label={
+                            "Key" in k ? (
+                              <Trans i18nKey={`input-keys:${k.Key}`}>
+                                {k.Key}
+                              </Trans>
+                            ) : "Button" in k ? (
+                              <Trans i18nKey={`input-buttons:${k.Button}`}>
+                                {k.Button}
+                              </Trans>
+                            ) : "Axis" in k ? (
+                              <Trans
+                                i18nKey={`input-axes:${k.Axis[0]}${
+                                  k.Axis[1] > 0 ? "+" : "-"
+                                }`}
+                              >
+                                {k.Axis[0]}
+                                {k.Axis[1] > 0 ? "+" : "-"}
+                              </Trans>
+                            ) : (
+                              ""
+                            )
+                          }
+                          onDelete={() => {
+                            saveConfig((config) => ({
+                              ...config,
+                              inputMapping: {
+                                ...config.inputMapping,
+                                [key]: config.inputMapping[key].filter(
+                                  (_, j) => i != j
+                                ),
+                              },
+                            }));
+                          }}
+                        />
+                      ))}
+                      <AddChip
+                        size="small"
+                        sx={{ mr: 1, mt: 1 }}
+                        variant="outlined"
+                        label={<AddIcon />}
+                        onClick={() => {
+                          (async () => {
+                            const input = await captureInput(
+                              i18n.language,
+                              t("settings:request-input", {
+                                key: t(`settings:input.${key}`),
+                              })
+                            );
+                            if (input == null) {
+                              return;
+                            }
+                            saveConfig((config) => ({
+                              ...config,
+                              inputMapping: {
+                                ...config.inputMapping,
+                                [key]: sortBy(
+                                  [
+                                    ...config.inputMapping[key].filter(
+                                      (v) => !isEqual(v, input)
+                                    ),
+                                    input,
+                                  ],
+                                  (v) =>
+                                    "Key" in v
+                                      ? [0, v.Key]
+                                      : "Button" in v
+                                      ? [1, v.Button]
+                                      : "Axis" in v
+                                      ? [2, ...v.Axis]
+                                      : null
+                                ),
+                              },
+                            }));
+                          })();
+                        }}
+                      />
+                    </Box>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
-          <Button
-            variant="contained"
-            onClick={() => {
-              (async () => {
-                if (keymaptoolRef.current != null) {
-                  return;
-                }
-                keymaptoolRef.current = new Keymaptool(i18n.resolvedLanguage, {
-                  env: {
-                    RUST_BACKTRACE: "1",
-                  },
-                });
-                for (const key of KEYS) {
-                  const mapped = await keymaptoolRef.current.request(
-                    t("settings:request-keymapping", {
-                      key: t(`settings:keymapping.${key}`),
-                    })
-                  );
-                  if (mapped == null) {
-                    break;
-                  }
-                  saveConfig((config) => ({
-                    ...config,
-                    keymapping: { ...config.keymapping, [key]: mapped },
-                  }));
-                }
-                keymaptoolRef.current.close();
-                keymaptoolRef.current = null;
-              })();
-            }}
-          >
-            <Trans i18nKey="settings:remap" />
-          </Button>
         </Stack>
       </Box>
     </Box>
@@ -489,8 +562,8 @@ export default function SettingsPane({ active }: { active: boolean }) {
             value="general"
           />
           <Tab
-            label={<Trans i18nKey="settings:tab.keymapping" />}
-            value="keymapping"
+            label={<Trans i18nKey="settings:tab.controls" />}
+            value="input"
           />
           <Tab
             label={<Trans i18nKey="settings:tab.advanced" />}
@@ -499,7 +572,7 @@ export default function SettingsPane({ active }: { active: boolean }) {
           <Tab label={<Trans i18nKey="settings:tab.about" />} value="about" />
         </Tabs>
         <GeneralTab active={tab == "general"} />
-        <KeymappingTab active={tab == "keymapping"} />
+        <InputTab active={tab == "input"} />
         <AdvancedTab active={tab == "advanced"} />
         <AboutTab active={tab == "about"} />
       </Stack>

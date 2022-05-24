@@ -58,9 +58,9 @@ function SetupAppBody() {
   const { saves, rescan: rescanSaves } = useSaves();
 
   const activeStep =
-    config.nickname != null
-      ? Object.keys(roms).length > 0
-        ? Object.keys(saves).length > 0
+    Object.keys(roms).length > 0
+      ? Object.keys(saves).length > 0
+        ? config.nickname != null
           ? 3
           : 2
         : 1
@@ -122,57 +122,20 @@ function SetupAppBody() {
           <Trans i18nKey="setup:welcome-2" />
         </Typography>
         <Stepper orientation="vertical" activeStep={activeStep}>
-          <Step completed={config.nickname != null}>
-            <StepLabel>
-              <Trans i18nKey="setup:step-1-title" />
-            </StepLabel>
-            <StepContent>
-              <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-1-description" />
-              </Typography>
-              <Stack
-                spacing={1}
-                direction="row"
-                component="form"
-                sx={{ mb: 0 }}
-                onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
-                  e.preventDefault();
-                  saveConfig((config) => ({ ...config, nickname }));
-                }}
-              >
-                <TextField
-                  variant="standard"
-                  size="small"
-                  onChange={(e) => {
-                    setNickname(e.target.value.trim());
-                  }}
-                  placeholder={t("setup:nickname")}
-                />
-                <Button
-                  variant="contained"
-                  size="small"
-                  disabled={nickname.length == 0}
-                  type="submit"
-                >
-                  <Trans i18nKey="setup:next" />
-                </Button>
-              </Stack>
-            </StepContent>
-          </Step>
           <Step completed={Object.keys(roms).length > 0}>
             <StepLabel>
               <Trans
-                i18nKey="setup:step-2-title"
+                i18nKey="setup:roms-step-title"
                 values={{ path: getROMsPath(app) }}
               />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-2-description" />
+                <Trans i18nKey="setup:roms-step-description" />
               </Typography>
-              {romsScanState == "done" && activeStep == 1 ? (
+              {romsScanState == "done" && activeStep == 0 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-2-error" />
+                  <Trans i18nKey="setup:roms-step-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
@@ -205,17 +168,17 @@ function SetupAppBody() {
           <Step completed={Object.keys(saves).length > 0}>
             <StepLabel>
               <Trans
-                i18nKey="setup:step-3-title"
+                i18nKey="setup:saves-step-title"
                 values={{ path: getSavesPath(app) }}
               />
             </StepLabel>
             <StepContent>
               <Typography sx={{ mb: 2 }}>
-                <Trans i18nKey="setup:step-3-description" />
+                <Trans i18nKey="setup:saves-step-description" />
               </Typography>
-              {savesScanState == "done" && activeStep == 2 ? (
+              {savesScanState == "done" && activeStep == 1 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-3-error" />
+                  <Trans i18nKey="setup:saves-step-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
@@ -245,10 +208,42 @@ function SetupAppBody() {
               </Stack>
             </StepContent>
           </Step>
-          <Step completed={activeStep > 3}>
+          <Step completed={config.nickname != null}>
             <StepLabel>
-              <Trans i18nKey="setup:step-4-title" />
+              <Trans i18nKey="setup:nickname-step-title" />
             </StepLabel>
+            <StepContent>
+              <Typography sx={{ mb: 2 }}>
+                <Trans i18nKey="setup:nickname-step-description" />
+              </Typography>
+              <Stack
+                spacing={1}
+                direction="row"
+                component="form"
+                sx={{ mb: 0 }}
+                onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
+                  e.preventDefault();
+                  saveConfig((config) => ({ ...config, nickname }));
+                }}
+              >
+                <TextField
+                  variant="standard"
+                  size="small"
+                  onChange={(e) => {
+                    setNickname(e.target.value.trim());
+                  }}
+                  placeholder={t("setup:nickname")}
+                />
+                <Button
+                  variant="contained"
+                  size="small"
+                  disabled={nickname.length == 0}
+                  type="submit"
+                >
+                  <Trans i18nKey="setup:next" />
+                </Button>
+              </Stack>
+            </StepContent>
           </Step>
         </Stepper>
       </Box>
@@ -258,16 +253,7 @@ function SetupAppBody() {
 
 function AppBody() {
   const { config } = useConfig();
-  const { roms } = useROMs();
-  const { saves } = useSaves();
-
-  return config.nickname != null &&
-    Object.keys(roms).length > 0 &&
-    Object.keys(saves).length > 0 ? (
-    <ReadyAppBody />
-  ) : (
-    <SetupAppBody />
-  );
+  return config.nickname != null ? <ReadyAppBody /> : <SetupAppBody />;
 }
 
 const AppWrapper = withTranslation()(() => {

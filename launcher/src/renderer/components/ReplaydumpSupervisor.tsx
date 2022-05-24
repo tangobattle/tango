@@ -88,14 +88,15 @@ export default function ReplaydumpSupervisor({
         [
           replayPath,
           "dump-video",
-          "--ffmpeg",
-          getBinPath(app, "ffmpeg"),
+          `--ffmpeg=${getBinPath(app, "ffmpeg")}`,
           `-v=-c:v libx264 -vf scale=iw*${scaleFactor}:ih*${scaleFactor}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2`,
+          "--",
           outROMPath,
           outPath,
         ],
         {
           env: {
+            ...process.env,
             RUST_LOG: configRef.current.rustLogFilter,
             RUST_BACKTRACE: "1",
           },
@@ -139,7 +140,9 @@ export default function ReplaydumpSupervisor({
           stderr.push(err.toString());
           return stderr;
         });
-        setDone({ exitCode: -1, signalCode: null });
+        setDone((done) =>
+          done == null ? { exitCode: -1, signalCode: null } : done
+        );
       });
 
       proc.on("exit", (exitCode, signalCode) => {
@@ -160,6 +163,11 @@ export default function ReplaydumpSupervisor({
       });
     })();
   }, [romPath, patchPath, outROMPath, scaleFactor, replayPath, outPath]);
+
+  const pct =
+    maxProgressRef.current > 0
+      ? ((maxProgressRef.current - progress) * 100) / maxProgressRef.current
+      : 0;
 
   return (
     <Modal
@@ -200,15 +208,17 @@ export default function ReplaydumpSupervisor({
                   <Trans i18nKey="replays:exporting" />
                 </Typography>
               </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={
-                  maxProgressRef.current > 0
-                    ? ((maxProgressRef.current - progress) * 100) /
-                      maxProgressRef.current
-                    : 0
-                }
-              />
+              <Stack direction="row" sx={{ alignItems: "center" }}>
+                <Box sx={{ width: "100%", mr: 1 }}>
+                  <LinearProgress variant="determinate" value={pct} />
+                </Box>
+                <Box sx={{ minWidth: 35 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                  >{`${Math.round(pct)}%`}</Typography>
+                </Box>
+              </Stack>
               <Stack direction="row" justifyContent="flex-end">
                 <Button
                   variant="contained"
@@ -259,7 +269,7 @@ export default function ReplaydumpSupervisor({
               </Stack>
             </Stack>
           </Box>
-        ) : (
+        ) : done.signalCode != "SIGTERM" ? (
           <Box
             sx={{
               width: 600,
@@ -319,7 +329,7 @@ export default function ReplaydumpSupervisor({
               </Stack>
             </Stack>
           </Box>
-        )}
+        ) : null}
       </Box>
     </Modal>
   );

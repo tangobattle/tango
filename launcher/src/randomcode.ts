@@ -1,4 +1,4 @@
-import random from "random";
+import crypto from "crypto";
 
 const STARTS = [
   "adjective",
@@ -29,6 +29,7 @@ const STARTS = [
   "compiled",
   "cool",
   "corny",
+  "cursed",
   "dancing",
   "dang",
   "dark",
@@ -119,6 +120,7 @@ const STARTS = [
   "unlikely",
   "uwu",
   "verbing",
+  "veteran",
   "vibing",
   "weird",
   "whohere",
@@ -291,6 +293,7 @@ const MIDDLES = [
   "nightmare",
   "noun",
   "one",
+  "operator",
   "pengi",
   "permahole",
   "pet",
@@ -310,6 +313,7 @@ const MIDDLES = [
   "roll",
   "rollinglog",
   "routine",
+  "rush",
   "sanctuary",
   "sand",
   "sandworm",
@@ -407,6 +411,7 @@ const ENDS = [
   "ggswp",
   "grandprix",
   "greatplay",
+  "hamachi",
   "heehoo",
   "helpimtrappedinhere",
   "hour",
@@ -482,7 +487,7 @@ const ENDS = [
 ];
 
 export default function randomCode() {
-  return `${STARTS[random.int(0, STARTS.length - 1)]}-${
-    MIDDLES[random.int(0, MIDDLES.length - 1)]
-  }-${ENDS[random.int(0, ENDS.length - 1)]}`.slice(0, 40);
+  return `${STARTS[crypto.randomInt(0, STARTS.length)]}-${
+    MIDDLES[crypto.randomInt(0, MIDDLES.length)]
+  }-${ENDS[crypto.randomInt(0, ENDS.length)]}`.slice(0, 40);
 }

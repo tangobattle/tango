@@ -5,7 +5,7 @@ import { EventEmitter, Readable } from "stream";
 
 import { app } from "@electron/remote";
 
-import { Keymapping } from "./config";
+import { Config } from "./config";
 import { spawn } from "./process";
 import { FromCoreMessage, ToCoreMessage } from "./protos/ipc";
 
@@ -29,7 +29,7 @@ export class Core extends EventEmitter {
   private stderr: string[];
 
   constructor(
-    keymapping: Keymapping,
+    inputMapping: Config["inputMapping"],
     signalingConnectAddr: string,
     iceServers: string[],
     sessionId: string,
@@ -45,14 +45,14 @@ export class Core extends EventEmitter {
       app,
       "tango-core",
       [
-        ["--keymapping", JSON.stringify(keymapping)],
-        ["--signaling-connect-addr", signalingConnectAddr],
-        ...iceServers.map((iceServer) => ["--ice-servers", iceServer]),
-        sessionId != "" ? ["--session-id", sessionId] : [],
+        [`--input-mapping=${JSON.stringify(inputMapping)}`],
+        [`--signaling-connect-addr=${signalingConnectAddr}`],
+        ...iceServers.map((iceServer) => [`--ice-servers=${iceServer}`]),
+        sessionId != "" ? [`--session-id=${sessionId}`] : [],
       ].flat(),
       {
         signal,
-        env,
+        env: { ...process.env, ...env },
       }
     );
 

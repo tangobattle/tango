@@ -10,10 +10,15 @@ export interface GameInfo {
   } | null;
 }
 
-export interface ReplayInfo extends GameInfo {
+export interface ReplayMetadata extends GameInfo {
   ts: number;
   linkCode: string;
   remote: (GameInfo & { nickname: string }) | null;
+}
+
+export interface ReplayInfo {
+  metadata: ReplayMetadata;
+  isComplete: boolean;
 }
 
 const textDecoder = new TextDecoder("utf-8");
@@ -47,6 +52,7 @@ export async function readReplayMetadata(
     }
     i += 5;
 
+    let isComplete;
     {
       const chunks = [];
       for await (const chunk of fd.createReadStream({
@@ -59,10 +65,7 @@ export async function readReplayMetadata(
       const numInputs = new DataView(
         new Uint8Array(Buffer.concat(chunks)).buffer
       ).getUint32(0, true);
-      if (numInputs == 0) {
-        console.warn("replay skipped:", filename, "incomplete");
-        return null;
-      }
+      isComplete = numInputs != 0;
     }
     i += 4;
 
@@ -90,9 +93,12 @@ export async function readReplayMetadata(
     })) {
       chunks.push(chunk);
     }
-    return JSON.parse(
-      textDecoder.decode(new Uint8Array(Buffer.concat(chunks)).buffer)
-    );
+    return {
+      isComplete,
+      metadata: JSON.parse(
+        textDecoder.decode(new Uint8Array(Buffer.concat(chunks)).buffer)
+      ) as ReplayMetadata,
+    };
   } catch (e) {
     console.warn("replay skipped:", filename, e);
     return null;

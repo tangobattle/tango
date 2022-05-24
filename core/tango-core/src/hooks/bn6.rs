@@ -67,7 +67,7 @@ fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u
 
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
-    ((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1)
+    (((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1))
         ^ std::num::Wrapping(0x873ca9e5))
     .0
 }
@@ -563,7 +563,7 @@ impl hooks::Hooks for BN6 {
                 )
             },
             {
-                let facade = facade.clone();
+                let facade = facade;
                 let handle = handle;
                 (
                     self.offsets.rom.comm_menu_end_battle_entry,
@@ -960,7 +960,7 @@ impl hooks::Hooks for BN6 {
                 )
             },
             {
-                let shadow_state = shadow_state.clone();
+                let shadow_state = shadow_state;
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.comm_menu_init_battle_entry,
@@ -1012,6 +1012,7 @@ impl hooks::Hooks for BN6 {
                         let ip = match ff_state.peek_input_pair() {
                             Some(ip) => ip,
                             None => {
+                                ff_state.on_inputs_exhausted();
                                 return;
                             }
                         };
@@ -1157,7 +1158,7 @@ impl hooks::Hooks for BN6 {
                 )
             },
             {
-                let ff_state = ff_state.clone();
+                let ff_state = ff_state;
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
@@ -1175,7 +1176,7 @@ impl hooks::Hooks for BN6 {
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
-                let audio_save_state_holder = audio_save_state_holder.clone();
+                let audio_save_state_holder = audio_save_state_holder;
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
@@ -1251,7 +1252,7 @@ impl hooks::Hooks for BN6 {
             // Not whimsical enough :(
             return;
         }
-        if name.len() == 0 {
+        if name.is_empty() {
             return;
         }
         const CHARS: &str = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz";

@@ -2,10 +2,53 @@
 
 use clap::StructOpt;
 
+#[derive(Clone, serde::Deserialize)]
+pub enum PhysicalInput {
+    Key(String),
+    Button(String),
+    Axis(String, i16),
+}
+
+#[derive(Clone, serde::Deserialize)]
+pub struct InputMapping {
+    pub up: Vec<PhysicalInput>,
+    pub down: Vec<PhysicalInput>,
+    pub left: Vec<PhysicalInput>,
+    pub right: Vec<PhysicalInput>,
+    pub a: Vec<PhysicalInput>,
+    pub b: Vec<PhysicalInput>,
+    pub l: Vec<PhysicalInput>,
+    pub r: Vec<PhysicalInput>,
+    pub select: Vec<PhysicalInput>,
+    pub start: Vec<PhysicalInput>,
+}
+
+fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::game::PhysicalInput> {
+    const THRESHOLD: i16 = 0x4000;
+    match input {
+        PhysicalInput::Key(key) => Some(tango_core::game::PhysicalInput::Key(
+            sdl2::keyboard::Scancode::from_name(key)?,
+        )),
+        PhysicalInput::Button(button) => Some(tango_core::game::PhysicalInput::Button(
+            sdl2::controller::Button::from_string(button)?,
+        )),
+        PhysicalInput::Axis(axis, sign) => Some(tango_core::game::PhysicalInput::Axis(
+            sdl2::controller::Axis::from_string(axis)?,
+            if *sign > 0 {
+                THRESHOLD
+            } else if *sign < 0 {
+                -THRESHOLD
+            } else {
+                None?
+            },
+        )),
+    }
+}
+
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
-    keymapping: String,
+    input_mapping: String,
 
     #[clap(long)]
     signaling_connect_addr: String,
@@ -27,7 +70,61 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let keymapping = serde_json::from_str(&args.keymapping)?;
+    let raw_input_mapping = serde_json::from_str::<InputMapping>(&args.input_mapping)?;
+    let input_mapping = tango_core::game::InputMapping {
+        up: raw_input_mapping
+            .up
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        down: raw_input_mapping
+            .down
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        left: raw_input_mapping
+            .left
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        right: raw_input_mapping
+            .right
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        a: raw_input_mapping
+            .a
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        b: raw_input_mapping
+            .b
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        l: raw_input_mapping
+            .l
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        r: raw_input_mapping
+            .r
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        select: raw_input_mapping
+            .select
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        start: raw_input_mapping
+            .start
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+    };
+
+    log::info!("input mapping: {:?}", input_mapping);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -38,27 +135,31 @@ fn main() -> Result<(), anyhow::Error> {
 
     let (window_title, rom_path, save_path, pvp_init) = if let Some(session_id) = &args.session_id {
         rt.block_on(async {
-            let (mut dc, peer_conn) = tango_core::negotiation::negotiate(
+            let (dc, peer_conn) = tango_core::negotiation::negotiate(
                 &mut ipc_sender,
-                &session_id,
+                session_id,
                 &args.signaling_connect_addr,
                 &args.ice_servers,
             )
             .await?;
 
-            let mut ping_timer = tokio::time::interval(std::time::Duration::from_secs(1));
+            let (mut dc_rx, mut dc_tx) = dc.split();
 
-            loop {
+            let mut ping_timer = tokio::time::interval(std::time::Duration::from_secs(1));
+            let mut hola_received = false;
+
+            let start_req = loop {
                 tokio::select! {
                     msg = ipc_receiver.receive() => {
                         match msg?.which {
                             Some(tango_protos::ipc::to_core_message::Which::SmuggleReq(tango_protos::ipc::to_core_message::SmuggleRequest { data })) => {
-                                dc.send(&tango_core::protocol::Packet::Smuggle(tango_core::protocol::Smuggle {
+                                dc_tx.send(&tango_core::protocol::Packet::Smuggle(tango_core::protocol::Smuggle {
                                     data,
                                 }).serialize()?).await?;
                             },
                             Some(tango_protos::ipc::to_core_message::Which::StartReq(start_req)) => {
-                                return Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc, start_req.settings.unwrap()))))
+                                dc_tx.send(&tango_core::protocol::Packet::Hola(tango_core::protocol::Hola {}).serialize()?).await?;
+                                break start_req;
                             },
                             None => {
                                 anyhow::bail!("ipc channel closed");
@@ -68,15 +169,18 @@ fn main() -> Result<(), anyhow::Error> {
 
                     _ = ping_timer.tick() => {
                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
-                        dc.send(&tango_core::protocol::Packet::Ping(tango_core::protocol::Ping {
+                        dc_tx.send(&tango_core::protocol::Packet::Ping(tango_core::protocol::Ping {
                             ts: now.as_nanos() as u64,
                         }).serialize()?).await?;
                     }
 
-                    msg = dc.receive() => {
+                    msg = dc_rx.receive() => {
                         match msg {
                             Some(msg) => {
                                 match tango_core::protocol::Packet::deserialize(&msg)? {
+                                    tango_core::protocol::Packet::Hola(_) => {
+                                        hola_received = true;
+                                    }
                                     tango_core::protocol::Packet::Smuggle(tango_core::protocol::Smuggle {
                                         data,
                                     }) => {
@@ -89,7 +193,7 @@ fn main() -> Result<(), anyhow::Error> {
                                     tango_core::protocol::Packet::Ping(tango_core::protocol::Ping {
                                         ts
                                     }) => {
-                                        dc.send(&tango_core::protocol::Packet::Pong(tango_core::protocol::Pong {
+                                        dc_tx.send(&tango_core::protocol::Packet::Pong(tango_core::protocol::Pong {
                                             ts
                                         }).serialize()?).await?;
                                     },
@@ -115,7 +219,36 @@ fn main() -> Result<(), anyhow::Error> {
                         }
                     }
                 }
+            };
+
+            if !hola_received {
+                // If we haven't received an Hola, pull packets until we do.
+                loop {
+                    match dc_rx.receive().await {
+                        Some(msg) => {
+                            match tango_core::protocol::Packet::deserialize(&msg)? {
+                                tango_core::protocol::Packet::Hola(_) => {
+                                    break;
+                                }
+                                tango_core::protocol::Packet::Ping(_) => {
+                                    // Ignore stray pings.
+                                }
+                                tango_core::protocol::Packet::Pong(_) => {
+                                    // Ignore stray pongs.
+                                }
+                                p => {
+                                    anyhow::bail!("unexpected packet: {:?}", p);
+                                }
+                            }
+                        }
+                        None => {
+                            anyhow::bail!("data channel closed");
+                        },
+                    }
+                }
             }
+
+            Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))))
         })?
     } else {
         rt.block_on(async {
@@ -134,7 +267,7 @@ fn main() -> Result<(), anyhow::Error> {
             let msg = ipc_receiver.receive().await;
             match msg?.which {
                 Some(tango_protos::ipc::to_core_message::Which::StartReq(start_req)) => {
-                    return Ok((
+                    Ok((
                         start_req.window_title,
                         start_req.rom_path,
                         start_req.save_path,
@@ -157,7 +290,7 @@ fn main() -> Result<(), anyhow::Error> {
         rt,
         ipc_sender,
         window_title,
-        keymapping,
+        input_mapping,
         rom_path.into(),
         save_path.into(),
         match pvp_init {

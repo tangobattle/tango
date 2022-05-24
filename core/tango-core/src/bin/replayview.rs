@@ -1,8 +1,6 @@
 #![windows_subsystem = "windows"]
 
 use clap::Parser;
-use cpal::traits::{HostTrait, StreamTrait};
-use glow::HasContext;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -35,6 +33,9 @@ fn main() -> Result<(), anyhow::Error> {
         replay.local_state.as_ref().unwrap().rom_crc32()
     );
 
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+
     let mut core = mgba::core::Core::new_gba("tango_core")?;
 
     let vf = mgba::vfile::VFile::open(&args.rom_path, mgba::vfile::flags::O_RDONLY)?;
@@ -48,41 +49,18 @@ fn main() -> Result<(), anyhow::Error> {
             as usize
     ]));
 
-    let audio_device = cpal::default_host()
-        .default_output_device()
-        .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
+    let audio = sdl.audio().unwrap();
 
-    let supported_config = tango_core::audio::get_supported_config(&audio_device)?;
-    log::info!("selected audio config: {:?}", supported_config);
-
-    let event_loop = winit::event_loop::EventLoop::new();
-
-    let wb = {
-        let size =
-            winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3);
-        glutin::window::WindowBuilder::new()
-            .with_title("tango replayview")
-            .with_inner_size(size)
-            .with_min_inner_size(size)
-    };
-
-    let gl_window = unsafe {
-        glutin::ContextBuilder::new()
-            .with_vsync(true)
-            .build_windowed(wb, &event_loop)
-            .unwrap()
-            .make_current()
-            .unwrap()
-    };
-
-    let gl = std::rc::Rc::new(unsafe {
-        glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
-    });
-    log::info!("GL version: {}", unsafe {
-        gl.get_parameter_string(glow::VERSION)
-    });
-
-    let mut fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
+    let window = video
+        .window(
+            "tango replayview",
+            mgba::gba::SCREEN_WIDTH * 3,
+            mgba::gba::SCREEN_HEIGHT * 3,
+        )
+        .opengl()
+        .resizable()
+        .build()
+        .unwrap();
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::HOOKS
@@ -104,16 +82,26 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     {
-        let done = done.clone();
         core.set_traps(
             hooks.fastforwarder_traps(tango_core::fastforwarder::State::new(
                 local_player_index,
                 input_pairs,
                 0,
                 0,
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                }),
+                {
+                    let done = done.clone();
+                    Box::new(move || {
+                        if !replay.is_complete {
+                            done.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    })
+                },
+                {
+                    let done = done.clone();
+                    Box::new(move || {
+                        done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    })
+                },
             )),
         );
     }
@@ -134,15 +122,18 @@ fn main() -> Result<(), anyhow::Error> {
         });
     }
 
-    let stream = tango_core::audio::open_stream(
-        &audio_device,
-        &supported_config,
-        tango_core::audio::mgba_stream::MGBAStream::new(
-            thread.handle(),
-            supported_config.sample_rate(),
-        ),
-    )?;
-    stream.play()?;
+    let device = audio
+        .open_playback(
+            None,
+            &sdl2::audio::AudioSpecDesired {
+                freq: Some(48000),
+                channels: Some(2),
+                samples: Some(512),
+            },
+            |spec| tango_core::audio::mgba_stream::MGBAStream::new(thread.handle(), spec.freq),
+        )
+        .unwrap();
+    device.resume();
 
     thread.handle().run_on_core(move |mut core| {
         core.load_state(replay.local_state.as_ref().unwrap())
@@ -150,49 +141,48 @@ fn main() -> Result<(), anyhow::Error> {
     });
     thread.handle().unpause();
 
+    let mut event_loop = sdl.event_pump().unwrap();
     {
-        let vbuf = vbuf.clone();
-        event_loop.run(move |event, _, control_flow| {
-            *control_flow = winit::event_loop::ControlFlow::Poll;
+        let mut canvas = window
+            .into_canvas()
+            .present_vsync()
+            .present_vsync()
+            .build()
+            .unwrap();
+        canvas
+            .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+            .unwrap();
+        canvas.set_integer_scale(true).unwrap();
 
+        let texture_creator = canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl2::pixels::PixelFormatEnum::ABGR8888,
+                mgba::gba::SCREEN_WIDTH,
+                mgba::gba::SCREEN_HEIGHT,
+            )
+            .unwrap();
+
+        let vbuf = vbuf;
+        'toplevel: loop {
+            for event in event_loop.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. } => break 'toplevel,
+                    _ => {}
+                }
+            }
             if done.load(std::sync::atomic::Ordering::Relaxed) {
-                *control_flow = winit::event_loop::ControlFlow::Exit;
-                return;
+                break 'toplevel;
             }
 
-            match event {
-                winit::event::Event::MainEventsCleared => {
-                    unsafe {
-                        gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                        gl.clear(glow::COLOR_BUFFER_BIT);
-                    }
-                    let vbuf = vbuf.lock().clone();
-                    fb.draw(
-                        gl_window.window().inner_size(),
-                        glutin::dpi::LogicalSize {
-                            width: mgba::gba::SCREEN_WIDTH,
-                            height: mgba::gba::SCREEN_HEIGHT,
-                        },
-                        &vbuf,
-                    );
-                    gl_window.swap_buffers().unwrap();
-                }
-                winit::event::Event::WindowEvent {
-                    event: ref window_event,
-                    ..
-                } => {
-                    match window_event {
-                        winit::event::WindowEvent::CloseRequested => {
-                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                        }
-                        winit::event::WindowEvent::Resized(size) => {
-                            gl_window.resize(*size);
-                        }
-                        _ => {}
-                    };
-                }
-                _ => {}
-            }
-        });
+            texture
+                .update(None, &*vbuf.lock(), mgba::gba::SCREEN_WIDTH as usize * 4)
+                .unwrap();
+            canvas.clear();
+            canvas.copy(&texture, None, None).unwrap();
+            canvas.present();
+        }
     }
+
+    Ok(())
 }

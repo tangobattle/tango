@@ -1,7 +1,7 @@
 {
   "name": "tango",
   "productName": "Tango",
-  "version": "3.1.4",
+  "version": "3.1.11",
   "author": {
     "name": "The Tango Authors",
     "email": "lets@tangobattle.com"
@@ -11,17 +11,17 @@
   "main": "./dist/main.js",
   "repository": "https://github.com/tangobattle/tango",
   "scripts": {
-    "build": "npm-run-all build:main build:renderer && ./update-bin.sh",
+    "build:win32-x64": "npm-run-all build:main build:renderer && ./update-bin.sh",
+    "build:linux": "npm-run-all build:main build:renderer",
     "build:main": "cross-env NODE_ENV=production webpack --config webpack/main.webpack.ts --mode=production",
     "build:renderer": "cross-env NODE_ENV=production webpack --config webpack/renderer.webpack.ts --mode=production",
     "generate:protos": "(mkdir src/protos 2> /dev/null || true) && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos --ts_proto_opt=esModuleInterop=true -I../core/tango-protos/src/protos ipc.proto lobby.proto relay.proto",
     "start": "npm run start:renderer",
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only ./src/main/main.ts",
     "start:renderer": "cross-env NODE_ENV=development webpack serve --config webpack/renderer.webpack.ts --mode=development",
-    "pack": "npm run build && electron-builder --dir",
-    "pack:win32-x64": "npm run build && electron-builder --dir --win --x64",
-    "dist": "npm run build && electron-builder",
-    "dist:win32-x64": "npm run build && electron-builder --win --x64"
+    "pack:win32-x64": "npm run build:win32-x64 && electron-builder --dir --win --x64",
+    "dist:win32-x64": "npm run build:win32-x64 && electron-builder --win --x64",
+    "dist:linux": "npm run build:linux && electron-builder"
   },
   "keywords": [],
   "license": "AGPL-3.0",
@@ -45,7 +45,6 @@
     "mkdirp": "^1.0.4",
     "node-fetch": "^3.2.4",
     "protobufjs": "^6.11.2",
-    "random": "^3.0.6",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-i18next": "^11.16.7",
@@ -71,7 +70,7 @@
     "@typescript-eslint/eslint-plugin": "^5.16.0",
     "@typescript-eslint/parser": "^5.16.0",
     "cross-env": "^7.0.3",
-    "electron": "^17.2.0",
+    "electron": "^18.2.0",
     "electron-builder": "^22.14.13",
     "electronmon": "^2.0.2",
     "eslint": "^8.12.0",
@@ -94,6 +93,21 @@
     "appId": "com.tangobattle.tango",
     "win": {
       "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "extraFiles": [
+        {
+          "from": "/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0",
+          "to": "usr/lib/libSDL2-2.0.so.0"
+        },
+        {
+          "from": "/usr/lib/x86_64-linux-gnu/libSDL2_ttf-2.0.so.0",
+          "to": "usr/lib/libSDL2_ttf-2.0.so.0"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

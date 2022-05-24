@@ -26,6 +26,18 @@ export default function createTheme(mode: "dark" | "light") {
           elevation: 0,
         },
       },
+      MuiCircularProgress: {
+        defaultProps: {
+          disableShrink: true,
+        },
+      },
+      MuiLinearProgress: {
+        styleOverrides: {
+          bar: {
+            transition: "none",
+          },
+        },
+      },
       MuiFab: {
         styleOverrides: {
           root: {

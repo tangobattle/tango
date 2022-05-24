@@ -25,14 +25,14 @@ lazy_static! {
         )));
 }
 
-unsafe extern "C" fn c_log(
+unsafe extern "C" fn c_log<VaList>(
     _logger: *mut mgba_sys::mLogger,
     category: i32,
     level: u32,
     fmt: *const std::os::raw::c_char,
-    args: mgba_sys::va_list,
+    args: *mut VaList,
 ) {
-    // LOG_FUNC.lock().as_ref()(category, level, vsprintf::vsprintf(fmt, args).unwrap());
+    LOG_FUNC.lock().as_ref()(category, level, vsprintf::vsprintf(fmt, args).unwrap());
 }
 
 pub fn init() {

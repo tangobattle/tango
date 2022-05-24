@@ -1,12 +1,12 @@
+const NUM_CHANNELS: usize = 2;
+
 pub struct MGBAStream {
     handle: mgba::thread::Handle,
-    sample_rate: cpal::SampleRate,
+    sample_rate: i32,
 }
 
-unsafe impl Send for MGBAStream {}
-
 impl MGBAStream {
-    pub fn new(handle: mgba::thread::Handle, sample_rate: cpal::SampleRate) -> MGBAStream {
+    pub fn new(handle: mgba::thread::Handle, sample_rate: i32) -> MGBAStream {
         Self {
             handle,
             sample_rate,
@@ -14,10 +14,10 @@ impl MGBAStream {
     }
 }
 
-const NUM_CHANNELS: usize = 2;
+impl sdl2::audio::AudioCallback for MGBAStream {
+    type Channel = i16;
 
-impl super::Stream for MGBAStream {
-    fn fill(&mut self, buf: &mut [i16]) -> usize {
+    fn callback(&mut self, buf: &mut [i16]) {
         let mut audio_guard = self.handle.lock_audio();
 
         let mut core = audio_guard.core_mut();
@@ -35,7 +35,7 @@ impl super::Stream for MGBAStream {
             let mut left = core.audio_channel(0);
             left.set_rates(
                 clock_rate as f64,
-                self.sample_rate.0 as f64 * faux_clock as f64,
+                self.sample_rate as f64 * faux_clock as f64,
             );
             let mut available = left.samples_avail();
             if available > frame_count {
@@ -48,10 +48,12 @@ impl super::Stream for MGBAStream {
         let mut right = core.audio_channel(1);
         right.set_rates(
             clock_rate as f64,
-            self.sample_rate.0 as f64 * faux_clock as f64,
+            self.sample_rate as f64 * faux_clock as f64,
         );
         right.read_samples(&mut buf[1..], available, true);
 
-        available as usize * NUM_CHANNELS
+        for i in &mut buf[available as usize * NUM_CHANNELS..] {
+            *i = 0;
+        }
     }
 }

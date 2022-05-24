@@ -1,18 +1,10 @@
 import { readFileSync, writeFileSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
 
-export interface Keymapping {
-  up: string;
-  down: string;
-  left: string;
-  right: string;
-  a: string;
-  b: string;
-  l: string;
-  r: string;
-  select: string;
-  start: string;
-}
+export type PhysicalInput =
+  | { Key: string }
+  | { Button: string }
+  | { Axis: [string, number] };
 
 export interface Config {
   nickname: string | null;
@@ -20,7 +12,18 @@ export interface Config {
   language: string | null;
   updateChannel: string;
   rustLogFilter: string;
-  keymapping: Keymapping;
+  inputMapping: {
+    up: PhysicalInput[];
+    down: PhysicalInput[];
+    left: PhysicalInput[];
+    right: PhysicalInput[];
+    a: PhysicalInput[];
+    b: PhysicalInput[];
+    l: PhysicalInput[];
+    r: PhysicalInput[];
+    select: PhysicalInput[];
+    start: PhysicalInput[];
+  };
   matchmakingServerAddr: string;
   iceServers: string[];
 }
@@ -31,17 +34,17 @@ export const DEFAULT: Config = {
   language: null,
   updateChannel: "latest",
   rustLogFilter: "",
-  keymapping: {
-    up: "Up",
-    down: "Down",
-    left: "Left",
-    right: "Right",
-    a: "Z",
-    b: "X",
-    l: "A",
-    r: "S",
-    select: "Back",
-    start: "Return",
+  inputMapping: {
+    up: [{ Key: "Up" }, { Button: "dpup" }, { Axis: ["lefty", -1] }],
+    down: [{ Key: "Down" }, { Button: "dpdown" }, { Axis: ["lefty", 1] }],
+    left: [{ Key: "Left" }, { Button: "dpleft" }, { Axis: ["leftx", -1] }],
+    right: [{ Key: "Right" }, { Button: "dpright" }, { Axis: ["leftx", 1] }],
+    a: [{ Key: "Z" }, { Button: "a" }],
+    b: [{ Key: "X" }, { Button: "b" }],
+    l: [{ Key: "A" }, { Button: "leftshoulder" }],
+    r: [{ Key: "S" }, { Button: "rightshoulder" }],
+    select: [{ Key: "Backspace" }, { Button: "back" }],
+    start: [{ Key: "Return" }, { Button: "start" }],
   },
   matchmakingServerAddr: "https://lets.tangobattle.com",
   iceServers: [

@@ -219,7 +219,7 @@ impl DataChannel {
     }
 
     pub fn split(self) -> (DataChannelReceiver, DataChannelSender) {
-        return (
+        (
             DataChannelReceiver {
                 message_rx: self.message_rx,
             },
@@ -227,7 +227,7 @@ impl DataChannel {
                 state: self.state,
                 dc: self.dc,
             },
-        );
+        )
     }
 }
 

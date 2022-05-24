@@ -1,46 +1,103 @@
-use crate::{audio, battle, facade, gui, hooks, ipc, tps};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use glow::HasContext;
+use crate::{audio, battle, facade, hooks, ipc, tps};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
 
 pub const EXPECTED_FPS: u32 = 60;
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct Keymapping {
-    pub up: winit::event::VirtualKeyCode,
-    pub down: winit::event::VirtualKeyCode,
-    pub left: winit::event::VirtualKeyCode,
-    pub right: winit::event::VirtualKeyCode,
-    pub a: winit::event::VirtualKeyCode,
-    pub b: winit::event::VirtualKeyCode,
-    pub l: winit::event::VirtualKeyCode,
-    pub r: winit::event::VirtualKeyCode,
-    pub select: winit::event::VirtualKeyCode,
-    pub start: winit::event::VirtualKeyCode,
+#[derive(Clone, Debug)]
+pub enum PhysicalInput {
+    Key(sdl2::keyboard::Scancode),
+    Button(sdl2::controller::Button),
+    Axis(sdl2::controller::Axis, i16),
+}
+
+#[derive(Clone, Debug)]
+pub struct InputMapping {
+    pub up: Vec<PhysicalInput>,
+    pub down: Vec<PhysicalInput>,
+    pub left: Vec<PhysicalInput>,
+    pub right: Vec<PhysicalInput>,
+    pub a: Vec<PhysicalInput>,
+    pub b: Vec<PhysicalInput>,
+    pub l: Vec<PhysicalInput>,
+    pub r: Vec<PhysicalInput>,
+    pub select: Vec<PhysicalInput>,
+    pub start: Vec<PhysicalInput>,
+}
+
+impl InputMapping {
+    fn to_mgba_keys(&self, input: &sdl2_input_helper::State) -> u32 {
+        let pred = |c: &PhysicalInput| match *c {
+            PhysicalInput::Key(key) => input.is_key_pressed(key),
+            PhysicalInput::Button(button) => input
+                .iter_controllers()
+                .any(|(_, c)| c.is_button_pressed(button)),
+            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
+                (threshold > 0 && c.axis(axis) >= threshold)
+                    || (threshold < 0 && c.axis(axis) <= threshold)
+            }),
+        };
+
+        (if self.left.iter().any(pred) {
+            mgba::input::keys::LEFT
+        } else {
+            0
+        }) | (if self.right.iter().any(pred) {
+            mgba::input::keys::RIGHT
+        } else {
+            0
+        }) | (if self.up.iter().any(pred) {
+            mgba::input::keys::UP
+        } else {
+            0
+        }) | (if self.down.iter().any(pred) {
+            mgba::input::keys::DOWN
+        } else {
+            0
+        }) | (if self.a.iter().any(pred) {
+            mgba::input::keys::A
+        } else {
+            0
+        }) | (if self.b.iter().any(pred) {
+            mgba::input::keys::B
+        } else {
+            0
+        }) | (if self.l.iter().any(pred) {
+            mgba::input::keys::L
+        } else {
+            0
+        }) | (if self.r.iter().any(pred) {
+            mgba::input::keys::R
+        } else {
+            0
+        }) | (if self.select.iter().any(pred) {
+            mgba::input::keys::SELECT
+        } else {
+            0
+        }) | (if self.start.iter().any(pred) {
+            mgba::input::keys::START
+        } else {
+            0
+        })
+    }
 }
 
 pub struct Game {
     rt: tokio::runtime::Runtime,
-    gui: gui::Gui,
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
-    event_loop: glutin::event_loop::EventLoop<UserEvent>,
-    _audio_device: cpal::Device,
+    emu_tps_counter: Arc<Mutex<tps::Counter>>,
+    match_: std::sync::Weak<tokio::sync::Mutex<Option<Arc<battle::Match>>>>,
+    event_loop: sdl2::EventPump,
     _primary_mux_handle: audio::mux_stream::MuxHandle,
-    gl: std::rc::Rc<glow::Context>,
-    gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, glutin::window::Window>,
+    game_controller: sdl2::GameControllerSubsystem,
+    canvas: sdl2::render::Canvas<sdl2::video::Window>,
+    _audio_device: sdl2::audio::AudioDevice<crate::audio::mux_stream::MuxStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
-    fb: glowfb::Framebuffer,
-    _stream: cpal::Stream,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
-    keymapping: Keymapping,
+    input_mapping: InputMapping,
     _thread: mgba::thread::Thread,
-}
-
-enum UserEvent {
-    Gilrs(gilrs::Event),
 }
 
 impl Game {
@@ -48,22 +105,12 @@ impl Game {
         rt: tokio::runtime::Runtime,
         ipc_sender: ipc::Sender,
         window_title: String,
-        keymapping: Keymapping,
+        input_mapping: InputMapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
         match_init: Option<battle::MatchInit>,
     ) -> Result<Game, anyhow::Error> {
-        let audio_device = cpal::default_host()
-            .default_output_device()
-            .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-        log::info!(
-            "supported audio output configs: {:?}",
-            audio_device.supported_output_configs()?.collect::<Vec<_>>()
-        );
-
         let handle = rt.handle().clone();
-
-        let event_loop = glutin::event_loop::EventLoop::with_user_event();
 
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
@@ -71,39 +118,26 @@ impl Game {
                 as usize
         ]));
 
-        let wb = {
-            let size = winit::dpi::LogicalSize::new(
+        let sdl = sdl2::init().unwrap();
+        let video = sdl.video().unwrap();
+        let game_controller = sdl.game_controller().unwrap();
+        let audio = sdl.audio().unwrap();
+
+        let event_loop = sdl.event_pump().unwrap();
+
+        let window = video
+            .window(
+                &window_title,
                 mgba::gba::SCREEN_WIDTH * 3,
                 mgba::gba::SCREEN_HEIGHT * 3,
-            );
-            glutin::window::WindowBuilder::new()
-                .with_title(window_title.clone())
-                .with_inner_size(size)
-                .with_min_inner_size(size)
-        };
+            )
+            .opengl()
+            .resizable()
+            .build()
+            .unwrap();
 
         let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
         let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
-
-        let gl_window = unsafe {
-            glutin::ContextBuilder::new()
-                .with_vsync(true)
-                .build_windowed(wb, &event_loop)
-                .unwrap()
-                .make_current()
-                .unwrap()
-        };
-
-        let gl = std::rc::Rc::new(unsafe {
-            glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
-        });
-        log::info!("GL version: {}", unsafe {
-            gl.get_parameter_string(glow::VERSION)
-        });
-
-        let fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
-
-        let gui = gui::Gui::new(&gl_window.window(), &gl);
 
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -123,13 +157,11 @@ impl Game {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let audio_supported_config = audio::get_supported_config(&audio_device)?;
-        log::info!("selected audio config: {:?}", audio_supported_config);
-
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         if let Some(match_init) = match_init.as_ref() {
+            let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
             core.set_traps(hooks.primary_traps(
                 handle.clone(),
                 joyflags.clone(),
@@ -143,13 +175,23 @@ impl Game {
         let thread = mgba::thread::Thread::new(core);
 
         let audio_mux = audio::mux_stream::MuxStream::new();
-        let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
-            thread.handle(),
-            audio_supported_config.sample_rate(),
-        ));
+
+        let audio_device = audio
+            .open_playback(
+                None,
+                &sdl2::audio::AudioSpecDesired {
+                    freq: Some(48000),
+                    channels: Some(2),
+                    samples: Some(512),
+                },
+                |_| audio_mux.clone(),
+            )
+            .unwrap();
+        log::info!("audio spec: {:?}", audio_device.spec());
+        audio_device.resume();
 
         if let Some(match_init) = match_init {
-            let _ = std::fs::create_dir_all(&match_init.settings.replays_path);
+            let (dc_rx, dc_tx) = match_init.dc.split();
 
             let match_ = match_.clone();
             handle.block_on(async {
@@ -163,12 +205,12 @@ impl Game {
                     .expect("rng seed");
                 *match_.lock().await = Some(
                     battle::Match::new(
-                        audio_supported_config.clone(),
+                        audio_device.spec().freq,
                         rom_path.clone(),
                         hooks,
                         audio_mux.clone(),
                         match_init.peer_conn,
-                        match_init.dc,
+                        dc_tx,
                         rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                         is_offerer,
                         thread.handle(),
@@ -182,7 +224,7 @@ impl Game {
                 {
                     let match_ = match_.lock().await.clone().unwrap();
                     tokio::select! {
-                        Err(e) = match_.run() => {
+                        Err(e) = match_.run(dc_rx) => {
                             log::info!("match thread ending: {:?}", e);
                         }
                         _ = cancellation_token.cancelled() => {
@@ -200,6 +242,11 @@ impl Game {
             .sync_mut()
             .set_fps_target(EXPECTED_FPS as f32);
 
+        let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
+            thread.handle(),
+            audio_device.spec().freq,
+        ));
+
         {
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
@@ -216,66 +263,31 @@ impl Game {
             });
         }
 
-        let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_mux.clone())?;
-        stream.play()?;
-
-        let gui_state = gui.state();
-        {
-            let match_ = Arc::downgrade(&match_);
-            let fps_counter = fps_counter.clone();
-            let emu_tps_counter = emu_tps_counter.clone();
-            let handle = handle;
-            gui_state.set_debug_stats_getter(Some(Box::new(move || {
-                handle.block_on(async {
-                    let emu_tps_counter = emu_tps_counter.lock();
-                    let fps_counter = fps_counter.lock();
-                    Some(gui::DebugStats {
-                        fps: 1.0 / fps_counter.mean_duration().as_secs_f32(),
-                        emu_tps: 1.0 / emu_tps_counter.mean_duration().as_secs_f32(),
-                        match_: {
-                            match match_.upgrade() {
-                                Some(match_) => match &*match_.lock().await {
-                                    Some(match_) => Some(gui::MatchDebugStats {
-                                        round: {
-                                            let round_state = match_.lock_round_state().await;
-                                            match &round_state.round {
-                                                Some(round) => Some(gui::RoundDebugStats {
-                                                    local_player_index: round.local_player_index(),
-                                                    local_qlen: round.local_queue_length(),
-                                                    remote_qlen: round.remote_queue_length(),
-                                                    local_delay: round.local_delay(),
-                                                    remote_delay: round.remote_delay(),
-                                                    tps_adjustment: round.tps_adjustment(),
-                                                }),
-                                                None => None,
-                                            }
-                                        },
-                                    }),
-                                    None => None,
-                                },
-                                None => None,
-                            }
-                        },
-                    })
-                })
-            })));
-        }
+        let mut canvas = window
+            .into_canvas()
+            .accelerated()
+            .present_vsync()
+            .build()
+            .unwrap();
+        canvas
+            .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+            .unwrap();
+        canvas.set_integer_scale(true).unwrap();
 
         Ok(Game {
             rt,
-            gui,
             ipc_sender,
             _audio_device: audio_device,
             _primary_mux_handle: primary_mux_handle,
-            keymapping,
+            input_mapping,
             fps_counter,
+            emu_tps_counter,
             event_loop,
-            gl,
-            gl_window,
+            game_controller,
+            canvas,
             vbuf,
-            fb,
-            _stream: stream,
             joyflags,
+            match_: Arc::downgrade(&match_),
             _thread: thread,
         })
     }
@@ -296,126 +308,153 @@ impl Game {
             anyhow::Result::<()>::Ok(())
         })?;
 
-        let mut gilrs = gilrs::Gilrs::new().unwrap();
-        for (_id, gamepad) in gilrs.gamepads() {
-            log::info!(
-                "found gamepad: {} is {:?}",
-                gamepad.name(),
-                gamepad.power_info()
-            );
+        let mut show_debug_pressed = false;
+        let mut show_debug = false;
+
+        let ttf = sdl2::ttf::init().unwrap();
+        let font = ttf
+            .load_font_from_rwops(
+                sdl2::rwops::RWops::from_bytes(include_bytes!("fonts/04B_03__.TTF")).unwrap(),
+                8,
+            )
+            .unwrap();
+
+        let texture_creator = self.canvas.texture_creator();
+        let mut texture = texture_creator
+            .create_texture_streaming(
+                sdl2::pixels::PixelFormatEnum::ABGR8888,
+                mgba::gba::SCREEN_WIDTH,
+                mgba::gba::SCREEN_HEIGHT,
+            )
+            .unwrap();
+
+        let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
+            std::collections::HashMap::new();
+        // Preemptively enumerate controllers.
+        for which in 0..self.game_controller.num_joysticks().unwrap() {
+            if !self.game_controller.is_game_controller(which) {
+                continue;
+            }
+            let controller = self.game_controller.open(which).unwrap();
+            log::info!("controller added: {}", controller.name());
+            controllers.insert(which, controller);
+        }
+        let mut input_state = sdl2_input_helper::State::new();
+
+        'toplevel: loop {
+            for event in self.event_loop.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. } => {
+                        break 'toplevel;
+                    }
+                    sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                        if !self.game_controller.is_game_controller(which) {
+                            continue;
+                        }
+                        let controller = self.game_controller.open(which).unwrap();
+                        log::info!("controller added: {}", controller.name());
+                        controllers.insert(which, controller);
+                    }
+                    sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                        if let Some(controller) = controllers.remove(&which) {
+                            log::info!("controller removed: {}", controller.name());
+                        }
+                    }
+                    _ => {}
+                }
+
+                if input_state.handle_event(&event) {
+                    let last_show_debug_pressed = show_debug_pressed;
+                    show_debug_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
+                    if show_debug_pressed && !last_show_debug_pressed {
+                        show_debug = !show_debug;
+                    }
+                    self.joyflags.store(
+                        self.input_mapping.to_mgba_keys(&input_state),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+            }
+
+            texture
+                .update(
+                    None,
+                    &*self.vbuf.lock(),
+                    mgba::gba::SCREEN_WIDTH as usize * 4,
+                )
+                .unwrap();
+
+            self.canvas.clear();
+            self.canvas.copy(&texture, None, None).unwrap();
+
+            if show_debug {
+                let mut lines = vec![format!(
+                    "fps: {:.0}",
+                    1.0 / self.fps_counter.lock().mean_duration().as_secs_f32()
+                )];
+
+                let tps_adjustment = if let Some(match_) = self.match_.upgrade() {
+                    self.rt.block_on(async {
+                        if let Some(match_) = &*match_.lock().await {
+                            lines.push("match active".to_string());
+                            let round_state = match_.lock_round_state().await;
+                            if let Some(round) = round_state.round.as_ref() {
+                                lines.push(format!(
+                                    "local player index: {}",
+                                    round.local_player_index()
+                                ));
+                                lines.push(format!(
+                                    "qlen: {} (-{}) vs {} (-{})",
+                                    round.local_queue_length(),
+                                    round.local_delay(),
+                                    round.remote_queue_length(),
+                                    round.remote_delay(),
+                                ));
+                                round.tps_adjustment()
+                            } else {
+                                0
+                            }
+                        } else {
+                            0
+                        }
+                    })
+                } else {
+                    0
+                };
+
+                lines.push(format!(
+                    "emu tps: {:.0} (-{})",
+                    1.0 / self.emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                    tps_adjustment
+                ));
+
+                for (i, line) in lines.iter().enumerate() {
+                    let surface = font
+                        .render(line)
+                        .shaded(
+                            sdl2::pixels::Color::RGBA(255, 255, 255, 255),
+                            sdl2::pixels::Color::RGBA(0, 0, 0, 255),
+                        )
+                        .unwrap();
+                    let texture = texture_creator
+                        .create_texture_from_surface(&surface)
+                        .unwrap();
+                    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+                    self.canvas
+                        .copy(
+                            &texture,
+                            None,
+                            Some(sdl2::rect::Rect::new(1, 1 + i as i32 * 8, width, height)),
+                        )
+                        .unwrap();
+                }
+            }
+
+            self.canvas.present();
+            self.fps_counter.lock().mark();
         }
 
-        let el_proxy = self.event_loop.create_proxy();
-        std::thread::spawn(move || {
-            while let Some(event) = gilrs.next_event() {
-                if let Err(_) = el_proxy.send_event(UserEvent::Gilrs(event)) {
-                    break;
-                }
-            }
-        });
-
-        let mut console_key_pressed = false;
-
-        self.event_loop.run(move |event, _, control_flow| {
-            *control_flow = winit::event_loop::ControlFlow::Poll;
-
-            match event {
-                winit::event::Event::WindowEvent {
-                    event: ref window_event,
-                    ..
-                } => {
-                    match window_event {
-                        winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                            let mut keymask = 0u32;
-                            if input.virtual_keycode == Some(self.keymapping.left) {
-                                keymask |= mgba::input::keys::LEFT;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.right) {
-                                keymask |= mgba::input::keys::RIGHT;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.up) {
-                                keymask |= mgba::input::keys::UP;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.down) {
-                                keymask |= mgba::input::keys::DOWN;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.a) {
-                                keymask |= mgba::input::keys::A;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.b) {
-                                keymask |= mgba::input::keys::B;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.l) {
-                                keymask |= mgba::input::keys::L;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.r) {
-                                keymask |= mgba::input::keys::R;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.start) {
-                                keymask |= mgba::input::keys::START;
-                            }
-                            if input.virtual_keycode == Some(self.keymapping.select) {
-                                keymask |= mgba::input::keys::SELECT;
-                            }
-
-                            match input.state {
-                                winit::event::ElementState::Pressed => {
-                                    self.joyflags
-                                        .fetch_or(keymask, std::sync::atomic::Ordering::Relaxed);
-                                }
-                                winit::event::ElementState::Released => {
-                                    self.joyflags
-                                        .fetch_and(!keymask, std::sync::atomic::Ordering::Relaxed);
-                                }
-                            }
-
-                            if input.virtual_keycode == Some(winit::event::VirtualKeyCode::Grave) {
-                                match input.state {
-                                    winit::event::ElementState::Pressed => {
-                                        if console_key_pressed {
-                                            return;
-                                        }
-                                        console_key_pressed = true;
-                                        self.gui.state().toggle_debug();
-                                    }
-                                    winit::event::ElementState::Released => {
-                                        console_key_pressed = false;
-                                    }
-                                }
-                            }
-                        }
-                        winit::event::WindowEvent::Resized(size) => {
-                            self.gl_window.resize(*size);
-                        }
-                        winit::event::WindowEvent::CloseRequested => {
-                            *control_flow = winit::event_loop::ControlFlow::Exit;
-                        }
-                        _ => {}
-                    };
-
-                    self.gui.handle_event(window_event);
-                }
-                winit::event::Event::MainEventsCleared => {
-                    unsafe {
-                        self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                        self.gl.clear(glow::COLOR_BUFFER_BIT);
-                    }
-                    let vbuf = self.vbuf.lock().clone();
-                    self.fb.draw(
-                        self.gl_window.window().inner_size(),
-                        glutin::dpi::LogicalSize {
-                            width: mgba::gba::SCREEN_WIDTH,
-                            height: mgba::gba::SCREEN_HEIGHT,
-                        },
-                        &vbuf,
-                    );
-                    self.gui.render(&self.gl_window.window(), &self.gl);
-                    self.gl_window.swap_buffers().unwrap();
-                    self.fps_counter.lock().mark();
-                }
-                winit::event::Event::UserEvent(UserEvent::Gilrs(_gilrs_ev)) => {}
-                _ => {}
-            }
-        });
+        Ok(())
     }
 }

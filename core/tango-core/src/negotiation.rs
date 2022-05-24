@@ -78,10 +78,10 @@ pub async fn negotiate(
     )?;
 
     signaling::connect(
-        &signaling_connect_addr,
+        signaling_connect_addr,
         &mut peer_conn,
         signal_receiver,
-        &session_id,
+        session_id,
     )
     .await?;
 

@@ -12,6 +12,7 @@ import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import SlowMotionVideoOutlinedIcon from "@mui/icons-material/SlowMotionVideoOutlined";
 import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
+import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
@@ -73,8 +74,8 @@ function ReplayItem({
   const { roms } = useROMs();
 
   const unavailable =
-    roms[replay.info.rom] == null ||
-    (replay.resolvedPatchVersion == null && replay.info.patch != null);
+    roms[replay.info.metadata.rom] == null ||
+    (replay.resolvedPatchVersion == null && replay.info.metadata.patch != null);
 
   return (
     <ListItem
@@ -128,21 +129,38 @@ function ReplayItem({
     >
       <ListItemText
         primary={
-          replay.info.linkCode != null ? (
-            <>
-              <Trans
-                i18nKey="replays:replay-title"
-                values={{
-                  formattedDate: dateFormat.format(new Date(replay.info.ts)),
-                  nickname: replay.info.remote!.nickname,
-                  linkCode: replay.info.linkCode,
-                }}
-              />{" "}
-              <small>{dateFormat.format(new Date(replay.info.ts))}</small>
-            </>
-          ) : (
-            <>{dateFormat.format(new Date(replay.info.ts))}</>
-          )
+          <>
+            {!replay.info.isComplete ? (
+              <Tooltip title={<Trans i18nKey="replays:incomplete" />}>
+                <WarningIcon
+                  color="warning"
+                  sx={{
+                    fontSize: "1em",
+                    verticalAlign: "middle",
+                  }}
+                />
+              </Tooltip>
+            ) : null}{" "}
+            {replay.info.metadata.linkCode != null ? (
+              <>
+                <Trans
+                  i18nKey="replays:replay-title"
+                  values={{
+                    formattedDate: dateFormat.format(
+                      new Date(replay.info.metadata.ts)
+                    ),
+                    nickname: replay.info.metadata.remote!.nickname,
+                    linkCode: replay.info.metadata.linkCode,
+                  }}
+                />{" "}
+                <small>
+                  {dateFormat.format(new Date(replay.info.metadata.ts))}
+                </small>
+              </>
+            ) : (
+              <>{dateFormat.format(new Date(replay.info.metadata.ts))}</>
+            )}
+          </>
         }
         secondary={<>{replay.filename}</>}
       />
@@ -200,10 +218,11 @@ export default function ReplaysPane({ active }: { active: boolean }) {
             filename,
             info: replayInfo,
             resolvedPatchVersion:
-              replayInfo.patch != null && patches[replayInfo.patch.name] != null
+              replayInfo.metadata.patch != null &&
+              patches[replayInfo.metadata.patch.name] != null
                 ? findPatchVersion(
-                    patches[replayInfo.patch.name],
-                    replayInfo.patch.version
+                    patches[replayInfo.metadata.patch.name],
+                    replayInfo.metadata.patch.version
                   )
                 : null,
           });
@@ -306,11 +325,11 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       )}
       {viewingReplay != null ? (
         <ReplayviewSupervisor
-          romName={path.join(viewingReplay.info.rom)}
+          romName={path.join(viewingReplay.info.metadata.rom)}
           patch={
             viewingReplay.resolvedPatchVersion != null
               ? {
-                  name: viewingReplay.info.patch!.name,
+                  name: viewingReplay.info.metadata.patch!.name,
                   version: viewingReplay.resolvedPatchVersion,
                 }
               : undefined
@@ -434,11 +453,11 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           </Modal>
         ) : dumpingReplay.state == "in-progress" ? (
           <ReplaydumpSupervisor
-            romName={path.join(dumpingReplay.replay.info.rom)}
+            romName={path.join(dumpingReplay.replay.info.metadata.rom)}
             patch={
               dumpingReplay.replay.resolvedPatchVersion != null
                 ? {
-                    name: dumpingReplay.replay.info.patch!.name,
+                    name: dumpingReplay.replay.info.metadata.patch!.name,
                     version: dumpingReplay.replay.resolvedPatchVersion,
                   }
                 : undefined
