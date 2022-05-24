@@ -1,0 +1,11 @@
+{
+  "status.unknown": "Por favor espere...",
+  "status.running": "Corriendo...",
+  "status.waiting": "Esperando a tu oponente...",
+  "status.connecting": "Conectando con tu oponente...",
+  "status.starting": "Comenzando...",
+  "crash": "¡Oops, parece que el emulador explotó! ¡Por favor entrega este log al reportar el bug!",
+  "cancel": "Parar",
+  "dismiss": "¡Maldición!",
+  "ok": "¡Yay!"
+}

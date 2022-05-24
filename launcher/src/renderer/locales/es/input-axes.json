@@ -1,0 +1,12 @@
+{
+  "leftx-": "LStick ⬅",
+  "leftx+": "LStick ⮕",
+  "lefty-": "LStick ⬆",
+  "lefty+": "LStick ⬇",
+  "rightx-": "RStick ⬅",
+  "rightx+": "RStick ⮕",
+  "righty-": "RStick ⬆",
+  "righty+": "RStick ⬇",
+  "lefttrigger+": "LTrigger",
+  "righttrigger+": "RTrigger"
+}
