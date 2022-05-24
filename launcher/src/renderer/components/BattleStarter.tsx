@@ -270,7 +270,19 @@ async function runCallback(
           "Content-Type": "application/x-protobuf",
         },
         body: Buffer.from(GetRequest.encode({}).finish()),
-        signal,
+        signal: (() => {
+          const abortController = new AbortController();
+          signal.addEventListener("abort", () => {
+            abortController.abort();
+          });
+
+          // Abort the relay request after 30 seconds.
+          setTimeout(() => {
+            abortController.abort();
+          }, 10 * 1000);
+
+          return abortController.signal;
+        })(),
       });
       if (req.ok) {
         iceServers = [
