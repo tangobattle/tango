@@ -162,18 +162,10 @@ function AboutTab({ active }: { active: boolean }) {
               Network 6.
             </li>
             <li>
-              <Link href="https://twitter.com/saladdammit" target="_blank">
-                saladdammit
-              </Link>
-              ,{" "}
-              <Link href="https://twitter.com/Playerzero_exe" target="_blank">
-                Playerzero_exe
-              </Link>
-              , and the entire{" "}
-              <Link href="https://n1gp.net/" target="_blank">
-                N1GP
+              <Link href="https://github.com/ubergeek77" target="_blank">
+                ubergeek77
               </Link>{" "}
-              for their bug testing and support.
+              for their work on Linux support.
             </li>
             <li>
               <Link href="https://twitter.com/seventhfonist42" target="_blank">
@@ -186,6 +178,26 @@ function AboutTab({ active }: { active: boolean }) {
                 Hikari Calyx
               </Link>{" "}
               for their contribution to the Chinese translation.
+            </li>
+            <li>
+              <Link href="https://twitter.com/Karate_Bugman" target="_blank">
+                Karate_Bugman
+              </Link>{" "}
+              for the Spanish translation.
+            </li>
+            <li>
+              <Link href="https://twitter.com/saladdammit" target="_blank">
+                saladdammit
+              </Link>
+              ,{" "}
+              <Link href="https://twitter.com/Playerzero_exe" target="_blank">
+                Playerzero_exe
+              </Link>
+              , and the entire{" "}
+              <Link href="https://n1gp.net/" target="_blank">
+                N1GP
+              </Link>{" "}
+              for their bug testing and support.
             </li>
             <li>
               <Link href="https://github.com/bigfarts" target="_blank">
