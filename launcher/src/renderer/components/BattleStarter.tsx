@@ -1142,7 +1142,7 @@ export default function BattleStarter({
                                 ((rtt! / 1000 / 1000 / 2) * 60) / 1000
                               ) +
                                 1 -
-                                3
+                                2
                             )
                           ),
                         });
