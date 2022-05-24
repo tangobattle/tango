@@ -262,26 +262,28 @@ async function runCallback(
 ) {
   let iceServers = [...config.iceServers];
 
-  try {
-    const req = await fetch(`${config.matchmakingServerAddr}/relay`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-protobuf",
-      },
-      body: Buffer.from(GetRequest.encode({}).finish()),
-      signal,
-    });
-    if (req.ok) {
-      iceServers = [
-        ...iceServers,
-        ...GetResponse.decode(new Uint8Array(await req.arrayBuffer()))
-          .iceServers,
-      ];
-    } else {
-      throw await req.text();
+  if (linkCode != "") {
+    try {
+      const req = await fetch(`${config.matchmakingServerAddr}/relay`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-protobuf",
+        },
+        body: Buffer.from(GetRequest.encode({}).finish()),
+        signal,
+      });
+      if (req.ok) {
+        iceServers = [
+          ...iceServers,
+          ...GetResponse.decode(new Uint8Array(await req.arrayBuffer()))
+            .iceServers,
+        ];
+      } else {
+        throw await req.text();
+      }
+    } catch (e) {
+      console.warn("failed to get relay servers:", e);
     }
-  } catch (e) {
-    console.warn("failed to get relay servers:", e);
   }
 
   const core = new ipc.Core(
