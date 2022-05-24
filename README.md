@@ -113,6 +113,14 @@ In order to configure your server, you'll need to set the following environment 
 
 -   `SUBSPACE_CLIENT_ID`, `SUBSPACE_CLIENT_SECRET`: Credentials for WebRTC-CDN from <https://subspace.com>. If not set, clients will not be able to get TURN credentials and connectivity behind CGNAT will be limited.
 
+## Automatic Updates
+
+Whenever a new version of Tango is released, Tango will download the update for you automatically. When you see a **purple** dot on the Settings cog in Tango, the update is currently being downloaded. When you see a **blue** dot on the Settings cog, the download is complete, and will be installed once Tango is closed. When you next open Tango, it will be running the up-to-date version.
+
+***A note for Linux users:***
+
+The `.AppImage` release for Linux users also fully supports automatic updates! However, due to how the update process works, the original `.AppImage` you downloaded will be replaced with the latest `.AppImage` file, *effectively renaming it*. This renaming will break any scripts, shortcuts, or `.desktop` entries you may have created against the original filename. However, this can easily be avoided; simply rename your `.AppImage` to `Tango.AppImage` - the key is removing the version number. If you do this, you will still receive automatic updates, but the `.AppImage` won't be renamed after an update, meaning any scripts or shortcuts pointing to Tango will continue working after updates.
+
 ## Language support
 
 Tango is fully internationalized and supports language switching based on your computer's language settings.
