@@ -92,7 +92,9 @@ The launcher is written in Node + Electron.
 
 ### Server
 
-The server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by send WebRTC SDPs around and providing TURN credentials. Note that it doesn't actually provide a TURN server itself, so you'll need some way to get TURN credentials.
+#### Matchmaking server
+
+The server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by sending WebRTC SDPs around.
 
 If you already have Rust installed, you can build it like so:
 
@@ -105,21 +107,24 @@ If you already have Rust installed, you can build it like so:
 
 That should be it! The server should be available in the usual Rust output directory.
 
-In order to configure your server, you'll need to set the following environment variables:
+#### ICE configuration server
 
--   `LISTEN_ADDR`: Host/port to listen on. Defaults to `[::]:1984`. It's recommended to front this with e.g. nginx for TLS support.
+**An ICE configuration server is not provided. You must write your own. Note that by default Tango will use Google's public STUN servers, but will not use any TURN servers.**
 
--   `USE_X_REAL_IP`: Whether or not the client's IP is presented in the `X-Real-IP` header. If false, will use the IP of the TCP connection. **Do not enable this if you do not have a reverse proxy (e.g. nginx) that will set this in all cases!**
+If you want to guarantee connections across even funny NATed connections, you will need to use an ICE configuration server. This can be configured in Tango under _Settings > Advanced > ICE configuration server address_.
 
--   `SUBSPACE_CLIENT_ID`, `SUBSPACE_CLIENT_SECRET`: Credentials for WebRTC-CDN from <https://subspace.com>. If not set, clients will not be able to get TURN credentials and connectivity behind CGNAT will be limited.
+The ICE configuration server must:
+
+-   Run over HTTP or HTTPS.
+-   Accept, via POST, `GetRequest` and return `GetResponse` as defined in `core/tango-protos/src/protos/iceconfig.proto`. Note that these must be in serialize Protobuf format.
 
 ## Automatic Updates
 
 Whenever a new version of Tango is released, Tango will download the update for you automatically. When you see a **purple** dot on the Settings cog in Tango, the update is currently being downloaded. When you see a **blue** dot on the Settings cog, the download is complete, and will be installed once Tango is closed. When you next open Tango, it will be running the up-to-date version.
 
-***A note for Linux users:***
+**_A note for Linux users:_**
 
-The `.AppImage` release for Linux users also fully supports automatic updates! However, due to how the update process works, the original `.AppImage` you downloaded will be replaced with the latest `.AppImage` file, *effectively renaming it*. This renaming will break any scripts, shortcuts, or `.desktop` entries you may have created against the original filename. However, this can easily be avoided; simply rename your `.AppImage` to `Tango.AppImage` - the key is removing the version number. If you do this, you will still receive automatic updates, but the `.AppImage` won't be renamed after an update, meaning any scripts or shortcuts pointing to Tango will continue working after updates.
+The `.AppImage` release for Linux users also fully supports automatic updates! However, due to how the update process works, the original `.AppImage` you downloaded will be replaced with the latest `.AppImage` file, _effectively renaming it_. This renaming will break any scripts, shortcuts, or `.desktop` entries you may have created against the original filename. However, this can easily be avoided; simply rename your `.AppImage` to `Tango.AppImage` - the key is removing the version number. If you do this, you will still receive automatic updates, but the `.AppImage` won't be renamed after an update, meaning any scripts or shortcuts pointing to Tango will continue working after updates.
 
 ## Language support
 
