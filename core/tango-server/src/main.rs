@@ -14,6 +14,9 @@ struct Config {
     #[envconfig(from = "USE_X_REAL_IP", default = "false")]
     use_x_real_ip: bool,
 
+    #[envconfig(from = "USE_OPENRELAY", default = "false")]
+    use_openrelay: bool,
+
     #[envconfig(from = "SUBSPACE_CLIENT_ID", default = "")]
     subspace_client_id: String,
 
@@ -115,17 +118,21 @@ async fn main() -> anyhow::Result<()> {
     log::info!("welcome to tango-server {}!", git_version::git_version!());
     let config = Config::init_from_env().unwrap();
     let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
-    let relay_backend: Option<Box<dyn relay::Backend + Send + Sync + 'static>> =
-        if !config.subspace_client_id.is_empty() && !config.subspace_client_secret.is_empty() {
-            log::info!("using subspace relay backend");
-            Some(Box::new(relay::subspace::Backend::new(
-                config.subspace_client_id.clone(),
-                config.subspace_client_secret.clone(),
-            )))
-        } else {
-            log::warn!("no relay backend, will not service relay requests");
-            None
-        };
+    let relay_backend: Option<Box<dyn relay::Backend + Send + Sync + 'static>> = if config
+        .use_openrelay
+    {
+        log::info!("using openrelay backend");
+        Some(Box::new(relay::openrelay::Backend::new()))
+    } else if !config.subspace_client_id.is_empty() && !config.subspace_client_secret.is_empty() {
+        log::info!("using subspace relay backend");
+        Some(Box::new(relay::subspace::Backend::new(
+            config.subspace_client_id.clone(),
+            config.subspace_client_secret.clone(),
+        )))
+    } else {
+        log::warn!("no relay backend, will not service relay requests");
+        None
+    };
     let addr = config.listen_addr.parse()?;
     let router = router(real_ip_getter, relay_backend);
     let service = routerify::RouterService::new(router).unwrap();

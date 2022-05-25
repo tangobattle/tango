@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+pub mod openrelay;
 pub mod subspace;
 
 struct Cache {
