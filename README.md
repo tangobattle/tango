@@ -116,7 +116,7 @@ If you want to guarantee connections across even funny NATed connections, you wi
 The ICE configuration server must:
 
 -   Run over HTTP or HTTPS.
--   Accept, via POST, `GetRequest` and return `GetResponse` as defined in `core/tango-protos/src/protos/iceconfig.proto`. Note that these must be in serialize Protobuf format.
+-   Accept, via POST, `GetRequest` and return `GetResponse` as defined in `core/tango-protos/src/protos/iceconfig.proto`. Note that these must be in serialized Protobuf format.
 
 ## Automatic Updates
 
