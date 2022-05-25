@@ -55,6 +55,7 @@ import { ReplayMetadata } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import * as bn6 from "../../saveedit/bn6";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
+import { fallbackLng } from "../i18n";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
@@ -99,9 +100,10 @@ function useGetGameTitle() {
 
   return React.useCallback(
     (gameInfo: GameInfo) =>
-      `${KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage]}${
-        gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""
-      }`,
+      `${
+        KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage] ||
+        KNOWN_ROMS[gameInfo.rom].title[fallbackLng]
+      }${gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""}`,
     [i18n, getPatchName]
   );
 }
