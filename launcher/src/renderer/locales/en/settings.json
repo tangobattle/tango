@@ -34,6 +34,5 @@
     "update-channel.disabled": "Disabled",
     "rust-log-filter": "RUST_LOG filter",
     "open-logs-folder": "Open logs folder",
-    "matchmaking-server-addr": "Matchmaking server address",
-    "ice-config-server-addr": "ICE configuration server address"
+    "matchmaking-server-addr": "Matchmaking server address"
 }

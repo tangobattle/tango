@@ -25,8 +25,7 @@ export interface Config {
     start: PhysicalInput[];
   };
   matchmakingServerAddr: string;
-  iceConfigServerAddr: string;
-  defaultIceServers: string[];
+  iceServers: string[];
 }
 
 export const DEFAULT: Config = {
@@ -48,8 +47,7 @@ export const DEFAULT: Config = {
     start: [{ Key: "Return" }, { Button: "start" }],
   },
   matchmakingServerAddr: "https://lets.tangobattle.com",
-  iceConfigServerAddr: "",
-  defaultIceServers: [
+  iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",
     "stun://stun2.l.google.com:19302",

@@ -34,6 +34,5 @@
     "update-channel.disabled": "無効",
     "rust-log-filter": "RUST_LOGフィルター",
     "open-logs-folder": "ログフォルダーを開く",
-    "matchmaking-server-addr": "マッチメイキングサーバーのアドレス",
-    "ice-config-server-addr": "ICE設定サーバーのアドレス"
+    "matchmaking-server-addr": "マッチメイキングサーバーアドレス"
 }
