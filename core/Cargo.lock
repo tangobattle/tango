@@ -1698,6 +1698,7 @@ dependencies = [
  "tango-protos",
  "tokio",
  "tungstenite 0.17.2",
+ "url",
  "urlencoding",
 ]
 

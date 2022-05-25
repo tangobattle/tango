@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 pub mod openrelay;
 pub mod subspace;
+pub mod xirsys;
 
 struct Cache {
     pq: std::collections::BinaryHeap<std::cmp::Reverse<(std::time::Instant, std::net::IpAddr)>>,

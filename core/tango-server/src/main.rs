@@ -22,6 +22,12 @@ struct Config {
 
     #[envconfig(from = "SUBSPACE_CLIENT_SECRET", default = "")]
     subspace_client_secret: String,
+
+    #[envconfig(from = "XIRSYS_IDENT", default = "")]
+    xirsys_ident: String,
+
+    #[envconfig(from = "XIRSYS_SECRET", default = "")]
+    xirsys_secret: String,
 }
 
 struct State {
@@ -128,6 +134,12 @@ async fn main() -> anyhow::Result<()> {
         Some(Box::new(relay::subspace::Backend::new(
             config.subspace_client_id.clone(),
             config.subspace_client_secret.clone(),
+        )))
+    } else if !config.xirsys_ident.is_empty() && !config.xirsys_secret.is_empty() {
+        log::info!("using xirsys relay backend");
+        Some(Box::new(relay::xirsys::Backend::new(
+            config.xirsys_ident.clone(),
+            config.xirsys_secret.clone(),
         )))
     } else {
         log::warn!("no relay backend, will not service relay requests");
