@@ -260,7 +260,7 @@ async function runCallback(
     >;
   }>
 ) {
-  let iceServers = [...config.iceServers];
+  let iceServers = config.iceServers;
 
   if (linkCode != "") {
     try {
@@ -285,11 +285,9 @@ async function runCallback(
         })(),
       });
       if (req.ok) {
-        iceServers = [
-          ...iceServers,
-          ...GetResponse.decode(new Uint8Array(await req.arrayBuffer()))
-            .iceServers,
-        ];
+        iceServers = GetResponse.decode(
+          new Uint8Array(await req.arrayBuffer())
+        ).iceServers;
       } else {
         throw await req.text();
       }
