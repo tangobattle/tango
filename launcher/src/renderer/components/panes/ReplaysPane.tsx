@@ -366,7 +366,18 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                   display: "flex",
                 }}
               >
-                <Stack spacing={1} flexGrow={1}>
+                <Stack
+                  spacing={1}
+                  flexGrow={1}
+                  component="form"
+                  onSubmit={(e: any) => {
+                    e.preventDefault();
+                    setDumpingReplay((dr) => ({
+                      ...dr!,
+                      state: "in-progress",
+                    }));
+                  }}
+                >
                   <Stack direction="row">
                     <Typography variant="h6" component="h2" sx={{ px: 1 }}>
                       <Trans i18nKey="replays:export-settings" />
@@ -435,15 +446,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                     </TableBody>
                   </Table>
                   <Stack direction="row" justifyContent="flex-end">
-                    <Button
-                      variant="contained"
-                      onClick={(_e) => {
-                        setDumpingReplay((dr) => ({
-                          ...dr!,
-                          state: "in-progress",
-                        }));
-                      }}
-                    >
+                    <Button variant="contained" type="submit">
                       <Trans i18nKey="replays:start-export" />
                     </Button>
                   </Stack>
