@@ -289,7 +289,23 @@ async function runCallback(
       if (req.ok) {
         iceServers = GetResponse.decode(
           new Uint8Array(await req.arrayBuffer())
-        ).iceServers;
+        ).iceServers.flatMap((iceServer) =>
+          iceServer.urls.flatMap((url) => {
+            const colonIdx = url.indexOf(":");
+            if (colonIdx == -1) {
+              return [];
+            }
+            const proto = url.slice(0, colonIdx);
+            const rest = url.slice(colonIdx + 1);
+            return proto == "stun"
+              ? [`${proto}:${rest}`]
+              : [
+                  `${proto}:${encodeURIComponent(
+                    iceServer.username
+                  )}:${encodeURIComponent(iceServer.credential)}@${rest}`,
+                ];
+          })
+        );
       } else {
         throw await req.text();
       }

@@ -7,7 +7,13 @@ export const protobufPackage = "tango.iceconfig";
 export interface GetRequest {}
 
 export interface GetResponse {
-  iceServers: string[];
+  iceServers: GetResponse_ICEServer[];
+}
+
+export interface GetResponse_ICEServer {
+  credential: string;
+  username: string;
+  urls: string[];
 }
 
 function createBaseGetRequest(): GetRequest {
@@ -59,7 +65,7 @@ export const GetResponse = {
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
     for (const v of message.iceServers) {
-      writer.uint32(10).string(v!);
+      GetResponse_ICEServer.encode(v!, writer.uint32(10).fork()).ldelim();
     }
     return writer;
   },
@@ -72,7 +78,9 @@ export const GetResponse = {
       const tag = reader.uint32();
       switch (tag >>> 3) {
         case 1:
-          message.iceServers.push(reader.string());
+          message.iceServers.push(
+            GetResponse_ICEServer.decode(reader, reader.uint32())
+          );
           break;
         default:
           reader.skipType(tag & 7);
@@ -85,7 +93,7 @@ export const GetResponse = {
   fromJSON(object: any): GetResponse {
     return {
       iceServers: Array.isArray(object?.iceServers)
-        ? object.iceServers.map((e: any) => String(e))
+        ? object.iceServers.map((e: any) => GetResponse_ICEServer.fromJSON(e))
         : [],
     };
   },
@@ -93,7 +101,9 @@ export const GetResponse = {
   toJSON(message: GetResponse): unknown {
     const obj: any = {};
     if (message.iceServers) {
-      obj.iceServers = message.iceServers.map((e) => e);
+      obj.iceServers = message.iceServers.map((e) =>
+        e ? GetResponse_ICEServer.toJSON(e) : undefined
+      );
     } else {
       obj.iceServers = [];
     }
@@ -104,7 +114,89 @@ export const GetResponse = {
     object: I
   ): GetResponse {
     const message = createBaseGetResponse();
-    message.iceServers = object.iceServers?.map((e) => e) || [];
+    message.iceServers =
+      object.iceServers?.map((e) => GetResponse_ICEServer.fromPartial(e)) || [];
+    return message;
+  },
+};
+
+function createBaseGetResponse_ICEServer(): GetResponse_ICEServer {
+  return { credential: "", username: "", urls: [] };
+}
+
+export const GetResponse_ICEServer = {
+  encode(
+    message: GetResponse_ICEServer,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.credential !== "") {
+      writer.uint32(10).string(message.credential);
+    }
+    if (message.username !== "") {
+      writer.uint32(18).string(message.username);
+    }
+    for (const v of message.urls) {
+      writer.uint32(26).string(v!);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): GetResponse_ICEServer {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetResponse_ICEServer();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.credential = reader.string();
+          break;
+        case 2:
+          message.username = reader.string();
+          break;
+        case 3:
+          message.urls.push(reader.string());
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetResponse_ICEServer {
+    return {
+      credential: isSet(object.credential) ? String(object.credential) : "",
+      username: isSet(object.username) ? String(object.username) : "",
+      urls: Array.isArray(object?.urls)
+        ? object.urls.map((e: any) => String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: GetResponse_ICEServer): unknown {
+    const obj: any = {};
+    message.credential !== undefined && (obj.credential = message.credential);
+    message.username !== undefined && (obj.username = message.username);
+    if (message.urls) {
+      obj.urls = message.urls.map((e) => e);
+    } else {
+      obj.urls = [];
+    }
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GetResponse_ICEServer>, I>>(
+    object: I
+  ): GetResponse_ICEServer {
+    const message = createBaseGetResponse_ICEServer();
+    message.credential = object.credential ?? "";
+    message.username = object.username ?? "";
+    message.urls = object.urls?.map((e) => e) || [];
     return message;
   },
 };
@@ -139,4 +231,8 @@ export type Exact<P, I extends P> = P extends Builtin
 if (_m0.util.Long !== Long) {
   _m0.util.Long = Long as any;
   _m0.configure();
+}
+
+function isSet(value: any): boolean {
+  return value !== null && value !== undefined;
 }
