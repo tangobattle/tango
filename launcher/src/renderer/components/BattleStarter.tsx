@@ -266,7 +266,7 @@ async function runCallback(
 
   if (linkCode != "" && config.iceConfigServerAddr != "") {
     try {
-      const req = await fetch(`${config.iceConfigServerAddr}/ice_servers`, {
+      const req = await fetch(config.iceConfigServerAddr, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-protobuf",
