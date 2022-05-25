@@ -34,5 +34,6 @@
     "update-channel.disabled": "禁用",
     "rust-log-filter": "RUST_LOG过滤",
     "open-logs-folder": "打开日志文件夹",
-    "matchmaking-server-addr": "匹配服务器地址"
+    "matchmaking-server-addr": "匹配服务器地址",
+    "ice-config-server-addr": "ICE配置服务器地址"
 }

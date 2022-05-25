@@ -262,11 +262,11 @@ async function runCallback(
     >;
   }>
 ) {
-  let iceServers = config.iceServers;
+  let iceServers = config.defaultIceServers;
 
-  if (linkCode != "") {
+  if (linkCode != "" && config.iceConfigServerAddr != "") {
     try {
-      const req = await fetch(`${config.matchmakingServerAddr}/relay`, {
+      const req = await fetch(`${config.iceConfigServerAddr}/ice_servers`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-protobuf",

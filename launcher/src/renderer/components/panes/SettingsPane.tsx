@@ -369,6 +369,20 @@ function AdvancedTab({ active }: { active: boolean }) {
             }}
             label={<Trans i18nKey="settings:matchmaking-server-addr" />}
           />
+          <TextField
+            size="small"
+            fullWidth
+            value={config.iceConfigServerAddr}
+            onChange={(e) => {
+              (async () => {
+                saveConfig((config) => ({
+                  ...config,
+                  iceConfigServerAddr: e.target.value,
+                }));
+              })();
+            }}
+            label={<Trans i18nKey="settings:ice-config-server-addr" />}
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="update-channel-label">
               <Trans i18nKey="settings:update-channel" />
