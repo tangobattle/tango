@@ -266,7 +266,7 @@ async function runCallback(
 
   if (linkCode != "") {
     try {
-      const req = await fetch(`${config.matchmakingServerAddr}/relay`, {
+      const req = await fetch(`${config.matchmakingServerAddr}/ice_servers`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-protobuf",
