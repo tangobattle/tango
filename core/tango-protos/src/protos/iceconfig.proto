@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tango.relay;
+package tango.iceconfig;
 
 message GetRequest {}
 

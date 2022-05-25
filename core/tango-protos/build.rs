@@ -5,7 +5,7 @@ fn main() -> Result<()> {
         &[
             "src/protos/signaling.proto",
             "src/protos/ipc.proto",
-            "src/protos/relay.proto",
+            "src/protos/iceconfig.proto",
         ],
         &["src/"],
     )?;

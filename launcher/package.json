@@ -15,7 +15,7 @@
     "build:linux": "npm-run-all build:main build:renderer",
     "build:main": "cross-env NODE_ENV=production webpack --config webpack/main.webpack.ts --mode=production",
     "build:renderer": "cross-env NODE_ENV=production webpack --config webpack/renderer.webpack.ts --mode=production",
-    "generate:protos": "(mkdir src/protos 2> /dev/null || true) && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos --ts_proto_opt=esModuleInterop=true -I../core/tango-protos/src/protos ipc.proto lobby.proto relay.proto",
+    "generate:protos": "(mkdir src/protos 2> /dev/null || true) && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos --ts_proto_opt=esModuleInterop=true -I../core/tango-protos/src/protos ipc.proto lobby.proto iceconfig.proto",
     "start": "npm run start:renderer",
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only ./src/main/main.ts",
     "start:renderer": "cross-env NODE_ENV=development webpack serve --config webpack/renderer.webpack.ts --mode=development",
