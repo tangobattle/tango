@@ -1,62 +1,15 @@
-mod httputil;
-mod relay;
 mod signaling;
 use envconfig::Envconfig;
-use prost::Message;
 use routerify::ext::RequestExt;
 
 #[derive(Envconfig)]
 struct Config {
     #[envconfig(from = "LISTEN_ADDR", default = "[::]:1984")]
     listen_addr: String,
-
-    // Don't use this unless you know what you're doing!
-    #[envconfig(from = "USE_X_REAL_IP", default = "false")]
-    use_x_real_ip: bool,
-
-    #[envconfig(from = "USE_OPENRELAY", default = "false")]
-    use_openrelay: bool,
-
-    #[envconfig(from = "SUBSPACE_CLIENT_ID", default = "")]
-    subspace_client_id: String,
-
-    #[envconfig(from = "SUBSPACE_CLIENT_SECRET", default = "")]
-    subspace_client_secret: String,
-
-    #[envconfig(from = "XIRSYS_IDENT", default = "")]
-    xirsys_ident: String,
-
-    #[envconfig(from = "XIRSYS_SECRET", default = "")]
-    xirsys_secret: String,
 }
 
 struct State {
-    real_ip_getter: httputil::RealIPGetter,
-    relay_server: std::sync::Arc<relay::Server>,
     signaling_server: std::sync::Arc<signaling::Server>,
-}
-
-async fn handle_relay_request(
-    request: hyper::Request<hyper::Body>,
-) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    let state = request.data::<State>().unwrap();
-    let remote_ip = state
-        .real_ip_getter
-        .get_remote_real_ip(&request)
-        .ok_or(anyhow::anyhow!("could not get remote ip"))?;
-    let relay_server = state.relay_server.clone();
-    let req =
-        tango_protos::relay::GetRequest::decode(hyper::body::to_bytes(request.into_body()).await?)?;
-    log::debug!("/relay: {:?}", req);
-    Ok(hyper::Response::builder()
-        .header(hyper::header::CONTENT_TYPE, "application/x-protobuf")
-        .body(
-            relay_server
-                .get(remote_ip, req)
-                .await?
-                .encode_to_vec()
-                .into(),
-        )?)
 }
 
 async fn handle_signaling_request(
@@ -99,19 +52,13 @@ async fn handle_signaling_request(
     Ok(response)
 }
 
-fn router(
-    real_ip_getter: httputil::RealIPGetter,
-    relay_backend: Option<Box<dyn relay::Backend + Send + Sync + 'static>>,
-) -> routerify::Router<hyper::Body, anyhow::Error> {
+fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
-            real_ip_getter,
-            relay_server: std::sync::Arc::new(relay::Server::new(relay_backend)),
             signaling_server: std::sync::Arc::new(signaling::Server::new()),
         })
         .get("/", handle_signaling_request)
         .get("/signaling", handle_signaling_request)
-        .post("/relay", handle_relay_request)
         .build()
         .unwrap()
 }
@@ -123,30 +70,8 @@ async fn main() -> anyhow::Result<()> {
         .init();
     log::info!("welcome to tango-server {}!", git_version::git_version!());
     let config = Config::init_from_env().unwrap();
-    let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
-    let relay_backend: Option<Box<dyn relay::Backend + Send + Sync + 'static>> = if config
-        .use_openrelay
-    {
-        log::info!("using openrelay backend");
-        Some(Box::new(relay::openrelay::Backend::new()))
-    } else if !config.subspace_client_id.is_empty() && !config.subspace_client_secret.is_empty() {
-        log::info!("using subspace relay backend");
-        Some(Box::new(relay::subspace::Backend::new(
-            config.subspace_client_id.clone(),
-            config.subspace_client_secret.clone(),
-        )))
-    } else if !config.xirsys_ident.is_empty() && !config.xirsys_secret.is_empty() {
-        log::info!("using xirsys relay backend");
-        Some(Box::new(relay::xirsys::Backend::new(
-            config.xirsys_ident.clone(),
-            config.xirsys_secret.clone(),
-        )))
-    } else {
-        log::warn!("no relay backend, will not service relay requests");
-        None
-    };
     let addr = config.listen_addr.parse()?;
-    let router = router(real_ip_getter, relay_backend);
+    let router = router();
     let service = routerify::RouterService::new(router).unwrap();
     hyper::Server::bind(&addr).serve(service).await?;
     Ok(())
