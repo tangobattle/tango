@@ -88,7 +88,7 @@ impl super::Backend for Backend {
                     )]
                 })
                 .collect(),
-            expires_at: std::time::Instant::now() + std::time::Duration::from_secs(24 * 60 * 60),
+            expires_at: std::time::Instant::now() + std::time::Duration::from_secs(30),
         })
     }
 }
