@@ -69,16 +69,24 @@ impl super::Backend for Backend {
                     } else {
                         return vec![];
                     };
+
                     let username = if let Some(username) = ice_server.username {
                         username
                     } else {
-                        return vec![];
+                        return vec![format!("{}:{}", proto, rest)];
                     };
+
                     let credential = if let Some(credential) = ice_server.credential {
                         credential
                     } else {
-                        return vec![];
+                        return vec![format!(
+                            "{}:{}@{}",
+                            proto,
+                            urlencoding::encode(&username),
+                            rest
+                        )];
                     };
+
                     vec![format!(
                         "{}:{}:{}@{}",
                         proto,
