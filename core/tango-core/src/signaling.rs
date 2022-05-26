@@ -14,17 +14,6 @@ where
 
     log::info!("negotiation started");
 
-    loop {
-        if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
-            datachannel_wrapper::GatheringState::Complete,
-        )) = event_rx.recv().await
-        {
-            break;
-        }
-    }
-
-    log::info!("candidates gathered");
-
     let local_description = peer_conn.local_description().unwrap();
     stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
@@ -90,7 +79,7 @@ where
                         peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
                         peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Offer,
-                            sdp: datachannel_wrapper::parse_sdp(&offer.sdp.to_string(), false)?,
+                            sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
                         })?;
 
                         let local_description = peer_conn.local_description().unwrap();
@@ -112,7 +101,7 @@ where
 
                         peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Answer,
-                            sdp: datachannel_wrapper::parse_sdp(&answer.sdp, false)?,
+                            sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
                         })?;
                         break;
                     }

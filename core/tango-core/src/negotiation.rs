@@ -49,18 +49,13 @@ pub async fn negotiate(
     ),
     Error,
 > {
-    log::info!("negotiating match, session_id = {}", session_id);
-    ipc_sender
-        .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
-                tango_protos::ipc::from_core_message::StateEvent {
-                    state: tango_protos::ipc::from_core_message::state_event::State::Waiting.into(),
-                },
-            )),
-        })
-        .await?;
+    log::info!(
+        "negotiating match, session_id = {}, ice_servers = {:?}",
+        session_id,
+        ice_servers
+    );
 
-    let (mut peer_conn, signal_receiver) =
+    let (mut peer_conn, mut event_rx) =
         datachannel_wrapper::PeerConnection::new(datachannel_wrapper::RtcConfig::new(ice_servers))?;
 
     let dc = peer_conn.create_data_channel(
@@ -77,13 +72,28 @@ pub async fn negotiate(
             .stream(0),
     )?;
 
-    signaling::connect(
-        signaling_connect_addr,
-        &mut peer_conn,
-        signal_receiver,
-        session_id,
-    )
-    .await?;
+    loop {
+        if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
+            datachannel_wrapper::GatheringState::Complete,
+        )) = event_rx.recv().await
+        {
+            break;
+        }
+    }
+
+    log::info!("candidates gathered");
+
+    ipc_sender
+        .send(tango_protos::ipc::FromCoreMessage {
+            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
+                tango_protos::ipc::from_core_message::StateEvent {
+                    state: tango_protos::ipc::from_core_message::state_event::State::Waiting.into(),
+                },
+            )),
+        })
+        .await?;
+
+    signaling::connect(signaling_connect_addr, &mut peer_conn, event_rx, session_id).await?;
 
     let (mut dc_rx, mut dc_tx) = dc.split();
 

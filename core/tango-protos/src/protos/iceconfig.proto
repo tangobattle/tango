@@ -6,9 +6,13 @@ message GetRequest {}
 
 message GetResponse {
   message ICEServer {
-    string credential = 1;
-    string username = 2;
+    optional string credential = 1;
+    optional string username = 2;
     repeated string urls = 3;
   }
   repeated ICEServer ice_servers = 1;
 }
+
+message GetLegacyRequest {}
+
+message GetLegacyResponse { repeated string ice_servers = 1; }

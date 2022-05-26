@@ -11,9 +11,15 @@ export interface GetResponse {
 }
 
 export interface GetResponse_ICEServer {
-  credential: string;
-  username: string;
+  credential?: string | undefined;
+  username?: string | undefined;
   urls: string[];
+}
+
+export interface GetLegacyRequest {}
+
+export interface GetLegacyResponse {
+  iceServers: string[];
 }
 
 function createBaseGetRequest(): GetRequest {
@@ -121,7 +127,7 @@ export const GetResponse = {
 };
 
 function createBaseGetResponse_ICEServer(): GetResponse_ICEServer {
-  return { credential: "", username: "", urls: [] };
+  return { credential: undefined, username: undefined, urls: [] };
 }
 
 export const GetResponse_ICEServer = {
@@ -129,10 +135,10 @@ export const GetResponse_ICEServer = {
     message: GetResponse_ICEServer,
     writer: _m0.Writer = _m0.Writer.create()
   ): _m0.Writer {
-    if (message.credential !== "") {
+    if (message.credential !== undefined) {
       writer.uint32(10).string(message.credential);
     }
-    if (message.username !== "") {
+    if (message.username !== undefined) {
       writer.uint32(18).string(message.username);
     }
     for (const v of message.urls) {
@@ -170,8 +176,10 @@ export const GetResponse_ICEServer = {
 
   fromJSON(object: any): GetResponse_ICEServer {
     return {
-      credential: isSet(object.credential) ? String(object.credential) : "",
-      username: isSet(object.username) ? String(object.username) : "",
+      credential: isSet(object.credential)
+        ? String(object.credential)
+        : undefined,
+      username: isSet(object.username) ? String(object.username) : undefined,
       urls: Array.isArray(object?.urls)
         ? object.urls.map((e: any) => String(e))
         : [],
@@ -194,9 +202,113 @@ export const GetResponse_ICEServer = {
     object: I
   ): GetResponse_ICEServer {
     const message = createBaseGetResponse_ICEServer();
-    message.credential = object.credential ?? "";
-    message.username = object.username ?? "";
+    message.credential = object.credential ?? undefined;
+    message.username = object.username ?? undefined;
     message.urls = object.urls?.map((e) => e) || [];
+    return message;
+  },
+};
+
+function createBaseGetLegacyRequest(): GetLegacyRequest {
+  return {};
+}
+
+export const GetLegacyRequest = {
+  encode(
+    _: GetLegacyRequest,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetLegacyRequest {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetLegacyRequest();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(_: any): GetLegacyRequest {
+    return {};
+  },
+
+  toJSON(_: GetLegacyRequest): unknown {
+    const obj: any = {};
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GetLegacyRequest>, I>>(
+    _: I
+  ): GetLegacyRequest {
+    const message = createBaseGetLegacyRequest();
+    return message;
+  },
+};
+
+function createBaseGetLegacyResponse(): GetLegacyResponse {
+  return { iceServers: [] };
+}
+
+export const GetLegacyResponse = {
+  encode(
+    message: GetLegacyResponse,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    for (const v of message.iceServers) {
+      writer.uint32(10).string(v!);
+    }
+    return writer;
+  },
+
+  decode(input: _m0.Reader | Uint8Array, length?: number): GetLegacyResponse {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseGetLegacyResponse();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.iceServers.push(reader.string());
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): GetLegacyResponse {
+    return {
+      iceServers: Array.isArray(object?.iceServers)
+        ? object.iceServers.map((e: any) => String(e))
+        : [],
+    };
+  },
+
+  toJSON(message: GetLegacyResponse): unknown {
+    const obj: any = {};
+    if (message.iceServers) {
+      obj.iceServers = message.iceServers.map((e) => e);
+    } else {
+      obj.iceServers = [];
+    }
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<GetLegacyResponse>, I>>(
+    object: I
+  ): GetLegacyResponse {
+    const message = createBaseGetLegacyResponse();
+    message.iceServers = object.iceServers?.map((e) => e) || [];
     return message;
   },
 };

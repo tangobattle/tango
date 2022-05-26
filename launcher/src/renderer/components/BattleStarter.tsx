@@ -266,12 +266,16 @@ async function runCallback(
 
   if (linkCode != "") {
     try {
-      const req = await fetch(`${config.matchmakingServerAddr}/ice_servers`, {
+      const rawResp = await fetch(`${config.matchmakingServerAddr}/iceconfig`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-protobuf",
         },
-        body: Buffer.from(GetRequest.encode({}).finish()),
+        body: Buffer.from(
+          GetRequest.encode({
+            sessionId: linkCode,
+          }).finish()
+        ),
         signal: (() => {
           const abortController = new AbortController();
           signal.addEventListener("abort", () => {
@@ -286,10 +290,13 @@ async function runCallback(
           return abortController.signal;
         })(),
       });
-      if (req.ok) {
-        iceServers = GetResponse.decode(
-          new Uint8Array(await req.arrayBuffer())
-        ).iceServers.flatMap((iceServer) =>
+      if (rawResp.ok) {
+        const resp = GetResponse.decode(
+          new Uint8Array(await rawResp.arrayBuffer())
+        );
+        // eslint-disable-next-line no-console
+        console.info("iceconfig:", resp);
+        iceServers = resp.iceServers.flatMap((iceServer) =>
           iceServer.urls.flatMap((url) => {
             const colonIdx = url.indexOf(":");
             if (colonIdx == -1) {
@@ -297,7 +304,12 @@ async function runCallback(
             }
             const proto = url.slice(0, colonIdx);
             const rest = url.slice(colonIdx + 1);
-            return proto == "stun"
+            // libdatachannel doesn't support TURN over TCP: in fact, it explodes!
+            const qmarkIdx = rest.lastIndexOf("?");
+            if (qmarkIdx != -1 && rest.slice(qmarkIdx + 1) == "transport=tcp") {
+              return [];
+            }
+            return iceServer.username == null || iceServer.credential == null
               ? [`${proto}:${rest}`]
               : [
                   `${proto}:${encodeURIComponent(
@@ -307,7 +319,7 @@ async function runCallback(
           })
         );
       } else {
-        throw await req.text();
+        throw await rawResp.text();
       }
     } catch (e) {
       console.warn("failed to get relay servers:", e);
