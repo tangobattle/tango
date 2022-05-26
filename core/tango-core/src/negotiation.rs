@@ -84,10 +84,10 @@ pub async fn negotiate(
     log::info!("candidates gathered");
 
     ipc_sender
-        .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
-                tango_protos::ipc::from_core_message::StateEvent {
-                    state: tango_protos::ipc::from_core_message::state_event::State::Waiting.into(),
+        .send(ipc::protos::FromCoreMessage {
+            which: Some(ipc::protos::from_core_message::Which::StateEv(
+                ipc::protos::from_core_message::StateEvent {
+                    state: ipc::protos::from_core_message::state_event::State::Waiting.into(),
                 },
             )),
         })
@@ -109,11 +109,10 @@ pub async fn negotiate(
     );
 
     ipc_sender
-        .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
-                tango_protos::ipc::from_core_message::StateEvent {
-                    state: tango_protos::ipc::from_core_message::state_event::State::Connecting
-                        .into(),
+        .send(ipc::protos::FromCoreMessage {
+            which: Some(ipc::protos::from_core_message::Which::StateEv(
+                ipc::protos::from_core_message::StateEvent {
+                    state: ipc::protos::from_core_message::state_event::State::Connecting.into(),
                 },
             )),
         })
@@ -152,11 +151,10 @@ pub async fn negotiate(
     }
 
     ipc_sender
-        .send(tango_protos::ipc::FromCoreMessage {
-            which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
-                tango_protos::ipc::from_core_message::StateEvent {
-                    state: tango_protos::ipc::from_core_message::state_event::State::Starting
-                        .into(),
+        .send(ipc::protos::FromCoreMessage {
+            which: Some(ipc::protos::from_core_message::Which::StateEv(
+                ipc::protos::from_core_message::StateEvent {
+                    state: ipc::protos::from_core_message::state_event::State::Starting.into(),
                 },
             )),
         })

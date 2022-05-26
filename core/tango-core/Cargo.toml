@@ -41,3 +41,4 @@ sdl2-input-helper = { path = "../sdl2-input-helper" }
 
 [build-dependencies]
 winres = "0.1"
+prost-build = "0.10"

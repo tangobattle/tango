@@ -152,12 +152,12 @@ fn main() -> Result<(), anyhow::Error> {
                 tokio::select! {
                     msg = ipc_receiver.receive() => {
                         match msg?.which {
-                            Some(tango_protos::ipc::to_core_message::Which::SmuggleReq(tango_protos::ipc::to_core_message::SmuggleRequest { data })) => {
+                            Some(tango_core::ipc::protos::to_core_message::Which::SmuggleReq(tango_core::ipc::protos::to_core_message::SmuggleRequest { data })) => {
                                 dc_tx.send(&tango_core::protocol::Packet::Smuggle(tango_core::protocol::Smuggle {
                                     data,
                                 }).serialize()?).await?;
                             },
-                            Some(tango_protos::ipc::to_core_message::Which::StartReq(start_req)) => {
+                            Some(tango_core::ipc::protos::to_core_message::Which::StartReq(start_req)) => {
                                 dc_tx.send(&tango_core::protocol::Packet::Hola(tango_core::protocol::Hola {}).serialize()?).await?;
                                 break start_req;
                             },
@@ -184,8 +184,8 @@ fn main() -> Result<(), anyhow::Error> {
                                     tango_core::protocol::Packet::Smuggle(tango_core::protocol::Smuggle {
                                         data,
                                     }) => {
-                                        ipc_sender.send(tango_protos::ipc::FromCoreMessage {
-                                            which: Some(tango_protos::ipc::from_core_message::Which::SmuggleEv(tango_protos::ipc::from_core_message::SmuggleEvent {
+                                        ipc_sender.send(tango_core::ipc::protos::FromCoreMessage {
+                                            which: Some(tango_core::ipc::protos::from_core_message::Which::SmuggleEv(tango_core::ipc::protos::from_core_message::SmuggleEvent {
                                                 data,
                                             }))
                                         }).await?;
@@ -202,8 +202,8 @@ fn main() -> Result<(), anyhow::Error> {
                                     }) => {
                                         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?;
                                         let then = std::time::Duration::from_nanos(ts);
-                                        ipc_sender.send(tango_protos::ipc::FromCoreMessage {
-                                            which: Some(tango_protos::ipc::from_core_message::Which::ConnectionQualityEv(tango_protos::ipc::from_core_message::ConnectionQualityEvent {
+                                        ipc_sender.send(tango_core::ipc::protos::FromCoreMessage {
+                                            which: Some(tango_core::ipc::protos::from_core_message::Which::ConnectionQualityEv(tango_core::ipc::protos::from_core_message::ConnectionQualityEvent {
                                                 rtt: (now - then).as_nanos() as u64,
                                             }))
                                         }).await?;
@@ -253,11 +253,11 @@ fn main() -> Result<(), anyhow::Error> {
     } else {
         rt.block_on(async {
             ipc_sender
-                .send(tango_protos::ipc::FromCoreMessage {
-                    which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
-                        tango_protos::ipc::from_core_message::StateEvent {
+                .send(tango_core::ipc::protos::FromCoreMessage {
+                    which: Some(tango_core::ipc::protos::from_core_message::Which::StateEv(
+                        tango_core::ipc::protos::from_core_message::StateEvent {
                             state:
-                                tango_protos::ipc::from_core_message::state_event::State::Starting
+                                tango_core::ipc::protos::from_core_message::state_event::State::Starting
                                     .into(),
                         },
                     )),
@@ -266,7 +266,7 @@ fn main() -> Result<(), anyhow::Error> {
 
             let msg = ipc_receiver.receive().await;
             match msg?.which {
-                Some(tango_protos::ipc::to_core_message::Which::StartReq(start_req)) => {
+                Some(tango_core::ipc::protos::to_core_message::Which::StartReq(start_req)) => {
                     Ok((
                         start_req.window_title,
                         start_req.rom_path,

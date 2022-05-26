@@ -25,7 +25,7 @@ import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { getBasePath, getSavesPath } from "../../../paths";
-import { SetSettings } from "../../../protos/lobby";
+import { SetSettings } from "../../../protos/generated/lobby";
 import { KNOWN_ROMS } from "../../../rom";
 import * as bn6 from "../../../saveedit/bn6";
 import { fallbackLng } from "../../i18n";

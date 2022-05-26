@@ -295,12 +295,11 @@ impl Game {
     pub fn run(mut self) -> anyhow::Result<()> {
         self.rt.block_on(async {
             self.ipc_sender
-                .send(tango_protos::ipc::FromCoreMessage {
-                    which: Some(tango_protos::ipc::from_core_message::Which::StateEv(
-                        tango_protos::ipc::from_core_message::StateEvent {
-                            state:
-                                tango_protos::ipc::from_core_message::state_event::State::Running
-                                    .into(),
+                .send(ipc::protos::FromCoreMessage {
+                    which: Some(ipc::protos::from_core_message::Which::StateEv(
+                        ipc::protos::from_core_message::StateEvent {
+                            state: ipc::protos::from_core_message::state_event::State::Running
+                                .into(),
                         },
                     )),
                 })

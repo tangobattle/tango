@@ -3,6 +3,10 @@ use bytes::Buf;
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+pub mod protos {
+    include!(concat!(env!("OUT_DIR"), "/tango.ipc.rs"));
+}
+
 pub struct Sender {
     writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + 'static>>,
 }
@@ -14,7 +18,7 @@ impl Sender {
         }
     }
 
-    pub async fn send(&mut self, req: tango_protos::ipc::FromCoreMessage) -> anyhow::Result<()> {
+    pub async fn send(&mut self, req: protos::FromCoreMessage) -> anyhow::Result<()> {
         let buf = req.encode_to_vec();
         self.writer.write_u32_le(buf.len() as u32).await?;
         self.writer.flush().await?;
@@ -37,7 +41,7 @@ impl Receiver {
         }
     }
 
-    pub async fn receive(&mut self) -> anyhow::Result<tango_protos::ipc::ToCoreMessage> {
+    pub async fn receive(&mut self) -> anyhow::Result<protos::ToCoreMessage> {
         while self.buf.len() < 4 {
             self.reader.read_buf(&mut self.buf).await?;
         }
@@ -46,7 +50,7 @@ impl Receiver {
         while self.buf.len() < 4 + size {
             self.reader.read_buf(&mut self.buf).await?;
         }
-        let resp = tango_protos::ipc::ToCoreMessage::decode(&self.buf[4..4 + size])?;
+        let resp = protos::ToCoreMessage::decode(&self.buf[4..4 + size])?;
 
         self.buf.advance(4 + size);
 

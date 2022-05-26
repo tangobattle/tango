@@ -3,6 +3,8 @@ extern crate winres;
 use std::env;
 
 fn main() {
+    prost_build::compile_protos(&["src/protos/ipc.proto"], &["src/"]).unwrap();
+
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
     if target_os == "windows" {
