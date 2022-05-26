@@ -34,5 +34,6 @@
     "update-channel.disabled": "Disabled",
     "rust-log-filter": "RUST_LOG filter",
     "open-logs-folder": "Open logs folder",
-    "matchmaking-server-addr": "Matchmaking server address"
+    "signaling-endpoint": "Signaling endpoint",
+    "iceconfig-endpoint": "ICE configuration endpoint"
 }

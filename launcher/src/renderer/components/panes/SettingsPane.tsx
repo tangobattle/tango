@@ -358,16 +358,30 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.matchmakingServerAddr}
+            value={config.signalingEndpoint}
             onChange={(e) => {
               (async () => {
                 saveConfig((config) => ({
                   ...config,
-                  matchmakingServerAddr: e.target.value,
+                  signalingEndpoint: e.target.value,
                 }));
               })();
             }}
-            label={<Trans i18nKey="settings:matchmaking-server-addr" />}
+            label={<Trans i18nKey="settings:signaling-endpoint" />}
+          />
+          <TextField
+            size="small"
+            fullWidth
+            value={config.iceconfigEndpoint}
+            onChange={(e) => {
+              (async () => {
+                saveConfig((config) => ({
+                  ...config,
+                  iceconfigEndpoint: e.target.value,
+                }));
+              })();
+            }}
+            label={<Trans i18nKey="settings:iceconfig-endpoint" />}
           />
           <FormControl fullWidth size="small">
             <InputLabel id="update-channel-label">

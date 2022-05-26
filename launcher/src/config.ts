@@ -24,7 +24,8 @@ export interface Config {
     select: PhysicalInput[];
     start: PhysicalInput[];
   };
-  matchmakingServerAddr: string;
+  signalingEndpoint: string;
+  iceconfigEndpoint: string;
   iceServers: string[];
 }
 
@@ -46,7 +47,8 @@ export const DEFAULT: Config = {
     select: [{ Key: "Backspace" }, { Button: "back" }],
     start: [{ Key: "Return" }, { Button: "start" }],
   },
-  matchmakingServerAddr: "https://lets.tangobattle.com",
+  signalingEndpoint: "wss://lets.tangobattle.com/signaling",
+  iceconfigEndpoint: "https://lets.tangobattle.com/iceconfig",
   iceServers: [
     "stun://stun.l.google.com:19302",
     "stun://stun1.l.google.com:19302",

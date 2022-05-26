@@ -34,5 +34,6 @@
     "update-channel.disabled": "禁用",
     "rust-log-filter": "RUST_LOG过滤",
     "open-logs-folder": "打开日志文件夹",
-    "matchmaking-server-addr": "匹配服务器地址"
+    "signaling-endpoint": "信令端点",
+    "iceconfig-endpoint": "ICE配置端点"
 }

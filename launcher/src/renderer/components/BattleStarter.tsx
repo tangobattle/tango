@@ -268,7 +268,7 @@ async function runCallback(
 
   if (linkCode != "") {
     try {
-      const rawResp = await fetch(`${config.matchmakingServerAddr}/iceconfig`, {
+      const rawResp = await fetch(config.iceconfigEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-protobuf",
@@ -330,7 +330,7 @@ async function runCallback(
 
   const core = new ipc.Core(
     config.inputMapping,
-    `${config.matchmakingServerAddr.replace(/^http/, "ws")}/signaling`,
+    config.signalingEndpoint,
     iceServers,
     linkCode,
     {
