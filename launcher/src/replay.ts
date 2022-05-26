@@ -13,6 +13,7 @@ export interface GameInfo {
 export interface ReplayMetadata extends GameInfo {
   ts: number;
   linkCode: string;
+  nickname: string;
   remote: (GameInfo & { nickname: string }) | null;
 }
 

@@ -668,6 +668,7 @@ async function runCallback(
             ts: now.valueOf(),
             linkCode: linkCode,
             rom: ownGameInfo.rom,
+            nickname: ownGameSettings.nickname,
             patch:
               ownGameInfo.patch != null
                 ? {
