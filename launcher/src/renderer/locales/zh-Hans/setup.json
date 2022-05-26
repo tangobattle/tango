@@ -10,7 +10,6 @@
   "saves-step-title": "文件夹中有文件但是请将你的游戏存档放入 {{path}}",
   "saves-step-description": "确保游戏存档与你放在ROM文件夹中的游戏兼容。游戏存档应该是.sav或.sa1文件。",
   "saves-step-error": "找不到任何支持的游戏存档。请确保游戏存档与你的ROM兼容。",
-  "step-4-title": "全部完成!",
   "open-folder": "打开文件夹",
   "next": "下一步"
 }
