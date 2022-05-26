@@ -4,7 +4,7 @@ members = [
     "mgba",
     "tango-core",
     "tango-protos",
-    "tango-server",
+    "tango-signaling-server",
     "mgba-sys",
     "keymaptool",
     "datachannel-wrapper",
