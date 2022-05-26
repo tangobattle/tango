@@ -92,8 +92,6 @@ The launcher is written in Node + Electron.
 
 ### Server
 
-#### Matchmaking server
-
 The server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by sending WebRTC SDPs around.
 
 If you already have Rust installed, you can build it like so:
@@ -106,17 +104,6 @@ If you already have Rust installed, you can build it like so:
     ```
 
 That should be it! The server should be available in the usual Rust output directory.
-
-#### ICE configuration server
-
-**An ICE configuration server is not provided. You must write your own. Note that by default Tango will use Google's public STUN servers, but will not use any TURN servers.**
-
-If you want to guarantee connections across even funny NATed connections, you will need to use an ICE configuration server. This can be configured in Tango under _Settings > Advanced > ICE configuration server address_.
-
-The ICE configuration server must:
-
--   Run over HTTP or HTTPS.
--   Accept, via POST, `GetRequest` and return `GetResponse` as defined in `core/tango-protos/src/protos/iceconfig.proto`. Note that these must be in serialized Protobuf format.
 
 ## Automatic Updates
 
