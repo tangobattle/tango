@@ -4,10 +4,11 @@ import { app } from "@electron/remote";
 
 import { PatchInfos, scan, update } from "../../patch";
 import { getPatchesPath } from "../../paths";
+import { useConfig } from "./ConfigContext";
 
 export interface PatchesValue {
   rescan(): Promise<void>;
-  update(url: string): Promise<void>;
+  update(): Promise<void>;
   updating: boolean;
   patches: PatchInfos;
 }
@@ -47,6 +48,7 @@ export const PatchesProvider = ({
 }: {
   children?: React.ReactNode;
 } = {}) => {
+  const { config } = useConfig();
   const [currentPatches, setCurrentPatches] = React.useState(scanPatches());
   const [updating, setUpdating] = React.useState(false);
   const rescan = async () => {
@@ -61,10 +63,10 @@ export const PatchesProvider = ({
     <Context.Provider
       value={{
         rescan,
-        async update(repo: string) {
+        async update() {
           try {
             setUpdating(true);
-            await update(getPatchesPath(app), repo);
+            await update(getPatchesPath(app), config.patchRepo);
             await rescan();
           } catch (e) {
             console.error("failed to update patches", e);

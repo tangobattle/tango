@@ -1,5 +1,6 @@
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { TransitionGroup } from "react-transition-group";
 import semver from "semver";
 
 import HealingIcon from "@mui/icons-material/Healing";
@@ -7,6 +8,7 @@ import SyncIcon from "@mui/icons-material/Sync";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
+import Collapse from "@mui/material/Collapse";
 import Fab from "@mui/material/Fab";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
@@ -18,14 +20,12 @@ import Typography from "@mui/material/Typography";
 
 import { KNOWN_ROMS } from "../../../rom";
 import { fallbackLng } from "../../i18n";
-import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 
 export default function PatchesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
 
   const { patches, update, updating } = usePatches();
-  const { config } = useConfig();
 
   const groupedPatches: { [key: string]: string[] } = {};
   for (const k of Object.keys(patches)) {
@@ -61,51 +61,61 @@ export default function PatchesPane({ active }: { active: boolean }) {
       {romNames.length > 0 ? (
         <>
           <List dense disablePadding>
-            {romNames.map((romName) => (
-              <React.Fragment key={romName}>
-                <ListSubheader>
-                  {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
-                    KNOWN_ROMS[romName].title[fallbackLng]}
-                </ListSubheader>
-                {groupedPatches[romName].sort().map((patchName) => (
-                  <ListItem key={patchName} sx={{ userSelect: "none" }}>
-                    <ListItemText
-                      primary={patches[patchName].title}
-                      primaryTypographyProps={{
-                        sx: {
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        },
-                      }}
-                      secondary={
-                        <Trans
-                          i18nKey="patches:byline"
-                          values={{
-                            version: semver.maxSatisfying(
-                              Object.keys(patches[patchName].versions),
-                              "*"
-                            ),
-                            authors: listFormatter.format(
-                              patches[patchName].authors.flatMap(({ name }) =>
-                                name != null ? [name] : []
-                              )
-                            ),
-                          }}
-                        />
-                      }
-                      secondaryTypographyProps={{
-                        sx: {
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        },
-                      }}
-                    />
-                  </ListItem>
-                ))}
-              </React.Fragment>
-            ))}
+            <TransitionGroup>
+              {romNames.map((romName) => (
+                <Collapse key={romName}>
+                  <ListSubheader>
+                    {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
+                      KNOWN_ROMS[romName].title[fallbackLng]}
+                  </ListSubheader>
+                  <TransitionGroup>
+                    {groupedPatches[romName].sort().map((patchName) => {
+                      const version = semver.maxSatisfying(
+                        Object.keys(patches[patchName].versions),
+                        "*"
+                      );
+                      return (
+                        <Collapse key={`${patchName} ${version}`}>
+                          <ListItem sx={{ userSelect: "none" }}>
+                            <ListItemText
+                              primary={patches[patchName].title}
+                              primaryTypographyProps={{
+                                sx: {
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                },
+                              }}
+                              secondary={
+                                <Trans
+                                  i18nKey="patches:byline"
+                                  values={{
+                                    version,
+                                    authors: listFormatter.format(
+                                      patches[patchName].authors.flatMap(
+                                        ({ name }) =>
+                                          name != null ? [name] : []
+                                      )
+                                    ),
+                                  }}
+                                />
+                              }
+                              secondaryTypographyProps={{
+                                sx: {
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                },
+                              }}
+                            />
+                          </ListItem>
+                        </Collapse>
+                      );
+                    })}
+                  </TransitionGroup>
+                </Collapse>
+              ))}
+            </TransitionGroup>
           </List>
           <Tooltip title={<Trans i18nKey="patches:update" />}>
             <Fab
@@ -126,7 +136,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
               }}
               disabled={updating}
               onClick={() => {
-                update(config.patchRepo);
+                update();
               }}
             >
               <SyncIcon />
@@ -155,7 +165,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
               }
               variant="contained"
               onClick={() => {
-                update(config.patchRepo);
+                update();
               }}
             >
               <Trans i18nKey="patches:update" />
