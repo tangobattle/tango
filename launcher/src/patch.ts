@@ -45,25 +45,22 @@ interface RawPatchInfo {
 }
 
 export async function update(dir: string, url: string) {
-  try {
+  const addRemoteAndFetch = async () => {
+    await git.addRemote({ fs, dir, remote: "origin", url, force: true });
     await git.fetch({
       fs,
       http,
       dir,
-      url,
+      remote: "origin",
       ref: "main",
     });
+  };
+  try {
+    await addRemoteAndFetch();
   } catch (e) {
-    console.error("failed to fetch, will do a full clone", e);
-    await git.clone({
-      fs,
-      http,
-      dir,
-      url,
-      depth: 1,
-      singleBranch: true,
-      ref: "main",
-    });
+    console.error("failed to fetch, will reinit", e);
+    await git.init({ fs, dir });
+    await addRemoteAndFetch();
   }
   await git.checkout({ fs, dir, ref: "remotes/origin/main", force: true });
 }
