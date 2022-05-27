@@ -1,0 +1,5 @@
+{
+  "no-patches": "パッチがありません",
+  "update": "更新",
+  "byline": "v{{version}} 作：{{authors}}"
+}

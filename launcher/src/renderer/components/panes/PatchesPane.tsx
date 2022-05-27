@@ -1,5 +1,6 @@
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import semver from "semver";
 
 import HealingIcon from "@mui/icons-material/Healing";
 import SyncIcon from "@mui/icons-material/Sync";
@@ -15,7 +16,6 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { PatchInfo } from "../../../patch";
 import { KNOWN_ROMS } from "../../../rom";
 import { fallbackLng } from "../../i18n";
 import { useConfig } from "../ConfigContext";
@@ -82,8 +82,12 @@ export default function PatchesPane({ active }: { active: boolean }) {
                       }}
                       secondary={
                         <Trans
-                          i18nKey="play:patch-byline"
+                          i18nKey="patches:byline"
                           values={{
+                            version: semver.maxSatisfying(
+                              Object.keys(patches[patchName].versions),
+                              "*"
+                            ),
                             authors: listFormatter.format(
                               patches[patchName].authors.flatMap(({ name }) =>
                                 name != null ? [name] : []
