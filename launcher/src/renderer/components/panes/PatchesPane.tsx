@@ -24,10 +24,8 @@ import { usePatches } from "../PatchesContext";
 export default function PatchesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
 
-  const { patches, update } = usePatches();
+  const { patches, update, updating } = usePatches();
   const { config } = useConfig();
-
-  const [updating, setUpdating] = React.useState(false);
 
   const groupedPatches: { [key: string]: string[] } = {};
   for (const k of Object.keys(patches)) {
@@ -62,7 +60,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
     >
       {romNames.length > 0 ? (
         <>
-          <List dense>
+          <List dense disablePadding>
             {romNames.map((romName) => (
               <React.Fragment key={romName}>
                 <ListSubheader>
@@ -128,16 +126,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
               }}
               disabled={updating}
               onClick={() => {
-                (async () => {
-                  try {
-                    setUpdating(true);
-                    await update(config.patchRepo);
-                  } catch (e) {
-                    console.error(e);
-                  } finally {
-                    setUpdating(false);
-                  }
-                })();
+                update(config.patchRepo);
               }}
             >
               <SyncIcon />
@@ -166,16 +155,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
               }
               variant="contained"
               onClick={() => {
-                (async () => {
-                  try {
-                    setUpdating(true);
-                    await update(config.patchRepo);
-                  } catch (e) {
-                    console.error(e);
-                  } finally {
-                    setUpdating(false);
-                  }
-                })();
+                update(config.patchRepo);
               }}
             >
               <Trans i18nKey="patches:update" />

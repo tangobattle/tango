@@ -8,6 +8,7 @@ import { getPatchesPath } from "../../paths";
 export interface PatchesValue {
   rescan(): Promise<void>;
   update(url: string): Promise<void>;
+  updating: boolean;
   patches: PatchInfos;
 }
 
@@ -47,6 +48,7 @@ export const PatchesProvider = ({
   children?: React.ReactNode;
 } = {}) => {
   const [currentPatches, setCurrentPatches] = React.useState(scanPatches());
+  const [updating, setUpdating] = React.useState(false);
   const rescan = async () => {
     try {
       setCurrentPatches(await scan(getPatchesPath(app)));
@@ -60,10 +62,18 @@ export const PatchesProvider = ({
       value={{
         rescan,
         async update(repo: string) {
-          await update(getPatchesPath(app), repo);
-          await rescan();
+          try {
+            setUpdating(true);
+            await update(getPatchesPath(app), repo);
+            await rescan();
+          } catch (e) {
+            console.error("failed to update patches", e);
+          } finally {
+            setUpdating(false);
+          }
         },
         patches: currentPatches,
+        updating,
       }}
     >
       {children}
