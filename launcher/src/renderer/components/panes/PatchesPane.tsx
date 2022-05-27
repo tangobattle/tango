@@ -1,7 +1,5 @@
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
-import AutoSizer from "react-virtualized-auto-sizer";
-import { FixedSizeList, ListChildComponentProps } from "react-window";
 
 import HealingIcon from "@mui/icons-material/Healing";
 import SyncIcon from "@mui/icons-material/Sync";
@@ -9,75 +7,49 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import Fab from "@mui/material/Fab";
+import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { PatchInfo } from "../../../patch";
+import { KNOWN_ROMS } from "../../../rom";
+import { fallbackLng } from "../../i18n";
 import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 
-function PatchItem({
-  ListChildProps: { style },
-  patchName,
-  patch,
-}: {
-  ListChildProps: ListChildComponentProps;
-  patchName: string;
-  patch: PatchInfo;
-}) {
+export default function PatchesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
 
-  const listFormatter = new Intl.ListFormat(i18n.resolvedLanguage, {
-    style: "long",
-    type: "conjunction",
-  });
-
-  return (
-    <ListItem style={style} key={patchName} sx={{ userSelect: "none" }}>
-      <ListItemText
-        primary={patch.title}
-        primaryTypographyProps={{
-          sx: {
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          },
-        }}
-        secondary={
-          <Trans
-            i18nKey="play:patch-byline"
-            values={{
-              authors: listFormatter.format(
-                patch.authors.flatMap(({ name }) =>
-                  name != null ? [name] : []
-                )
-              ),
-            }}
-          />
-        }
-        secondaryTypographyProps={{
-          sx: {
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          },
-        }}
-      />
-    </ListItem>
-  );
-}
-
-export default function PatchesPane({ active }: { active: boolean }) {
   const { patches, update } = usePatches();
   const { config } = useConfig();
 
   const [updating, setUpdating] = React.useState(false);
 
-  const patchNames = Object.keys(patches);
-  patchNames.sort();
+  const groupedPatches: { [key: string]: string[] } = {};
+  for (const k of Object.keys(patches)) {
+    groupedPatches[patches[k].forROM] = groupedPatches[patches[k].forROM] || [];
+    groupedPatches[patches[k].forROM].push(k);
+  }
+
+  const romNames = Object.keys(groupedPatches);
+  romNames.sort((k1, k2) => {
+    const title1 =
+      KNOWN_ROMS[k1].title[i18n.resolvedLanguage] ||
+      KNOWN_ROMS[k1].title[fallbackLng];
+    const title2 =
+      KNOWN_ROMS[k2].title[i18n.resolvedLanguage] ||
+      KNOWN_ROMS[k2].title[fallbackLng];
+    return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
+  });
+
+  const listFormatter = new Intl.ListFormat(i18n.resolvedLanguage, {
+    style: "long",
+    type: "conjunction",
+  });
 
   return (
     <Box
@@ -88,31 +60,56 @@ export default function PatchesPane({ active }: { active: boolean }) {
         display: active ? "flex" : "none",
       }}
     >
-      {patchNames.length > 0 ? (
+      {romNames.length > 0 ? (
         <>
-          <AutoSizer>
-            {({ height, width }) => (
-              <FixedSizeList
-                height={height}
-                width={width}
-                itemCount={patchNames.length}
-                itemSize={60}
-              >
-                {(props) => (
-                  <PatchItem
-                    ListChildProps={props}
-                    patchName={patchNames[props.index]}
-                    patch={patches[patchNames[props.index]]}
-                  />
-                )}
-              </FixedSizeList>
-            )}
-          </AutoSizer>
+          <List>
+            {romNames.map((romName) => (
+              <React.Fragment key={romName}>
+                <ListSubheader>
+                  {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
+                    KNOWN_ROMS[romName].title[fallbackLng]}
+                </ListSubheader>
+                {groupedPatches[romName].sort().map((patchName) => (
+                  <ListItem key={patchName} sx={{ userSelect: "none" }}>
+                    <ListItemText
+                      primary={patches[patchName].title}
+                      primaryTypographyProps={{
+                        sx: {
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        },
+                      }}
+                      secondary={
+                        <Trans
+                          i18nKey="play:patch-byline"
+                          values={{
+                            authors: listFormatter.format(
+                              patches[patchName].authors.flatMap(({ name }) =>
+                                name != null ? [name] : []
+                              )
+                            ),
+                          }}
+                        />
+                      }
+                      secondaryTypographyProps={{
+                        sx: {
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        },
+                      }}
+                    />
+                  </ListItem>
+                ))}
+              </React.Fragment>
+            ))}
+          </List>
           <Tooltip title={<Trans i18nKey="patches:update" />}>
             <Fab
               color="primary"
               sx={{
-                position: "absolute",
+                position: "fixed",
                 bottom: "16px",
                 right: "16px",
                 animation: updating ? "spin 2s linear infinite" : null,
