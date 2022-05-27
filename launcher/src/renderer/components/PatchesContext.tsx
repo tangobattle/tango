@@ -2,11 +2,12 @@ import React, { useContext } from "react";
 
 import { app } from "@electron/remote";
 
-import { PatchInfos, scan } from "../../patch";
+import { PatchInfos, scan, update } from "../../patch";
 import { getPatchesPath } from "../../paths";
 
 export interface PatchesValue {
   rescan(): Promise<void>;
+  update(dir: string, url: string): Promise<void>;
   patches: PatchInfos;
 }
 
@@ -57,6 +58,7 @@ export const PatchesProvider = ({
             console.error(e);
           }
         },
+        update,
         patches: currentPatches,
       }}
     >

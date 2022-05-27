@@ -27,6 +27,7 @@ export interface Config {
   signalingEndpoint: string;
   iceconfigEndpoint: string;
   iceServers: string[];
+  patchRepo: string;
 }
 
 export const DEFAULT: Config = {
@@ -56,6 +57,7 @@ export const DEFAULT: Config = {
     "stun://stun3.l.google.com:19302",
     "stun://stun4.l.google.com:19302",
   ],
+  patchRepo: "https://github.com/tangobattle/patches",
 };
 
 export function ensureSync(path: string) {

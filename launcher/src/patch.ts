@@ -1,6 +1,8 @@
 import { parseOneAddress } from "email-addresses";
-import { constants } from "fs";
+import { constants, default as fs } from "fs";
 import { access, readdir, readFile, stat } from "fs/promises";
+import * as git from "isomorphic-git";
+import * as http from "isomorphic-git/http/node";
 import mkdirp from "mkdirp";
 import path from "path";
 import semver from "semver";
@@ -40,6 +42,20 @@ interface RawPatchInfo {
       netplay_compatibility: string;
     };
   };
+}
+
+export async function update(dir: string, url: string) {
+  await git.clone({
+    fs,
+    http,
+    dir,
+    url,
+    depth: 1,
+    singleBranch: true,
+    ref: "main",
+  });
+  await git.checkout({ fs, dir, ref: "remotes/origin/main", force: true });
+  await scan(dir);
 }
 
 export async function scan(dir: string) {
