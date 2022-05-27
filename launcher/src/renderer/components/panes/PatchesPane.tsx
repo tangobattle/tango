@@ -64,7 +64,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
             <TransitionGroup>
               {romNames.map((romName) => (
                 <Collapse key={romName}>
-                  <ListSubheader>
+                  <ListSubheader sx={{ userSelect: "none" }}>
                     {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
                       KNOWN_ROMS[romName].title[fallbackLng]}
                   </ListSubheader>
