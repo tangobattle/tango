@@ -1,6 +1,8 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 
+import HealingIcon from "@mui/icons-material/Healing";
+import HealingOutlinedIcon from "@mui/icons-material/HealingOutlined";
 import SettingsIcon from "@mui/icons-material/Settings";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import SlowMotionVideoIcon from "@mui/icons-material/SlowMotionVideo";
@@ -76,7 +78,12 @@ function NavbarButton({
   );
 }
 
-export type NavbarSelection = "play" | "replays" | "settings" | null;
+export type NavbarSelection =
+  | "play"
+  | "replays"
+  | "patches"
+  | "settings"
+  | null;
 
 export default function Navbar({
   selected,
@@ -121,6 +128,15 @@ export default function Navbar({
           title={t("navbar:replays")}
           unselectedIcon={<SlowMotionVideoOutlinedIcon />}
           selectedIcon={<SlowMotionVideoIcon />}
+        />
+        <NavbarButton
+          selected={selected == "patches"}
+          onClick={() => {
+            onSelect("patches");
+          }}
+          title={t("navbar:patches")}
+          unselectedIcon={<HealingOutlinedIcon />}
+          selectedIcon={<HealingIcon />}
         />
       </List>
       <List sx={{ mt: "auto", py: 0 }}>

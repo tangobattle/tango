@@ -23,6 +23,7 @@ import { LANGUAGES } from "../i18n";
 import createTheme from "../theme";
 import { ConfigProvider, useConfig } from "./ConfigContext";
 import Navbar, { NavbarSelection } from "./Navbar";
+import PatchesPane from "./panes/PatchesPane";
 import PlayPane from "./panes/PlayPane";
 import ReplaysPane from "./panes/ReplaysPane";
 import SettingsPane from "./panes/SettingsPane";
@@ -45,6 +46,7 @@ function ReadyAppBody() {
       />
       <PlayPane active={selected == "play"} />
       <ReplaysPane active={selected == "replays"} />
+      <PatchesPane active={selected == "patches"} />
       <SettingsPane active={selected == "settings"} />
     </>
   );
@@ -135,7 +137,7 @@ function SetupAppBody() {
               </Typography>
               {romsScanState == "done" && activeStep == 0 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:roms-step-error" />
+                  <Trans i18nKey="setup:step-2-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">

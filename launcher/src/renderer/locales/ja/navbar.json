@@ -1,6 +1,7 @@
 {
   "play": "プレイ",
   "replays": "リプレイ",
+  "patches": "パッチ",
   "settings": "設定",
   "settings-update-available": "設定（更新あり）",
   "settings-update-downloaded": "設定（再起動時に更新されます）"

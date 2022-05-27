@@ -1,6 +1,7 @@
 {
   "play": "玩",
   "replays": "回放",
+  "patches": "补丁",
   "settings": "设定",
   "settings-update-available": "设定（有更新）",
   "settings-update-downloaded": "设定（程序重启时将更新）"
