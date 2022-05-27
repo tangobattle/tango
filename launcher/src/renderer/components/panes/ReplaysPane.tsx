@@ -79,6 +79,7 @@ function ReplayItem({
 
   return (
     <ListItem
+      dense
       style={style}
       key={replay.filename}
       sx={{ userSelect: "none" }}

@@ -62,7 +62,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
     >
       {romNames.length > 0 ? (
         <>
-          <List>
+          <List dense>
             {romNames.map((romName) => (
               <React.Fragment key={romName}>
                 <ListSubheader>
