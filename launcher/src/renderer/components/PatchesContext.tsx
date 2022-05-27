@@ -74,9 +74,12 @@ export const PatchesProvider = ({
 
   React.useEffect(() => {
     update();
-    setInterval(() => {
+    const intervalId = setInterval(() => {
       update();
     }, 60 * 60 * 1000);
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [update]);
 
   return (
