@@ -45,23 +45,24 @@ interface RawPatchInfo {
 }
 
 export async function update(dir: string, url: string) {
-  const addRemoteAndFetch = async () => {
-    await git.addRemote({ fs, dir, remote: "origin", url, force: true });
-    await git.fetch({
-      fs,
-      http,
-      dir,
-      remote: "origin",
-      ref: "main",
-    });
-  };
   try {
-    await addRemoteAndFetch();
+    await git.addRemote({ fs, dir, remote: "origin", url, force: true });
   } catch (e) {
-    console.error("failed to fetch, will reinit", e);
+    // eslint-disable-next-line no-console
+    console.info(
+      "did not manage to add remote, we probably don't have a repo here",
+      e
+    );
     await git.init({ fs, dir });
-    await addRemoteAndFetch();
+    await git.addRemote({ fs, dir, remote: "origin", url, force: true });
   }
+  await git.fetch({
+    fs,
+    http,
+    dir,
+    remote: "origin",
+    ref: "main",
+  });
   await git.checkout({ fs, dir, ref: "remotes/origin/main", force: true });
 }
 
