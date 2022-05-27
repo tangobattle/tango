@@ -45,15 +45,26 @@ interface RawPatchInfo {
 }
 
 export async function update(dir: string, url: string) {
-  await git.clone({
-    fs,
-    http,
-    dir,
-    url,
-    depth: 1,
-    singleBranch: true,
-    ref: "main",
-  });
+  try {
+    await git.fetch({
+      fs,
+      http,
+      dir,
+      url,
+      ref: "main",
+    });
+  } catch (e) {
+    console.error("failed to fetch, will do a full clone", e);
+    await git.clone({
+      fs,
+      http,
+      dir,
+      url,
+      depth: 1,
+      singleBranch: true,
+      ref: "main",
+    });
+  }
   await git.checkout({ fs, dir, ref: "remotes/origin/main", force: true });
 }
 
