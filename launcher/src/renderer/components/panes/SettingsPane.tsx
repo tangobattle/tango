@@ -383,6 +383,20 @@ function AdvancedTab({ active }: { active: boolean }) {
             }}
             label={<Trans i18nKey="settings:iceconfig-endpoint" />}
           />
+          <TextField
+            size="small"
+            fullWidth
+            value={config.patchRepo}
+            onChange={(e) => {
+              (async () => {
+                saveConfig((config) => ({
+                  ...config,
+                  patchRepo: e.target.value,
+                }));
+              })();
+            }}
+            label={<Trans i18nKey="settings:patch-repo" />}
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="update-channel-label">
               <Trans i18nKey="settings:update-channel" />
