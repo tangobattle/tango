@@ -671,6 +671,7 @@ async function runCallback(
             linkCode: linkCode,
             rom: ownGameInfo.rom,
             nickname: ownGameSettings.nickname,
+            revealSetup: ownGameSettings.revealSetup,
             patch:
               ownGameInfo.patch != null
                 ? {
@@ -680,6 +681,7 @@ async function runCallback(
                 : null,
             remote: {
               nickname: opponentGameSettings.nickname,
+              revealSetup: opponentGameSettings.revealSetup,
               rom: opponentGameInfo.rom,
               patch:
                 opponentGameInfo.patch != null

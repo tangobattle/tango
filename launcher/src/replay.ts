@@ -10,11 +10,15 @@ export interface GameInfo {
   } | null;
 }
 
-export interface ReplayMetadata extends GameInfo {
+export interface Side extends GameInfo {
+  nickname: string;
+  revealSetup: boolean;
+}
+
+export interface ReplayMetadata extends Side {
   ts: number;
   linkCode: string;
-  nickname: string;
-  remote: (GameInfo & { nickname: string }) | null;
+  remote: Side | null;
 }
 
 export interface ReplayInfo {
