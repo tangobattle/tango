@@ -7,7 +7,7 @@ import { getPatchesPath } from "../../paths";
 
 export interface PatchesValue {
   rescan(): Promise<void>;
-  update(dir: string, url: string): Promise<void>;
+  update(url: string): Promise<void>;
   patches: PatchInfos;
 }
 
@@ -47,18 +47,22 @@ export const PatchesProvider = ({
   children?: React.ReactNode;
 } = {}) => {
   const [currentPatches, setCurrentPatches] = React.useState(scanPatches());
+  const rescan = async () => {
+    try {
+      setCurrentPatches(await scan(getPatchesPath(app)));
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   return (
     <Context.Provider
       value={{
-        async rescan() {
-          try {
-            setCurrentPatches(await scan(getPatchesPath(app)));
-          } catch (e) {
-            console.error(e);
-          }
+        rescan,
+        async update(repo: string) {
+          await update(getPatchesPath(app), repo);
+          await rescan();
         },
-        update,
         patches: currentPatches,
       }}
     >

@@ -53,7 +53,7 @@ async function* walk(dir: string, root?: string): AsyncIterable<string> {
 }
 
 function ReplayItem({
-  ListChildProps: { index, style },
+  ListChildProps: { style },
   onInfoClick,
   onDumpClick,
   onPlayClick,
@@ -80,7 +80,7 @@ function ReplayItem({
   return (
     <ListItem
       style={style}
-      key={index}
+      key={replay.filename}
       sx={{ userSelect: "none" }}
       secondaryAction={
         <Stack direction="row">
@@ -162,7 +162,21 @@ function ReplayItem({
             )}
           </>
         }
+        primaryTypographyProps={{
+          sx: {
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          },
+        }}
         secondary={<>{replay.filename}</>}
+        secondaryTypographyProps={{
+          sx: {
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          },
+        }}
       />
     </ListItem>
   );

@@ -55,7 +55,6 @@ export async function update(dir: string, url: string) {
     ref: "main",
   });
   await git.checkout({ fs, dir, ref: "remotes/origin/main", force: true });
-  await scan(dir);
 }
 
 export async function scan(dir: string) {
