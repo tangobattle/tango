@@ -2,7 +2,7 @@ import React, { useContext } from "react";
 
 import { app } from "@electron/remote";
 
-import { PatchInfos, scan, update } from "../../patch";
+import { PatchInfos, scan, update as updatePatches } from "../../patch";
 import { getPatchesPath } from "../../paths";
 import { useConfig } from "./ConfigContext";
 
@@ -51,6 +51,7 @@ export const PatchesProvider = ({
   const { config } = useConfig();
   const [currentPatches, setCurrentPatches] = React.useState(scanPatches());
   const [updating, setUpdating] = React.useState(false);
+
   const rescan = async () => {
     try {
       setCurrentPatches(await scan(getPatchesPath(app)));
@@ -59,21 +60,30 @@ export const PatchesProvider = ({
     }
   };
 
+  const update = React.useCallback(async () => {
+    try {
+      setUpdating(true);
+      await updatePatches(getPatchesPath(app), config.patchRepo);
+      await rescan();
+    } catch (e) {
+      console.error("failed to update patches", e);
+    } finally {
+      setUpdating(false);
+    }
+  }, [config.patchRepo]);
+
+  React.useEffect(() => {
+    update();
+    setInterval(() => {
+      update();
+    }, 60 * 60 * 1000);
+  }, [update]);
+
   return (
     <Context.Provider
       value={{
         rescan,
-        async update() {
-          try {
-            setUpdating(true);
-            await update(getPatchesPath(app), config.patchRepo);
-            await rescan();
-          } catch (e) {
-            console.error("failed to update patches", e);
-          } finally {
-            setUpdating(false);
-          }
-        },
+        update,
         patches: currentPatches,
         updating,
       }}
