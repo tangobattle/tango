@@ -1,5 +1,5 @@
 {
   "no-patches": "No patches",
   "update": "Update",
-  "byline": "v{{version}} by {{authors}}"
+  "byline": "by {{authors}}"
 }

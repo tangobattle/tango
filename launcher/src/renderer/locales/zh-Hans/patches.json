@@ -1,5 +1,5 @@
 {
   "no-patches": "没有补丁",
   "update": "更新",
-  "byline": "v{{version}} 作者：{{authors}}"
+  "byline": "作者：{{authors}}"
 }

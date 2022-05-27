@@ -78,7 +78,12 @@ export default function PatchesPane({ active }: { active: boolean }) {
                         <Collapse key={`${patchName} ${version}`}>
                           <ListItem sx={{ userSelect: "none" }}>
                             <ListItemText
-                              primary={patches[patchName].title}
+                              primary={
+                                <>
+                                  {patches[patchName].title}{" "}
+                                  <small>v{version}</small>
+                                </>
+                              }
                               primaryTypographyProps={{
                                 sx: {
                                   whiteSpace: "nowrap",
@@ -90,7 +95,6 @@ export default function PatchesPane({ active }: { active: boolean }) {
                                 <Trans
                                   i18nKey="patches:byline"
                                   values={{
-                                    version,
                                     authors: listFormatter.format(
                                       patches[patchName].authors.flatMap(
                                         ({ name }) =>
