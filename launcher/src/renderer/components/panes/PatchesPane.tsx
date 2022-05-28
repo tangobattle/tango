@@ -60,7 +60,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
     >
       {romNames.length > 0 ? (
         <>
-          <List dense disablePadding>
+          <List dense disablePadding sx={{ flexGrow: 1 }}>
             <TransitionGroup>
               {romNames.map((romName) => (
                 <Collapse key={romName}>
