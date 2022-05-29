@@ -143,7 +143,7 @@ pub enum NegotiationProgress {
     Handshaking,
 }
 
-const MAX_QUEUE_LENGTH: usize = 120;
+const MAX_QUEUE_LENGTH: usize = 240;
 
 impl Match {
     pub fn new(
