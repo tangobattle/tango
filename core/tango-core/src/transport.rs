@@ -20,7 +20,7 @@ impl Transport {
         &mut self,
         round_number: u8,
         local_tick: u32,
-        remote_tick: u32,
+        tick_diff: i8,
         joyflags: u16,
     ) -> anyhow::Result<()> {
         self.dc_tx
@@ -28,7 +28,7 @@ impl Transport {
                 protocol::Packet::Input(protocol::Input {
                     round_number,
                     local_tick,
-                    remote_tick,
+                    tick_diff,
                     joyflags,
                 })
                 .serialize()?

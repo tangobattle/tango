@@ -1,6 +1,6 @@
 use bincode::Options;
 
-pub const VERSION: u8 = 0x14;
+pub const VERSION: u8 = 0x15;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
@@ -61,6 +61,6 @@ pub struct Pong {
 pub struct Input {
     pub round_number: u8,
     pub local_tick: u32,
-    pub remote_tick: u32,
+    pub tick_diff: i8,
     pub joyflags: u16,
 }

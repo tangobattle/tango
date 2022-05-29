@@ -300,7 +300,7 @@ impl Match {
 
                     round.add_remote_input(input::PartialInput {
                         local_tick: input.local_tick,
-                        remote_tick: input.remote_tick,
+                        remote_tick: input.local_tick + input.tick_diff as u32,
                         joyflags: input.joyflags as u16,
                     });
                 }
@@ -546,7 +546,12 @@ impl Round {
             .transport
             .lock()
             .await
-            .send_input(self.number, local_tick, remote_tick, joyflags)
+            .send_input(
+                self.number,
+                local_tick,
+                (remote_tick as i32 - local_tick as i32) as i8,
+                joyflags,
+            )
             .await
         {
             log::warn!("failed to send input: {}", e);
@@ -763,9 +768,9 @@ impl Round {
                 return 0;
             }
         };
-        let dtick = (last_local_input.lag() - self.last_committed_remote_input.lag())
-            - (self.local_delay() as i32 - self.remote_delay() as i32);
-        dtick * game::EXPECTED_FPS as i32 / MAX_QUEUE_LENGTH as i32
+        let dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
+        let ddelay = self.local_delay() as i32 - self.remote_delay() as i32;
+        dtick * game::EXPECTED_FPS as i32 / MAX_QUEUE_LENGTH as i32 + ddelay
     }
 }
 
