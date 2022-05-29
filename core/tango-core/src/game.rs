@@ -389,7 +389,7 @@ impl Game {
 
             if show_debug {
                 let mut lines = vec![format!(
-                    "fps: {:.0}",
+                    "fps: {:.02}",
                     1.0 / self.fps_counter.lock().mean_duration().as_secs_f32()
                 )];
 
@@ -412,18 +412,18 @@ impl Game {
                                 ));
                                 round.tps_adjustment()
                             } else {
-                                0
+                                0.0
                             }
                         } else {
-                            0
+                            0.0
                         }
                     })
                 } else {
-                    0
+                    0.0
                 };
 
                 lines.push(format!(
-                    "emu tps: {:.0} (-{})",
+                    "emu tps: {:.02} ({:+.02})",
                     1.0 / self.emu_tps_counter.lock().mean_duration().as_secs_f32(),
                     tps_adjustment
                 ));

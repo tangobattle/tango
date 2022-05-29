@@ -609,7 +609,7 @@ impl Round {
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
-            .set_fps_target((game::EXPECTED_FPS as i32 + self.tps_adjustment()) as f32);
+            .set_fps_target(game::EXPECTED_FPS as f32 + self.tps_adjustment());
 
         true
     }
@@ -761,16 +761,16 @@ impl Round {
         }
     }
 
-    pub fn tps_adjustment(&self) -> i32 {
+    pub fn tps_adjustment(&self) -> f32 {
         let last_local_input = match &self.last_input {
             Some(input::Pair { local, .. }) => local,
             None => {
-                return 0;
+                return 0.0;
             }
         };
         let dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
         let ddelay = self.local_delay() as i32 - self.remote_delay() as i32;
-        dtick * game::EXPECTED_FPS as i32 / MAX_QUEUE_LENGTH as i32 + ddelay
+        ((dtick + ddelay) * game::EXPECTED_FPS as i32) as f32 / MAX_QUEUE_LENGTH as f32
     }
 }
 
