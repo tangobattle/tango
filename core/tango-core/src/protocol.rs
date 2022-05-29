@@ -1,16 +1,16 @@
 use bincode::Options;
 
-pub const VERSION: u8 = 0x15;
+pub const VERSION: u8 = 0x16;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
         bincode::config::WithOtherIntEncoding<
             bincode::config::DefaultOptions,
-            bincode::config::FixintEncoding,
+            bincode::config::VarintEncoding,
         >,
         bincode::config::Bounded,
     > = bincode::DefaultOptions::new()
-        .with_fixint_encoding()
+        .with_varint_encoding()
         .with_limit(64 * 1024);
 }
 
