@@ -763,8 +763,9 @@ impl Round {
                 return 0;
             }
         };
-        (last_local_input.lag() - self.last_committed_remote_input.lag())
-            - (self.local_delay() as i32 - self.remote_delay() as i32)
+        let dtick = (last_local_input.lag() - self.last_committed_remote_input.lag())
+            - (self.local_delay() as i32 - self.remote_delay() as i32);
+        dtick * game::EXPECTED_FPS as i32 / MAX_QUEUE_LENGTH as i32
     }
 }
 
