@@ -1,6 +1,5 @@
 use rand::Rng;
 
-use crate::audio;
 use crate::fastforwarder;
 use crate::game;
 use crate::hooks;
@@ -60,7 +59,6 @@ impl RoundState {
 
 pub struct Match {
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
-    audio_sample_rate: i32,
     rom_path: std::path::PathBuf,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
@@ -70,7 +68,6 @@ pub struct Match {
     is_offerer: bool,
     round_state: tokio::sync::Mutex<RoundState>,
     primary_thread_handle: mgba::thread::Handle,
-    audio_mux: audio::mux_stream::MuxStream,
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
     transport_rendezvous_tx: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
@@ -143,14 +140,12 @@ pub enum NegotiationProgress {
     Handshaking,
 }
 
-const MAX_QUEUE_LENGTH: usize = 240;
+const MAX_QUEUE_LENGTH: usize = 1200;
 
 impl Match {
     pub fn new(
-        audio_sample_rate: i32,
         rom_path: std::path::PathBuf,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
-        audio_mux: audio::mux_stream::MuxStream,
         peer_conn: datachannel_wrapper::PeerConnection,
         dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
@@ -171,7 +166,6 @@ impl Match {
                 won_last_round,
                 rng.clone(),
             )?)),
-            audio_sample_rate,
             rom_path,
             hooks,
             _peer_conn: peer_conn,
@@ -188,7 +182,6 @@ impl Match {
                 won_last_round,
             }),
             is_offerer,
-            audio_mux,
             primary_thread_handle,
             round_started_tx,
             round_started_rx: tokio::sync::Mutex::new(round_started_rx),
@@ -329,7 +322,7 @@ impl Match {
 
     pub async fn start_round(
         self: &std::sync::Arc<Self>,
-        core: mgba::core::CoreMutRef<'_>,
+        _core: mgba::core::CoreMutRef<'_>,
     ) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
@@ -343,44 +336,6 @@ impl Match {
         let replay_filename = std::path::Path::new(&replay_filename);
         let replay_file = std::fs::File::create(&replay_filename)?;
         log::info!("opened replay: {}", replay_filename.display());
-
-        log::info!("starting audio core");
-        let mut audio_core = mgba::core::Core::new_gba("tango")?;
-        let audio_save_state_holder = std::sync::Arc::new(parking_lot::Mutex::new(None));
-        let rom_vf = mgba::vfile::VFile::open(&self.rom_path, mgba::vfile::flags::O_RDONLY)?;
-        audio_core.as_mut().load_rom(rom_vf)?;
-        audio_core.set_traps(
-            self.hooks
-                .audio_traps(audio_save_state_holder.clone(), local_player_index),
-        );
-
-        log::info!("starting audio thread");
-        let audio_core_thread = mgba::thread::Thread::new(audio_core);
-        audio_core_thread.start()?;
-        let audio_core_handle = audio_core_thread.handle();
-
-        audio_core_handle.pause();
-        let audio_core_mux_handle =
-            self.audio_mux
-                .open_stream(audio::mgba_stretch_stream::MGBAStretchStream::new(
-                    audio_core_handle.clone(),
-                    self.audio_sample_rate,
-                ));
-
-        log::info!("loading our state into audio core");
-        {
-            let audio_core_mux_handle = audio_core_mux_handle.clone();
-            let save_state = core.save_state()?;
-            audio_core_handle.run_on_core(move |mut core| {
-                core.load_state(&save_state).expect("load state");
-            });
-            audio_core_handle
-                .lock_audio()
-                .sync_mut()
-                .set_fps_target(game::EXPECTED_FPS as f32);
-            audio_core_mux_handle.switch();
-        }
-        audio_core_handle.unpause();
 
         log::info!("preparing round state");
 
@@ -417,9 +372,6 @@ impl Match {
                 local_player_index,
                 &self.settings.opponent_nickname,
             )?,
-            audio_save_state_holder,
-            _audio_core_thread: audio_core_thread,
-            _audio_core_mux_handle: audio_core_mux_handle,
             primary_thread_handle: self.primary_thread_handle.clone(),
             transport: self.transport.clone(),
             shadow: self.shadow.clone(),
@@ -456,10 +408,7 @@ pub struct Round {
     local_pending_turn: Option<PendingTurn>,
     replay_writer: Option<replay::Writer>,
     fastforwarder: fastforwarder::Fastforwarder,
-    audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
     primary_thread_handle: mgba::thread::Handle,
-    _audio_core_thread: mgba::thread::Thread,
-    _audio_core_mux_handle: audio::mux_stream::MuxHandle,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
 }
@@ -601,8 +550,6 @@ impl Round {
 
         core.load_state(&dirty_state).expect("load dirty state");
 
-        self.set_audio_save_state(dirty_state);
-
         self.set_committed_state(committed_state);
         self.set_last_input(last_input);
 
@@ -620,10 +567,6 @@ impl Round {
 
     pub fn set_committed_state(&mut self, state: mgba::state::State) {
         self.committed_state = Some(state);
-    }
-
-    pub fn set_audio_save_state(&mut self, state: mgba::state::State) {
-        *self.audio_save_state_holder.lock() = Some(state);
     }
 
     pub fn set_last_input(&mut self, inp: input::Pair<input::Input, input::Input>) {

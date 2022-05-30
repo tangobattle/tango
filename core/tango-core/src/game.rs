@@ -90,10 +90,9 @@ pub struct Game {
     emu_tps_counter: Arc<Mutex<tps::Counter>>,
     match_: std::sync::Weak<tokio::sync::Mutex<Option<Arc<battle::Match>>>>,
     event_loop: sdl2::EventPump,
-    _primary_mux_handle: audio::mux_stream::MuxHandle,
     game_controller: sdl2::GameControllerSubsystem,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
-    _audio_device: sdl2::audio::AudioDevice<crate::audio::mux_stream::MuxStream>,
+    _audio_device: sdl2::audio::AudioDevice<crate::audio::mgba_stretch_stream::MGBAStretchStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     input_mapping: InputMapping,
@@ -174,22 +173,6 @@ impl Game {
 
         let thread = mgba::thread::Thread::new(core);
 
-        let audio_mux = audio::mux_stream::MuxStream::new();
-
-        let audio_device = audio
-            .open_playback(
-                None,
-                &sdl2::audio::AudioSpecDesired {
-                    freq: Some(48000),
-                    channels: Some(2),
-                    samples: Some(512),
-                },
-                |_| audio_mux.clone(),
-            )
-            .unwrap();
-        log::info!("audio spec: {:?}", audio_device.spec());
-        audio_device.resume();
-
         if let Some(match_init) = match_init {
             let (dc_rx, dc_tx) = match_init.dc.split();
 
@@ -205,10 +188,8 @@ impl Game {
                     .expect("rng seed");
                 *match_.lock().await = Some(
                     battle::Match::new(
-                        audio_device.spec().freq,
                         rom_path.clone(),
                         hooks,
-                        audio_mux.clone(),
                         match_init.peer_conn,
                         dc_tx,
                         rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
@@ -242,11 +223,21 @@ impl Game {
             .sync_mut()
             .set_fps_target(EXPECTED_FPS as f32);
 
-        let primary_mux_handle =
-            audio_mux.open_stream(audio::mgba_stretch_stream::MGBAStretchStream::new(
-                thread.handle(),
-                audio_device.spec().freq,
-            ));
+        let audio_device = audio
+            .open_playback(
+                None,
+                &sdl2::audio::AudioSpecDesired {
+                    freq: Some(48000),
+                    channels: Some(2),
+                    samples: Some(512),
+                },
+                |spec| {
+                    audio::mgba_stretch_stream::MGBAStretchStream::new(thread.handle(), spec.freq)
+                },
+            )
+            .unwrap();
+        log::info!("audio spec: {:?}", audio_device.spec());
+        audio_device.resume();
 
         {
             let joyflags = joyflags.clone();
@@ -279,7 +270,6 @@ impl Game {
             rt,
             ipc_sender,
             _audio_device: audio_device,
-            _primary_mux_handle: primary_mux_handle,
             input_mapping,
             fps_counter,
             emu_tps_counter,

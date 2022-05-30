@@ -54,6 +54,13 @@ impl sdl2::audio::AudioCallback for MGBALoopStream {
         right.set_rates(clock_rate as f64, self.sample_rate as f64);
         right.read_samples(&mut self.buf[1..], available, true);
 
+        if available == 0 {
+            for i in &mut buf[..] {
+                *i = 0;
+            }
+            return;
+        }
+
         for chunk in &mut buf.chunks_mut(available as usize * 2) {
             chunk.copy_from_slice(&self.buf[..chunk.len()]);
         }

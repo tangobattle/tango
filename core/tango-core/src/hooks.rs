@@ -32,12 +32,6 @@ pub trait Hooks {
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
-    fn audio_traps(
-        &self,
-        audio_save_state_holder: std::sync::Arc<parking_lot::Mutex<Option<mgba::state::State>>>,
-        local_player_index: u8,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
-
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
     fn replace_opponent_name(&self, core: mgba::core::CoreMutRef, name: &str);
