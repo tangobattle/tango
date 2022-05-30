@@ -4,6 +4,56 @@ import * as _m0 from "protobufjs/minimal";
 
 export const protobufPackage = "tango.ipc";
 
+export enum ExitCode {
+  EXIT_CODE_UNKNOWN = 0,
+  EXIT_CODE_LOST_CONNECTION = 10,
+  EXIT_CODE_PROTOCOL_VERSION_TOO_OLD = 11,
+  EXIT_CODE_PROTOCOL_VERSION_TOO_NEW = 12,
+  EXIT_CODE_RUST_PANIC = 101,
+  UNRECOGNIZED = -1,
+}
+
+export function exitCodeFromJSON(object: any): ExitCode {
+  switch (object) {
+    case 0:
+    case "EXIT_CODE_UNKNOWN":
+      return ExitCode.EXIT_CODE_UNKNOWN;
+    case 10:
+    case "EXIT_CODE_LOST_CONNECTION":
+      return ExitCode.EXIT_CODE_LOST_CONNECTION;
+    case 11:
+    case "EXIT_CODE_PROTOCOL_VERSION_TOO_OLD":
+      return ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_OLD;
+    case 12:
+    case "EXIT_CODE_PROTOCOL_VERSION_TOO_NEW":
+      return ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_NEW;
+    case 101:
+    case "EXIT_CODE_RUST_PANIC":
+      return ExitCode.EXIT_CODE_RUST_PANIC;
+    case -1:
+    case "UNRECOGNIZED":
+    default:
+      return ExitCode.UNRECOGNIZED;
+  }
+}
+
+export function exitCodeToJSON(object: ExitCode): string {
+  switch (object) {
+    case ExitCode.EXIT_CODE_UNKNOWN:
+      return "EXIT_CODE_UNKNOWN";
+    case ExitCode.EXIT_CODE_LOST_CONNECTION:
+      return "EXIT_CODE_LOST_CONNECTION";
+    case ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_OLD:
+      return "EXIT_CODE_PROTOCOL_VERSION_TOO_OLD";
+    case ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_NEW:
+      return "EXIT_CODE_PROTOCOL_VERSION_TOO_NEW";
+    case ExitCode.EXIT_CODE_RUST_PANIC:
+      return "EXIT_CODE_RUST_PANIC";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 export interface FromCoreMessage {
   stateEv: FromCoreMessage_StateEvent | undefined;
   smuggleEv: FromCoreMessage_SmuggleEvent | undefined;

@@ -797,7 +797,7 @@ export default function BattleStarter({
   const isNetplayCompatible = useIsNetplayCompatible();
   const hasGame = useHasGame();
 
-  const [errorDialogState, setErrorDialogState] = React.useState<{
+  const [exitDialogState, setExitDialogState] = React.useState<{
     stderr: string;
     exitStatus: ipc.ExitStatus;
   } | null>(null);
@@ -953,7 +953,7 @@ export default function BattleStarter({
               exitStatus.exitCode != 0 &&
               exitStatus.signalCode != "SIGTERM"
             ) {
-              setErrorDialogState({ stderr, exitStatus });
+              setExitDialogState({ stderr, exitStatus });
             }
             onReadyChange(false);
             onOpponentSettingsChange(null);
@@ -1500,7 +1500,7 @@ export default function BattleStarter({
           </Box>
         </Modal>
       ) : null}
-      {errorDialogState != null ? (
+      {exitDialogState != null ? (
         <Modal open={true}>
           <Box
             sx={{
@@ -1512,7 +1512,6 @@ export default function BattleStarter({
           >
             <Box
               sx={{
-                width: 600,
                 bgcolor: "background.paper",
                 boxShadow: 24,
                 px: 3,
@@ -1521,47 +1520,64 @@ export default function BattleStarter({
               }}
             >
               <Stack spacing={1} flexGrow={1}>
-                <Box sx={{ flexGrow: 0, flexShrink: 0 }}>
-                  <Trans i18nKey="supervisor:crash" />
-                </Box>
-                <Box
-                  sx={{
-                    flexGrow: 0,
-                    flexShrink: 0,
-                    display: "flex",
-                    position: "relative",
-                  }}
-                >
-                  <CopyButton
-                    value={errorDialogState.stderr.trimEnd()}
-                    sx={{
-                      position: "absolute",
-                      right: "16px",
-                      top: "8px",
-                      zEvex: 999,
-                    }}
-                  />
-                  <TextField
-                    multiline
-                    InputProps={{
-                      sx: {
-                        fontSize: "0.8rem",
-                        fontFamily: "monospace",
-                      },
-                    }}
-                    maxRows={20}
-                    sx={{
-                      flexGrow: 1,
-                    }}
-                    value={errorDialogState.stderr.trimEnd()}
-                  />
-                </Box>
+                {exitDialogState.exitStatus.exitCode ==
+                ipc.ExitCode.EXIT_CODE_LOST_CONNECTION ? (
+                  <Box sx={{ flexGrow: 0, flexShrink: 0, width: 400 }}>
+                    <Trans i18nKey="supervisor:lost-connection" />
+                  </Box>
+                ) : ipc.ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_OLD ? (
+                  <Box sx={{ flexGrow: 0, flexShrink: 0, width: 400 }}>
+                    <Trans i18nKey="supervisor:protocol-version-too-old" />
+                  </Box>
+                ) : ipc.ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_NEW ? (
+                  <Box sx={{ flexGrow: 0, flexShrink: 0, width: 400 }}>
+                    <Trans i18nKey="supervisor:protocol-version-too-new" />
+                  </Box>
+                ) : (
+                  <>
+                    <Box sx={{ flexGrow: 0, flexShrink: 0, width: 600 }}>
+                      <Trans i18nKey="supervisor:error.unknown" />
+                    </Box>
+                    <Box
+                      sx={{
+                        flexGrow: 0,
+                        flexShrink: 0,
+                        display: "flex",
+                        position: "relative",
+                      }}
+                    >
+                      <CopyButton
+                        value={exitDialogState.stderr.trimEnd()}
+                        sx={{
+                          position: "absolute",
+                          right: "16px",
+                          top: "8px",
+                          zEvex: 999,
+                        }}
+                      />
+                      <TextField
+                        multiline
+                        InputProps={{
+                          sx: {
+                            fontSize: "0.8rem",
+                            fontFamily: "monospace",
+                          },
+                        }}
+                        maxRows={20}
+                        sx={{
+                          flexGrow: 1,
+                        }}
+                        value={exitDialogState.stderr.trimEnd()}
+                      />
+                    </Box>
+                  </>
+                )}
                 <Stack direction="row" justifyContent="flex-end">
                   <Button
                     variant="contained"
                     color="error"
                     onClick={(_e) => {
-                      setErrorDialogState(null);
+                      setExitDialogState(null);
                     }}
                   >
                     <Trans i18nKey="supervisor:dismiss" />

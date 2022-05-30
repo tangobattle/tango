@@ -7,7 +7,9 @@ import { app } from "@electron/remote";
 
 import { Config } from "./config";
 import { spawn } from "./process";
-import { FromCoreMessage, ToCoreMessage } from "./protos/generated/ipc";
+import { ExitCode, FromCoreMessage, ToCoreMessage } from "./protos/generated/ipc";
+
+export { ExitCode };
 
 export interface MatchSettings {
   rngSeed: string;

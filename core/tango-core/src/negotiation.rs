@@ -3,7 +3,8 @@ use crate::{ipc, protocol, signaling};
 #[derive(Debug)]
 pub enum Error {
     ExpectedHello,
-    ProtocolVersionMismatch,
+    ProtocolVersionTooOld,
+    ProtocolVersionTooNew,
     Other(anyhow::Error),
 }
 
@@ -29,7 +30,8 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Error::ExpectedHello => write!(f, "expected hello"),
-            Error::ProtocolVersionMismatch => write!(f, "protocol version mismatch"),
+            Error::ProtocolVersionTooOld => write!(f, "protocol version too old"),
+            Error::ProtocolVersionTooNew => write!(f, "protocol version too new"),
             Error::Other(e) => write!(f, "other error: {}", e),
         }
     }
@@ -146,8 +148,12 @@ pub async fn negotiate(
         }
     };
 
-    if hello.protocol_version != protocol::VERSION {
-        return Err(Error::ProtocolVersionMismatch);
+    if hello.protocol_version > protocol::VERSION {
+        return Err(Error::ProtocolVersionTooOld);
+    }
+
+    if hello.protocol_version < protocol::VERSION {
+        return Err(Error::ProtocolVersionTooNew);
     }
 
     ipc_sender

@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 
 use clap::StructOpt;
+use tango_core::ipc::protos::ExitCode;
 
 #[derive(Clone, serde::Deserialize)]
 pub enum PhysicalInput {
@@ -135,13 +136,31 @@ fn main() -> Result<(), anyhow::Error> {
 
     let (window_title, rom_path, save_path, pvp_init) = if let Some(session_id) = &args.session_id {
         rt.block_on(async {
-            let (dc, peer_conn) = tango_core::negotiation::negotiate(
+            let (dc, peer_conn) = match tango_core::negotiation::negotiate(
                 &mut ipc_sender,
                 session_id,
                 &args.signaling_connect_addr,
                 &args.ice_servers,
             )
-            .await?;
+            .await {
+                Ok(v) => v,
+                Err(err) => {
+                    match err {
+                        tango_core::negotiation::Error::ExpectedHello => {
+                            return Err(err.into());
+                        }
+                        tango_core::negotiation::Error::ProtocolVersionTooOld => {
+                            std::process::exit(ExitCode::ProtocolVersionTooOld as i32);
+                        }
+                        tango_core::negotiation::Error::ProtocolVersionTooNew => {
+                            std::process::exit(ExitCode::ProtocolVersionTooNew as i32);
+                        }
+                        tango_core::negotiation::Error::Other(_) => {
+                            return Err(err.into());
+                        }
+                    }
+                }
+            };
 
             let (mut dc_rx, mut dc_tx) = dc.split();
 
@@ -214,7 +233,7 @@ fn main() -> Result<(), anyhow::Error> {
                                 }
                             },
                             None => {
-                                anyhow::bail!("data channel closed");
+                                std::process::exit(ExitCode::LostConnection as i32);
                             },
                         }
                     }
@@ -242,7 +261,7 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                         None => {
-                            anyhow::bail!("data channel closed");
+                            std::process::exit(ExitCode::LostConnection as i32);
                         },
                     }
                 }

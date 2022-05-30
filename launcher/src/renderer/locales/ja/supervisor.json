@@ -4,7 +4,10 @@
   "status.waiting": "相手方の接続待機中...",
   "status.connecting": "通信待機中...",
   "status.starting": "起動中...",
-  "crash": "おっと、エミュレータがクラッシュしたようです。バグ報告の際には、このログを提供してください。",
+  "error.lost-connection": "相手方が切断しました。",
+  "error.protocol-version-too-old": "相手方のTangoバージョンが古いため、通信できません。",
+  "error.protocol-version-too-new": "相手方のTangoバージョンが新しすぎます。更新してください。",
+  "error.unknown": "おっと、エミュレータがクラッシュしたようです。バグ報告の際には、このログを提供してください。",
   "cancel": "停止",
   "dismiss": "やべっ！",
   "ok": "わーい！"

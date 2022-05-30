@@ -2,6 +2,14 @@ syntax = "proto3";
 
 package tango.ipc;
 
+enum ExitCode {
+  EXIT_CODE_UNKNOWN = 0;
+  EXIT_CODE_LOST_CONNECTION = 10;
+  EXIT_CODE_PROTOCOL_VERSION_TOO_OLD = 11;
+  EXIT_CODE_PROTOCOL_VERSION_TOO_NEW = 12;
+  EXIT_CODE_RUST_PANIC = 101;
+}
+
 message FromCoreMessage {
   message StateEvent {
     enum State {
