@@ -1523,17 +1523,17 @@ export default function BattleStarter({
                 {exitDialogState.exitStatus.exitCode ==
                 ipc.ExitCode.EXIT_CODE_LOST_CONNECTION ? (
                   <Box sx={{ flexGrow: 0, flexShrink: 0, width: 400 }}>
-                    <Trans i18nKey="supervisor:lost-connection" />
+                    <Trans i18nKey="supervisor:error.lost-connection" />
                   </Box>
                 ) : exitDialogState.exitStatus.exitCode ==
                   ipc.ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_OLD ? (
                   <Box sx={{ flexGrow: 0, flexShrink: 0, width: 400 }}>
-                    <Trans i18nKey="supervisor:protocol-version-too-old" />
+                    <Trans i18nKey="supervisor:error.protocol-version-too-old" />
                   </Box>
                 ) : exitDialogState.exitStatus.exitCode ==
                   ipc.ExitCode.EXIT_CODE_PROTOCOL_VERSION_TOO_NEW ? (
                   <Box sx={{ flexGrow: 0, flexShrink: 0, width: 400 }}>
-                    <Trans i18nKey="supervisor:protocol-version-too-new" />
+                    <Trans i18nKey="supervisor:error.protocol-version-too-new" />
                   </Box>
                 ) : (
                   <>
