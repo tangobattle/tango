@@ -92,7 +92,7 @@ pub struct Game {
     event_loop: sdl2::EventPump,
     game_controller: sdl2::GameControllerSubsystem,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
-    _audio_device: sdl2::audio::AudioDevice<crate::audio::mgba_stretch_stream::MGBAStretchStream>,
+    _audio_device: sdl2::audio::AudioDevice<audio::mgba_stretch_stream::MGBAStretchStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     input_mapping: InputMapping,
