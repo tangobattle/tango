@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
 
-pub const EXPECTED_FPS: u32 = 60;
+pub const EXPECTED_FPS: f32 = 60.0;
 
 #[derive(Clone, Debug)]
 pub enum PhysicalInput {
@@ -221,7 +221,7 @@ impl Game {
             .handle()
             .lock_audio()
             .sync_mut()
-            .set_fps_target(EXPECTED_FPS as f32);
+            .set_fps_target(EXPECTED_FPS);
 
         let audio_device = audio
             .open_playback(
