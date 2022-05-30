@@ -362,7 +362,7 @@ impl Match {
         audio_core_handle.pause();
         let audio_core_mux_handle =
             self.audio_mux
-                .open_stream(audio::mgba_stream::MGBAStream::new(
+                .open_stream(audio::mgba_stretch_stream::MGBAStretchStream::new(
                     audio_core_handle.clone(),
                     self.audio_sample_rate,
                 ));

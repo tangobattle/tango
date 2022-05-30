@@ -1,12 +1,12 @@
 const NUM_CHANNELS: usize = 2;
 
-pub struct MGBAStream {
+pub struct MGBAStretchStream {
     handle: mgba::thread::Handle,
     sample_rate: i32,
 }
 
-impl MGBAStream {
-    pub fn new(handle: mgba::thread::Handle, sample_rate: i32) -> MGBAStream {
+impl MGBAStretchStream {
+    pub fn new(handle: mgba::thread::Handle, sample_rate: i32) -> MGBAStretchStream {
         Self {
             handle,
             sample_rate,
@@ -14,22 +14,23 @@ impl MGBAStream {
     }
 }
 
-impl sdl2::audio::AudioCallback for MGBAStream {
+impl sdl2::audio::AudioCallback for MGBAStretchStream {
     type Channel = i16;
 
     fn callback(&mut self, buf: &mut [i16]) {
-        let mut audio_guard = self.handle.lock_audio();
-
-        let mut core = audio_guard.core_mut();
         let frame_count = (buf.len() / NUM_CHANNELS) as i32;
 
-        let clock_rate = core.as_ref().frequency();
+        let mut audio_guard = self.handle.lock_audio();
 
         let mut fps_target = audio_guard.sync().fps_target();
         if fps_target <= 0.0 {
             fps_target = 1.0;
         }
         let faux_clock = mgba::gba::audio_calculate_ratio(1.0, fps_target, 1.0);
+
+        let mut core = audio_guard.core_mut();
+
+        let clock_rate = core.as_ref().frequency();
 
         let available = {
             let mut left = core.audio_channel(0);

@@ -242,10 +242,11 @@ impl Game {
             .sync_mut()
             .set_fps_target(EXPECTED_FPS as f32);
 
-        let primary_mux_handle = audio_mux.open_stream(audio::mgba_stream::MGBAStream::new(
-            thread.handle(),
-            audio_device.spec().freq,
-        ));
+        let primary_mux_handle =
+            audio_mux.open_stream(audio::mgba_stretch_stream::MGBAStretchStream::new(
+                thread.handle(),
+                audio_device.spec().freq,
+            ));
 
         {
             let joyflags = joyflags.clone();
