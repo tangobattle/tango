@@ -63,14 +63,14 @@ impl Munger {
             .to_vec()
     }
 
-    pub(super) fn set_player_input_state(
+    pub(super) fn set_rx(
         &self,
         mut core: mgba::core::CoreMutRef,
         index: u32,
         keys_pressed: u16,
         custom_screen_state: u8,
     ) {
-        let a_player_input = self.offsets.ewram.player_input_data_arr + index * 0x08;
+        let a_player_input = self.offsets.ewram.rx_arr + index * 0x08;
         let keys_held = core.raw_read_16(a_player_input + 0x02, -1) | 0xfc00;
         core.raw_write_16(a_player_input + 0x02, -1, keys_pressed);
         core.raw_write_16(a_player_input + 0x04, -1, !keys_held & keys_pressed);

@@ -1,7 +1,10 @@
 #[derive(Clone, Copy)]
 pub(super) struct EWRAMOffsets {
-    /// Player input data, indexed by player index. Layout is documented in the munger.
-    pub(super) player_input_data_arr: u32,
+    // Outgoing data.  Layout is documented in the munger.
+    pub(super) tx: u32,
+
+    /// Incoming data, indexed by player index. Layout is documented in the munger.
+    pub(super) rx_arr: u32,
 
     /// Location of the battle state struct in memory.
     pub(super) battle_state: u32,
@@ -146,7 +149,8 @@ pub(super) struct ROMOffsets {
 }
 
 static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
-    player_input_data_arr: 0x02036820,
+    rx_arr: 0x02036820,
+    tx: 0x2036780,
     battle_state: 0x02034880,
     tx_buf: 0x0203cbe0,
     rx_buf_arr: 0x0203f4a0,
