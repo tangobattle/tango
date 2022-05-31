@@ -3,6 +3,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Tango</title>
+    <script>
+      try {
+        if (window.location.search.length > 0) {
+          const config = JSON.parse(
+            decodeURIComponent(window.location.search.substring(1))
+          );
+          document.documentElement.style.backgroundColor =
+            config.theme == "dark" ? "#121212" : "#fff";
+        }
+      } catch (e) {
+        console.error("failed to load initial config", e);
+      }
+    </script>
   </head>
   <body></body>
 </html>
