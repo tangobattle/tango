@@ -2,7 +2,7 @@
   "unpatched": "なし",
   "open-dir": "フォルダを開く",
   "input-delay": "入力遅延",
-  "patch-byline": "作：{{authors}}",
+  "patch-byline": "作者：{{authors}}",
   "fight": "対戦",
   "no-game-selected": "なし",
   "link-code": "リンクコード",
