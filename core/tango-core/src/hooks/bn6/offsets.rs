@@ -66,6 +66,10 @@ pub(super) struct ROMOffsets {
     /// Expected values are: 2 if input is ready, 4 if remote has disconnected.
     pub(super) get_copy_data_input_state_ret: u32,
 
+    pub(super) copy_input_data_entry: u32,
+
+    pub(super) copy_input_data_ret: u32,
+
     /// This is the call to the routine to copy input data from what would be received from SIO during battle init.
     ///
     /// We skip this entirely because we inject the init data directly into memory via battle_init_tx_buf_copy_ret instead.
@@ -185,6 +189,8 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         game_load_ret: 0x08004dde,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x0801feec,
+        copy_input_data_entry: 0x0801ff18,
+        copy_input_data_ret: 0x0801ffd4,
         round_init_call_battle_copy_input_data: 0x08007902,
         round_update_call_battle_copy_input_data: 0x08007a6e,
         round_run_unpaused_step_cmp_retval: 0x08008102,
@@ -212,6 +218,8 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         game_load_ret: 0x08004dde,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x0801feec,
+        copy_input_data_entry: 0x0801ff18,
+        copy_input_data_ret: 0x0801ffd4,
         round_init_call_battle_copy_input_data: 0x08007902,
         round_update_call_battle_copy_input_data: 0x08007a6e,
         round_run_unpaused_step_cmp_retval: 0x08008102,
@@ -239,6 +247,8 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         game_load_ret: 0x08004dc2,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x08020300,
+        copy_input_data_entry: 0x080203ea,
+        copy_input_data_ret: 0x080204b6,
         round_init_call_battle_copy_input_data: 0x080078ee,
         round_update_call_battle_copy_input_data: 0x08007a6a,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
@@ -266,6 +276,8 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         game_load_ret: 0x08004dc2,
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x08020300,
+        copy_input_data_entry: 0x080203ea,
+        copy_input_data_ret: 0x080204b6,
         round_init_call_battle_copy_input_data: 0x080078ee,
         round_update_call_battle_copy_input_data: 0x08007a6a,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
