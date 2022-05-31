@@ -335,7 +335,7 @@ impl hooks::Hooks for BN6 {
 
                             let ip = round.take_last_input().expect("last input");
 
-                            munger.set_rx(
+                            munger.set_player_input_state(
                                 core,
                                 round.local_player_index() as u32,
                                 ip.local.joyflags,
@@ -348,7 +348,7 @@ impl hooks::Hooks for BN6 {
                                     ip.local.turn.as_slice(),
                                 );
                             }
-                            munger.set_rx(
+                            munger.set_player_input_state(
                                 core,
                                 round.remote_player_index() as u32,
                                 ip.remote.joyflags,
@@ -839,7 +839,7 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        munger.set_rx(
+                        munger.set_player_input_state(
                             core,
                             round.local_player_index() as u32,
                             ip.local.joyflags,
@@ -854,7 +854,7 @@ impl hooks::Hooks for BN6 {
                             );
                         }
 
-                        munger.set_rx(
+                        munger.set_player_input_state(
                             core,
                             round.remote_player_index() as u32,
                             ip.remote.joyflags,
@@ -1084,7 +1084,7 @@ impl hooks::Hooks for BN6 {
                             return;
                         }
 
-                        munger.set_rx(
+                        munger.set_player_input_state(
                             core,
                             ff_state.local_player_index() as u32,
                             ip.local.joyflags,
@@ -1099,7 +1099,7 @@ impl hooks::Hooks for BN6 {
                             );
                         }
 
-                        munger.set_rx(
+                        munger.set_player_input_state(
                             core,
                             ff_state.remote_player_index() as u32,
                             ip.remote.joyflags,
