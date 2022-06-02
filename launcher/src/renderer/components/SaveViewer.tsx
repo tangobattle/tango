@@ -1,9 +1,12 @@
 import React from "react";
 import { Trans } from "react-i18next";
 
+import BrowserNotSupportedIcon from "@mui/icons-material/BrowserNotSupported";
+import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
+import Typography from "@mui/material/Typography";
 
 import { Editor } from "../../saveedit";
 import * as bn4 from "../../saveedit/bn4";
@@ -73,6 +76,21 @@ export default function SaveViewer({ editor }: { editor: Editor }) {
     case "bn4":
       return <BN4SaveViewer editor={editor as bn4.Editor} />;
     default:
-      return null;
+      return (
+        <Box
+          flexGrow={1}
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          sx={{ userSelect: "none", color: "text.disabled" }}
+        >
+          <Stack alignItems="center" spacing={1}>
+            <BrowserNotSupportedIcon sx={{ fontSize: "4rem" }} />
+            <Typography variant="h6">
+              <Trans i18nKey="play:save-viewer-unsupported" />
+            </Typography>
+          </Stack>
+        </Box>
+      );
   }
 }

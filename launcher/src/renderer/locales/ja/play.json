@@ -43,5 +43,6 @@
   "connection-quality": "（{{rtt}}ms）",
   "auto-input-delay": "自動選択",
   "reveal-setup-title": "{{opponentNickname}}さんの構築",
-  "missing-patch": "未知のパッチ「{{name}}」"
+  "missing-patch": "未知のパッチ「{{name}}」",
+  "save-viewer-unsupported": "このゲームではセーブビューアーに対応されていません"
 }

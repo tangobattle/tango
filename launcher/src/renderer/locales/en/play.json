@@ -43,5 +43,6 @@
   "connection-quality": " ({{rtt}}ms)",
   "auto-input-delay": "Auto",
   "reveal-setup-title": "{{opponentNickname}}'s setup",
-  "missing-patch": "Unknown patch \"{{name}}\""
+  "missing-patch": "Unknown patch \"{{name}}\"",
+  "save-viewer-unsupported": "Save viewer is unsupported for this game"
 }
