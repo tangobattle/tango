@@ -626,8 +626,11 @@ impl Round {
         let mut shadow = self.shadow.lock().await;
         let input_pairs = partial_input_pairs
             .into_iter()
-            .flat_map(|pair| shadow.apply_input(pair).unwrap()) // TODO: Don't unwrap this.
-            .collect::<Vec<input::Pair<input::Input, input::Input>>>();
+            .map(|pair| shadow.apply_input(pair))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
