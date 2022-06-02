@@ -130,7 +130,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -529,7 +529,7 @@
     "mb": 12,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -605,7 +605,7 @@
     "mb": 15,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -624,7 +624,7 @@
     "mb": 25,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -643,7 +643,7 @@
     "mb": 35,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -776,7 +776,7 @@
     "mb": 30,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -890,7 +890,7 @@
     "mb": 8,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1023,7 +1023,7 @@
     "mb": 20,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1555,7 +1555,7 @@
     "mb": 23,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1574,7 +1574,7 @@
     "mb": 10,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1593,7 +1593,7 @@
     "mb": 10,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1726,7 +1726,7 @@
     "mb": 4,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1745,7 +1745,7 @@
     "mb": 7,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1764,7 +1764,7 @@
     "mb": 10,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1878,7 +1878,7 @@
     "mb": 6,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1897,7 +1897,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1916,7 +1916,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1935,7 +1935,7 @@
     "mb": 20,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -1954,7 +1954,7 @@
     "mb": 58,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2030,7 +2030,7 @@
     "mb": 8,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2049,7 +2049,7 @@
     "mb": 16,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2068,7 +2068,7 @@
     "mb": 24,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2087,7 +2087,7 @@
     "mb": 32,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2106,7 +2106,7 @@
     "mb": 40,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2125,7 +2125,7 @@
     "mb": 48,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2144,7 +2144,7 @@
     "mb": 56,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2163,7 +2163,7 @@
     "mb": 64,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2182,7 +2182,7 @@
     "mb": 5,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2201,7 +2201,7 @@
     "mb": 6,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2220,7 +2220,7 @@
     "mb": 8,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2239,7 +2239,7 @@
     "mb": 48,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2258,7 +2258,7 @@
     "mb": 24,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2277,7 +2277,7 @@
     "mb": 22,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2296,7 +2296,7 @@
     "mb": 32,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2315,7 +2315,7 @@
     "mb": 14,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2334,7 +2334,7 @@
     "mb": 34,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2353,7 +2353,7 @@
     "mb": 47,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2372,7 +2372,7 @@
     "mb": 62,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2410,7 +2410,7 @@
     "mb": 25,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2448,7 +2448,7 @@
     "mb": 9,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2524,7 +2524,7 @@
     "mb": 12,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2543,7 +2543,7 @@
     "mb": 21,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2562,7 +2562,7 @@
     "mb": 7,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2581,7 +2581,7 @@
     "mb": 27,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2600,7 +2600,7 @@
     "mb": 47,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2619,7 +2619,7 @@
     "mb": 33,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2638,7 +2638,7 @@
     "mb": 24,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2733,7 +2733,7 @@
     "mb": 44,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2790,7 +2790,7 @@
     "mb": 37,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2809,7 +2809,7 @@
     "mb": 12,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2828,7 +2828,7 @@
     "mb": 6,
     "version": null,
     "stars": 1,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -2847,7 +2847,7 @@
     "mb": 36,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3265,7 +3265,7 @@
     "mb": 28,
     "version": null,
     "stars": 2,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3284,7 +3284,7 @@
     "mb": 35,
     "version": null,
     "stars": 3,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3303,7 +3303,7 @@
     "mb": 42,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "standard"
   },
   {
@@ -3549,7 +3549,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3567,7 +3567,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3585,7 +3585,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3603,7 +3603,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3621,7 +3621,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3639,7 +3639,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3657,7 +3657,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3675,7 +3675,7 @@
     "codes": "",
     "mb": null,
     "version": null,
-    "damage": null,
+    "damage": 0,
     "class": "dark"
   },
   {
@@ -3754,7 +3754,7 @@
     "mb": 70,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3773,7 +3773,7 @@
     "mb": 81,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3811,7 +3811,7 @@
     "mb": 86,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3830,7 +3830,7 @@
     "mb": 66,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3849,7 +3849,7 @@
     "mb": 62,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3868,7 +3868,7 @@
     "mb": 50,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3887,7 +3887,7 @@
     "mb": 62,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3906,7 +3906,7 @@
     "mb": 45,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -3944,7 +3944,7 @@
     "mb": 59,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4039,7 +4039,7 @@
     "mb": 59,
     "version": null,
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4096,7 +4096,7 @@
     "mb": 80,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4153,7 +4153,7 @@
     "mb": 60,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4172,7 +4172,7 @@
     "mb": 60,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4210,7 +4210,7 @@
     "mb": 68,
     "version": "redsun",
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4229,7 +4229,7 @@
     "mb": 68,
     "version": "redsun",
     "stars": 4,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4267,7 +4267,7 @@
     "mb": 64,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4286,7 +4286,7 @@
     "mb": 64,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4324,7 +4324,7 @@
     "mb": 45,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4343,7 +4343,7 @@
     "mb": 70,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4381,7 +4381,7 @@
     "mb": 72,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4400,7 +4400,7 @@
     "mb": 72,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4438,7 +4438,7 @@
     "mb": 68,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4457,7 +4457,7 @@
     "mb": 68,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4495,7 +4495,7 @@
     "mb": 79,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4514,7 +4514,7 @@
     "mb": 79,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4552,7 +4552,7 @@
     "mb": 66,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4571,7 +4571,7 @@
     "mb": 66,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4609,7 +4609,7 @@
     "mb": 76,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4628,7 +4628,7 @@
     "mb": 76,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4666,7 +4666,7 @@
     "mb": 80,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4685,7 +4685,7 @@
     "mb": 80,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4723,7 +4723,7 @@
     "mb": 62,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4742,7 +4742,7 @@
     "mb": 62,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4780,7 +4780,7 @@
     "mb": 76,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4799,7 +4799,7 @@
     "mb": 76,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4837,7 +4837,7 @@
     "mb": 71,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4856,7 +4856,7 @@
     "mb": 71,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4894,7 +4894,7 @@
     "mb": 88,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4913,7 +4913,7 @@
     "mb": 88,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4951,7 +4951,7 @@
     "mb": 69,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -4970,7 +4970,7 @@
     "mb": 69,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5008,7 +5008,7 @@
     "mb": 72,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5027,7 +5027,7 @@
     "mb": 72,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5065,7 +5065,7 @@
     "mb": 77,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5084,7 +5084,7 @@
     "mb": 77,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5122,7 +5122,7 @@
     "mb": 80,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5141,7 +5141,7 @@
     "mb": 80,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5179,7 +5179,7 @@
     "mb": 75,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5198,7 +5198,7 @@
     "mb": 75,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5236,7 +5236,7 @@
     "mb": 67,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5255,7 +5255,7 @@
     "mb": 67,
     "version": null,
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "mega"
   },
   {
@@ -5422,7 +5422,7 @@
     "mb": 73,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5441,7 +5441,7 @@
     "mb": 90,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5460,7 +5460,7 @@
     "mb": 61,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5517,7 +5517,7 @@
     "mb": 87,
     "version": "redsun",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -5536,7 +5536,7 @@
     "mb": 90,
     "version": "bluemoon",
     "stars": 5,
-    "damage": null,
+    "damage": 0,
     "class": "giga"
   },
   {
@@ -6539,7 +6539,7 @@
         }
       ]
     ],
-    "damage": null
+    "damage": 0
   },
   {
     "section": "pa",

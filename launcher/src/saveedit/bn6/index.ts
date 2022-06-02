@@ -292,6 +292,10 @@ export class Editor {
     this.navicustDirty = false;
   }
 
+  getChipData() {
+    return CHIPS;
+  }
+
   getChipCount(id: number, code: string) {
     return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
   }

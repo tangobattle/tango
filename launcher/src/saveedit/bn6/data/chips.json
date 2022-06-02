@@ -5269,6 +5269,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 10,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5283,6 +5284,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 30,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5297,6 +5299,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 40,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5311,6 +5314,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 50,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5325,6 +5329,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 80,
+    "version": null,
     "damage": 0,
     "class": "mega"
   },
@@ -5339,6 +5344,7 @@
     "stars": 5,
     "element": "sword",
     "mb": 80,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5353,6 +5359,7 @@
     "stars": 5,
     "element": "elec",
     "mb": 80,
+    "version": null,
     "damage": 200,
     "class": "standard"
   },
@@ -5367,6 +5374,7 @@
     "stars": 5,
     "element": "null",
     "mb": 80,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5381,6 +5389,7 @@
     "stars": 5,
     "element": "null",
     "mb": 64,
+    "version": null,
     "damage": 0,
     "class": "standard"
   },
@@ -5395,6 +5404,7 @@
     "stars": 5,
     "element": "null",
     "mb": 80,
+    "version": null,
     "damage": 50,
     "class": "standard"
   },
@@ -5684,6 +5694,7 @@
     "element": "null",
     "codes": "*",
     "mb": 5,
+    "version": null,
     "damage": 40,
     "class": "standard"
   },
@@ -5702,6 +5713,7 @@
     "element": "null",
     "codes": "S",
     "mb": 5,
+    "version": null,
     "damage": 40,
     "class": "standard"
   },
@@ -5720,6 +5732,7 @@
     "element": "null",
     "codes": "R",
     "mb": 5,
+    "version": null,
     "damage": 40,
     "class": "standard"
   },
@@ -5738,6 +5751,7 @@
     "element": "null",
     "codes": "Z",
     "mb": 5,
+    "version": null,
     "damage": 40,
     "class": "standard"
   },
@@ -5756,6 +5770,7 @@
     "element": "null",
     "codes": "*",
     "mb": 99,
+    "version": null,
     "damage": 10,
     "class": "giga"
   },
@@ -5792,6 +5807,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -5827,6 +5843,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -5862,6 +5879,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -5897,6 +5915,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -5932,6 +5951,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -5967,6 +5987,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6002,6 +6023,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6037,6 +6059,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6072,6 +6095,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6107,6 +6131,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6142,6 +6167,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6177,6 +6203,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6240,6 +6267,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6303,6 +6331,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6338,6 +6367,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6401,6 +6431,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6464,6 +6495,7 @@
     "element": "null",
     "codes": "",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6499,6 +6531,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6562,6 +6595,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6639,6 +6673,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6674,6 +6709,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6709,6 +6745,7 @@
     "element": "null",
     "codes": "",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6744,6 +6781,7 @@
     "element": "null",
     "codes": "",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6779,6 +6817,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6814,6 +6853,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6863,6 +6903,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6902,6 +6943,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6937,6 +6979,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -6986,6 +7029,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   {
@@ -7021,6 +7065,7 @@
     "element": "null",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "class": "pa"
   },
   null,
@@ -7068,6 +7113,7 @@
     "element": "obstacle",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "damage": 200,
     "class": "secret"
   },
@@ -7086,6 +7132,7 @@
     "element": "sword",
     "codes": "ABC*",
     "mb": 5,
+    "version": null,
     "damage": 100,
     "class": "secret"
   },
@@ -7104,6 +7151,7 @@
     "element": "null",
     "codes": "",
     "mb": 30,
+    "version": null,
     "damage": 0,
     "class": "secret"
   },
@@ -7122,6 +7170,7 @@
     "element": "obstacle",
     "codes": "",
     "mb": 6,
+    "version": null,
     "damage": 0,
     "class": "secret"
   },
@@ -7140,6 +7189,7 @@
     "element": "obstacle",
     "codes": "",
     "mb": 6,
+    "version": null,
     "damage": 0,
     "class": "secret"
   },

@@ -6,8 +6,25 @@ export interface Sniffed {
   loader: string;
 }
 
+export interface Chip {
+  index?: number;
+  name: {
+    [lang: string]: string;
+  };
+  description?: {
+    [lang: string]: string;
+  };
+  element?: string;
+  codes?: string;
+  version?: string | null;
+  damage?: number;
+  class?: string;
+}
+
 export interface Editor {
   getROMName(): string;
+  getChipData(): (Chip | null)[];
+  rebuild(): void;
 }
 
 export function sniff(buffer: ArrayBuffer): Sniffed | null {
