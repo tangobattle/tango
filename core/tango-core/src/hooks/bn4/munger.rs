@@ -10,11 +10,11 @@ impl Munger {
 
     pub(super) fn continue_from_title_menu(&self, mut core: mgba::core::CoreMutRef) {
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x00, -1, 0x08);
-        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x01, -1, 0x10);
-        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x02, -1, 0x01);
+        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x01, -1, 0x0c);
+        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x02, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x03, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x04, -1, 0xff);
-        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x18, -1, 0x01);
+        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x08, -1, 0x01);
     }
 
     pub(super) fn open_comm_menu_from_overworld(&self, mut core: mgba::core::CoreMutRef) {

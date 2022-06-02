@@ -57,7 +57,26 @@ impl hooks::Hooks for BN4 {
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
-        vec![]
+        vec![
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.start_screen_jump_table_entry,
+                    Box::new(move |core| {
+                        munger.skip_logo(core);
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.start_screen_sram_unmask_ret,
+                    Box::new(move |core| {
+                        munger.continue_from_title_menu(core);
+                    }),
+                )
+            },
+        ]
     }
 
     fn shadow_traps(
