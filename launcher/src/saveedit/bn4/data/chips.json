@@ -3547,7 +3547,7 @@
     },
     "element": "null",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3565,7 +3565,7 @@
     },
     "element": "sword",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3583,7 +3583,7 @@
     },
     "element": "null",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3601,7 +3601,7 @@
     },
     "element": "null",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3619,7 +3619,7 @@
     },
     "element": "null",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3637,7 +3637,7 @@
     },
     "element": "null",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3655,7 +3655,7 @@
     },
     "element": "null",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"
@@ -3673,7 +3673,7 @@
     },
     "element": "recovery",
     "codes": "",
-    "mb": null,
+    "mb": 0,
     "version": null,
     "damage": 0,
     "class": "dark"

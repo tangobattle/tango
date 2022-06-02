@@ -10,7 +10,7 @@ import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import useTheme from "@mui/system/useTheme";
 
-import * as bn6 from "../../saveedit/bn6";
+import { Chip as ChipInfo, Editor } from "../../saveedit";
 import { fallbackLng } from "../i18n";
 
 const MEGA_BG = {
@@ -25,6 +25,8 @@ const GIGA_BG = {
 
 function FolderChipRow({
   chip,
+  gameFamily,
+  chipData,
 }: {
   chip: {
     id: number;
@@ -34,6 +36,8 @@ function FolderChipRow({
     isTag2: boolean;
     count: number;
   };
+  gameFamily: string;
+  chipData: (ChipInfo | null)[];
 }) {
   const { id, code, isRegular, isTag1, isTag2, count } = chip;
   const theme = useTheme();
@@ -41,13 +45,13 @@ function FolderChipRow({
   const { i18n } = useTranslation();
 
   const backgroundColor =
-    bn6.CHIPS[id]!.class == "giga"
+    chipData[id]!.class == "giga"
       ? GIGA_BG[theme.palette.mode]
-      : bn6.CHIPS[id]!.class == "mega"
+      : chipData[id]!.class == "mega"
       ? MEGA_BG[theme.palette.mode]
       : null;
 
-  const chipInfo = bn6.CHIPS[id];
+  const chipInfo = chipData[id];
   if (chipInfo == null || chipInfo.description == null) {
     return null;
   }
@@ -63,7 +67,7 @@ function FolderChipRow({
           width="28"
           src={(() => {
             try {
-              return require(`../../../static/images/games/bn6/chipicons/${id}.png`);
+              return require(`../../../static/images/games/${gameFamily}/chipicons/${id}.png`);
             } catch (e) {
               return "";
             }
@@ -116,17 +120,17 @@ function FolderChipRow({
         <img
           height="28"
           width="28"
-          src={require(`../../../static/images/games/bn6/elements/${bn6.CHIPS[
-            id
-          ]!.element!}.png`)}
+          src={require(`../../../static/images/games/bn6/elements/${
+            chipInfo.element ?? "null"
+          }.png`)}
           style={{ imageRendering: "pixelated" }}
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
-        <strong>{chipInfo.damage > 0 ? chipInfo.damage : null}</strong>
+        <strong>{(chipInfo.damage ?? 0) > 0 ? chipInfo.damage : null}</strong>
       </TableCell>
       <TableCell sx={{ width: "64px", textAlign: "right" }}>
-        {chipInfo.mb!}MB
+        {chipInfo.mb ?? 0}MB
       </TableCell>
     </TableRow>
   );
@@ -136,7 +140,7 @@ export default function FolderViewer({
   editor,
   active,
 }: {
-  editor: bn6.Editor;
+  editor: Editor;
   active: boolean;
 }) {
   const chips: {
@@ -210,7 +214,12 @@ export default function FolderViewer({
       <Table size="small">
         <TableBody>
           {chips.map((chip, i) => (
-            <FolderChipRow key={i} chip={chip} />
+            <FolderChipRow
+              key={i}
+              chip={chip}
+              gameFamily={editor.getGameFamily()}
+              chipData={editor.getChipData()}
+            />
           ))}
         </TableBody>
       </Table>

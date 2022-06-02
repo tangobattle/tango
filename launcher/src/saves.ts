@@ -5,7 +5,7 @@ import path from "path";
 import { sniff } from "./saveedit";
 
 export interface SaveInfo {
-  loader: string;
+  gameFamily: string;
   romName: string;
 }
 
@@ -26,14 +26,14 @@ export async function scan(dir: string) {
 
   for (const result of await Promise.allSettled(
     saveNames.map(async (saveName) => {
-      const sniffed = sniff((await readFile(path.join(dir, saveName))).buffer);
-      if (sniffed == null) {
+      const editor = sniff((await readFile(path.join(dir, saveName))).buffer);
+      if (editor == null) {
         console.warn("could not sniff save", saveName);
         return;
       }
       saves[saveName] = {
-        loader: sniffed.loader,
-        romName: sniffed.editor.getROMName(),
+        gameFamily: editor.getGameFamily(),
+        romName: editor.getROMName(),
       };
     })
   )) {

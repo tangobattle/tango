@@ -146,6 +146,10 @@ export class Editor {
     return this.romName;
   }
 
+  getGameFamily() {
+    return "bn6";
+  }
+
   supportsModcards() {
     return this.getGameInfo().region == "JP";
   }

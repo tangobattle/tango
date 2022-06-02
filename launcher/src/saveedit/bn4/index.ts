@@ -193,6 +193,10 @@ export class Editor {
     return Editor.GAME_INFOS[this.romName];
   }
 
+  getGameFamily() {
+    return "bn4";
+  }
+
   getChecksum() {
     return getChecksum(this.dv);
   }
