@@ -36,5 +36,5 @@
     "open-logs-folder": "ログフォルダーを開く",
     "signaling-endpoint": "シグナリングエンドポイント",
     "iceconfig-endpoint": "ICE設定エンドポイント",
-    "patch-repo": "パッチリポジトリ",
+    "patch-repo": "パッチリポジトリ"
 }
