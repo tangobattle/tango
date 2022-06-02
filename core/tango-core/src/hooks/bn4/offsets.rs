@@ -125,8 +125,8 @@ static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     battle_state: 0, // TODO
     start_screen_control: 0x0200b220,
     title_menu_control: 0x0200b220,
-    menu_control: 0,    // TODO
-    submenu_control: 0, // TODO
+    menu_control: 0x200f770,
+    submenu_control: 0x0200a450,
     rng1_state: 0x020015d4,
     rng2_state: 0x02001790,
     rng3_state: 0x02001e98,
@@ -148,9 +148,9 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry: 0x0802d786,
         start_screen_sram_unmask_ret: 0x080253ca,
-        game_load_ret: 0, // TODO
+        game_load_ret: 0x08004996,
         main_read_joyflags: 0x080003c6,
-        get_copy_data_input_state_ret: 0, // TODO
+        get_copy_data_input_state_ret: 0x08017b88,
         copy_input_data_entry: 0x08017b8e,
         round_run_unpaused_step_cmp_retval: 0,      // TODO
         round_start_ret: 0,                         // TODO

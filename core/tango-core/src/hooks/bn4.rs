@@ -76,6 +76,16 @@ impl hooks::Hooks for BN4 {
                     }),
                 )
             },
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.game_load_ret,
+                    Box::new(move |core| {
+                        log::info!("game loaded");
+                        munger.open_comm_menu_from_overworld(core);
+                    }),
+                )
+            },
         ]
     }
 
