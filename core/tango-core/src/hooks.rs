@@ -32,6 +32,8 @@ pub trait Hooks {
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
+    fn placeholder_rx(&self) -> Vec<u8>;
+
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
     fn replace_opponent_name(&self, core: mgba::core::CoreMutRef, name: &str);

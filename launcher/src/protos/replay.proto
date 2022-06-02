@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+message ReplayMetadata {
+  message GameInfo {
+    message Patch {
+      string name = 1;
+      string version = 2;
+    }
+    string rom = 1;
+    Patch patch = 2;
+  }
+
+  message Side {
+    string nickname = 1;
+    GameInfo game_info = 2;
+    bool reveal_setup = 3;
+  }
+
+  uint64 ts = 1;
+  string link_code = 2;
+  Side local_side = 3;
+  Side remote_side = 4;
+}

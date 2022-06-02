@@ -52,8 +52,8 @@ import {
     FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest
 } from "../../protos/generated/ipc";
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/generated/lobby";
+import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
-import { ReplayMetadata } from "../../replay";
 import { KNOWN_ROMS } from "../../rom";
 import * as bn6 from "../../saveedit/bn6";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
@@ -71,7 +71,7 @@ const MATCH_TYPES = ["single", "triple"];
 function defaultMatchSettings(nickname: string): SetSettings {
   return {
     nickname,
-    inputDelay: 3,
+    inputDelay: 2,
     matchType: 1,
     gameInfo: undefined,
     availableGames: [],
@@ -650,8 +650,6 @@ async function runCallback(
       );
     }
 
-    const enc = new TextEncoder();
-
     const startReq = {
       romPath: outOwnROMPath,
       savePath: path.join(getSavesPath(app), ref.current.saveName!),
@@ -665,34 +663,20 @@ async function runCallback(
         opponentNickname:
           ownGameInfo.patch == null ? opponentGameSettings.nickname : undefined,
         replaysPath: path.join(getReplaysPath(app), prefix),
-        replayMetadata: enc.encode(
-          JSON.stringify({
-            ts: now.valueOf(),
-            linkCode: linkCode,
-            rom: ownGameInfo.rom,
+        replayMetadata: ReplayMetadata.encode({
+          ts: now.valueOf(),
+          linkCode: linkCode,
+          localSide: {
             nickname: ownGameSettings.nickname,
+            gameInfo: ownGameInfo,
             revealSetup: ownGameSettings.revealSetup,
-            patch:
-              ownGameInfo.patch != null
-                ? {
-                    name: ownGameInfo.patch.name,
-                    version: ownGameInfo.patch.version,
-                  }
-                : null,
-            remote: {
-              nickname: opponentGameSettings.nickname,
-              revealSetup: opponentGameSettings.revealSetup,
-              rom: opponentGameInfo.rom,
-              patch:
-                opponentGameInfo.patch != null
-                  ? {
-                      name: opponentGameInfo.patch.name,
-                      version: opponentGameInfo.patch.version,
-                    }
-                  : null,
-            },
-          } as ReplayMetadata)
-        ),
+          },
+          remoteSide: {
+            nickname: opponentGameSettings.nickname,
+            gameInfo: opponentGameInfo,
+            revealSetup: opponentGameSettings.revealSetup,
+          },
+        }).finish(),
         rngSeed,
       },
     } as ToCoreMessage_StartRequest;

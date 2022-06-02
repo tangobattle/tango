@@ -9,7 +9,6 @@ struct InnerState {
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
     on_inputs_exhausted: Box<dyn Fn() + Send>,
-    on_battle_ended: Box<dyn Fn() + Send>,
     error: Option<anyhow::Error>,
 }
 
@@ -20,7 +19,6 @@ impl InnerState {
         commit_time: u32,
         dirty_time: u32,
         on_inputs_exhausted: Box<dyn Fn() + Send>,
-        on_battle_ended: Box<dyn Fn() + Send>,
     ) -> Self {
         InnerState {
             local_player_index,
@@ -30,7 +28,6 @@ impl InnerState {
             dirty_time,
             dirty_state: None,
             on_inputs_exhausted,
-            on_battle_ended,
             error: None,
         }
     }
@@ -53,7 +50,6 @@ impl State {
         commit_time: u32,
         dirty_time: u32,
         on_inputs_exhausted: Box<dyn Fn() + Send>,
-        on_battle_ended: Box<dyn Fn() + Send>,
     ) -> State {
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
             InnerState::new(
@@ -62,7 +58,6 @@ impl State {
                 commit_time,
                 dirty_time,
                 on_inputs_exhausted,
-                on_battle_ended,
             ),
         ))))
     }
@@ -131,15 +126,6 @@ impl State {
             .on_inputs_exhausted)();
     }
 
-    pub fn on_battle_ended(&self) {
-        (self
-            .0
-            .lock()
-            .as_mut()
-            .expect("on battle ended")
-            .on_battle_ended)();
-    }
-
     pub fn inputs_pairs_left(&self) -> usize {
         self.0
             .lock()
@@ -199,8 +185,7 @@ impl Fastforwarder {
                         local_tick,
                         remote_tick,
                         joyflags: local.joyflags,
-                        custom_screen_state: 0, // TODO
-                        turn: vec![],
+                        rx: self.hooks.placeholder_rx(),
                     },
                     remote: input::Input {
                         local_tick,
@@ -219,8 +204,7 @@ impl Fastforwarder {
                             }
                             joyflags
                         },
-                        custom_screen_state: last_committed_remote_input.custom_screen_state,
-                        turn: vec![],
+                        rx: last_committed_remote_input.rx.clone(),
                     },
                 }
             }))
@@ -239,7 +223,6 @@ impl Fastforwarder {
             input_pairs,
             commit_time,
             dirty_time,
-            Box::new(|| {}),
             Box::new(|| {}),
         ));
 

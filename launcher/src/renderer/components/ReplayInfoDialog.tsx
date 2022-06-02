@@ -41,7 +41,7 @@ export default function ReplayInfoDialog({
       const proc = spawn(
         app,
         "replaydump",
-        [path.join(getReplaysPath(app), filename), "dump-ewram"],
+        [path.join(getReplaysPath(app), filename), "ewram"],
         {
           env: {
             ...process.env,
@@ -65,7 +65,11 @@ export default function ReplayInfoDialog({
 
       const buf = Buffer.concat(bufs);
       setEditor(
-        new Editor(new Uint8Array(buf).buffer, replayInfo.metadata.rom, false)
+        new Editor(
+          new Uint8Array(buf).buffer,
+          replayInfo.metadata.localSide!.gameInfo!.rom,
+          false
+        )
       );
     })();
   }, [config, filename, replayInfo]);
@@ -105,7 +109,7 @@ export default function ReplayInfoDialog({
                         formattedDate: dateFormat.format(
                           new Date(replayInfo.metadata.ts)
                         ),
-                        nickname: replayInfo.metadata.remote!.nickname,
+                        nickname: replayInfo.metadata.remoteSide!.nickname,
                         linkCode: replayInfo.metadata.linkCode,
                       }}
                     />

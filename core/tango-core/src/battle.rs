@@ -193,13 +193,6 @@ impl Match {
         self.shadow.lock().await.advance_until_round_end()
     }
 
-    pub async fn exchange_init_with_shadow(&self, local_init: Vec<u8>) -> anyhow::Result<Vec<u8>> {
-        log::info!("local init: {:?}", local_init);
-        let remote_init = self.shadow.lock().await.exchange_init(local_init)?;
-        log::info!("remote init: {:?}", remote_init);
-        Ok(remote_init)
-    }
-
     pub async fn advance_shadow_until_first_committed_state(
         &self,
     ) -> anyhow::Result<mgba::state::State> {
@@ -293,7 +286,7 @@ impl Match {
 
                     round.add_remote_input(input::PartialInput {
                         local_tick: input.local_tick,
-                        remote_tick: input.local_tick + input.tick_diff as u32,
+                        remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
                         joyflags: input.joyflags as u16,
                     });
                 }
@@ -348,23 +341,21 @@ impl Match {
                 MAX_QUEUE_LENGTH,
             ),
             remote_delay: self.settings.shadow_input_delay,
-            is_accepting_input: false,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
                 remote_tick: 0,
                 joyflags: 0,
-                custom_screen_state: 0,
-                turn: vec![],
+                rx: self.hooks.placeholder_rx(),
             },
             last_input: None,
             first_state_committed_tx: Some(first_state_committed_tx),
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
-            local_pending_turn: None,
             replay_writer: Some(replay::Writer::new(
                 Box::new(replay_file),
                 &self.settings.replay_metadata,
                 local_player_index,
+                self.hooks.placeholder_rx().len() as u8,
             )?),
             fastforwarder: fastforwarder::Fastforwarder::new(
                 &self.rom_path,
@@ -375,6 +366,7 @@ impl Match {
             primary_thread_handle: self.primary_thread_handle.clone(),
             transport: self.transport.clone(),
             shadow: self.shadow.clone(),
+            hooks: self.hooks,
         });
         self.round_started_tx.send(round_state.number).await?;
         log::info!("round has started");
@@ -382,15 +374,9 @@ impl Match {
     }
 }
 
-struct PendingTurn {
-    tx_buf: Vec<u8>,
-    on_tick: u32,
-}
-
 struct LocalImmediateInput {
     current_tick: u32,
-    custom_screen_state: u8,
-    turn: Vec<u8>,
+    rx: Vec<u8>,
 }
 
 pub struct Round {
@@ -399,18 +385,17 @@ pub struct Round {
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
     local_immediate_input_queue: std::collections::VecDeque<LocalImmediateInput>,
     remote_delay: u32,
-    is_accepting_input: bool,
     last_committed_remote_input: input::Input,
     last_input: Option<input::Pair<input::Input, input::Input>>,
     first_state_committed_tx: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<mgba::state::State>,
-    local_pending_turn: Option<PendingTurn>,
     replay_writer: Option<replay::Writer>,
     fastforwarder: fastforwarder::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
+    hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
 }
 
 impl Round {
@@ -474,8 +459,7 @@ impl Round {
         mut core: mgba::core::CoreMutRef<'_>,
         current_tick: u32,
         joyflags: u16,
-        custom_screen_state: u8,
-        turn: Vec<u8>,
+        rx: Vec<u8>,
     ) -> bool {
         let local_tick = current_tick + self.local_delay();
         let remote_tick = self.last_committed_remote_input().local_tick;
@@ -487,7 +471,7 @@ impl Round {
         //
         // This is all done while the self is locked, so there are no TOCTTOU issues.
         if !self.can_add_local_input() {
-            log::warn!("local input buffer overflow!");
+            log::error!("local input buffer overflow!");
             return false;
         }
 
@@ -503,7 +487,7 @@ impl Round {
             )
             .await
         {
-            log::warn!("failed to send input: {}", e);
+            log::error!("failed to send input: {}", e);
             return false;
         }
 
@@ -514,16 +498,16 @@ impl Round {
         });
 
         self.local_immediate_input_queue
-            .push_back(LocalImmediateInput {
-                current_tick,
-                custom_screen_state,
-                turn,
-            });
+            .push_back(LocalImmediateInput { current_tick, rx });
 
         let (input_pairs, left) = match self.consume_and_peek_local().await {
-            Ok(r) => r,
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                // No more inputs to process, we will go to the next round shortly.
+                return true;
+            }
             Err(e) => {
-                log::warn!("failed to consume input: {}", e);
+                log::error!("failed to consume input: {}", e);
                 return false;
             }
         };
@@ -592,15 +576,6 @@ impl Round {
     pub fn remote_queue_length(&self) -> usize {
         self.iq.remote_queue_length()
     }
-
-    pub fn start_accepting_input(&mut self) {
-        self.is_accepting_input = true;
-    }
-
-    pub fn is_accepting_input(&self) -> bool {
-        self.is_accepting_input
-    }
-
     pub fn last_committed_remote_input(&self) -> input::Input {
         self.last_committed_remote_input.clone()
     }
@@ -611,10 +586,12 @@ impl Round {
 
     pub async fn consume_and_peek_local(
         &mut self,
-    ) -> anyhow::Result<(
-        Vec<input::Pair<input::Input, input::Input>>,
-        Vec<input::PartialInput>,
-    )> {
+    ) -> anyhow::Result<
+        Option<(
+            Vec<input::Pair<input::Input, input::Input>>,
+            Vec<input::PartialInput>,
+        )>,
+    > {
         let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
 
         let partial_input_pairs = partial_input_pairs
@@ -625,8 +602,7 @@ impl Round {
                     .pop_front()
                     .unwrap_or_else(|| LocalImmediateInput {
                         current_tick: pair.local.local_tick,
-                        custom_screen_state: 0,
-                        turn: vec![],
+                        rx: self.hooks.placeholder_rx(),
                     });
                 if imm.current_tick != pair.local.local_tick {
                     anyhow::bail!(
@@ -640,8 +616,7 @@ impl Round {
                         local_tick: pair.local.local_tick,
                         remote_tick: pair.local.remote_tick,
                         joyflags: pair.local.joyflags,
-                        custom_screen_state: imm.custom_screen_state,
-                        turn: imm.turn,
+                        rx: imm.rx,
                     },
                     remote: pair.remote,
                 })
@@ -651,11 +626,13 @@ impl Round {
         let mut shadow = self.shadow.lock().await;
         let input_pairs = partial_input_pairs
             .into_iter()
-            .map(|pair| shadow.apply_input(pair))
-            .collect::<Result<Vec<_>, _>>()?;
+            .flat_map(|pair| shadow.apply_input(pair).unwrap()) // TODO: Don't unwrap this.
+            .collect::<Vec<input::Pair<input::Input, input::Input>>>();
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
+        } else {
+            return Ok(None);
         }
 
         for ip in &input_pairs {
@@ -666,7 +643,7 @@ impl Round {
                 .expect("write input");
         }
 
-        Ok((input_pairs, left))
+        Ok(Some((input_pairs, left)))
     }
 
     pub fn can_add_local_input(&mut self) -> bool {
@@ -685,23 +662,6 @@ impl Round {
     pub fn add_remote_input(&mut self, input: input::PartialInput) {
         log::debug!("remote input: {:?}", input);
         self.iq.add_remote_input(input);
-    }
-
-    pub fn add_local_pending_turn(&mut self, tx_buf: Vec<u8>, on_tick: u32) {
-        self.local_pending_turn = Some(PendingTurn { on_tick, tx_buf })
-    }
-
-    pub fn take_local_pending_turn(&mut self, current_tick: u32) -> Vec<u8> {
-        match &mut self.local_pending_turn {
-            Some(pt) => {
-                if pt.on_tick == current_tick {
-                    self.local_pending_turn.take().unwrap().tx_buf
-                } else {
-                    vec![]
-                }
-            }
-            None => vec![],
-        }
     }
 
     pub fn tps_adjustment(&self) -> f32 {

@@ -12,7 +12,7 @@ pub struct Writer {
 }
 
 const HEADER: &[u8] = b"TOOT";
-const VERSION: u8 = 0x0f;
+const VERSION: u8 = 0x10;
 
 pub struct Replay {
     pub is_complete: bool,
@@ -62,6 +62,8 @@ impl Replay {
 
         let local_player_index = zr.read_u8()?;
 
+        let input_raw_size = zr.read_u8()? as usize;
+
         let mut local_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut local_state)?;
         let local_state = if !local_state.is_empty() {
@@ -92,71 +94,33 @@ impl Replay {
                 break;
             };
 
-            let p1_joyflags = if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
-                v
-            } else {
-                break;
-            };
-            let p2_joyflags = if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
-                v
-            } else {
-                break;
-            };
-
-            let p1_custom_screen_state = if let Ok(v) = zr.read_u8() {
-                v
-            } else {
-                break;
-            };
-            let p2_custom_screen_state = if let Ok(v) = zr.read_u8() {
-                v
-            } else {
-                break;
-            };
-
-            let mut p1_turn = vec![
-                0u8;
-                if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
-                    v
-                } else {
-                    break;
-                } as usize
-            ];
-            if let Ok(_) = zr.read_exact(&mut p1_turn) {
-                // Do nothing.
-            } else {
-                break;
-            }
-
-            let mut p2_turn = vec![
-                0u8;
-                if let Ok(v) = zr.read_u32::<byteorder::LittleEndian>() {
-                    v
-                } else {
-                    break;
-                } as usize
-            ];
-            if let Ok(_) = zr.read_exact(&mut p2_turn) {
-                // Do nothing.
-            } else {
-                break;
-            }
-
-            let p1_input = input::Input {
+            let mut p1_input = input::Input {
                 local_tick,
                 remote_tick,
-                joyflags: p1_joyflags,
-                custom_screen_state: p1_custom_screen_state,
-                turn: p1_turn,
+                joyflags: if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
+                    v
+                } else {
+                    break;
+                },
+                rx: vec![0u8; input_raw_size],
             };
+            if zr.read_exact(&mut p1_input.rx).is_err() {
+                break;
+            }
 
-            let p2_input = input::Input {
+            let mut p2_input = input::Input {
                 local_tick,
                 remote_tick: local_tick,
-                joyflags: p2_joyflags,
-                custom_screen_state: p2_custom_screen_state,
-                turn: p2_turn,
+                joyflags: if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
+                    v
+                } else {
+                    break;
+                },
+                rx: vec![0u8; input_raw_size],
             };
+            if zr.read_exact(&mut p2_input.rx).is_err() {
+                break;
+            }
 
             let (local, remote) = if local_player_index == 0 {
                 (p1_input, p2_input)
@@ -183,6 +147,7 @@ impl Writer {
         mut writer: Box<dyn WriteSeek + Send>,
         metadata: &[u8],
         local_player_index: u8,
+        raw_input_size: u8,
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
         writer.write_u8(VERSION)?;
@@ -191,6 +156,7 @@ impl Writer {
         writer.write_all(metadata)?;
         let mut encoder = zstd::Encoder::new(writer, 3)?;
         encoder.write_u8(local_player_index)?;
+        encoder.write_u8(raw_input_size)?;
         encoder.flush()?;
         Ok(Writer {
             encoder: Some(encoder),
@@ -230,31 +196,13 @@ impl Writer {
         self.encoder
             .as_mut()
             .unwrap()
-            .write_u16::<byteorder::LittleEndian>(p1.joyflags)?;
+            .write_u16::<byteorder::LittleEndian>(ip.local.joyflags)?;
+        self.encoder.as_mut().unwrap().write_all(&p1.rx)?;
         self.encoder
             .as_mut()
             .unwrap()
-            .write_u16::<byteorder::LittleEndian>(p2.joyflags)?;
-
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .write_u8(p1.custom_screen_state)?;
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .write_u8(p2.custom_screen_state)?;
-
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .write_u32::<byteorder::LittleEndian>(p1.turn.len() as u32)?;
-        self.encoder.as_mut().unwrap().write_all(&p1.turn)?;
-        self.encoder
-            .as_mut()
-            .unwrap()
-            .write_u32::<byteorder::LittleEndian>(p2.turn.len() as u32)?;
-        self.encoder.as_mut().unwrap().write_all(&p2.turn)?;
+            .write_u16::<byteorder::LittleEndian>(ip.local.joyflags)?;
+        self.encoder.as_mut().unwrap().write_all(&p2.rx)?;
 
         self.num_inputs += 1;
         Ok(())

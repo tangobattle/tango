@@ -1,24 +1,13 @@
 #[derive(Clone, Copy)]
 pub(super) struct EWRAMOffsets {
     // Outgoing packet.
-    pub(super) tx: u32,
+    pub(super) tx_packet: u32,
 
     // Incoming packet.
-    pub(super) rx_arr: u32,
-
-    /// Player input state, indexed by player index. Layout is documented in the munger.
-    pub(super) player_input_state_arr: u32,
+    pub(super) rx_packet_arr: u32,
 
     /// Location of the battle state struct in memory.
     pub(super) battle_state: u32,
-
-    /// Transmit buffer for battle initialization and turn start data. This is 255 bytes in size.
-    pub(super) tx_buf: u32,
-
-    /// Receive buffer array, indexed by player index.
-    ///
-    /// Each entry is 255 bytes in size.
-    pub(super) rx_buf_arr: u32,
 
     /// Start screen jump table control.
     pub(super) start_screen_control: u32,
@@ -66,26 +55,10 @@ pub(super) struct ROMOffsets {
     /// Expected values are: 2 if input is ready, 4 if remote has disconnected.
     pub(super) get_copy_data_input_state_ret: u32,
 
+    /// This hooks the entry into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
+    ///
+    /// Received packets should be injected here into rx_packet_arr.
     pub(super) copy_input_data_entry: u32,
-
-    pub(super) copy_input_data_ret: u32,
-
-    /// This is the call to the routine to copy input data from what would be received from SIO during battle init.
-    ///
-    /// We skip this entirely because we inject the init data directly into memory via battle_init_tx_buf_copy_ret instead.
-    pub(super) round_init_call_battle_copy_input_data: u32,
-
-    /// This is the call to the routine to copy input data from what would be received from SIO.
-    ///
-    /// Here, we take the input we received from the remote and inject it into the player's input state. This would usually be done via SIO, but instead this is just a copy from emulator into game memory.
-    ///
-    /// If the remote has sent turn data this tick, we also copy it into the receive buffer at this point.
-    pub(super) round_update_call_battle_copy_input_data: u32,
-
-    /// This hooks the point when the round is ending and the game will process no further input.
-    ///
-    /// At this point, Tango will clean up its round state and commit the replay.
-    pub(super) round_ending_ret: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
@@ -94,24 +67,12 @@ pub(super) struct ROMOffsets {
     /// Otherwise, the battle hasn't ended.
     pub(super) round_run_unpaused_step_cmp_retval: u32,
 
-    /// This hooks the point after the round initialization data is copied to the trasmit buffer.
-    ///
-    /// At this point, we can safely take a snapshot from the transmit buffer to send to the remote player.
-    pub(super) round_init_tx_buf_copy_ret: u32,
-
-    /// This hooks the point after the start turn data is copied to the trasmit buffer.
-    ///
-    /// At this point, we can safely take a snapshot from the transmit buffer to send to the remote player.
-    pub(super) round_turn_tx_buf_copy_ret: u32,
-
     /// This hooks the point after the battle start routine is complete.
     ///
     /// Tango initializes its own battle tracking state at this point.
     pub(super) round_start_ret: u32,
 
     /// This hooks the point after the battle end routine is complete.
-    ///
-    /// This is only used for the replay viewer to know when to end.
     pub(super) round_end_entry: u32,
 
     /// This hooks the point determining if the player is player 2 or not.
@@ -156,12 +117,9 @@ pub(super) struct ROMOffsets {
 }
 
 static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
-    tx: 0x2036780,
-    rx_arr: 0x020399f0,
-    player_input_state_arr: 0x02036820,
+    tx_packet: 0x2036780,
+    rx_packet_arr: 0x020399f0,
     battle_state: 0x02034880,
-    tx_buf: 0x0203cbe0,
-    rx_buf_arr: 0x0203f4a0,
     start_screen_control: 0x02011800,
     title_menu_control: 0x0200ad10,
     menu_control: 0x0200df20,
@@ -190,13 +148,7 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x0801feec,
         copy_input_data_entry: 0x0801ff18,
-        copy_input_data_ret: 0x0801ffd4,
-        round_init_call_battle_copy_input_data: 0x08007902,
-        round_update_call_battle_copy_input_data: 0x08007a6e,
         round_run_unpaused_step_cmp_retval: 0x08008102,
-        round_ending_ret: 0x0800951c,
-        round_init_tx_buf_copy_ret: 0x0800b2b8,
-        round_turn_tx_buf_copy_ret: 0x0800b3d6,
         round_start_ret: 0x08007304,
         round_end_entry: 0x08007ca0,
         battle_is_p2_tst: 0x0803dd52,
@@ -219,13 +171,7 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x0801feec,
         copy_input_data_entry: 0x0801ff18,
-        copy_input_data_ret: 0x0801ffd4,
-        round_init_call_battle_copy_input_data: 0x08007902,
-        round_update_call_battle_copy_input_data: 0x08007a6e,
         round_run_unpaused_step_cmp_retval: 0x08008102,
-        round_ending_ret: 0x0800951c,
-        round_init_tx_buf_copy_ret: 0x0800b2b8,
-        round_turn_tx_buf_copy_ret: 0x0800b3d6,
         round_start_ret: 0x08007304,
         round_end_entry: 0x08007ca0,
         battle_is_p2_tst: 0x0803dd26,
@@ -248,13 +194,7 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x08020300,
         copy_input_data_entry: 0x080203ea,
-        copy_input_data_ret: 0x080204b6,
-        round_init_call_battle_copy_input_data: 0x080078ee,
-        round_update_call_battle_copy_input_data: 0x08007a6a,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
-        round_ending_ret: 0x080096ec,
-        round_init_tx_buf_copy_ret: 0x0800b8a0,
-        round_turn_tx_buf_copy_ret: 0x0800b9be,
         round_start_ret: 0x080072f8,
         round_end_entry: 0x08007c9c,
         battle_is_p2_tst: 0x0803ed96,
@@ -277,13 +217,7 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         main_read_joyflags: 0x080003fa,
         get_copy_data_input_state_ret: 0x08020300,
         copy_input_data_entry: 0x080203ea,
-        copy_input_data_ret: 0x080204b6,
-        round_init_call_battle_copy_input_data: 0x080078ee,
-        round_update_call_battle_copy_input_data: 0x08007a6a,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
-        round_ending_ret: 0x080096ec,
-        round_init_tx_buf_copy_ret: 0x0800b8a0,
-        round_turn_tx_buf_copy_ret: 0x0800b9be,
         round_start_ret: 0x080072f8,
         round_end_entry: 0x08007c9c,
         battle_is_p2_tst: 0x0803ed6a,

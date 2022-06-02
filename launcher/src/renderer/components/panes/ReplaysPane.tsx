@@ -74,8 +74,9 @@ function ReplayItem({
   const { roms } = useROMs();
 
   const unavailable =
-    roms[replay.info.metadata.rom] == null ||
-    (replay.resolvedPatchVersion == null && replay.info.metadata.patch != null);
+    roms[replay.info.metadata.localSide!.gameInfo!.rom] == null ||
+    (replay.resolvedPatchVersion == null &&
+      replay.info.metadata.localSide!.gameInfo!.patch != null);
 
   return (
     <ListItem
@@ -150,7 +151,7 @@ function ReplayItem({
                     formattedDate: dateFormat.format(
                       new Date(replay.info.metadata.ts)
                     ),
-                    nickname: replay.info.metadata.remote!.nickname,
+                    nickname: replay.info.metadata.remoteSide!.nickname,
                     linkCode: replay.info.metadata.linkCode,
                   }}
                 />{" "}
@@ -233,11 +234,14 @@ export default function ReplaysPane({ active }: { active: boolean }) {
             filename,
             info: replayInfo,
             resolvedPatchVersion:
-              replayInfo.metadata.patch != null &&
-              patches[replayInfo.metadata.patch.name] != null
+              replayInfo.metadata.localSide!.gameInfo!.patch != null &&
+              patches[replayInfo.metadata.localSide!.gameInfo!.patch.name] !=
+                null
                 ? findPatchVersion(
-                    patches[replayInfo.metadata.patch.name],
-                    replayInfo.metadata.patch.version
+                    patches[
+                      replayInfo.metadata.localSide!.gameInfo!.patch.name
+                    ],
+                    replayInfo.metadata.localSide!.gameInfo!.patch.version
                   )
                 : null,
           });
@@ -340,11 +344,14 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       )}
       {viewingReplay != null ? (
         <ReplayviewSupervisor
-          romName={path.join(viewingReplay.info.metadata.rom)}
+          romName={path.join(
+            viewingReplay.info.metadata.localSide!.gameInfo!.rom
+          )}
           patch={
             viewingReplay.resolvedPatchVersion != null
               ? {
-                  name: viewingReplay.info.metadata.patch!.name,
+                  name: viewingReplay.info.metadata.localSide!.gameInfo!.patch!
+                    .name,
                   version: viewingReplay.resolvedPatchVersion,
                 }
               : undefined
@@ -471,11 +478,14 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           </Modal>
         ) : dumpingReplay.state == "in-progress" ? (
           <ReplaydumpSupervisor
-            romName={path.join(dumpingReplay.replay.info.metadata.rom)}
+            romName={path.join(
+              dumpingReplay.replay.info.metadata.localSide!.gameInfo!.rom
+            )}
             patch={
               dumpingReplay.replay.resolvedPatchVersion != null
                 ? {
-                    name: dumpingReplay.replay.info.metadata.patch!.name,
+                    name: dumpingReplay.replay.info.metadata.localSide!
+                      .gameInfo!.patch!.name,
                     version: dumpingReplay.replay.resolvedPatchVersion,
                   }
                 : undefined

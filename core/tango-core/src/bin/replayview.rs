@@ -66,7 +66,6 @@ fn main() -> Result<(), anyhow::Error> {
     let hooks = tango_core::hooks::HOOKS
         .get(&core.as_ref().game_title())
         .unwrap();
-    hooks.prepare_for_fastforward(core.as_mut());
 
     let local_player_index = if !args.remote {
         replay.local_player_index
@@ -88,14 +87,6 @@ fn main() -> Result<(), anyhow::Error> {
                 input_pairs,
                 0,
                 0,
-                {
-                    let done = done.clone();
-                    Box::new(move || {
-                        if !replay.is_complete {
-                            done.store(true, std::sync::atomic::Ordering::Relaxed);
-                        }
-                    })
-                },
                 {
                     let done = done.clone();
                     Box::new(move || {

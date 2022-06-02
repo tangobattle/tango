@@ -19,7 +19,7 @@ struct Cli {
 }
 
 #[derive(clap::Parser)]
-struct DumpVideoCli {
+struct VideoCli {
     #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
 
@@ -44,16 +44,16 @@ struct DumpVideoCli {
 }
 
 #[derive(clap::Parser)]
-struct DumpEWRAMCli {}
+struct EWRAMCli {}
 
 #[derive(clap::Parser)]
-struct DumpTextCli {}
+struct TextCli {}
 
 #[derive(clap::Subcommand)]
 enum Action {
-    DumpVideo(DumpVideoCli),
-    DumpEWRAM(DumpEWRAMCli),
-    DumpText(DumpTextCli),
+    Video(VideoCli),
+    EWRAM(EWRAMCli),
+    Text(TextCli),
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -74,13 +74,13 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     match args.action {
-        Action::DumpVideo(args) => dump_video(args, replay),
-        Action::DumpEWRAM(args) => dump_ewram(args, replay),
-        Action::DumpText(args) => dump_text(args, replay),
+        Action::Video(args) => dump_video(args, replay),
+        Action::EWRAM(args) => dump_ewram(args, replay),
+        Action::Text(args) => dump_text(args, replay),
     }
 }
 
-fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     let mut core = mgba::core::Core::new_gba("tango_core")?;
     core.enable_video_buffer();
 
@@ -94,31 +94,16 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
     let input_pairs = replay.input_pairs.clone();
 
     let ff_state = {
-        tango_core::fastforwarder::State::new(
-            replay.local_player_index,
-            input_pairs,
-            0,
-            0,
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    if !replay.is_complete {
-                        done.store(true, std::sync::atomic::Ordering::Relaxed);
-                    }
-                })
-            },
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-        )
+        tango_core::fastforwarder::State::new(replay.local_player_index, input_pairs, 0, 0, {
+            let done = done.clone();
+            Box::new(move || {
+                done.store(true, std::sync::atomic::Ordering::Relaxed);
+            })
+        })
     };
     let hooks = tango_core::hooks::HOOKS
         .get(&core.as_ref().game_title())
         .unwrap();
-    hooks.prepare_for_fastforward(core.as_mut());
     {
         let ff_state = ff_state.clone();
         core.set_traps(hooks.fastforwarder_traps(ff_state));
@@ -236,31 +221,18 @@ fn dump_video(args: DumpVideoCli, replay: tango_core::replay::Replay) -> Result<
     Ok(())
 }
 
-fn dump_ewram(
-    _args: DumpEWRAMCli,
-    replay: tango_core::replay::Replay,
-) -> Result<(), anyhow::Error> {
+fn dump_ewram(_args: EWRAMCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     std::io::stdout().write_all(replay.local_state.unwrap().wram())?;
     std::io::stdout().flush()?;
     Ok(())
 }
 
-fn dump_text(_args: DumpTextCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
-            "tick = {:?}, local joyflags = {}, remote joyflags = {}, local custom screen state = {}, remote custom screen state = {}",
-            ip.local.local_tick,
-            ip.local.joyflags,
-            ip.remote.joyflags,
-            ip.local.custom_screen_state,
-            ip.remote.custom_screen_state,
+            "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
+            ip.local.local_tick, ip.local.joyflags, ip.local.rx, ip.remote.joyflags, ip.remote.rx,
         );
-        if !ip.local.turn.is_empty() {
-            println!("+ local turn: {:?}", ip.local.turn);
-        }
-        if !ip.remote.turn.is_empty() {
-            println!("+ remote turn: {:?}", ip.remote.turn);
-        }
     }
     Ok(())
 }

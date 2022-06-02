@@ -1,32 +1,13 @@
 import { open } from "fs/promises";
 
-const REPLAY_VERSION = 0x0f;
+import { ReplayMetadata } from "./protos/generated/replay";
 
-export interface GameInfo {
-  rom: string;
-  patch: {
-    name: string;
-    version: string;
-  } | null;
-}
-
-export interface Side extends GameInfo {
-  nickname: string;
-  revealSetup: boolean;
-}
-
-export interface ReplayMetadata extends Side {
-  ts: number;
-  linkCode: string;
-  remote: Side | null;
-}
+const REPLAY_VERSION = 0x10;
 
 export interface ReplayInfo {
   metadata: ReplayMetadata;
   isComplete: boolean;
 }
-
-const textDecoder = new TextDecoder("utf-8");
 
 export async function readReplayMetadata(
   filename: string
@@ -100,9 +81,7 @@ export async function readReplayMetadata(
     }
     return {
       isComplete,
-      metadata: JSON.parse(
-        textDecoder.decode(new Uint8Array(Buffer.concat(chunks)).buffer)
-      ) as ReplayMetadata,
+      metadata: ReplayMetadata.decode(new Uint8Array(Buffer.concat(chunks))),
     };
   } catch (e) {
     console.warn("replay skipped:", filename, e);
