@@ -34,5 +34,37 @@
     },
     "crc32": 1652920714,
     "netplayCompatibility": "exe6"
+  },
+  "MEGAMANBN4BMB4BE": {
+    "title": {
+      "en": "Mega Man Battle Network 4: Blue Moon",
+      "ja": "ロックマンエグゼ4 トーナメント ブルームーン（英語版）"
+    },
+    "crc32": 1971996393,
+    "netplayCompatibility": "bn4"
+  },
+  "MEGAMANBN4RSB4WE": {
+    "title": {
+      "en": "Mega Man Battle Network 4: Red Sun",
+      "ja": "ロックマンエグゼ4 トーナメント レッドサン（英語版）"
+    },
+    "crc32": 555772252,
+    "netplayCompatibility": "bn4"
+  },
+  "ROCK_EXE4_BMB4BJ": {
+    "title": {
+      "en": "Rockman EXE 4: Tournament Blue Moon",
+      "ja": "ロックマンエグゼ4 トーナメント ブルームーン"
+    },
+    "crc32": 3984350032,
+    "netplayCompatibility": "exe4"
+  },
+  "ROCK_EXE4_RSB4WJ": {
+    "title": {
+      "en": "Rockman EXE 4: Tournament Red Sun",
+      "ja": "ロックマンエグゼ4 トーナメント レッドサン"
+    },
+    "crc32": 1783730301,
+    "netplayCompatibility": "exe4"
   }
 }
