@@ -120,7 +120,7 @@ function FolderChipRow({
         <img
           height="28"
           width="28"
-          src={require(`../../../static/images/games/bn6/elements/${
+          src={require(`../../../static/images/games/${gameFamily}/elements/${
             chipInfo.element ?? "null"
           }.png`)}
           style={{ imageRendering: "pixelated" }}

@@ -5,12 +5,33 @@ import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 
+import { Editor } from "../../saveedit";
+import * as bn4 from "../../saveedit/bn4";
 import * as bn6 from "../../saveedit/bn6";
 import FolderViewer from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
 
-export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
+function BN4SaveViewer({ editor }: { editor: bn4.Editor }) {
+  const [tab, setTab] = React.useState("folder");
+
+  return (
+    <Stack flexGrow={1} flexShrink={0}>
+      <Tabs
+        sx={{ px: 1 }}
+        value={tab}
+        onChange={(e, value) => {
+          setTab(value);
+        }}
+      >
+        <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
+      </Tabs>
+      <FolderViewer editor={editor} active={tab == "folder"} />
+    </Stack>
+  );
+}
+
+function BN6SaveViewer({ editor }: { editor: bn6.Editor }) {
   const [tab, setTab] = React.useState("navicust");
 
   React.useEffect(() => {
@@ -43,4 +64,15 @@ export default function SaveViewer({ editor }: { editor: bn6.Editor }) {
       ) : null}
     </Stack>
   );
+}
+
+export default function SaveViewer({ editor }: { editor: Editor }) {
+  switch (editor.getGameFamily()) {
+    case "bn6":
+      return <BN6SaveViewer editor={editor as bn6.Editor} />;
+    case "bn4":
+      return <BN4SaveViewer editor={editor as bn4.Editor} />;
+    default:
+      return null;
+  }
 }
