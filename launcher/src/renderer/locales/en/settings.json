@@ -35,5 +35,6 @@
     "rust-log-filter": "RUST_LOG filter",
     "open-logs-folder": "Open logs folder",
     "signaling-endpoint": "Signaling endpoint",
-    "iceconfig-endpoint": "ICE configuration endpoint"
+    "iceconfig-endpoint": "ICE configuration endpoint",
+    "patch-repo": "Patch repository",
 }

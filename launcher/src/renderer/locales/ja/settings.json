@@ -35,5 +35,6 @@
     "rust-log-filter": "RUST_LOGフィルター",
     "open-logs-folder": "ログフォルダーを開く",
     "signaling-endpoint": "シグナリングエンドポイント",
-    "iceconfig-endpoint": "ICE設定エンドポイント"
+    "iceconfig-endpoint": "ICE設定エンドポイント",
+    "patch-repo": "パッチリポジトリ",
 }
