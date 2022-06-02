@@ -422,6 +422,10 @@ export class Editor {
     );
   }
 
+  isRegularChipInPlace() {
+    return true;
+  }
+
   getRegularChipIndex(folderIdx: number) {
     const i = this.dv.getUint8(
       this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2e + folderIdx

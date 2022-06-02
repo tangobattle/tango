@@ -29,6 +29,7 @@ export interface Editor {
     id: number;
     code: string;
   } | null;
+  isRegularChipInPlace(): boolean;
   getRegularChipIndex(folderIdx: number): number | null;
   getTagChip1Index(folderIdx: number): number | null;
   getTagChip2Index(folderIdx: number): number | null;

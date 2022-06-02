@@ -24,11 +24,11 @@ const GIGA_BG = {
 };
 
 function FolderChipRow({
-  chip,
+  groupedChip,
   gameFamily,
   chipData,
 }: {
-  chip: {
+  groupedChip: {
     id: number;
     code: string;
     isRegular: boolean;
@@ -39,7 +39,7 @@ function FolderChipRow({
   gameFamily: string;
   chipData: (ChipInfo | null)[];
 }) {
-  const { id, code, isRegular, isTag1, isTag2, count } = chip;
+  const { id, code, isRegular, isTag1, isTag2, count } = groupedChip;
   const theme = useTheme();
 
   const { i18n } = useTranslation();
@@ -143,7 +143,20 @@ export default function FolderViewer({
   editor: Editor;
   active: boolean;
 }) {
-  const chips: {
+  const chips: ({ id: number; code: string } | null)[] = [];
+  for (let i = 0; i < 30; i++) {
+    const chip = editor.getChip(editor.getEquippedFolder(), i);
+    chips.push(chip);
+  }
+
+  if (!editor.isRegularChipInPlace()) {
+    const regChipIdx = editor.getRegularChipIndex(editor.getEquippedFolder());
+    if (regChipIdx != null) {
+      chips.splice(regChipIdx, 0, ...chips.splice(0, 1));
+    }
+  }
+
+  const groupedChips: {
     id: number;
     code: string;
     isRegular: boolean;
@@ -152,15 +165,14 @@ export default function FolderViewer({
     count: number;
   }[] = [];
   const chipCounter: { [key: string]: number } = {};
-  for (let i = 0; i < 30; i++) {
-    const chip = editor.getChip(editor.getEquippedFolder(), i);
+  for (const chip of chips) {
     if (chip == null) {
       continue;
     }
     const chipKey = `${chip.id}:${chip.code}`;
     if (!Object.prototype.hasOwnProperty.call(chipCounter, chipKey)) {
       chipCounter[chipKey] = 0;
-      chips.push({
+      groupedChips.push({
         ...chip,
         isRegular: false,
         isTag1: false,
@@ -171,35 +183,35 @@ export default function FolderViewer({
     chipCounter[chipKey]++;
   }
 
-  for (const chip of chips) {
-    chip.count = chipCounter[`${chip.id}:${chip.code}`];
+  for (const groupedChip of groupedChips) {
+    groupedChip.count = chipCounter[`${groupedChip.id}:${groupedChip.code}`];
 
     const regularChipIdx = editor.getRegularChipIndex(
       editor.getEquippedFolder()
     );
     if (regularChipIdx != null) {
-      const regularChip = editor.getChip(
-        editor.getEquippedFolder(),
-        regularChipIdx
-      )!;
-      if (chip.id == regularChip.id && chip.code == regularChip.code) {
-        chip.isRegular = true;
+      const regularChip = chips[regularChipIdx]!;
+      if (
+        groupedChip.id == regularChip.id &&
+        groupedChip.code == regularChip.code
+      ) {
+        groupedChip.isRegular = true;
       }
     }
 
     const tagChip1Idx = editor.getTagChip1Index(editor.getEquippedFolder());
     if (tagChip1Idx != null) {
-      const tagChip1 = editor.getChip(editor.getEquippedFolder(), tagChip1Idx)!;
-      if (chip.id == tagChip1.id && chip.code == tagChip1.code) {
-        chip.isTag1 = true;
+      const tagChip1 = chips[tagChip1Idx]!;
+      if (groupedChip.id == tagChip1.id && groupedChip.code == tagChip1.code) {
+        groupedChip.isTag1 = true;
       }
     }
 
     const tagChip2Idx = editor.getTagChip2Index(editor.getEquippedFolder());
     if (tagChip2Idx != null) {
-      const tagChip2 = editor.getChip(editor.getEquippedFolder(), tagChip2Idx)!;
-      if (chip.id == tagChip2.id && chip.code == tagChip2.code) {
-        chip.isTag2 = true;
+      const tagChip2 = chips[tagChip2Idx]!;
+      if (groupedChip.id == tagChip2.id && groupedChip.code == tagChip2.code) {
+        groupedChip.isTag2 = true;
       }
     }
   }
@@ -213,10 +225,10 @@ export default function FolderViewer({
     >
       <Table size="small">
         <TableBody>
-          {chips.map((chip, i) => (
+          {groupedChips.map((groupedChip, i) => (
             <FolderChipRow
               key={i}
-              chip={chip}
+              groupedChip={groupedChip}
               gameFamily={editor.getGameFamily()}
               chipData={editor.getChipData()}
             />

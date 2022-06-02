@@ -221,17 +221,17 @@ export class Editor {
     return this.dv.setUint8(0x2132, i);
   }
 
-  getRegularChipIndex(folderIdx: number) {
-    // Only the first chip can be the regular chip, but the value here is the insertion order of the regular chip for display.
-    const i = this.dv.getUint8(0x214d + folderIdx);
-    return i != 0xff ? 0 : null;
+  isRegularChipInPlace() {
+    return false;
   }
 
-  setRegularChipIndex(folderIdx: number, i: number) {
-    if (i != 0 && i != null) {
-      throw "must be 0 or null";
-    }
-    this.dv.setUint8(0x214d + folderIdx, i == null ? 0xff : 0);
+  getRegularChipIndex(folderIdx: number) {
+    const i = this.dv.getUint8(0x214d + folderIdx);
+    return i != 0xff ? i : null;
+  }
+
+  setRegularChipIndex(folderIdx: number, i: number | null) {
+    this.dv.setUint8(0x214d + folderIdx, i == null ? 0xff : i);
   }
 
   getTagChip1Index() {
