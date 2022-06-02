@@ -201,7 +201,7 @@ impl Writer {
         self.encoder
             .as_mut()
             .unwrap()
-            .write_u16::<byteorder::LittleEndian>(ip.local.joyflags)?;
+            .write_u16::<byteorder::LittleEndian>(ip.remote.joyflags)?;
         self.encoder.as_mut().unwrap().write_all(&p2.rx)?;
 
         self.num_inputs += 1;
