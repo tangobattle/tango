@@ -179,11 +179,6 @@ impl Writer {
         local_player_index: u8,
         ip: &input::Pair<input::Input, input::Input>,
     ) -> std::io::Result<()> {
-        let (p1, p2) = if local_player_index == 0 {
-            (&ip.local, &ip.remote)
-        } else {
-            (&ip.remote, &ip.local)
-        };
         self.encoder
             .as_mut()
             .unwrap()
@@ -193,15 +188,21 @@ impl Writer {
             .unwrap()
             .write_u32::<byteorder::LittleEndian>(ip.local.remote_tick)?;
 
+        let (p1, p2) = if local_player_index == 0 {
+            (&ip.local, &ip.remote)
+        } else {
+            (&ip.remote, &ip.local)
+        };
+
         self.encoder
             .as_mut()
             .unwrap()
-            .write_u16::<byteorder::LittleEndian>(ip.local.joyflags)?;
+            .write_u16::<byteorder::LittleEndian>(p1.joyflags)?;
         self.encoder.as_mut().unwrap().write_all(&p1.rx)?;
         self.encoder
             .as_mut()
             .unwrap()
-            .write_u16::<byteorder::LittleEndian>(ip.remote.joyflags)?;
+            .write_u16::<byteorder::LittleEndian>(p2.joyflags)?;
         self.encoder.as_mut().unwrap().write_all(&p2.rx)?;
 
         self.num_inputs += 1;
