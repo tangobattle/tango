@@ -113,7 +113,19 @@ export class Editor {
 
     buffer = buffer.slice(0);
 
-    const dv = new DataView(buffer);
+    const startOffset = Editor.getStartOffset(buffer);
+    if (startOffset == null) {
+      throw "could not locate start offset";
+    }
+    const dv = new DataView(buffer, startOffset);
+
+    const decoder = new TextDecoder("ascii");
+    const gn = decoder.decode(
+      new Uint8Array(buffer, dv.byteOffset + 0x2208, 20)
+    );
+    if (gn != "ROCKMANEXE4 20031022") {
+      throw "unknown game name: " + gn;
+    }
 
     const checksum = getChecksum(dv);
     const rawChecksum = computeChecksumRaw(dv);
@@ -153,7 +165,7 @@ export class Editor {
     );
   }
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
@@ -162,12 +174,8 @@ export class Editor {
     this.dv = new DataView(buffer, startOffset);
     this.romName = romName;
 
-    const decoder = new TextDecoder("ascii");
-    const gn = decoder.decode(
-      new Uint8Array(buffer, this.dv.byteOffset + 0x2208, 20)
-    );
-    if (gn != "ROCKMANEXE4 20031022") {
-      throw "unknown game name: " + gn;
+    if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
+      throw "checksum does not match";
     }
   }
 
