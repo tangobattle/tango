@@ -15,6 +15,9 @@ pub(super) struct EWRAMOffsets {
     /// Title menu jump table control.
     pub(super) title_menu_control: u32,
 
+    /// Subsystem control.
+    pub(super) subsystem_control: u32,
+
     /// START menu jump table control.
     pub(super) menu_control: u32,
 
@@ -125,6 +128,7 @@ static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     battle_state: 0, // TODO
     start_screen_control: 0x0200b220,
     title_menu_control: 0x0200b220,
+    subsystem_control: 0x0200a7e0,
     menu_control: 0x200f770,
     submenu_control: 0x0200a450,
     rng1_state: 0x020015d4,

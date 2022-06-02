@@ -18,6 +18,8 @@ impl Munger {
     }
 
     pub(super) fn open_comm_menu_from_overworld(&self, mut core: mgba::core::CoreMutRef) {
+        core.raw_write_8(self.offsets.ewram.subsystem_control, -1, 0x1c);
+        // TODO: This doesn't work.
         core.raw_write_8(self.offsets.ewram.menu_control + 0x0, -1, 0x04);
         core.raw_write_8(self.offsets.ewram.menu_control + 0x1, -1, 0x01);
         core.raw_write_8(self.offsets.ewram.menu_control + 0x4, -1, 0x06);
