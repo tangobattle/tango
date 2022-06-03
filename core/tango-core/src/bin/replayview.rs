@@ -80,30 +80,27 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    {
-        core.set_traps(
-            hooks.fastforwarder_traps(tango_core::fastforwarder::State::new(
-                local_player_index,
-                input_pairs,
-                0,
-                0,
-                {
-                    let done = done.clone();
-                    Box::new(move || {
-                        if !replay.is_complete {
-                            done.store(true, std::sync::atomic::Ordering::Relaxed);
-                        }
-                    })
-                },
-                {
-                    let done = done.clone();
-                    Box::new(move || {
-                        done.store(true, std::sync::atomic::Ordering::Relaxed);
-                    })
-                },
-            )),
-        );
-    }
+    let ff_state = tango_core::fastforwarder::State::new(
+        local_player_index,
+        input_pairs,
+        0,
+        0,
+        {
+            let done = done.clone();
+            Box::new(move || {
+                if !replay.is_complete {
+                    done.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+            })
+        },
+        {
+            let done = done.clone();
+            Box::new(move || {
+                done.store(true, std::sync::atomic::Ordering::Relaxed);
+            })
+        },
+    );
+    core.set_traps(hooks.fastforwarder_traps(ff_state.clone()));
 
     let thread = mgba::thread::Thread::new(core);
     thread.start().expect("start thread");
@@ -175,6 +172,10 @@ fn main() -> Result<(), anyhow::Error> {
                     _ => {}
                 }
             }
+            if let Some(err) = ff_state.take_error() {
+                Err(err)?;
+            }
+
             if done.load(std::sync::atomic::Ordering::Relaxed) {
                 break 'toplevel;
             }

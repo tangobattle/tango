@@ -877,7 +877,7 @@ impl hooks::Hooks for BN6 {
                                 "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
                                 current_tick,
                                 ip.local.local_tick,
-                                ip.local.local_tick
+                                ip.remote.local_tick
                             ));
                             return;
                         }

@@ -69,6 +69,10 @@ impl State {
         ))))
     }
 
+    pub fn take_error(&self) -> Option<anyhow::Error> {
+        self.0.lock().as_mut().expect("error").error.take()
+    }
+
     pub fn commit_time(&self) -> u32 {
         self.0.lock().as_ref().expect("commit time").commit_time
     }

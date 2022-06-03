@@ -173,7 +173,15 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
     writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
-    while !done.load(std::sync::atomic::Ordering::Relaxed) {
+    loop {
+        if !done.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
+
+        if let Some(err) = ff_state.take_error() {
+            Err(err)?;
+        }
+
         core.as_mut().run_frame();
         let clock_rate = core.as_ref().frequency();
         let n = {
