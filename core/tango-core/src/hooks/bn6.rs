@@ -531,7 +531,7 @@ impl hooks::Hooks for BN6 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_ending_ret,
+                    self.offsets.rom.round_end_entry,
                     Box::new(move |core| {
                         shadow_state.end_round();
                         shadow_state.set_applied_state(core.save_state().expect("save state"));

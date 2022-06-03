@@ -77,8 +77,13 @@ pub(super) struct ROMOffsets {
     /// Tango initializes its own battle tracking state at this point.
     pub(super) round_start_ret: u32,
 
-    /// This hooks the point after the battle end routine is complete.
+    /// This hooks the point when the round is ending and the game will process no further input.
+    ///
+    /// At this point, Tango will clean up its round state and commit the replay.
     pub(super) round_ending_ret: u32,
+
+    /// This hooks the point after the battle end routine is complete.
+    pub(super) round_end_entry: u32,
 
     /// This hooks the point determining if the player is player 2 or not.
     ///
@@ -156,7 +161,8 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         copy_input_data_ret: 0x0801ffd4,
         round_run_unpaused_step_cmp_retval: 0x08008102,
         round_start_ret: 0x08007304,
-        round_ending_ret: 0x8007c4c,
+        round_end_entry: 0x08007ca0,
+        round_ending_ret: 0x0800951c,
         battle_is_p2_tst: 0x0803dd52,
         link_is_p2_ret: 0x0803dd86,
         comm_menu_init_ret: 0x08129298,
@@ -180,7 +186,8 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         copy_input_data_ret: 0x0801ffd4,
         round_run_unpaused_step_cmp_retval: 0x08008102,
         round_start_ret: 0x08007304,
-        round_ending_ret: 0x8007c4c,
+        round_end_entry: 0x08007ca0,
+        round_ending_ret: 0x0800951c,
         battle_is_p2_tst: 0x0803dd26,
         link_is_p2_ret: 0x0803dd5a,
         comm_menu_init_ret: 0x0812b074,
@@ -204,7 +211,8 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         copy_input_data_ret: 0x080204b6,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
         round_start_ret: 0x080072f8,
-        round_ending_ret: 0x08007c9c, // TODO
+        round_end_entry: 0x08007c9c,
+        round_ending_ret: 0x080096ec,
         battle_is_p2_tst: 0x0803ed96,
         link_is_p2_ret: 0x0803edca,
         comm_menu_init_ret: 0x08131cbc,
@@ -228,7 +236,8 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         copy_input_data_ret: 0x080204b6,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
         round_start_ret: 0x080072f8,
-        round_ending_ret: 0x08007c9c, // TODO
+        round_end_entry: 0x08007c9c,
+        round_ending_ret: 0x080096ec,
         battle_is_p2_tst: 0x0803ed6a,
         link_is_p2_ret: 0x0803ed9e,
         comm_menu_init_ret: 0x08133a84,

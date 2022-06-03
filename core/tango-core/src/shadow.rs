@@ -200,6 +200,11 @@ impl Shadow {
         log::info!("advancing shadow until round end");
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
+            self.core.as_mut().run_loop();
+            if let Some(err) = self.state.0.error.lock().take() {
+                return Err(err);
+            }
+
             let round_state = self.state.lock_round_state();
             if round_state.round.is_none() {
                 self.core
@@ -215,11 +220,6 @@ impl Shadow {
                     )
                     .expect("load state");
                 return Ok(());
-            }
-
-            self.core.as_mut().run_loop();
-            if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err);
             }
         }
     }
