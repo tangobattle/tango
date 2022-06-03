@@ -314,10 +314,7 @@ impl Match {
         self.is_offerer
     }
 
-    pub async fn start_round(
-        self: &std::sync::Arc<Self>,
-        _core: mgba::core::CoreMutRef<'_>,
-    ) -> anyhow::Result<()> {
+    pub async fn start_round(self: &std::sync::Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
         let local_player_index = if round_state.won_last_round { 0 } else { 1 };

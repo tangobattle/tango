@@ -78,4 +78,8 @@ impl Munger {
     pub(super) fn current_tick(&self, mut core: mgba::core::CoreMutRef) -> u32 {
         core.raw_read_32(self.offsets.ewram.battle_state + 0x60, -1)
     }
+
+    pub(super) fn set_current_tick(&self, mut core: mgba::core::CoreMutRef, v: u32) {
+        core.raw_write_32(self.offsets.ewram.battle_state + 0x60, -1, v)
+    }
 }

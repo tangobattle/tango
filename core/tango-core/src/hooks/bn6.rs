@@ -201,7 +201,7 @@ impl hooks::Hooks for BN6 {
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |core| {
+                    Box::new(move |_core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -209,8 +209,7 @@ impl hooks::Hooks for BN6 {
                                     return;
                                 }
                             };
-
-                            match_.start_round(core).await.expect("start round");
+                            match_.start_round().await.expect("start round");
                         });
                     }),
                 )
@@ -371,8 +370,11 @@ impl hooks::Hooks for BN6 {
                                     }
                                 };
 
-                                let current_tick = munger.current_tick(core);
                                 if !round.has_committed_state() {
+                                    // HACK: For some inexplicable reason, we don't always start on tick 0.
+                                    munger.set_current_tick(core, 0);
+                                    let current_tick = munger.current_tick(core);
+
                                     round.set_first_committed_state(
                                         core.save_state().expect("save state"),
                                         match_
@@ -391,6 +393,8 @@ impl hooks::Hooks for BN6 {
                                     );
                                     log::info!("battle state committed on {}", current_tick);
                                 }
+
+                                let current_tick = munger.current_tick(core);
 
                                 if !round
                                     .add_local_input_and_fastforward(
@@ -633,6 +637,10 @@ impl hooks::Hooks for BN6 {
                         };
 
                         if !round.has_first_committed_state() {
+                            // HACK: For some inexplicable reason, we don't always start on tick 0.
+                            munger.set_current_tick(core, 0);
+                            let current_tick = munger.current_tick(core);
+
                             round.set_first_committed_state(core.save_state().expect("save state"));
                             log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
