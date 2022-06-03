@@ -31,6 +31,7 @@ impl Munger {
         mut core: mgba::core::CoreMutRef,
         match_type: u16,
     ) {
+        // TODO: This doesn't work.
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x1c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
@@ -72,10 +73,11 @@ impl Munger {
         mut core: mgba::core::CoreMutRef,
         v: u16,
     ) {
-        core.raw_write_16(self.offsets.ewram.submenu_control + 0x2a, -1, v)
+        todo!();
     }
 
     pub(super) fn current_tick(&self, mut core: mgba::core::CoreMutRef) -> u32 {
-        core.raw_read_32(self.offsets.ewram.battle_state + 0x60, -1)
+        // TODO: Double check this. I don't think BN4 actually has a timer.
+        todo!();
     }
 }

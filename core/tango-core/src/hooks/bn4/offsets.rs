@@ -29,9 +29,6 @@ pub(super) struct EWRAMOffsets {
 
     /// Shared RNG state. Must be synced.
     pub(super) rng2_state: u32,
-
-    /// RNG3 state. Unsure what this is for.
-    pub(super) rng3_state: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -143,7 +140,6 @@ static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     submenu_control: 0x0200a450,
     rng1_state: 0x020015d4,
     rng2_state: 0x02001790,
-    rng3_state: 0x02001e98,
 };
 
 static EWRAM_OFFSETS_JP: EWRAMOffsets = EWRAMOffsets {
