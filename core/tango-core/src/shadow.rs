@@ -49,9 +49,7 @@ impl Round {
     }
 
     pub fn take_input_injected(&mut self) -> bool {
-        let input_injected = self.input_injected;
-        self.input_injected = false;
-        input_injected
+        std::mem::replace(&mut self.input_injected, false)
     }
 }
 
