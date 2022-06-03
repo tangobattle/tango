@@ -411,50 +411,6 @@ impl hooks::Hooks for BN6 {
                     }),
                 )
             },
-            {
-                let facade = facade.clone();
-                let munger = self.munger.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.copy_input_data_entry,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-
-                            let round = if let Some(round) = round_state.round.as_mut() {
-                                round
-                            } else {
-                                return;
-                            };
-
-                            let ip = if let Some(ip) = round.take_last_input() {
-                                ip
-                            } else {
-                                return;
-                            };
-
-                            munger.set_rx_packet(
-                                core,
-                                round.local_player_index() as u32,
-                                &ip.local.rx.try_into().unwrap(),
-                            );
-
-                            munger.set_rx_packet(
-                                core,
-                                round.remote_player_index() as u32,
-                                &ip.remote.rx.try_into().unwrap(),
-                            );
-                        })
-                    }),
-                )
-            },
         ]
     }
 
