@@ -227,14 +227,10 @@ impl Shadow {
     pub fn apply_input(
         &mut self,
         input: input::Pair<input::Input, input::PartialInput>,
-    ) -> anyhow::Result<Option<input::Pair<input::Input, input::Input>>> {
+    ) -> anyhow::Result<input::Pair<input::Input, input::Input>> {
         {
             let mut round_state = self.state.lock_round_state();
-            let round = if let Some(round) = round_state.round.as_mut() {
-                round
-            } else {
-                return Ok(None);
-            };
+            let round = round_state.round.as_mut().expect("round");
             round.pending_in_input = Some(input);
         }
         self.hooks.prepare_for_fastforward(self.core.as_mut());
@@ -249,14 +245,8 @@ impl Shadow {
                     .load_state(&applied_state)
                     .expect("load state");
                 let mut round_state = self.state.lock_round_state();
-                let round = if let Some(round) = round_state.round.as_mut() {
-                    round
-                } else {
-                    return Ok(None);
-                };
-                return Ok(Some(
-                    round.pending_out_input.take().expect("pending out input"),
-                ));
+                let round = round_state.round.as_mut().expect("round");
+                return Ok(round.pending_out_input.take().expect("pending out input"));
             }
         }
     }
