@@ -619,7 +619,10 @@ impl Round {
         let input_pairs = partial_input_pairs
             .into_iter()
             .map(|pair| shadow.apply_input(pair))
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
