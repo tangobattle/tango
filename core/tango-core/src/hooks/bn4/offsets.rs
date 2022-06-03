@@ -66,6 +66,11 @@ pub(super) struct ROMOffsets {
     /// Received packets should be injected here into rx_packet_arr.
     pub(super) copy_input_data_entry: u32,
 
+    /// This hooks the exit into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
+    ///
+    /// Packets to transmit should be injected here into tx_packet.
+    pub(super) copy_input_data_ret: u32,
+
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
     /// If r0 = 1, the local player won the last round.
@@ -77,6 +82,11 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango initializes its own battle tracking state at this point.
     pub(super) round_start_ret: u32,
+
+    /// This hooks the point when the round is ending and the game will process no further input.
+    ///
+    /// At this point, Tango will clean up its round state and commit the replay.
+    pub(super) round_ending_ret: u32,
 
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
@@ -125,7 +135,7 @@ pub(super) struct ROMOffsets {
 static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     tx_packet: 0x02037bc0,
     rx_packet_arr: 0x0203ac10,
-    battle_state: 0, // TODO
+    battle_state: 0x02035810,
     start_screen_control: 0x0200b220,
     title_menu_control: 0x0200b220,
     subsystem_control: 0x0200a7e0,
@@ -156,16 +166,18 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         main_read_joyflags: 0x080003c6,
         get_copy_data_input_state_ret: 0x08017b88,
         copy_input_data_entry: 0x08017b8e,
-        round_run_unpaused_step_cmp_retval: 0,      // TODO
-        round_start_ret: 0,                         // TODO
-        round_end_entry: 0,                         // TODO
-        battle_is_p2_tst: 0,                        // TODO
-        link_is_p2_ret: 0,                          // TODO
-        comm_menu_init_ret: 0,                      // TODO
-        comm_menu_init_battle_entry: 0,             // TODO
-        comm_menu_handle_link_cable_input_entry: 0, // TODO
+        copy_input_data_ret: 0x08017c56,
+        round_run_unpaused_step_cmp_retval: 0x08007120,
+        round_start_ret: 0x08006710,
+        round_ending_ret: 0x080077da,
+        round_end_entry: 0x08006e1e,
+        battle_is_p2_tst: 0,                                           // TODO
+        link_is_p2_ret: 0,                                             // TODO
+        comm_menu_init_ret: 0,                                         // TODO
+        comm_menu_init_battle_entry: 0,                                // TODO
+        comm_menu_handle_link_cable_input_entry: 0,                    // TODO
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0, // TODO
-        comm_menu_end_battle_entry: 0,              // TODO
+        comm_menu_end_battle_entry: 0,                                 // TODO
         opponent_name: 0,
     },
 };
