@@ -333,13 +333,18 @@ impl Match {
         log::info!("preparing round state");
 
         let (first_state_committed_tx, first_state_committed_rx) = tokio::sync::oneshot::channel();
+
+        let mut tx_queue = std::collections::VecDeque::with_capacity(MAX_QUEUE_LENGTH);
+        tx_queue.push_front(Tx {
+            for_tick: 0,
+            tx: self.hooks.placeholder_rx(),
+        });
+
         round_state.round = Some(Round {
             number: round_state.number,
             local_player_index,
             iq: input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay),
-            local_immediate_input_queue: std::collections::VecDeque::with_capacity(
-                MAX_QUEUE_LENGTH,
-            ),
+            tx_queue,
             remote_delay: self.settings.shadow_input_delay,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
@@ -374,16 +379,16 @@ impl Match {
     }
 }
 
-struct LocalImmediateInput {
-    current_tick: u32,
-    rx: Vec<u8>,
+struct Tx {
+    for_tick: u32,
+    tx: Vec<u8>,
 }
 
 pub struct Round {
     number: u8,
     local_player_index: u8,
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
-    local_immediate_input_queue: std::collections::VecDeque<LocalImmediateInput>,
+    tx_queue: std::collections::VecDeque<Tx>,
     remote_delay: u32,
     last_committed_remote_input: input::Input,
     last_input: Option<input::Pair<input::Input, input::Input>>,
@@ -459,7 +464,6 @@ impl Round {
         mut core: mgba::core::CoreMutRef<'_>,
         current_tick: u32,
         joyflags: u16,
-        rx: Vec<u8>,
     ) -> bool {
         let local_tick = current_tick + self.local_delay();
         let remote_tick = self.last_committed_remote_input().local_tick;
@@ -497,14 +501,11 @@ impl Round {
             joyflags,
         });
 
-        self.local_immediate_input_queue
-            .push_back(LocalImmediateInput { current_tick, rx });
-
         let (input_pairs, left) = match self.consume_and_peek_local().await {
             Ok(Some(r)) => r,
             Ok(None) => {
                 // No more inputs to process, we will go to the next round shortly.
-                return true;
+                return false;
             }
             Err(e) => {
                 log::error!("failed to consume input: {}", e);
@@ -584,6 +585,10 @@ impl Round {
         &self.committed_state
     }
 
+    pub fn queue_tx(&mut self, for_tick: u32, tx: Vec<u8>) {
+        self.tx_queue.push_back(Tx { for_tick, tx });
+    }
+
     pub async fn consume_and_peek_local(
         &mut self,
     ) -> anyhow::Result<
@@ -597,17 +602,11 @@ impl Round {
         let partial_input_pairs = partial_input_pairs
             .into_iter()
             .map(|pair| {
-                let imm = self
-                    .local_immediate_input_queue
-                    .pop_front()
-                    .unwrap_or_else(|| LocalImmediateInput {
-                        current_tick: pair.local.local_tick,
-                        rx: self.hooks.placeholder_rx(),
-                    });
-                if imm.current_tick != pair.local.local_tick {
+                let tx = self.tx_queue.pop_front().unwrap();
+                if tx.for_tick != pair.local.local_tick {
                     anyhow::bail!(
-                        "custom input did not match current tick: {} != {}",
-                        imm.current_tick,
+                        "tx input did not match current tick: {} != {}",
+                        tx.for_tick,
                         pair.local.local_tick
                     );
                 }
@@ -616,7 +615,7 @@ impl Round {
                         local_tick: pair.local.local_tick,
                         remote_tick: pair.local.remote_tick,
                         joyflags: pair.local.joyflags,
-                        rx: imm.rx,
+                        rx: tx.tx,
                     },
                     remote: pair.remote,
                 })

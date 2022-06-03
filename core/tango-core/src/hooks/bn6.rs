@@ -398,7 +398,6 @@ impl hooks::Hooks for BN6 {
                                         core,
                                         current_tick,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                                        munger.tx_packet(core).to_vec(),
                                     )
                                     .await
                                 {
@@ -407,6 +406,36 @@ impl hooks::Hooks for BN6 {
                                 return;
                             }
                             facade.abort_match().await;
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let current_tick = munger.current_tick(core);
+                            round.queue_tx(current_tick + 1, munger.tx_packet(core).to_vec());
                         });
                     }),
                 )
