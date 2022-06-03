@@ -83,8 +83,6 @@ fn main() -> Result<(), anyhow::Error> {
     let ff_state = tango_core::fastforwarder::State::new(
         local_player_index,
         input_pairs,
-        0,
-        0,
         {
             let done = done.clone();
             Box::new(move || {

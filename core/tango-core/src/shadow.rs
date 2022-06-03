@@ -1,6 +1,7 @@
 use crate::{hooks, input};
 
 pub struct Round {
+    current_tick: u32,
     local_player_index: u8,
     first_committed_state: Option<mgba::state::State>,
     pending_in_input: Option<input::Pair<input::Input, input::PartialInput>>,
@@ -9,6 +10,14 @@ pub struct Round {
 }
 
 impl Round {
+    pub fn current_tick(&self) -> u32 {
+        self.current_tick
+    }
+
+    pub fn increment_current_tick(&mut self) {
+        self.current_tick += 1;
+    }
+
     pub fn local_player_index(&self) -> u8 {
         self.local_player_index
     }
@@ -115,6 +124,7 @@ impl State {
     pub fn start_round(&self) {
         let mut round_state = self.0.round_state.lock();
         round_state.round = Some(Round {
+            current_tick: 0,
             local_player_index: if round_state.won_last_round { 0 } else { 1 },
             first_committed_state: None,
             pending_in_input: None,

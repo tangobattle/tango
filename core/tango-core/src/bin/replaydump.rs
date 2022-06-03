@@ -97,8 +97,6 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
         tango_core::fastforwarder::State::new(
             replay.local_player_index,
             input_pairs,
-            0,
-            0,
             {
                 let done = done.clone();
                 Box::new(move || {

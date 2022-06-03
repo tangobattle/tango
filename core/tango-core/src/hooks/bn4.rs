@@ -232,6 +232,27 @@ impl hooks::Hooks for BN4 {
             // TODO: comm_menu_in_battle_call_comm_menu_handle_link_cable_input
             // TODO: main_read_joyflags
             // TODO: copy_input_data_ret
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+                            let round = round_state.round.as_mut().expect("round");
+                            round.increment_current_tick();
+                        });
+                    }),
+                )
+            },
         ]
     }
 
@@ -348,6 +369,17 @@ impl hooks::Hooks for BN4 {
             // TODO: comm_menu_in_battle_call_comm_menu_handle_link_cable_input
             // TODO: main_read_joyflags
             // TODO: copy_input_data_entry
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret,
+                    Box::new(move |_core| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let round = round_state.round.as_mut().expect("round");
+                        round.increment_current_tick();
+                    }),
+                )
+            },
         ]
     }
 
@@ -408,6 +440,15 @@ impl hooks::Hooks for BN4 {
             },
             // TODO: main_read_joyflags
             // TODO: copy_input_data_entry
+            {
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret,
+                    Box::new(move |_core| {
+                        ff_state.increment_current_tick();
+                    }),
+                )
+            },
         ]
     }
 
@@ -418,8 +459,4 @@ impl hooks::Hooks for BN4 {
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {}
 
     fn replace_opponent_name(&self, mut core: mgba::core::CoreMutRef, name: &str) {}
-
-    fn current_tick(&self, core: mgba::core::CoreMutRef) -> u32 {
-        0
-    }
 }

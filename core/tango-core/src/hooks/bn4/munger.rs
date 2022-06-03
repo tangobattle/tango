@@ -75,9 +75,4 @@ impl Munger {
     ) {
         todo!();
     }
-
-    pub(super) fn current_tick(&self, mut core: mgba::core::CoreMutRef) -> u32 {
-        // TODO: Double check this. I don't think BN4 actually has a timer.
-        todo!();
-    }
 }

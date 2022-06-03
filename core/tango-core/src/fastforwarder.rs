@@ -2,6 +2,7 @@ use crate::hooks;
 use crate::input;
 
 struct InnerState {
+    current_tick: u32,
     local_player_index: u8,
     input_pairs: std::collections::VecDeque<input::Pair<input::Input, input::Input>>,
     commit_time: u32,
@@ -11,29 +12,6 @@ struct InnerState {
     on_inputs_exhausted: Box<dyn Fn() + Send>,
     on_battle_ended: Box<dyn Fn() + Send>,
     error: Option<anyhow::Error>,
-}
-
-impl InnerState {
-    pub fn new(
-        local_player_index: u8,
-        input_pairs: Vec<input::Pair<input::Input, input::Input>>,
-        commit_time: u32,
-        dirty_time: u32,
-        on_inputs_exhausted: Box<dyn Fn() + Send>,
-        on_battle_ended: Box<dyn Fn() + Send>,
-    ) -> Self {
-        InnerState {
-            local_player_index,
-            input_pairs: input_pairs.into_iter().collect(),
-            commit_time,
-            committed_state: None,
-            dirty_time,
-            dirty_state: None,
-            on_inputs_exhausted,
-            on_battle_ended,
-            error: None,
-        }
-    }
 }
 
 pub struct Fastforwarder {
@@ -50,20 +28,22 @@ impl State {
     pub fn new(
         local_player_index: u8,
         input_pairs: Vec<input::Pair<input::Input, input::Input>>,
-        commit_time: u32,
-        dirty_time: u32,
         on_inputs_exhausted: Box<dyn Fn() + Send>,
         on_battle_ended: Box<dyn Fn() + Send>,
     ) -> State {
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
-            InnerState::new(
+            InnerState {
+                current_tick: 0,
                 local_player_index,
-                input_pairs,
-                commit_time,
-                dirty_time,
+                input_pairs: input_pairs.into_iter().collect(),
+                commit_time: 0,
+                committed_state: None,
+                dirty_time: 0,
+                dirty_state: None,
                 on_inputs_exhausted,
                 on_battle_ended,
-            ),
+                error: None,
+            },
         ))))
     }
 
@@ -152,6 +132,14 @@ impl State {
             .input_pairs
             .len()
     }
+
+    pub fn current_tick(&self) -> u32 {
+        self.0.lock().as_ref().expect("current tick").current_tick
+    }
+
+    pub fn increment_current_tick(&self) {
+        self.0.lock().as_mut().expect("current tick").current_tick += 1;
+    }
 }
 
 impl Fastforwarder {
@@ -184,6 +172,7 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
+        last_committed_tick: u32,
         commit_pairs: &[input::Pair<input::Input, input::Input>],
         last_committed_remote_input: input::Input,
         local_player_inputs_left: &[input::PartialInput],
@@ -232,18 +221,21 @@ impl Fastforwarder {
         self.core.as_mut().load_state(state)?;
         self.hooks.prepare_for_fastforward(self.core.as_mut());
 
-        let start_current_tick = self.hooks.current_tick(self.core.as_mut());
-        let commit_time = start_current_tick + commit_pairs.len() as u32;
-        let dirty_time = start_current_tick + input_pairs.len() as u32 - 1;
+        let commit_time = last_committed_tick + commit_pairs.len() as u32;
+        let dirty_time = last_committed_tick + input_pairs.len() as u32 - 1;
 
-        *self.state.0.lock() = Some(InnerState::new(
-            self.local_player_index,
-            input_pairs,
+        *self.state.0.lock() = Some(InnerState {
+            current_tick: last_committed_tick,
+            local_player_index: self.local_player_index,
+            input_pairs: input_pairs.into_iter().collect(),
             commit_time,
+            committed_state: None,
             dirty_time,
-            Box::new(|| {}),
-            Box::new(|| {}),
-        ));
+            dirty_state: None,
+            on_inputs_exhausted: Box::new(|| {}),
+            on_battle_ended: Box::new(|| {}),
+            error: None,
+        });
 
         loop {
             {

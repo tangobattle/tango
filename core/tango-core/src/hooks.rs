@@ -42,6 +42,4 @@ pub trait Hooks {
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
     fn replace_opponent_name(&self, core: mgba::core::CoreMutRef, name: &str);
-
-    fn current_tick(&self, core: mgba::core::CoreMutRef) -> u32;
 }

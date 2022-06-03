@@ -9,6 +9,12 @@ use crate::replay;
 use crate::shadow;
 use crate::transport;
 
+#[derive(Clone)]
+pub struct CommittedState {
+    state: mgba::state::State,
+    tick: u32,
+}
+
 pub struct MatchInit {
     pub dc: datachannel_wrapper::DataChannel,
     pub peer_conn: datachannel_wrapper::PeerConnection,
@@ -362,6 +368,7 @@ impl Match {
         round_state.round = Some(Round {
             number: round_state.number,
             local_player_index,
+            current_tick: 0,
             iq,
             tx_queue,
             remote_delay: self.settings.shadow_input_delay,
@@ -405,6 +412,7 @@ struct Tx {
 pub struct Round {
     number: u8,
     local_player_index: u8,
+    current_tick: u32,
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
     tx_queue: std::collections::VecDeque<Tx>,
     remote_delay: u32,
@@ -412,7 +420,7 @@ pub struct Round {
     last_input: Option<input::Pair<input::Input, input::Input>>,
     first_state_committed_tx: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
-    committed_state: Option<mgba::state::State>,
+    committed_state: Option<CommittedState>,
     replay_writer: Option<replay::Writer>,
     fastforwarder: fastforwarder::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
@@ -421,8 +429,12 @@ pub struct Round {
 }
 
 impl Round {
-    pub fn fastforwarder(&mut self) -> &mut fastforwarder::Fastforwarder {
-        &mut self.fastforwarder
+    pub fn current_tick(&self) -> u32 {
+        self.current_tick
+    }
+
+    pub fn increment_current_tick(&mut self) {
+        self.current_tick += 1;
     }
 
     pub fn local_player_index(&self) -> u8 {
@@ -448,7 +460,7 @@ impl Round {
             .unwrap()
             .write_state(&remote_state)
             .expect("write remote state");
-        self.committed_state = Some(state);
+        self.committed_state = Some(CommittedState { state, tick: 0 });
         if let Some(tx) = self.first_state_committed_tx.take() {
             let _ = tx.send(());
         }
@@ -457,10 +469,9 @@ impl Round {
     pub async fn add_local_input_and_fastforward(
         &mut self,
         mut core: mgba::core::CoreMutRef<'_>,
-        current_tick: u32,
         joyflags: u16,
     ) -> bool {
-        let local_tick = current_tick + self.local_delay();
+        let local_tick = self.current_tick + self.local_delay();
         let remote_tick = self.last_committed_remote_input().local_tick;
 
         // We do it in this order such that:
@@ -504,15 +515,16 @@ impl Round {
             }
         };
 
-        let committed_state = self
+        let last_committed_state = self
             .committed_state()
             .as_ref()
             .expect("committed state")
             .clone();
         let last_committed_remote_input = self.last_committed_remote_input();
 
-        let (committed_state, dirty_state, last_input) = match self.fastforwarder().fastforward(
-            &committed_state,
+        let (committed_state, dirty_state, last_input) = match self.fastforwarder.fastforward(
+            &last_committed_state.state,
+            last_committed_state.tick,
             &input_pairs,
             last_committed_remote_input,
             &left,
@@ -526,8 +538,11 @@ impl Round {
 
         core.load_state(&dirty_state).expect("load dirty state");
 
-        self.set_committed_state(committed_state);
-        self.set_last_input(last_input);
+        self.committed_state = Some(CommittedState {
+            state: committed_state,
+            tick: last_committed_state.tick + input_pairs.len() as u32,
+        });
+        self.last_input = Some(last_input);
 
         core.gba_mut()
             .sync_mut()
@@ -539,14 +554,6 @@ impl Round {
 
     pub fn has_committed_state(&mut self) -> bool {
         self.committed_state.is_some()
-    }
-
-    pub fn set_committed_state(&mut self, state: mgba::state::State) {
-        self.committed_state = Some(state);
-    }
-
-    pub fn set_last_input(&mut self, inp: input::Pair<input::Input, input::Input>) {
-        self.last_input = Some(inp);
     }
 
     pub fn take_last_input(&mut self) -> Option<input::Pair<input::Input, input::Input>> {
@@ -572,7 +579,7 @@ impl Round {
         self.last_committed_remote_input.clone()
     }
 
-    pub fn committed_state(&self) -> &Option<mgba::state::State> {
+    pub fn committed_state(&self) -> &Option<CommittedState> {
         &self.committed_state
     }
 
