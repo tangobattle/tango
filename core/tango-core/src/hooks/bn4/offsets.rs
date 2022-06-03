@@ -167,8 +167,8 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         round_start_ret: 0x08006710,
         round_ending_ret: 0x080077da,
         round_end_entry: 0x08006e1e,
-        battle_is_p2_tst: 0,                                           // TODO
-        link_is_p2_ret: 0,                                             // TODO
+        battle_is_p2_tst: 0x08048204,
+        link_is_p2_ret: 0x08048222,
         comm_menu_init_ret: 0,                                         // TODO
         comm_menu_init_battle_entry: 0,                                // TODO
         comm_menu_handle_link_cable_input_entry: 0,                    // TODO
