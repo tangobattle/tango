@@ -175,6 +175,7 @@ const MIDDLES = [
   "bugfix",
   "bugfrag",
   "bunny",
+  "burrito",
   "busterup",
   "cannon",
   "canodumb",
@@ -382,6 +383,7 @@ const ENDS = [
   "blessing",
   "blubblub",
   "bot",
+  "burrito",
   "chip",
   "chonked",
   "clowntown",
@@ -484,6 +486,7 @@ const ENDS = [
   "yeet",
   "youareworthy",
   "yourewinner",
+  "yum",
 ];
 
 export default function randomCode() {
