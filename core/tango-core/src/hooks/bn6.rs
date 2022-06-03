@@ -398,7 +398,7 @@ impl hooks::Hooks for BN6 {
                                 let game_current_tick = munger.current_tick(core);
                                 if game_current_tick != round.current_tick() {
                                     panic!(
-                                        "round tick = {} but game tick = {}",
+                                        "read joyflags: round tick = {} but game tick = {}",
                                         round.current_tick(),
                                         game_current_tick
                                     );
@@ -447,7 +447,7 @@ impl hooks::Hooks for BN6 {
                             let current_tick = munger.current_tick(core);
                             if current_tick != round.current_tick() {
                                 panic!(
-                                    "round tick = {} but game tick = {}",
+                                    "primary: round tick = {} but game tick = {}",
                                     round.current_tick(),
                                     current_tick
                                 );
@@ -457,7 +457,32 @@ impl hooks::Hooks for BN6 {
                                 round.current_tick() + 1,
                                 munger.tx_packet(core).to_vec(),
                             );
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_increment_tick,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
+                            let mut round_state = match_.lock_round_state().await;
+
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
                             round.increment_current_tick();
                         });
                     }),
@@ -668,7 +693,7 @@ impl hooks::Hooks for BN6 {
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != round.current_tick() {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                "round tick = {} but game tick = {}",
+                                "read joyflags: round tick = {} but game tick = {}",
                                 round.current_tick(),
                                 game_current_tick
                             ));
@@ -727,7 +752,7 @@ impl hooks::Hooks for BN6 {
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != round.current_tick() {
                             shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                "round tick = {} but game tick = {}",
+                                "copy input data: round tick = {} but game tick = {}",
                                 round.current_tick(),
                                 game_current_tick
                             ));
@@ -783,7 +808,7 @@ impl hooks::Hooks for BN6 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret,
+                    self.offsets.rom.round_increment_tick,
                     Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
@@ -967,7 +992,7 @@ impl hooks::Hooks for BN6 {
             {
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret,
+                    self.offsets.rom.round_increment_tick,
                     Box::new(move |_core| {
                         ff_state.increment_current_tick();
                     }),

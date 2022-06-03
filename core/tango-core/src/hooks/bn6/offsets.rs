@@ -82,6 +82,9 @@ pub(super) struct ROMOffsets {
     /// At this point, Tango will clean up its round state and commit the replay.
     pub(super) round_ending_ret: u32,
 
+    /// This hooks the point where the internal round timer is incremented.
+    pub(super) round_increment_tick: u32,
+
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
 
@@ -163,6 +166,7 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         round_start_ret: 0x08007304,
         round_end_entry: 0x08007ca0,
         round_ending_ret: 0x0800951a,
+        round_increment_tick: 0x0800781c,
         battle_is_p2_tst: 0x0803dd52,
         link_is_p2_ret: 0x0803dd86,
         comm_menu_init_ret: 0x08129298,
@@ -188,6 +192,7 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         round_start_ret: 0x08007304,
         round_end_entry: 0x08007ca0,
         round_ending_ret: 0x0800951a,
+        round_increment_tick: 0x0800781c,
         battle_is_p2_tst: 0x0803dd26,
         link_is_p2_ret: 0x0803dd5a,
         comm_menu_init_ret: 0x0812b074,
@@ -213,6 +218,7 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         round_start_ret: 0x080072f8,
         round_end_entry: 0x08007c9c,
         round_ending_ret: 0x080096ea,
+        round_increment_tick: 0x08007810,
         battle_is_p2_tst: 0x0803ed96,
         link_is_p2_ret: 0x0803edca,
         comm_menu_init_ret: 0x08131cbc,
@@ -238,6 +244,7 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         round_start_ret: 0x080072f8,
         round_end_entry: 0x08007c9c,
         round_ending_ret: 0x080096ea,
+        round_increment_tick: 0x08007810,
         battle_is_p2_tst: 0x0803ed6a,
         link_is_p2_ret: 0x0803ed9e,
         comm_menu_init_ret: 0x08133a84,
