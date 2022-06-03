@@ -483,6 +483,11 @@ impl hooks::Hooks for BN6 {
                                     return;
                                 }
                             };
+
+                            if !round.has_committed_state() {
+                                return;
+                            }
+
                             round.increment_current_tick();
                         });
                     }),
@@ -812,6 +817,9 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
+                        if !round.has_first_committed_state() {
+                            return;
+                        }
                         round.increment_current_tick();
                     }),
                 )
