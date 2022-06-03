@@ -60,6 +60,9 @@ pub(super) struct ROMOffsets {
     /// Received packets should be injected here into rx_packet_arr.
     pub(super) copy_input_data_entry: u32,
 
+    /// This hooks the exit into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
+    ///
+    /// Packets to transmit should be injected here into tx_packet.
     pub(super) copy_input_data_ret: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
@@ -75,7 +78,7 @@ pub(super) struct ROMOffsets {
     pub(super) round_start_ret: u32,
 
     /// This hooks the point after the battle end routine is complete.
-    pub(super) round_end_entry: u32,
+    pub(super) round_ending_ret: u32,
 
     /// This hooks the point determining if the player is player 2 or not.
     ///
@@ -153,7 +156,7 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         copy_input_data_ret: 0x0801ffd4,
         round_run_unpaused_step_cmp_retval: 0x08008102,
         round_start_ret: 0x08007304,
-        round_end_entry: 0x08007ca0,
+        round_ending_ret: 0x8007c4c,
         battle_is_p2_tst: 0x0803dd52,
         link_is_p2_ret: 0x0803dd86,
         comm_menu_init_ret: 0x08129298,
@@ -177,7 +180,7 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         copy_input_data_ret: 0x0801ffd4,
         round_run_unpaused_step_cmp_retval: 0x08008102,
         round_start_ret: 0x08007304,
-        round_end_entry: 0x08007ca0,
+        round_ending_ret: 0x8007c4c,
         battle_is_p2_tst: 0x0803dd26,
         link_is_p2_ret: 0x0803dd5a,
         comm_menu_init_ret: 0x0812b074,
@@ -201,7 +204,7 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         copy_input_data_ret: 0x080204b6,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
         round_start_ret: 0x080072f8,
-        round_end_entry: 0x08007c9c,
+        round_ending_ret: 0x08007c9c, // TODO
         battle_is_p2_tst: 0x0803ed96,
         link_is_p2_ret: 0x0803edca,
         comm_menu_init_ret: 0x08131cbc,
@@ -225,7 +228,7 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         copy_input_data_ret: 0x080204b6,
         round_run_unpaused_step_cmp_retval: 0x0800811a,
         round_start_ret: 0x080072f8,
-        round_end_entry: 0x08007c9c,
+        round_ending_ret: 0x08007c9c, // TODO
         battle_is_p2_tst: 0x0803ed6a,
         link_is_p2_ret: 0x0803ed9e,
         comm_menu_init_ret: 0x08133a84,

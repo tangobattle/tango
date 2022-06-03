@@ -35,6 +35,8 @@ pub struct RoundState {
 
 impl RoundState {
     pub async fn end_round(&mut self) -> anyhow::Result<()> {
+        log::info!("round ended");
+
         match self.round.take() {
             Some(mut round) => {
                 round
@@ -48,7 +50,6 @@ impl RoundState {
                 return Ok(());
             }
         }
-        log::info!("round ended");
         Ok(())
     }
 

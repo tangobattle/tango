@@ -176,7 +176,7 @@ impl hooks::Hooks for BN6 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_end_entry,
+                    self.offsets.rom.round_ending_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -188,7 +188,6 @@ impl hooks::Hooks for BN6 {
 
                             let mut round_state = match_.lock_round_state().await;
                             round_state.end_round().await.expect("end round");
-
                             match_
                                 .advance_shadow_until_round_end()
                                 .await
@@ -532,7 +531,7 @@ impl hooks::Hooks for BN6 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_end_entry,
+                    self.offsets.rom.round_ending_ret,
                     Box::new(move |core| {
                         shadow_state.end_round();
                         shadow_state.set_applied_state(core.save_state().expect("save state"));
@@ -803,7 +802,7 @@ impl hooks::Hooks for BN6 {
                             );
                         }
 
-                        let ip = match ff_state.peek_input_pair() {
+                        let ip = match ff_state.pop_input_pair() {
                             Some(ip) => ip,
                             None => {
                                 ff_state.on_inputs_exhausted();
@@ -837,6 +836,8 @@ impl hooks::Hooks for BN6 {
                         if current_tick == ff_state.dirty_time() {
                             ff_state.set_dirty_state(core.save_state().expect("save dirty state"));
                         }
+
+                        ff_state.set_out_input_pair(ip);
                     }),
                 )
             },
@@ -848,7 +849,7 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |core| {
                         let current_tick = munger.current_tick(core);
 
-                        let ip = match ff_state.pop_input_pair() {
+                        let ip = match ff_state.take_out_input_pair() {
                             Some(ip) => ip,
                             None => {
                                 return;
