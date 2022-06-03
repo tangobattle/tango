@@ -338,10 +338,31 @@ impl Match {
             tx: self.hooks.placeholder_rx(),
         });
 
+        let mut iq = input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay);
+        log::info!(
+            "filling input delay: local = {}, remote = {}",
+            self.settings.input_delay,
+            self.settings.shadow_input_delay
+        );
+        for i in 0..self.settings.input_delay {
+            iq.add_local_input(input::PartialInput {
+                local_tick: i,
+                remote_tick: 0,
+                joyflags: 0,
+            });
+        }
+        for i in 0..self.settings.shadow_input_delay {
+            iq.add_remote_input(input::PartialInput {
+                local_tick: i,
+                remote_tick: 0,
+                joyflags: 0,
+            });
+        }
+
         round_state.round = Some(Round {
             number: round_state.number,
             local_player_index,
-            iq: input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay),
+            iq,
             tx_queue,
             remote_delay: self.settings.shadow_input_delay,
             last_committed_remote_input: input::Input {
@@ -430,28 +451,6 @@ impl Round {
         self.committed_state = Some(state);
         if let Some(tx) = self.first_state_committed_tx.take() {
             let _ = tx.send(());
-        }
-    }
-
-    pub fn fill_input_delay(&mut self, current_tick: u32) {
-        log::info!(
-            "filling input delay: local = {}, remote = {}",
-            self.local_delay(),
-            self.remote_delay()
-        );
-        for i in 0..self.local_delay() {
-            self.add_local_input(input::PartialInput {
-                local_tick: current_tick + i,
-                remote_tick: 0,
-                joyflags: 0,
-            });
-        }
-        for i in 0..self.remote_delay() {
-            self.add_remote_input(input::PartialInput {
-                local_tick: current_tick + i,
-                remote_tick: 0,
-                joyflags: 0,
-            });
         }
     }
 

@@ -382,7 +382,6 @@ impl hooks::Hooks for BN6 {
                                             .await
                                             .expect("shadow save state"),
                                     );
-                                    round.fill_input_delay(current_tick);
                                     log::info!(
                                         "primary rng1 state: {:08x}",
                                         munger.rng1_state(core)
