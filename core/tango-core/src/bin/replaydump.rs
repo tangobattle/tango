@@ -174,7 +174,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
     writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
     loop {
-        if !done.load(std::sync::atomic::Ordering::Relaxed) {
+        if done.load(std::sync::atomic::Ordering::Relaxed) {
             break;
         }
 
