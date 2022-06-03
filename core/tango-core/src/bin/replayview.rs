@@ -90,6 +90,14 @@ fn main() -> Result<(), anyhow::Error> {
                 {
                     let done = done.clone();
                     Box::new(move || {
+                        if !replay.is_complete {
+                            done.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    })
+                },
+                {
+                    let done = done.clone();
+                    Box::new(move || {
                         done.store(true, std::sync::atomic::Ordering::Relaxed);
                     })
                 },

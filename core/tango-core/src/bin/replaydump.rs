@@ -94,12 +94,26 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let input_pairs = replay.input_pairs.clone();
 
     let ff_state = {
-        tango_core::fastforwarder::State::new(replay.local_player_index, input_pairs, 0, 0, {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        })
+        tango_core::fastforwarder::State::new(
+            replay.local_player_index,
+            input_pairs,
+            0,
+            0,
+            {
+                let done = done.clone();
+                Box::new(move || {
+                    if !replay.is_complete {
+                        done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                })
+            },
+            {
+                let done = done.clone();
+                Box::new(move || {
+                    done.store(true, std::sync::atomic::Ordering::Relaxed);
+                })
+            },
+        )
     };
     let hooks = tango_core::hooks::HOOKS
         .get(&core.as_ref().game_title())

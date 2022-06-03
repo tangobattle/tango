@@ -789,6 +789,15 @@ impl hooks::Hooks for BN6 {
                 )
             },
             {
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.round_end_entry,
+                    Box::new(move |_core| {
+                        ff_state.on_battle_ended();
+                    }),
+                )
+            },
+            {
                 let munger = self.munger.clone();
                 let ff_state = ff_state.clone();
                 (
