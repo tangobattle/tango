@@ -892,7 +892,10 @@ impl hooks::Hooks for BN6 {
     }
 
     fn placeholder_rx(&self) -> Vec<u8> {
-        vec![0; 0x10]
+        vec![
+            0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,
+        ]
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {

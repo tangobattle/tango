@@ -371,7 +371,6 @@ impl Match {
             primary_thread_handle: self.primary_thread_handle.clone(),
             transport: self.transport.clone(),
             shadow: self.shadow.clone(),
-            hooks: self.hooks,
         });
         self.round_started_tx.send(round_state.number).await?;
         log::info!("round has started");
@@ -400,7 +399,6 @@ pub struct Round {
     primary_thread_handle: mgba::thread::Handle,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
-    hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
 }
 
 impl Round {
@@ -502,11 +500,7 @@ impl Round {
         });
 
         let (input_pairs, left) = match self.consume_and_peek_local().await {
-            Ok(Some(r)) => r,
-            Ok(None) => {
-                // No more inputs to process, we will go to the next round shortly.
-                return false;
-            }
+            Ok(r) => r,
             Err(e) => {
                 log::error!("failed to consume input: {}", e);
                 return false;
@@ -591,12 +585,10 @@ impl Round {
 
     pub async fn consume_and_peek_local(
         &mut self,
-    ) -> anyhow::Result<
-        Option<(
-            Vec<input::Pair<input::Input, input::Input>>,
-            Vec<input::PartialInput>,
-        )>,
-    > {
+    ) -> anyhow::Result<(
+        Vec<input::Pair<input::Input, input::Input>>,
+        Vec<input::PartialInput>,
+    )> {
         let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
 
         let partial_input_pairs = partial_input_pairs
@@ -626,15 +618,10 @@ impl Round {
         let input_pairs = partial_input_pairs
             .into_iter()
             .map(|pair| shadow.apply_input(pair))
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
-        } else {
-            return Ok(None);
         }
 
         for ip in &input_pairs {
@@ -645,7 +632,7 @@ impl Round {
                 .expect("write input");
         }
 
-        Ok(Some((input_pairs, left)))
+        Ok((input_pairs, left))
     }
 
     pub fn can_add_local_input(&mut self) -> bool {
