@@ -148,11 +148,11 @@ pub async fn negotiate(
         }
     };
 
-    if hello.protocol_version > protocol::VERSION {
+    if hello.protocol_version < protocol::VERSION {
         return Err(Error::ProtocolVersionTooOld);
     }
 
-    if hello.protocol_version < protocol::VERSION {
+    if hello.protocol_version > protocol::VERSION {
         return Err(Error::ProtocolVersionTooNew);
     }
 
