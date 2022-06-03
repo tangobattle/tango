@@ -4,7 +4,6 @@ use crate::input;
 struct InnerState {
     local_player_index: u8,
     input_pairs: std::collections::VecDeque<input::Pair<input::Input, input::Input>>,
-    out_input_pair: Option<input::Pair<input::Input, input::Input>>,
     commit_time: u32,
     committed_state: Option<mgba::state::State>,
     dirty_time: u32,
@@ -26,7 +25,6 @@ impl InnerState {
         InnerState {
             local_player_index,
             input_pairs: input_pairs.into_iter().collect(),
-            out_input_pair: None,
             commit_time,
             committed_state: None,
             dirty_time,
@@ -93,6 +91,16 @@ impl State {
         self.0.lock().as_mut().expect("dirty state").dirty_state = Some(state);
     }
 
+    pub fn peek_input_pair(&self) -> Option<input::Pair<input::Input, input::Input>> {
+        self.0
+            .lock()
+            .as_ref()
+            .expect("input pairs")
+            .input_pairs
+            .front()
+            .cloned()
+    }
+
     pub fn pop_input_pair(&self) -> Option<input::Pair<input::Input, input::Input>> {
         self.0
             .lock()
@@ -100,23 +108,6 @@ impl State {
             .expect("input pairs")
             .input_pairs
             .pop_front()
-    }
-
-    pub fn set_out_input_pair(&self, ip: input::Pair<input::Input, input::Input>) {
-        self.0
-            .lock()
-            .as_mut()
-            .expect("out input pair")
-            .out_input_pair = Some(ip);
-    }
-
-    pub fn take_out_input_pair(&self) -> Option<input::Pair<input::Input, input::Input>> {
-        self.0
-            .lock()
-            .as_mut()
-            .expect("out input pair")
-            .out_input_pair
-            .take()
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {

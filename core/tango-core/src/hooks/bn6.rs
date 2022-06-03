@@ -818,7 +818,7 @@ impl hooks::Hooks for BN6 {
                             );
                         }
 
-                        let ip = match ff_state.pop_input_pair() {
+                        let ip = match ff_state.peek_input_pair() {
                             Some(ip) => ip,
                             None => {
                                 ff_state.on_inputs_exhausted();
@@ -852,8 +852,6 @@ impl hooks::Hooks for BN6 {
                         if current_tick == ff_state.dirty_time() {
                             ff_state.set_dirty_state(core.save_state().expect("save dirty state"));
                         }
-
-                        ff_state.set_out_input_pair(ip);
                     }),
                 )
             },
@@ -865,7 +863,7 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |core| {
                         let current_tick = munger.current_tick(core);
 
-                        let ip = match ff_state.take_out_input_pair() {
+                        let ip = match ff_state.pop_input_pair() {
                             Some(ip) => ip,
                             None => {
                                 return;
