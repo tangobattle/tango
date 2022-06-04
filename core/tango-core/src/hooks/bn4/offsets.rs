@@ -158,7 +158,7 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         start_screen_sram_unmask_ret: 0x080253ca,
         game_load_ret: 0x08004996,
         main_read_joyflags: 0x080003c6,
-        get_copy_data_input_state_ret: 0x08017b88,
+        get_copy_data_input_state_ret: 0x08017b8c,
         copy_input_data_entry: 0x08017b8e,
         copy_input_data_ret: 0x08017c56,
         round_run_unpaused_step_cmp_retval: 0x08007120,

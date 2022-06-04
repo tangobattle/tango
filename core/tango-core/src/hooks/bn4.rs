@@ -246,7 +246,6 @@ impl hooks::Hooks for BN4 {
                             if facade.match_().await.is_none() {
                                 r0 = 4;
                             }
-
                             core.gba_mut().cpu_mut().set_gpr(0, r0);
                         });
                     }),
@@ -274,14 +273,6 @@ impl hooks::Hooks for BN4 {
             },
             // TODO: comm_menu_init_battle_entry
             // TODO: comm_menu_end_battle_entry
-            {
-                (
-                    0x08006b76,
-                    Box::new(move |core| {
-                        log::info!("init battle mode");
-                    }),
-                )
-            },
             {
                 let facade = facade.clone();
                 let munger = self.munger.clone();
