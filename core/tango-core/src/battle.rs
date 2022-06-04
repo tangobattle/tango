@@ -26,7 +26,7 @@ pub struct Settings {
     pub shadow_save_path: std::path::PathBuf,
     pub shadow_rom_path: std::path::PathBuf,
     pub replay_metadata: Vec<u8>,
-    pub match_type: u16,
+    pub match_type: u8,
     pub input_delay: u32,
     pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
@@ -312,7 +312,7 @@ impl Match {
         self.rng.lock().await
     }
 
-    pub fn match_type(&self) -> u16 {
+    pub fn match_type(&self) -> u8 {
         self.settings.match_type
     }
 

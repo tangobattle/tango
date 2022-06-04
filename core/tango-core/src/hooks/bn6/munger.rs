@@ -29,13 +29,14 @@ impl Munger {
     pub(super) fn start_battle_from_comm_menu(
         &self,
         mut core: mgba::core::CoreMutRef,
-        match_type: u16,
+        match_type: u8,
     ) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x18);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
-        core.raw_write_16(self.offsets.ewram.submenu_control + 0x12, -1, match_type);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x12, -1, match_type);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x13, -1, 0);
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {

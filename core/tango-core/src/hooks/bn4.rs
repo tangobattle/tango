@@ -77,16 +77,45 @@ impl hooks::Hooks for BN4 {
                 )
             },
             {
+                let facade = facade.clone();
+                let handle = handle.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
-                        log::info!("game loaded");
-                        munger.open_comm_menu_from_overworld(core);
+                        handle.block_on(async {
+                            log::info!("game loaded");
+
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            munger.start_battle_from_overworld(core, match_.match_type());
+
+                            let mut rng = match_.lock_rng().await;
+
+                            // rng1 is the local rng, it should not be synced.
+                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                            munger.set_rng1_state(
+                                core,
+                                if match_.is_offerer() {
+                                    offerer_rng1_state
+                                } else {
+                                    answerer_rng1_state
+                                },
+                            );
+
+                            // rng2 is the shared rng, it must be synced.
+                            munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                        });
                     }),
                 )
             },
-            // TODO: comm_menu_init_ret
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -281,14 +310,32 @@ impl hooks::Hooks for BN4 {
             },
             {
                 let munger = self.munger.clone();
+                let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
-                        munger.open_comm_menu_from_overworld(core);
+                        munger.start_battle_from_overworld(core, shadow_state.match_type());
+
+                        let mut rng = shadow_state.lock_rng();
+
+                        // rng1 is the local rng, it should not be synced.
+                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                        munger.set_rng1_state(
+                            core,
+                            if shadow_state.is_offerer() {
+                                answerer_rng1_state
+                            } else {
+                                offerer_rng1_state
+                            },
+                        );
+
+                        // rng2 is the shared rng, it must be synced.
+                        munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
                     }),
                 )
             },
-            // TODO: comm_menu_init_ret
             {
                 let shadow_state = shadow_state.clone();
                 (
