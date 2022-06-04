@@ -289,7 +289,7 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |core| {
                         log::error!(
                             "unhandled call to handleSIO at 0x{:0x}: uh oh!",
-                            core.as_ref().gba().cpu().thumb_pc() - 4
+                            core.as_ref().gba().cpu().gpr(14) - 2
                         );
                     }),
                 )
@@ -637,7 +637,7 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |core| {
                         log::error!(
                             "unhandled call to handleSIO at 0x{:0x}: uh oh!",
-                            core.as_ref().gba().cpu().thumb_pc()
+                            core.as_ref().gba().cpu().gpr(14) - 2
                         );
                     }),
                 )
