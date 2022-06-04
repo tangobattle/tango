@@ -26,6 +26,9 @@ struct VideoCli {
     #[clap(parse(from_os_str))]
     output_path: std::path::PathBuf,
 
+    #[clap(long)]
+    assume_incomplete: bool,
+
     #[clap(long, parse(from_os_str), default_value = "ffmpeg")]
     ffmpeg: std::path::PathBuf,
 
@@ -100,7 +103,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
             {
                 let done = done.clone();
                 Box::new(move || {
-                    if !replay.is_complete {
+                    if !replay.is_complete || args.assume_incomplete {
                         done.store(true, std::sync::atomic::Ordering::Relaxed);
                     }
                 })
