@@ -463,10 +463,11 @@ impl hooks::Hooks for BN6 {
             },
             {
                 let facade = facade.clone();
+                let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_increment_tick,
-                    Box::new(move |_| {
+                    self.offsets.rom.round_post_increment_tick,
+                    Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -489,6 +490,14 @@ impl hooks::Hooks for BN6 {
                             }
 
                             round.increment_current_tick();
+                            let game_current_tick = munger.current_tick(core);
+                            if game_current_tick != round.current_tick() {
+                                panic!(
+                                    "post increment tick: round tick = {} but game tick = {}",
+                                    round.current_tick(),
+                                    game_current_tick
+                                );
+                            }
                         });
                     }),
                 )
@@ -812,15 +821,25 @@ impl hooks::Hooks for BN6 {
             },
             {
                 let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
                 (
-                    self.offsets.rom.round_increment_tick,
-                    Box::new(move |_core| {
+                    self.offsets.rom.round_post_increment_tick,
+                    Box::new(move |core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
                         if !round.has_first_committed_state() {
                             return;
                         }
                         round.increment_current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "post increment tick: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            ));
+                        }
                     }),
                 )
             },
@@ -999,10 +1018,21 @@ impl hooks::Hooks for BN6 {
             },
             {
                 let ff_state = ff_state.clone();
+                let munger = self.munger.clone();
                 (
-                    self.offsets.rom.round_increment_tick,
-                    Box::new(move |_core| {
+                    self.offsets.rom.round_post_increment_tick,
+                    Box::new(move |core| {
                         ff_state.increment_current_tick();
+                        let current_tick = ff_state.current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != current_tick {
+                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                                "post increment tick: round tick = {} but game tick = {}",
+                                current_tick,
+                                game_current_tick
+                            ));
+                        }
                     }),
                 )
             },
