@@ -85,7 +85,7 @@ pub(super) struct ROMOffsets {
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
 
-    pub(super) round_phase_jump_table_ret: u32,
+    pub(super) round_call_jump_table_ret: u32,
 
     /// This hooks the point determining if the player is player 2 or not.
     ///
@@ -165,7 +165,7 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         round_start_ret: 0x08006710,
         round_ending_ret: 0x080077da,
         round_end_entry: 0x08006e1e,
-        round_phase_jump_table_ret: 0x08007434,
+        round_call_jump_table_ret: 0x08006b28,
         battle_is_p2_tst: 0x08048204,
         link_is_p2_ret: 0x08048222,
         comm_menu_init_ret: 0,          // TODO
