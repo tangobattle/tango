@@ -113,12 +113,12 @@ pub(super) struct ROMOffsets {
     /// This handles underlying link cable SIO in the comm menu.
     ///
     /// This should never be called.
-    pub(super) comm_menu_handle_link_cable_input_entry: u32,
+    pub(super) handle_sio_entry: u32,
 
     /// This handles in-battle link cable SIO in the comm menu.
     ///
     /// This should be skipped.
-    pub(super) comm_menu_in_battle_call_comm_menu_handle_link_cable_input: u32,
+    pub(super) in_battle_call_handle_link_cable_input: u32,
 
     /// This hooks the entrypoint to the function that is called when a match ends.
     ///
@@ -172,11 +172,11 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         round_phase_jump_table_ret: 0x08007434,
         battle_is_p2_tst: 0x08048204,
         link_is_p2_ret: 0x08048222,
-        comm_menu_init_ret: 0,                                         // TODO
-        comm_menu_init_battle_entry: 0,                                // TODO
-        comm_menu_handle_link_cable_input_entry: 0,                    // TODO
-        comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0, // TODO
-        comm_menu_end_battle_entry: 0,                                 // TODO
+        comm_menu_init_ret: 0,          // TODO
+        comm_menu_init_battle_entry: 0, // TODO
+        handle_sio_entry: 0x080482f8,
+        in_battle_call_handle_link_cable_input: 0x08006b16, // TODO
+        comm_menu_end_battle_entry: 0,                      // TODO
         opponent_name: 0,
     },
 };

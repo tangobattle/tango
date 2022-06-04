@@ -111,7 +111,7 @@ pub(super) struct ROMOffsets {
     /// This handles underlying link cable SIO in the comm menu.
     ///
     /// This should never be called.
-    pub(super) comm_menu_handle_link_cable_input_entry: u32,
+    pub(super) handle_sio_entry: u32,
 
     /// This handles in-battle link cable SIO in the comm menu.
     ///
@@ -171,7 +171,7 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         link_is_p2_ret: 0x0803dd86,
         comm_menu_init_ret: 0x08129298,
         comm_menu_init_battle_entry: 0x0812b608,
-        comm_menu_handle_link_cable_input_entry: 0x0803eae4,
+        handle_sio_entry: 0x0803deb4,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812b5ca,
         comm_menu_end_battle_entry: 0x0812b708,
         opponent_name: 0x086f12cb,
@@ -197,7 +197,7 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         link_is_p2_ret: 0x0803dd5a,
         comm_menu_init_ret: 0x0812b074,
         comm_menu_init_battle_entry: 0x0812d3e4,
-        comm_menu_handle_link_cable_input_entry: 0x0803eab8,
+        handle_sio_entry: 0x0803de88,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812d3a6,
         comm_menu_end_battle_entry: 0x0812d4e4,
         opponent_name: 0x086ef24f,
@@ -223,7 +223,7 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         link_is_p2_ret: 0x0803edca,
         comm_menu_init_ret: 0x08131cbc,
         comm_menu_init_battle_entry: 0x08134008,
-        comm_menu_handle_link_cable_input_entry: 0x0803fb28,
+        handle_sio_entry: 0x0803eef8,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08133fca,
         comm_menu_end_battle_entry: 0x08134108,
         opponent_name: 0,
@@ -249,7 +249,7 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         link_is_p2_ret: 0x0803ed9e,
         comm_menu_init_ret: 0x08133a84,
         comm_menu_init_battle_entry: 0x08135dd0,
-        comm_menu_handle_link_cable_input_entry: 0x0803fafc,
+        handle_sio_entry: 0x0803eecc,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08135d92,
         comm_menu_end_battle_entry: 0x08135ed0,
         opponent_name: 0,

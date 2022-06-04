@@ -459,9 +459,7 @@ impl hooks::Hooks for BN4 {
             },
             {
                 (
-                    self.offsets
-                        .rom
-                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let r15 = core.as_ref().gba().cpu().gpr(15) as u32;
                         core.gba_mut().cpu_mut().set_pc(r15 + 4);
