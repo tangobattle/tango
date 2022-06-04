@@ -9,6 +9,10 @@ impl<'a> ARMCoreRef<'a> {
     pub fn gpr(&self, r: usize) -> i32 {
         unsafe { (*self.ptr).__bindgen_anon_1.__bindgen_anon_1.gprs[r] }
     }
+
+    pub fn pc(&self) -> u32 {
+        (self.gpr(15) - 4) as u32
+    }
 }
 
 #[repr(transparent)]

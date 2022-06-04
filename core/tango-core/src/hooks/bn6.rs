@@ -288,7 +288,7 @@ impl hooks::Hooks for BN6 {
                     self.offsets.rom.handle_sio_entry,
                     Box::new(move |core| {
                         log::error!(
-                            "unhandled call to commMenu_handleLinkCableInput at 0x{:0x}: uh oh!",
+                            "unhandled call to handleSIO at 0x{:0x}: uh oh!",
                             core.as_ref().gba().cpu().gpr(15) - 4
                         );
                     }),
@@ -636,7 +636,7 @@ impl hooks::Hooks for BN6 {
                     self.offsets.rom.handle_sio_entry,
                     Box::new(move |core| {
                         log::error!(
-                            "unhandled call to commMenu_handleLinkCableInput at 0x{:0x}: uh oh!",
+                            "unhandled call to handleSIO at 0x{:0x}: uh oh!",
                             core.as_ref().gba().cpu().gpr(15) - 4
                         );
                     }),

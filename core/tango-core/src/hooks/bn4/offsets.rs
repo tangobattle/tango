@@ -18,9 +18,6 @@ pub(super) struct EWRAMOffsets {
     /// Subsystem control.
     pub(super) subsystem_control: u32,
 
-    /// START menu jump table control.
-    pub(super) menu_control: u32,
-
     /// START menu submenu (e.g. comm menu) jump table control.
     pub(super) submenu_control: u32,
 
@@ -138,7 +135,6 @@ static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     start_screen_control: 0x0200b220,
     title_menu_control: 0x0200b220,
     subsystem_control: 0x0200a7e0,
-    menu_control: 0x200f770,
     submenu_control: 0x0200a450,
     rng1_state: 0x020015d4,
     rng2_state: 0x02001790,
@@ -175,8 +171,8 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         comm_menu_init_ret: 0,          // TODO
         comm_menu_init_battle_entry: 0, // TODO
         handle_sio_entry: 0x080482f8,
-        in_battle_call_handle_link_cable_input: 0x08006b16, // TODO
-        comm_menu_end_battle_entry: 0,                      // TODO
+        in_battle_call_handle_link_cable_input: 0x08006b16,
+        comm_menu_end_battle_entry: 0, // TODO
         opponent_name: 0,
     },
 };
