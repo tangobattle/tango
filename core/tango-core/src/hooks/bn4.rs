@@ -537,7 +537,7 @@ impl hooks::Hooks for BN4 {
             {
                 (
                     self.offsets.rom.get_copy_data_input_state_ret,
-                    Box::new(move |mut core| {
+                    Box::new(move |core| {
                         let r0 = core.as_ref().gba().cpu().gpr(0);
                         if r0 != 2 {
                             log::error!("shadow: expected r0 to be 2 but got {}", r0);
@@ -884,5 +884,5 @@ impl hooks::Hooks for BN4 {
             .set_thumb_pc(self.offsets.rom.main_read_joyflags);
     }
 
-    fn replace_opponent_name(&self, mut core: mgba::core::CoreMutRef, name: &str) {}
+    fn replace_opponent_name(&self, mut _core: mgba::core::CoreMutRef, _name: &str) {}
 }
