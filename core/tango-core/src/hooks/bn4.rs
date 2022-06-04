@@ -93,7 +93,27 @@ impl hooks::Hooks for BN4 {
                                 }
                             };
 
-                            munger.start_battle_from_overworld(core, match_.match_type());
+                            munger.open_comm_menu_from_overworld(core);
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.comm_menu_init_ret,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            munger.start_battle_from_comm_menu(core, match_.match_type());
 
                             let mut rng = match_.lock_rng().await;
 
@@ -372,7 +392,7 @@ impl hooks::Hooks for BN4 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_phase_jump_table_ret,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -417,11 +437,20 @@ impl hooks::Hooks for BN4 {
             },
             {
                 let munger = self.munger.clone();
-                let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
-                        munger.start_battle_from_overworld(core, shadow_state.match_type());
+                        munger.open_comm_menu_from_overworld(core);
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.comm_menu_init_ret,
+                    Box::new(move |core| {
+                        munger.start_battle_from_comm_menu(core, shadow_state.match_type());
 
                         let mut rng = shadow_state.lock_rng();
 
@@ -659,7 +688,7 @@ impl hooks::Hooks for BN4 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_phase_jump_table_ret,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
@@ -824,7 +853,7 @@ impl hooks::Hooks for BN4 {
             {
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.round_phase_jump_table_ret,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
                         ff_state.increment_current_tick();
                     }),
