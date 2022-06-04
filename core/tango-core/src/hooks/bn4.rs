@@ -397,7 +397,11 @@ impl hooks::Hooks for BN4 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
-                            let round = round_state.round.as_mut().expect("round");
+                            let round = if let Some(round) = round_state.round.as_mut() {
+                                round
+                            } else {
+                                return;
+                            };
                             round.increment_current_tick();
                         });
                     }),
@@ -690,7 +694,11 @@ impl hooks::Hooks for BN4 {
                     self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_mut().expect("round");
+                        let round = if let Some(round) = round_state.round.as_mut() {
+                            round
+                        } else {
+                            return;
+                        };
                         round.increment_current_tick();
                     }),
                 )
