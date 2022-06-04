@@ -55,7 +55,7 @@ import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/ge
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
 import { KNOWN_ROMS } from "../../rom";
-import * as bn6 from "../../saveedit/bn6";
+import { Editor, sniff } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { fallbackLng } from "../i18n";
 import { useConfig } from "./ConfigContext";
@@ -259,9 +259,7 @@ async function runCallback(
     >;
     config: Config;
     setRtt: React.Dispatch<React.SetStateAction<number | null>>;
-    setRevealedSetupEditor: React.Dispatch<
-      React.SetStateAction<bn6.Editor | null>
-    >;
+    setRevealedSetupEditor: React.Dispatch<React.SetStateAction<Editor | null>>;
   }>
 ) {
   let iceServers = config.iceServers;
@@ -643,10 +641,7 @@ async function runCallback(
 
     if (opponentGameSettings.revealSetup) {
       ref.current.setRevealedSetupEditor(
-        new bn6.Editor(
-          bn6.Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
-          opponentGameInfo.rom
-        )
+        sniff(new Uint8Array(remoteState.saveData).buffer)
       );
     }
 
@@ -800,7 +795,7 @@ export default function BattleStarter({
   const [rtt, setRtt] = React.useState<number | null>(null);
 
   const [revealedSetupEditor, setRevealedSetupEditor] =
-    React.useState<bn6.Editor | null>(null);
+    React.useState<Editor | null>(null);
 
   const gameInfo = React.useMemo(
     () =>
