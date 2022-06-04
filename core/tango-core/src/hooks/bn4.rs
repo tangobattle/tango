@@ -249,7 +249,12 @@ impl hooks::Hooks for BN4 {
                     self.offsets.rom.get_copy_data_input_state_ret,
                     Box::new(move |mut core| {
                         handle.block_on(async {
-                            let mut r0 = 2;
+                            let mut r0 = core.as_ref().gba().cpu().gpr(0);
+                            if r0 != 2 {
+                                log::error!("expected r0 to be 2 but got {}", r0);
+                                r0 = 2;
+                            }
+
                             if facade.match_().await.is_none() {
                                 r0 = 4;
                             }
@@ -270,11 +275,13 @@ impl hooks::Hooks for BN4 {
                 )
             },
             {
+                let munger = self.munger.clone();
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        munger.set_copy_data_input_state(core, 2);
                     }),
                 )
             },
@@ -527,7 +534,10 @@ impl hooks::Hooks for BN4 {
                 (
                     self.offsets.rom.get_copy_data_input_state_ret,
                     Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 2);
+                        let r0 = core.as_ref().gba().cpu().gpr(0);
+                        if r0 != 2 {
+                            log::error!("shadow: expected r0 to be 2 but got {}", r0);
+                        }
                     }),
                 )
             },
@@ -543,11 +553,13 @@ impl hooks::Hooks for BN4 {
                 )
             },
             {
+                let munger = self.munger.clone();
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        munger.set_copy_data_input_state(core, 2);
                     }),
                 )
             },
@@ -714,11 +726,13 @@ impl hooks::Hooks for BN4 {
                 )
             },
             {
+                let munger = self.munger.clone();
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        munger.set_copy_data_input_state(core, 2);
                     }),
                 )
             },
@@ -821,15 +835,6 @@ impl hooks::Hooks for BN4 {
                                 current_tick,
                             ));
                             return;
-                        }
-
-                        if current_tick <= ff_state.commit_time() {
-                            log::info!(
-                                "DEBUG {}:\n  {:02x?}\n  {:02x?}",
-                                current_tick,
-                                ip.local.rx,
-                                ip.remote.rx
-                            );
                         }
 
                         munger.set_rx_packet(
