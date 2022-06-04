@@ -258,7 +258,7 @@ impl hooks::Hooks for BN4 {
                     Box::new(move |core| {
                         log::error!(
                             "unhandled call to handleSIO at 0x{:0x}: uh oh!",
-                            core.as_ref().gba().cpu().pc() - 4
+                            core.as_ref().gba().cpu().thumb_pc() - 4
                         );
                     }),
                 )
@@ -267,8 +267,8 @@ impl hooks::Hooks for BN4 {
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().pc() as u32;
-                        core.gba_mut().cpu_mut().set_pc(pc + 4);
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     }),
                 )
             },
@@ -530,7 +530,7 @@ impl hooks::Hooks for BN4 {
                     Box::new(move |core| {
                         log::error!(
                             "unhandled call to handleSIO at 0x{:0x}: uh oh!",
-                            core.as_ref().gba().cpu().pc() - 4
+                            core.as_ref().gba().cpu().thumb_pc()
                         );
                     }),
                 )
@@ -539,8 +539,8 @@ impl hooks::Hooks for BN4 {
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
-                        let r15 = core.as_ref().gba().cpu().pc() as u32;
-                        core.gba_mut().cpu_mut().set_pc(r15 + 4);
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     }),
                 )
             },
@@ -710,8 +710,8 @@ impl hooks::Hooks for BN4 {
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
-                        let r15 = core.as_ref().gba().cpu().pc() as u32;
-                        core.gba_mut().cpu_mut().set_pc(r15 + 4);
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                     }),
                 )
             },
@@ -849,7 +849,7 @@ impl hooks::Hooks for BN4 {
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {
         core.gba_mut()
             .cpu_mut()
-            .set_pc(self.offsets.rom.main_read_joyflags);
+            .set_thumb_pc(self.offsets.rom.main_read_joyflags);
     }
 
     fn replace_opponent_name(&self, mut core: mgba::core::CoreMutRef, name: &str) {}

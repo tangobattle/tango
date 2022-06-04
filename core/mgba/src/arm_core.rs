@@ -10,8 +10,8 @@ impl<'a> ARMCoreRef<'a> {
         unsafe { (*self.ptr).__bindgen_anon_1.__bindgen_anon_1.gprs[r] }
     }
 
-    pub fn pc(&self) -> u32 {
-        (self.gpr(15) - 4) as u32
+    pub fn thumb_pc(&self) -> u32 {
+        (self.gpr(15) - 2) as u32
     }
 }
 
@@ -43,7 +43,7 @@ impl<'a> ARMCoreMutRef<'a> {
         }
     }
 
-    pub fn set_pc(&self, v: u32) {
+    pub fn set_thumb_pc(&self, v: u32) {
         self.set_gpr(15, v as i32);
         self.thumb_write_pc();
     }
