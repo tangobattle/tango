@@ -77,24 +77,11 @@ impl hooks::Hooks for BN4 {
                 )
             },
             {
-                let facade = facade.clone();
-                let handle = handle.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
-                        handle.block_on(async {
-                            log::info!("game loaded");
-
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            munger.open_comm_menu_from_overworld(core);
-                        });
+                        munger.open_comm_menu_from_overworld(core);
                     }),
                 )
             },
@@ -834,6 +821,15 @@ impl hooks::Hooks for BN4 {
                                 current_tick,
                             ));
                             return;
+                        }
+
+                        if current_tick <= ff_state.commit_time() {
+                            log::info!(
+                                "DEBUG {}:\n  {:02x?}\n  {:02x?}",
+                                current_tick,
+                                ip.local.rx,
+                                ip.remote.rx
+                            );
                         }
 
                         munger.set_rx_packet(
