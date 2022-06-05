@@ -149,6 +149,19 @@ impl hooks::Hooks for BN4 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
+                    self.offsets.rom.comm_menu_end_battle_entry,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            log::info!("match ended");
+                            facade.end_match().await;
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
                     self.offsets.rom.round_run_unpaused_step_cmp_retval,
                     Box::new(move |core| {
                         handle.block_on(async {

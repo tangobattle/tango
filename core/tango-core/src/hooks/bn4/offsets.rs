@@ -169,7 +169,7 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         comm_menu_init_ret: 0x0803956a,
         handle_sio_entry: 0x080482f8,
         in_battle_call_handle_link_cable_input: 0x08006b16,
-        comm_menu_end_battle_entry: 0, // TODO
-        opponent_name: 0,
+        comm_menu_end_battle_entry: 0x0803a794,
+        opponent_name: 0, // TODO
     },
 };
