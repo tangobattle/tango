@@ -159,10 +159,10 @@ pub static MEGAMAN5_TP_: Offsets = Offsets {
         get_copy_data_input_state_ret:          0x0801c7fe,
         copy_input_data_entry:                  0x0801c800,
         copy_input_data_ret:                    0x0801c8c8,
-        round_run_unpaused_step_cmp_retval:     0, // TODO
-        round_start_ret:                        0, // TODO
-        round_ending_ret:                       0, // TODO
-        round_end_entry:                        0, // TODO
+        round_run_unpaused_step_cmp_retval:     0x08007464,
+        round_start_ret:                        0x0800673e,
+        round_ending_ret:                       0x0800812c,
+        round_end_entry:                        0x0800702e,
         round_post_increment_tick:              0x08006c2e,
         battle_is_p2_tst:                       0, // TODO
         link_is_p2_ret:                         0, // TODO
