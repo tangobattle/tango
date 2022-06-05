@@ -402,6 +402,11 @@ impl hooks::Hooks for BN4 {
                             } else {
                                 return;
                             };
+
+                            if !round.has_committed_state() {
+                                return;
+                            }
+
                             round.increment_current_tick();
                         });
                     }),
@@ -699,6 +704,9 @@ impl hooks::Hooks for BN4 {
                         } else {
                             return;
                         };
+                        if !round.has_first_committed_state() {
+                            return;
+                        }
                         round.increment_current_tick();
                     }),
                 )

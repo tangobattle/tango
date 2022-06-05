@@ -27,7 +27,6 @@ impl Round {
     }
 
     pub fn set_first_committed_state(&mut self, state: mgba::state::State) {
-        log::info!("shadow state committed");
         self.first_committed_state = Some(state);
     }
 
@@ -188,7 +187,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err);
+                return Err(anyhow::format_err!("shadow: {}", err));
             }
 
             let round_state = self.state.lock_round_state();
@@ -198,7 +197,6 @@ impl Shadow {
                 .and_then(|round| round.first_committed_state.as_ref())
             {
                 self.core.as_mut().load_state(state).expect("load state");
-                log::info!("advanced to committed state!");
                 return Ok(state.clone());
             }
         }
@@ -210,7 +208,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err);
+                return Err(anyhow::format_err!("shadow: {}", err));
             }
 
             let round_state = self.state.lock_round_state();
@@ -245,7 +243,7 @@ impl Shadow {
         loop {
             self.core.as_mut().run_loop();
             if let Some(err) = self.state.0.error.lock().take() {
-                return Err(err);
+                return Err(anyhow::format_err!("shadow: {}", err));
             }
             if let Some(applied_state) = self.state.0.applied_state.lock().take() {
                 self.core

@@ -255,7 +255,10 @@ impl Fastforwarder {
             let mut inner_state = self.state.0.lock();
             if let Some(_) = inner_state.as_ref().expect("state").error {
                 let state = inner_state.take().expect("state");
-                return Err(state.error.expect("error"));
+                return Err(anyhow::format_err!(
+                    "fastforwarder: {}",
+                    state.error.expect("error")
+                ));
             }
         }
     }

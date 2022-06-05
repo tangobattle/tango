@@ -371,7 +371,7 @@ impl hooks::Hooks for BN6 {
                                 };
 
                                 if !round.has_committed_state() {
-                                    // HACK: For some inexplicable reason, we don't always start on tick 0.
+                                    // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
                                     munger.set_current_tick(core, 0);
 
                                     round.set_first_committed_state(
@@ -694,7 +694,7 @@ impl hooks::Hooks for BN6 {
                         };
 
                         if !round.has_first_committed_state() {
-                            // HACK: For some inexplicable reason, we don't always start on tick 0.
+                            // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
                             munger.set_current_tick(core, 0);
 
                             round.set_first_committed_state(core.save_state().expect("save state"));
