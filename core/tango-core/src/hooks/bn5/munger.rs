@@ -17,7 +17,14 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x08, -1, 0x01);
     }
 
-    pub(super) fn open_comm_menu_from_overworld(&self, mut core: mgba::core::CoreMutRef) {}
+    pub(super) fn open_comm_menu_from_overworld(&self, mut core: mgba::core::CoreMutRef) {
+        core.raw_write_8(self.offsets.ewram.menu_control + 0x0, -1, 0x10);
+        core.raw_write_8(self.offsets.ewram.menu_control + 0x1, -1, 0x04);
+        core.raw_write_8(self.offsets.ewram.menu_control + 0x2, -1, 0x00);
+        core.raw_write_8(self.offsets.ewram.menu_control + 0x3, -1, 0x00);
+        core.raw_write_8(self.offsets.ewram.menu_control + 0x4, -1, 0x06);
+        core.raw_write_8(self.offsets.ewram.menu_control + 0x5, -1, 0x01);
+    }
 
     pub(super) fn start_battle_from_comm_menu(
         &self,
