@@ -53,11 +53,6 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
-    /// This hooks the return from the function that is called to determine the current state of copying input data.
-    ///
-    /// Expected values are: 2 if input is ready, 4 if remote has disconnected.
-    pub(super) get_copy_data_input_state_ret: u32,
-
     /// This hooks the entry into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
     ///
     /// Received packets should be injected here into rx_packet_arr.
@@ -165,7 +160,6 @@ pub static MEGAMAN6_FXX: Offsets = Offsets {
         start_screen_sram_unmask_ret:                               0x0802f5ea,
         game_load_ret:                                              0x08004dde,
         main_read_joyflags:                                         0x080003fa,
-        get_copy_data_input_state_ret:                              0x0801feec,
         copy_input_data_entry:                                      0x0801ff18,
         copy_input_data_ret:                                        0x0801ffd4,
         round_run_unpaused_step_cmp_retval:                         0x08008102,
@@ -192,7 +186,6 @@ pub static MEGAMAN6_GXX: Offsets = Offsets {
         start_screen_sram_unmask_ret:                               0x0802f5ea,
         game_load_ret:                                              0x08004dde,
         main_read_joyflags:                                         0x080003fa,
-        get_copy_data_input_state_ret:                              0x0801feec,
         copy_input_data_entry:                                      0x0801ff18,
         copy_input_data_ret:                                        0x0801ffd4,
         round_run_unpaused_step_cmp_retval:                         0x08008102,
@@ -219,7 +212,6 @@ pub static ROCKEXE6_RXX: Offsets = Offsets {
         start_screen_sram_unmask_ret:                               0x0803059a,
         game_load_ret:                                              0x08004dc2,
         main_read_joyflags:                                         0x080003fa,
-        get_copy_data_input_state_ret:                              0x08020300,
         copy_input_data_entry:                                      0x0802032c,
         copy_input_data_ret:                                        0x080203e8,
         round_run_unpaused_step_cmp_retval:                         0x0800811a,
@@ -246,7 +238,6 @@ pub static ROCKEXE6_GXX: Offsets = Offsets {
         start_screen_sram_unmask_ret:                               0x0803059a,
         game_load_ret:                                              0x08004dc2,
         main_read_joyflags:                                         0x080003fa,
-        get_copy_data_input_state_ret:                              0x08020300,
         copy_input_data_entry:                                      0x0802032c,
         copy_input_data_ret:                                        0x080203e8,
         round_run_unpaused_step_cmp_retval:                         0x0800811a,

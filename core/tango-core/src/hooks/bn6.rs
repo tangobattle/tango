@@ -263,27 +263,6 @@ impl hooks::Hooks for BN6 {
                 )
             },
             {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.get_copy_data_input_state_ret,
-                    Box::new(move |mut core| {
-                        handle.block_on(async {
-                            let mut r0 = core.as_ref().gba().cpu().gpr(0);
-                            if r0 != 2 {
-                                log::error!("expected r0 to be 2 but got {}", r0);
-                            }
-
-                            if facade.match_().await.is_none() {
-                                r0 = 4;
-                            }
-
-                            core.gba_mut().cpu_mut().set_gpr(0, r0);
-                        });
-                    }),
-                )
-            },
-            {
                 (
                     self.offsets.rom.handle_sio_entry,
                     Box::new(move |core| {
@@ -335,15 +314,26 @@ impl hooks::Hooks for BN6 {
                 )
             },
             {
+                let facade = facade.clone();
                 let munger = self.munger.clone();
+                let handle = handle.clone();
                 (
                     self.offsets
                         .rom
                         .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
                     Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
-                        munger.set_copy_data_input_state(core, 2);
+                        handle.block_on(async {
+                            let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
+                            munger.set_copy_data_input_state(
+                                core,
+                                if facade.match_().await.is_some() {
+                                    2
+                                } else {
+                                    4
+                                },
+                            );
+                        });
                     }),
                 )
             },
@@ -633,17 +623,6 @@ impl hooks::Hooks for BN6 {
             },
             {
                 (
-                    self.offsets.rom.get_copy_data_input_state_ret,
-                    Box::new(move |core| {
-                        let r0 = core.as_ref().gba().cpu().gpr(0);
-                        if r0 != 2 {
-                            log::error!("shadow: expected r0 to be 2 but got {}", r0);
-                        }
-                    }),
-                )
-            },
-            {
-                (
                     self.offsets.rom.handle_sio_entry,
                     Box::new(move |core| {
                         log::error!(
@@ -887,14 +866,6 @@ impl hooks::Hooks for BN6 {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
                         munger.set_copy_data_input_state(core, 2);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.get_copy_data_input_state_ret,
-                    Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 2);
                     }),
                 )
             },
