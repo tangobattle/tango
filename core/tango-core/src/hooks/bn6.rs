@@ -293,7 +293,7 @@ impl hooks::Hooks for BN6 {
                                 core,
                                 random_battle_settings_and_background(
                                     &mut *rng,
-                                    (match_.match_type() & 0xff) as u8,
+                                    match_.match_type(),
                                 ),
                             );
                         });
@@ -643,7 +643,7 @@ impl hooks::Hooks for BN6 {
                             core,
                             random_battle_settings_and_background(
                                 &mut *rng,
-                                (shadow_state.match_type() & 0xff) as u8,
+                                shadow_state.match_type(),
                             ),
                         );
                     }),

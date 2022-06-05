@@ -105,6 +105,11 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
+    /// This is the entry point to link battle in the comm menu: that is, the first match has started.
+    ///
+    /// We need to perform some initialization we skipped here, such as setting stage and background.
+    pub(super) comm_menu_init_battle_entry: u32,
+
     /// This handles underlying link cable SIO in the comm menu.
     ///
     /// This should never be called.
@@ -129,7 +134,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     start_screen_control:   0x02013000,
     title_menu_control:     0x0200b980,
     menu_control:           0x0200e950,
-    submenu_control:        0, // TODO
+    submenu_control:        0x0200ab20,
     rng1_state:             0x02001c94,
     rng2_state:             0x02001d40,
     copy_data_input_state:  0x0203f245,
@@ -159,6 +164,7 @@ pub static MEGAMAN5_TP_: Offsets = Offsets {
         battle_is_p2_tst:                       0x0803d020,
         link_is_p2_ret:                         0x0803d03e,
         comm_menu_init_ret:                     0, // TODO
+        comm_menu_init_battle_entry:            0x08134f90,
         handle_sio_entry:                       0x0803d11c,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0, // TODO
@@ -183,6 +189,7 @@ pub static MEGAMAN5_TC_: Offsets = Offsets {
         battle_is_p2_tst:                       0, // TODO
         link_is_p2_ret:                         0, // TODO
         comm_menu_init_ret:                     0, // TODO
+        comm_menu_init_battle_entry:            0, // TODO
         handle_sio_entry:                       0, // TODO
         in_battle_call_handle_link_cable_input: 0, // TODO
         comm_menu_end_battle_entry:             0, // TODO
@@ -207,6 +214,7 @@ pub static ROCKEXE5_TOB: Offsets = Offsets {
         battle_is_p2_tst:                       0, // TODO
         link_is_p2_ret:                         0, // TODO
         comm_menu_init_ret:                     0, // TODO
+        comm_menu_init_battle_entry:            0, // TODO
         handle_sio_entry:                       0, // TODO
         in_battle_call_handle_link_cable_input: 0, // TODO
         comm_menu_end_battle_entry:             0, // TODO
@@ -231,6 +239,7 @@ pub static ROCKEXE5_TOC: Offsets = Offsets {
         battle_is_p2_tst:                       0, // TODO
         link_is_p2_ret:                         0, // TODO
         comm_menu_init_ret:                     0, // TODO
+        comm_menu_init_battle_entry:            0, // TODO
         handle_sio_entry:                       0, // TODO
         in_battle_call_handle_link_cable_input: 0, // TODO
         comm_menu_end_battle_entry:             0, // TODO

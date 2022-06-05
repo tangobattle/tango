@@ -45,6 +45,16 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
+fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
+    let battle_settings = match match_type {
+        0 => rng.gen_range(0..0x44u8),
+        1 => rng.gen_range(0..0x60u8),
+        _ => 0u8,
+    };
+
+    (battle_settings, rng.gen_range(0..0x1bu8))
+}
+
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
     (((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1))
@@ -256,33 +266,36 @@ impl hooks::Hooks for BN5 {
                     }),
                 )
             },
-            // {
-            //     let facade = facade.clone();
-            //     let munger = self.munger.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.comm_menu_init_battle_entry,
-            //         Box::new(move |core| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+            {
+                let facade = facade.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.comm_menu_init_battle_entry,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let mut rng = match_.lock_rng().await;
-            //                 munger.set_link_battle_settings_and_background(
-            //                     core,
-            //                     random_battle_settings_and_background(
-            //                         &mut *rng,
-            //                         (match_.match_type() & 0xff) as u8,
-            //                     ),
-            //                 );
-            //             });
-            //         }),
-            //     )
-            // },
+                            let mut rng = match_.lock_rng().await;
+                            let (battle_settings, background) =
+                                random_battle_settings_and_background(
+                                    &mut *rng,
+                                    match_.match_type(),
+                                );
+                            munger.set_battle_settings_and_background(
+                                core,
+                                battle_settings,
+                                background,
+                            );
+                        });
+                    }),
+                )
+            },
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -613,23 +626,25 @@ impl hooks::Hooks for BN5 {
                     }),
                 )
             },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     let munger = self.munger.clone();
-            //     (
-            //         self.offsets.rom.comm_menu_init_battle_entry,
-            //         Box::new(move |core| {
-            //             let mut rng = shadow_state.lock_rng();
-            //             munger.set_link_battle_settings_and_background(
-            //                 core,
-            //                 random_battle_settings_and_background(
-            //                     &mut *rng,
-            //                     (shadow_state.match_type() & 0xff) as u8,
-            //                 ),
-            //             );
-            //         }),
-            //     )
-            // },
+            {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.comm_menu_init_battle_entry,
+                    Box::new(move |core| {
+                        let mut rng = shadow_state.lock_rng();
+                        let (battle_settings, background) = random_battle_settings_and_background(
+                            &mut *rng,
+                            shadow_state.match_type(),
+                        );
+                        munger.set_battle_settings_and_background(
+                            core,
+                            battle_settings,
+                            background,
+                        );
+                    }),
+                )
+            },
             {
                 let munger = self.munger.clone();
                 (
