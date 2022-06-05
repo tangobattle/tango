@@ -56,7 +56,6 @@ pub(super) struct ROMOffsets {
     /// This hooks the return from the function that is called to determine the current state of copying input data.
     ///
     /// Expected values are: 2 if input is ready, 4 if remote has disconnected.
-    pub(super) get_copy_data_input_state_ret: u32,
 
     /// This hooks the entry into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
     ///
@@ -150,7 +149,6 @@ pub static MEGAMAN5_TP_: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0x0803008a,
         game_load_ret:                          0x08004a74,
         main_read_joyflags:                     0x080003ea,
-        get_copy_data_input_state_ret:          0x0801c7fe,
         copy_input_data_entry:                  0x0801c800,
         copy_input_data_ret:                    0x0801c8c8,
         round_run_unpaused_step_cmp_retval:     0x08007464,
@@ -175,7 +173,6 @@ pub static MEGAMAN5_TC_: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0, // TODO
-        get_copy_data_input_state_ret:          0, // TODO
         copy_input_data_entry:                  0, // TODO
         copy_input_data_ret:                    0, // TODO
         round_run_unpaused_step_cmp_retval:     0, // TODO
@@ -200,7 +197,6 @@ pub static ROCKEXE5_TOB: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0, // TODO
-        get_copy_data_input_state_ret:          0, // TODO
         copy_input_data_entry:                  0, // TODO
         copy_input_data_ret:                    0, // TODO
         round_run_unpaused_step_cmp_retval:     0, // TODO
@@ -225,7 +221,6 @@ pub static ROCKEXE5_TOC: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0, // TODO
-        get_copy_data_input_state_ret:          0, // TODO
         copy_input_data_entry:                  0, // TODO
         copy_input_data_ret:                    0, // TODO
         round_run_unpaused_step_cmp_retval:     0, // TODO
