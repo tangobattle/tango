@@ -39,6 +39,9 @@ pub(super) struct ROMOffsets {
     /// At this point, it is safe to do the equivalent of selecting the CONTINUE on the START menu.
     pub(super) start_screen_sram_unmask_ret: u32,
 
+    /// This is immediately after SRAM is copied to EWRAM and unmasked.
+    ///
+    /// At this point, it is safe to do the equivalent of selecting the From save point option on the NG+ menu.
     pub(super) ngplus_menu_init_ret: u32,
 
     /// This is immediately after game initialization is complete: that is, the internal state is set correctly.
