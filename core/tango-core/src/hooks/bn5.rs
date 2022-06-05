@@ -46,13 +46,8 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
 }
 
 fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
-    let battle_settings = match match_type {
-        0 => rng.gen_range(0..0x44u8),
-        1 => rng.gen_range(0..0x60u8),
-        _ => 0u8,
-    };
-
-    (battle_settings, rng.gen_range(0..0x1bu8))
+    // BN5 has 0x60 stages, but the remaining ones are only used in "battle" mode.
+    (rng.gen_range(0..0x44u8), rng.gen_range(0..0x1bu8))
 }
 
 fn step_rng(seed: u32) -> u32 {
