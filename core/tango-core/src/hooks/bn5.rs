@@ -317,17 +317,17 @@ impl hooks::Hooks for BN5 {
                     }),
                 )
             },
-            // {
-            //     (
-            //         self.offsets
-            //             .rom
-            //             .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
-            //         Box::new(move |mut core| {
-            //             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-            //             core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
-            //         }),
-            //     )
-            // },
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
+                    Box::new(move |mut core| {
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        munger.set_copy_data_input_state(core, 2);
+                    }),
+                )
+            },
             {
                 let facade = facade.clone();
                 let munger = self.munger.clone();
@@ -651,17 +651,17 @@ impl hooks::Hooks for BN5 {
             //         }),
             //     )
             // },
-            // {
-            //     (
-            //         self.offsets
-            //             .rom
-            //             .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
-            //         Box::new(move |mut core| {
-            //             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-            //             core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
-            //         }),
-            //     )
-            // },
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
+                    Box::new(move |mut core| {
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        munger.set_copy_data_input_state(core, 2);
+                    }),
+                )
+            },
             {
                 let shadow_state = shadow_state.clone();
                 let munger = self.munger.clone();
@@ -856,17 +856,17 @@ impl hooks::Hooks for BN5 {
                     }),
                 )
             },
-            // {
-            //     (
-            //         self.offsets
-            //             .rom
-            //             .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
-            //         Box::new(move |mut core| {
-            //             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-            //             core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
-            //         }),
-            //     )
-            // },
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
+                    Box::new(move |mut core| {
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        munger.set_copy_data_input_state(core, 2);
+                    }),
+                )
+            },
             {
                 (
                     self.offsets.rom.get_copy_data_input_state_ret,
