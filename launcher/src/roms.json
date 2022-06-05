@@ -5,9 +5,7 @@
       "ja": "ロックマンエグゼ6 電脳獣ファルザー（英語版）",
       "zh-Hans": "洛克人EXE6 电脑兽凤凰（英文版）"
     },
-    "versions": {
-      "1.0": { "crc32": 3739677353 }
-    },
+    "crc32": 3739677353,
     "netplayCompatibility": "bn6"
   },
   "MEGAMAN6_GXXBR5E": {
@@ -16,9 +14,7 @@
       "ja": "ロックマンエグゼ6 電脳獣グレイガ（英語版）",
       "zh-Hans": "洛克人EXE6 电脑兽麒麟（英文版）"
     },
-    "versions": {
-      "1.0": { "crc32": 2034573698 }
-    },
+    "crc32": 2034573698,
     "netplayCompatibility": "bn6"
   },
   "ROCKEXE6_RXXBR6J": {
@@ -27,9 +23,7 @@
       "ja": "ロックマンエグゼ6 電脳獣ファルザー",
       "zh-Hans": "洛克人EXE6 电脑兽凤凰（日文版）"
     },
-    "versions": {
-      "1.0": { "crc32": 771448894 }
-    },
+    "crc32": 771448894,
     "netplayCompatibility": "exe6"
   },
   "ROCKEXE6_GXXBR5J": {
@@ -38,9 +32,7 @@
       "ja": "ロックマンエグゼ6 電脳獣グレイガ",
       "zh-Hans": "洛克人EXE6 电脑兽麒麟（日文版）"
     },
-    "versions": {
-      "1.0": { "crc32": 1652920714 }
-    },
+    "crc32": 1652920714,
     "netplayCompatibility": "exe6"
   },
 
@@ -49,9 +41,7 @@
       "en": "Mega Man Battle Network 5: Team Protoman",
       "ja": "ロックマンエグゼ5 チーム オブ ブルース（英語版）"
     },
-    "versions": {
-      "1.0": { "crc32": 2805892004 }
-    },
+    "crc32": 2805892004,
     "netplayCompatibility": "bn5"
   },
   "MEGAMAN5_TC_BRKE": {
@@ -59,9 +49,7 @@
       "en": "Mega Man Battle Network 5: Team Colonel",
       "ja": "ロックマンエグゼ5 チーム オブ カーネル（英語版）"
     },
-    "versions": {
-      "1.0": { "crc32": 2773677699 }
-    },
+    "crc32": 2773677699,
     "netplayCompatibility": "bn5"
   },
   "ROCKEXE5_TOBBRBJ": {
@@ -69,9 +57,7 @@
       "en": "Rockman EXE 5: Team of Blues",
       "ja": "ロックマンエグゼ5 チーム オブ ブルース"
     },
-    "versions": {
-      "1.0": { "crc32": 3342803904 }
-    },
+    "crc32": 3342803904,
     "netplayCompatibility": "exe5"
   },
   "ROCKEXE5_TOCBRKJ": {
@@ -79,9 +65,7 @@
       "en": "Rockman EXE 5: Team of Colonel",
       "ja": "ロックマンエグゼ5 チーム オブ カーネル"
     },
-    "versions": {
-      "1.0": { "crc32": 377759285 }
-    },
+    "crc32": 377759285,
     "netplayCompatibility": "exe5"
   },
 
@@ -90,9 +74,7 @@
       "en": "Mega Man Battle Network 4: Blue Moon",
       "ja": "ロックマンエグゼ4 トーナメント ブルームーン（英語版）"
     },
-    "versions": {
-      "1.0": { "crc32": 1971996393 }
-    },
+    "crc32": 1971996393,
     "netplayCompatibility": "bn4"
   },
   "MEGAMANBN4RSB4WE": {
@@ -100,9 +82,7 @@
       "en": "Mega Man Battle Network 4: Red Sun",
       "ja": "ロックマンエグゼ4 トーナメント レッドサン（英語版）"
     },
-    "versions": {
-      "1.0": { "crc32": 555772252 }
-    },
+    "crc32": 555772252,
     "netplayCompatibility": "bn4"
   },
   "ROCK_EXE4_BMB4BJ": {
@@ -110,9 +90,7 @@
       "en": "Rockman EXE 4: Tournament Blue Moon",
       "ja": "ロックマンエグゼ4 トーナメント ブルームーン"
     },
-    "versions": {
-      "1.0": { "crc32": 3984350032 }
-    },
+    "crc32": 3984350032,
     "netplayCompatibility": "exe4"
   },
   "ROCK_EXE4_RSB4WJ": {
@@ -120,10 +98,7 @@
       "en": "Rockman EXE 4: Tournament Red Sun",
       "ja": "ロックマンエグゼ4 トーナメント レッドサン"
     },
-    "versions": {
-      "1.0": { "crc32": 1783730301 },
-      "1.1": { "crc32": 3473836805 }
-    },
+    "crc32": 3473836805,
     "netplayCompatibility": "exe4"
   }
 }

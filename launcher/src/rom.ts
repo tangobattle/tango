@@ -21,7 +21,7 @@ export function getROMInfo(buffer: ArrayBuffer) {
 
 export interface KnownROM {
   title: { [language: string]: string };
-  versions: { [key: string]: { crc32: number } };
+  crc32: number;
   netplayCompatibility: string;
 }
 
@@ -50,14 +50,12 @@ export async function scan(dir: string) {
         if (knownROM == null) {
           throw `unknown rom name: ${romInfo.name}`;
         }
-        const crc32s = Object.values(knownROM.versions).map(
-          (version) => version.crc32
-        );
-
-        if (crc32s.indexOf(romInfo.crc32) == -1) {
-          throw `mismatched crc32: expected one of ${crc32s
-            .map((crc32) => crc32.toString(16).padStart(8, "0"))
-            .join(", ")}, got ${romInfo.crc32.toString(16).padStart(8, "0")}`;
+        if (romInfo.crc32 != knownROM.crc32) {
+          throw `mismatched crc32: expected ${knownROM.crc32
+            .toString(16)
+            .padStart(8, "0")}, got ${romInfo.crc32
+            .toString(16)
+            .padStart(8, "0")}`;
         }
 
         games[romInfo.name] = romName;
