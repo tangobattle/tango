@@ -954,30 +954,5 @@ impl hooks::Hooks for BN4 {
             .set_thumb_pc(self.offsets.rom.main_read_joyflags);
     }
 
-    fn replace_opponent_name(&self, mut core: mgba::core::CoreMutRef, name: &str) {
-        if self.offsets.rom.opponent_name == 0 {
-            // Not whimsical enough :(
-            return;
-        }
-        if name.is_empty() {
-            return;
-        }
-        const CHARS: &str = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz";
-        const MAX_NAME_LEN: usize = 9;
-        const EOS: u8 = 0xe6;
-        let mut buf = Vec::with_capacity(MAX_NAME_LEN);
-        for c in name.chars() {
-            if buf.len() == MAX_NAME_LEN {
-                break;
-            }
-
-            buf.push(if let Some(i) = CHARS.find(c) {
-                i as u8
-            } else {
-                0
-            });
-        }
-        buf.push(EOS);
-        core.raw_write_range(self.offsets.rom.opponent_name, -1, &buf);
-    }
+    fn replace_opponent_name(&self, mut _core: mgba::core::CoreMutRef, _name: &str) {}
 }
