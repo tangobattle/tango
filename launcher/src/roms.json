@@ -35,6 +35,40 @@
     "crc32": 1652920714,
     "netplayCompatibility": "exe6"
   },
+
+  "MEGAMAN5_TP_BRBE": {
+    "title": {
+      "en": "Mega Man Battle Network 5: Team Protoman",
+      "ja": "ロックマンエグゼ5 チーム オブ ブルース（英語版）"
+    },
+    "crc32": 2805892004,
+    "netplayCompatibility": "bn5"
+  },
+  "MEGAMAN5_TC_BRKE": {
+    "title": {
+      "en": "Mega Man Battle Network 5: Team Colonel",
+      "ja": "ロックマンエグゼ5 チーム オブ カーネル（英語版）"
+    },
+    "crc32": 2773677699,
+    "netplayCompatibility": "bn5"
+  },
+  "ROCKEXE5_TOBBRBJ": {
+    "title": {
+      "en": "Rockman EXE 5: Team of Blues",
+      "ja": "ロックマンエグゼ5 チーム オブ ブルース"
+    },
+    "crc32": 3342803904,
+    "netplayCompatibility": "exe5"
+  },
+  "ROCKEXE5_TOCBRKJ": {
+    "title": {
+      "en": "Rockman EXE 5: Team of Colonel",
+      "ja": "ロックマンエグゼ5 チーム オブ カーネル"
+    },
+    "crc32": 377759285,
+    "netplayCompatibility": "exe5"
+  },
+
   "MEGAMANBN4BMB4BE": {
     "title": {
       "en": "Mega Man Battle Network 4: Blue Moon",
