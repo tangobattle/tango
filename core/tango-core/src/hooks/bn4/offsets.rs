@@ -212,8 +212,9 @@ pub static ROCK_EXE4_BM: Offsets = Offsets {
     },
 };
 
+#[allow(dead_code)]
 #[rustfmt::skip]
-pub static ROCK_EXE4_RS: Offsets = Offsets {
+pub static ROCK_EXE4_RS_10: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d696,
@@ -234,5 +235,30 @@ pub static ROCK_EXE4_RS: Offsets = Offsets {
         handle_sio_entry:                       0x080481b0,
         in_battle_call_handle_link_cable_input: 0x08006af2,
         comm_menu_end_battle_entry:             0x0803a664,
+    },
+};
+
+#[rustfmt::skip]
+pub static ROCK_EXE4_RS: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:          0x0802d6d2,
+        start_screen_sram_unmask_ret:           0x0802530a,
+        ngplus_menu_init_ret:                   0x080254ea,
+        game_load_ret:                          0x08004976,
+        main_read_joyflags:                     0x080003c6,
+        copy_input_data_entry:                  0x08017ace,
+        copy_input_data_ret:                    0x08017b96,
+        round_run_unpaused_step_cmp_retval:     0x080070f8,
+        round_start_ret:                        0x080066f0,
+        round_ending_ret:                       0x080077b2,
+        round_end_entry:                        0x08006dfe,
+        round_call_jump_table_ret:              0x08006b08,
+        battle_is_p2_tst:                       0x080480f8,
+        link_is_p2_ret:                         0x08048116,
+        comm_menu_init_ret:                     0x08039476,
+        handle_sio_entry:                       0x080481ec,
+        in_battle_call_handle_link_cable_input: 0x08006af6,
+        comm_menu_end_battle_entry:             0x0803a6a0,
     },
 };
