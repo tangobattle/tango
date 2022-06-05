@@ -329,7 +329,6 @@ impl hooks::Hooks for BN4 {
                     }),
                 )
             },
-            // TODO: comm_menu_end_battle_entry
             {
                 let facade = facade.clone();
                 let munger = self.munger.clone();
