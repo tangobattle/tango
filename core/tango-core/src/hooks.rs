@@ -14,7 +14,7 @@ lazy_static! {
         hooks.insert("MEGAMANBN4BM".to_string(), &bn4::MEGAMANBN4BM);
         hooks.insert("MEGAMANBN4RS".to_string(), &bn4::MEGAMANBN4RS);
         hooks.insert("ROCK_EXE4_BM".to_string(), &bn4::ROCK_EXE4_BM);
-        //hooks.insert("ROCK_EXE4_RS".to_string(), &bn4::ROCK_EXE4_RS);
+        hooks.insert("ROCK_EXE4_RS".to_string(), &bn4::ROCK_EXE4_RS);
         hooks
     };
 }

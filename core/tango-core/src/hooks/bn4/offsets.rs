@@ -225,7 +225,7 @@ pub static ROCK_EXE4_RS: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry: 0x0802d696,
         start_screen_sram_unmask_ret: 0x080252ce,
-        ngplus_menu_init_ret: 0x080254b6,
+        ngplus_menu_init_ret: 0x080254ae,
         game_load_ret: 0x08004976,
         main_read_joyflags: 0x080003c6,
         get_copy_data_input_state_ret: 0x08017a98,
