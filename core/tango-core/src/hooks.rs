@@ -1,6 +1,7 @@
 use crate::{facade, fastforwarder, shadow};
 
 mod bn4;
+mod bn5;
 mod bn6;
 
 lazy_static! {
