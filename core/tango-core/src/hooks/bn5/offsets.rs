@@ -198,3 +198,55 @@ pub static MEGAMAN5_TC_: Offsets = Offsets {
         comm_menu_end_battle_entry:             0, // TODO
     },
 };
+
+#[rustfmt::skip]
+pub static ROCKEXE5_TOB: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:          0, // TODO
+        start_screen_sram_unmask_ret:           0, // TODO
+        ngplus_menu_init_ret:                   0, // TODO
+        game_load_ret:                          0, // TODO
+        main_read_joyflags:                     0, // TODO
+        get_copy_data_input_state_ret:          0, // TODO
+        copy_input_data_entry:                  0, // TODO
+        copy_input_data_ret:                    0, // TODO
+        round_run_unpaused_step_cmp_retval:     0, // TODO
+        round_start_ret:                        0, // TODO
+        round_ending_ret:                       0, // TODO
+        round_end_entry:                        0, // TODO
+        round_post_increment_tick:              0, // TODO
+        battle_is_p2_tst:                       0, // TODO
+        link_is_p2_ret:                         0, // TODO
+        comm_menu_init_ret:                     0, // TODO
+        handle_sio_entry:                       0, // TODO
+        in_battle_call_handle_link_cable_input: 0, // TODO
+        comm_menu_end_battle_entry:             0, // TODO
+    },
+};
+
+#[rustfmt::skip]
+pub static ROCKEXE5_TOC: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:          0, // TODO
+        start_screen_sram_unmask_ret:           0, // TODO
+        ngplus_menu_init_ret:                   0, // TODO
+        game_load_ret:                          0, // TODO
+        main_read_joyflags:                     0, // TODO
+        get_copy_data_input_state_ret:          0, // TODO
+        copy_input_data_entry:                  0, // TODO
+        copy_input_data_ret:                    0, // TODO
+        round_run_unpaused_step_cmp_retval:     0, // TODO
+        round_start_ret:                        0, // TODO
+        round_ending_ret:                       0, // TODO
+        round_end_entry:                        0, // TODO
+        round_post_increment_tick:              0, // TODO
+        battle_is_p2_tst:                       0, // TODO
+        link_is_p2_ret:                         0, // TODO
+        comm_menu_init_ret:                     0, // TODO
+        handle_sio_entry:                       0, // TODO
+        in_battle_call_handle_link_cable_input: 0, // TODO
+        comm_menu_end_battle_entry:             0, // TODO
+    },
+};
