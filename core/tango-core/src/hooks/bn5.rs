@@ -45,7 +45,7 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
-fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
+fn random_battle_settings_and_background(rng: &mut impl rand::Rng) -> (u8, u8) {
     // BN5 has 0x60 stages, but the remaining ones are only used in "battle" mode.
     (rng.gen_range(0..0x44u8), rng.gen_range(0..0x1bu8))
 }
@@ -277,10 +277,7 @@ impl hooks::Hooks for BN5 {
 
                             let mut rng = match_.lock_rng().await;
                             let (battle_settings, background) =
-                                random_battle_settings_and_background(
-                                    &mut *rng,
-                                    match_.match_type(),
-                                );
+                                random_battle_settings_and_background(&mut *rng);
                             munger.set_battle_settings_and_background(
                                 core,
                                 battle_settings,
@@ -627,10 +624,8 @@ impl hooks::Hooks for BN5 {
                     self.offsets.rom.comm_menu_init_battle_entry,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
-                        let (battle_settings, background) = random_battle_settings_and_background(
-                            &mut *rng,
-                            shadow_state.match_type(),
-                        );
+                        let (battle_settings, background) =
+                            random_battle_settings_and_background(&mut *rng);
                         munger.set_battle_settings_and_background(
                             core,
                             battle_settings,
