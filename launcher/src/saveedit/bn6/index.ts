@@ -7,6 +7,69 @@ export { CHIPS, MODCARDS, NCPS };
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
+const SRAM_START_OFFSET = 0x0100;
+const SRAM_END_OFFSET = 0x6810;
+const MASK_OFFSET = 0x1064;
+const GAME_NAME_OFFSET = 0x1c70;
+const CHECKSUM_OFFSET = 0x1c6c;
+
+function maskSave(dv: DataView) {
+  const mask = dv.getUint32(MASK_OFFSET, true);
+  const unmasked = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  for (let i = 0; i < unmasked.length; ++i) {
+    // We only actually need to use the first byte of the mask, even though it's 32 bits long.
+    unmasked[i] = (unmasked[i] ^ mask) & 0xff;
+  }
+  // Write the mask back.
+  dv.setUint32(MASK_OFFSET, mask, true);
+}
+
+const CHECKSUM_START: { [key: string]: number } = {
+  falzar: 0x18,
+  gregar: 0x72,
+};
+
+const ROM_NAMES_BY_SAVE_GAME_NAME: { [key: string]: string } = {
+  "REXE6 F 20050924a JP": "ROCKEXE6_RXXBR6J",
+  "REXE6 G 20050924a JP": "ROCKEXE6_GXXBR5J",
+  "REXE6 F 20060110a US": "MEGAMAN6_FXXBR6E",
+  "REXE6 G 20060110a US": "MEGAMAN6_GXXBR5E",
+  "REXE6 F 20060110a PL": "MEGAMAN6_FXXBR6P",
+  "REXE6 G 20060110a PL": "MEGAMAN6_GXXBR5P",
+};
+
+const GAME_INFOS: { [key: string]: GameInfo } = {
+  // Japan
+  ROCKEXE6_RXXBR6J: {
+    region: "JP",
+    version: "falzar",
+  },
+  ROCKEXE6_GXXBR5J: {
+    region: "JP",
+    version: "gregar",
+  },
+
+  // US
+  MEGAMAN6_FXXBR6E: {
+    region: "US",
+    version: "falzar",
+  },
+  MEGAMAN6_GXXBR5E: {
+    region: "US",
+    version: "gregar",
+  },
+
+  // Poland :^)
+  MEGAMAN6_FXXBR6P: {
+    region: "PL",
+    version: "falzar",
+  },
+  MEGAMAN6_GXXBR5P: {
+    region: "PL",
+    version: "gregar",
+  },
+};
+
 export interface GameInfo {
   region: "US" | "JP" | "PL";
   version: "falzar" | "gregar";
@@ -259,93 +322,30 @@ export class Editor {
   navicustDirty: boolean;
   modcardsDirty: boolean;
 
-  static SRAM_START_OFFSET = 0x0100;
-  static SRAM_END_OFFSET = 0x6810;
-
-  static CHECKSUM_START: { [key: string]: number } = {
-    falzar: 0x18,
-    gregar: 0x72,
-  };
-
-  static ROM_NAMES_BY_SAVE_GAME_NAME: { [key: string]: string } = {
-    "REXE6 F 20050924a JP": "ROCKEXE6_RXXBR6J",
-    "REXE6 G 20050924a JP": "ROCKEXE6_GXXBR5J",
-    "REXE6 F 20060110a US": "MEGAMAN6_FXXBR6E",
-    "REXE6 G 20060110a US": "MEGAMAN6_GXXBR5E",
-    "REXE6 F 20060110a PL": "MEGAMAN6_FXXBR6P",
-    "REXE6 G 20060110a PL": "MEGAMAN6_GXXBR5P",
-  };
-
-  static GAME_INFOS: { [key: string]: GameInfo } = {
-    // Japan
-    ROCKEXE6_RXXBR6J: {
-      region: "JP",
-      version: "falzar",
-    },
-    ROCKEXE6_GXXBR5J: {
-      region: "JP",
-      version: "gregar",
-    },
-
-    // US
-    MEGAMAN6_FXXBR6E: {
-      region: "US",
-      version: "falzar",
-    },
-    MEGAMAN6_GXXBR5E: {
-      region: "US",
-      version: "gregar",
-    },
-
-    // Poland :^)
-    MEGAMAN6_FXXBR6P: {
-      region: "PL",
-      version: "falzar",
-    },
-    MEGAMAN6_GXXBR5P: {
-      region: "PL",
-      version: "gregar",
-    },
-  };
-
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    buffer = buffer.slice(Editor.SRAM_START_OFFSET, Editor.SRAM_END_OFFSET);
-    Editor.maskSave(new DataView(buffer));
+    buffer = buffer.slice(SRAM_START_OFFSET, SRAM_END_OFFSET);
+    maskSave(new DataView(buffer));
     return buffer;
   }
 
   static rawToSRAMDump(buffer: ArrayBuffer) {
     const arr = new Uint8Array(0x10000);
-    arr.set(new Uint8Array(buffer), Editor.SRAM_START_OFFSET);
-    Editor.maskSave(
+    arr.set(new Uint8Array(buffer), SRAM_START_OFFSET);
+    maskSave(
       new DataView(
         arr.buffer,
-        Editor.SRAM_START_OFFSET,
-        Editor.SRAM_END_OFFSET - Editor.SRAM_START_OFFSET
+        SRAM_START_OFFSET,
+        SRAM_END_OFFSET - SRAM_START_OFFSET
       )
     );
     return arr.buffer;
   }
 
-  static maskSave(dv: DataView) {
-    const mask = dv.getUint32(0x1064, true);
-    const unmasked = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
-    for (let i = 0; i < unmasked.length; ++i) {
-      // We only actually need to use the first byte of the mask, even though it's 32 bits long.
-      unmasked[i] = (unmasked[i] ^ mask) & 0xff;
-    }
-    // Write the mask back.
-    dv.setUint32(0x1064, mask, true);
-  }
-
   static fromUnmaskedSRAM(buffer: ArrayBuffer) {
-    if (
-      buffer.byteLength !=
-      Editor.SRAM_END_OFFSET - Editor.SRAM_START_OFFSET
-    ) {
+    if (buffer.byteLength != SRAM_END_OFFSET - SRAM_START_OFFSET) {
       throw (
         "invalid byte length of save file: expected " +
-        (Editor.SRAM_END_OFFSET - Editor.SRAM_START_OFFSET) +
+        (SRAM_END_OFFSET - SRAM_START_OFFSET) +
         " but got " +
         buffer.byteLength
       );
@@ -357,18 +357,15 @@ export class Editor {
 
     const decoder = new TextDecoder("ascii");
     const gn = decoder.decode(
-      new Uint8Array(dv.buffer, dv.byteOffset + 0x1c70, 20)
+      new Uint8Array(dv.buffer, dv.byteOffset + GAME_NAME_OFFSET, 20)
     );
     if (
-      !Object.prototype.hasOwnProperty.call(
-        Editor.ROM_NAMES_BY_SAVE_GAME_NAME,
-        gn
-      )
+      !Object.prototype.hasOwnProperty.call(ROM_NAMES_BY_SAVE_GAME_NAME, gn)
     ) {
       throw "unknown game name: " + gn;
     }
 
-    return new Editor(buffer, Editor.ROM_NAMES_BY_SAVE_GAME_NAME[gn]);
+    return new Editor(buffer, ROM_NAMES_BY_SAVE_GAME_NAME[gn]);
   }
 
   constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
@@ -405,14 +402,14 @@ export class Editor {
   }
 
   computeChecksum() {
-    let checksum = Editor.CHECKSUM_START[this.getGameInfo().version];
+    let checksum = CHECKSUM_START[this.getGameInfo().version];
     const arr = new Uint8Array(
       this.dv.buffer,
       this.dv.byteOffset,
       this.dv.byteLength
     );
     for (let i = 0; i < arr.length; ++i) {
-      if (i == 0x1c6c) {
+      if (i == CHECKSUM_OFFSET) {
         // Don't include the checksum itself in the checksum.
         i += 3;
         continue;
@@ -429,15 +426,15 @@ export class Editor {
   }
 
   getChecksum() {
-    return this.dv.getUint32(0x1c6c, true);
+    return this.dv.getUint32(CHECKSUM_OFFSET, true);
   }
 
   getGameInfo() {
-    return Editor.GAME_INFOS[this.romName];
+    return GAME_INFOS[this.romName];
   }
 
   rebuildChecksum() {
-    return this.dv.setUint32(0x1c6c, this.computeChecksum(), true);
+    return this.dv.setUint32(CHECKSUM_OFFSET, this.computeChecksum(), true);
   }
 
   getFolderEditor() {

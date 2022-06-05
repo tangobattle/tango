@@ -4,19 +4,68 @@ export { CHIPS };
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
+const SRAM_END_OFFSET = 0x73d2;
+const MASK_OFFSET = 0x1554;
+const GAME_NAME_OFFSET = 0x2208;
+const CHECKSUM_OFFSET = 0x21e8;
+
+const ROM_NAMES_BY_CHECKSUM_GUESS: { [key: string]: string } = {
+  JPbluemoon: "ROCK_EXE4_BMB4BJ",
+  JPredsun: "ROCK_EXE4_RSB4WJ",
+  USbluemoon: "MEGAMANBN4BMB4BE",
+  USredsun: "MEGAMANBN4RSB4WE",
+};
+
+const GAME_INFOS: { [key: string]: GameInfo } = {
+  // Japan
+  ROCK_EXE4_BMB4BJ: {
+    region: "JP",
+    version: "bluemoon",
+  },
+  ROCK_EXE4_RSB4WJ: {
+    region: "JP",
+    version: "redsun",
+  },
+
+  // US
+  MEGAMANBN4BMB4BE: {
+    region: "US",
+    version: "bluemoon",
+  },
+  MEGAMANBN4RSB4WE: {
+    region: "US",
+    version: "redsun",
+  },
+};
+
+const CHECKSUM_START: { [key: string]: number } = {
+  bluemoon: 0x22,
+  redsun: 0x16,
+};
+
+function maskSave(dv: DataView) {
+  const mask = dv.getUint32(MASK_OFFSET, true);
+  const unmasked = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  for (let i = 0; i < unmasked.length; ++i) {
+    unmasked[i] = (unmasked[i] ^ mask) & 0xff;
+  }
+  // Write the mask back.
+  dv.setUint32(MASK_OFFSET, mask, true);
+}
+
 export interface GameInfo {
   region: "US" | "JP";
   version: "bluemoon" | "redsun";
 }
 
 function getChecksum(dv: DataView) {
-  return dv.getUint32(0x21e8, true);
+  return dv.getUint32(CHECKSUM_OFFSET, true);
 }
 
 function computeChecksum(dv: DataView, gameInfo: GameInfo) {
   return (
     computeChecksumRaw(dv) +
-    Editor.CHECKSUM_START[gameInfo.version] +
+    CHECKSUM_START[gameInfo.version] +
     (gameInfo.region != "JP" ? new Uint8Array(dv.buffer, 0, 1)[0] : 0)
   );
 }
@@ -25,7 +74,7 @@ function computeChecksumRaw(dv: DataView) {
   let checksum = 0;
   const arr = new Uint8Array(dv.buffer, 0, dv.buffer.byteLength);
   for (let i = 1; i < dv.buffer.byteLength; ++i) {
-    if (i == 0x21e8 + dv.byteOffset) {
+    if (i == CHECKSUM_OFFSET + dv.byteOffset) {
       // Don't include the checksum itself in the checksum.
       i += 3;
       continue;
@@ -142,41 +191,6 @@ export class Editor {
   dv: DataView;
   private romName: string;
 
-  static SRAM_END_OFFSET = 0x73d2;
-  static ROM_NAMES_BY_CHECKSUM_GUESS: { [key: string]: string } = {
-    JPbluemoon: "ROCK_EXE4_BMB4BJ",
-    JPredsun: "ROCK_EXE4_RSB4WJ",
-    USbluemoon: "MEGAMANBN4BMB4BE",
-    USredsun: "MEGAMANBN4RSB4WE",
-  };
-
-  static GAME_INFOS: { [key: string]: GameInfo } = {
-    // Japan
-    ROCK_EXE4_BMB4BJ: {
-      region: "JP",
-      version: "bluemoon",
-    },
-    ROCK_EXE4_RSB4WJ: {
-      region: "JP",
-      version: "redsun",
-    },
-
-    // US
-    MEGAMANBN4BMB4BE: {
-      region: "US",
-      version: "bluemoon",
-    },
-    MEGAMANBN4RSB4WE: {
-      region: "US",
-      version: "redsun",
-    },
-  };
-
-  static CHECKSUM_START: { [key: string]: number } = {
-    bluemoon: 0x22,
-    redsun: 0x16,
-  };
-
   getROMName() {
     return this.romName;
   }
@@ -191,24 +205,24 @@ export class Editor {
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    buffer = buffer.slice(0, Editor.SRAM_END_OFFSET);
+    buffer = buffer.slice(0, SRAM_END_OFFSET);
     const dv = new DataView(buffer);
-    Editor.maskSave(dv);
+    maskSave(dv);
     return buffer;
   }
 
   static rawToSramDump(buffer: ArrayBuffer) {
     const arr = new Uint8Array(0x10000);
     arr.set(new Uint8Array(buffer));
-    Editor.maskSave(new DataView(arr.buffer));
+    maskSave(new DataView(arr.buffer));
     return arr.buffer;
   }
 
   static fromUnmaskedSRAM(buffer: ArrayBuffer) {
-    if (buffer.byteLength != Editor.SRAM_END_OFFSET) {
+    if (buffer.byteLength != SRAM_END_OFFSET) {
       throw (
         "invalid byte length of save file: expected " +
-        Editor.SRAM_END_OFFSET +
+        SRAM_END_OFFSET +
         " but got " +
         buffer.byteLength
       );
@@ -224,7 +238,7 @@ export class Editor {
 
     const decoder = new TextDecoder("ascii");
     const gn = decoder.decode(
-      new Uint8Array(buffer, dv.byteOffset + 0x2208, 20)
+      new Uint8Array(buffer, dv.byteOffset + GAME_NAME_OFFSET, 20)
     );
     if (gn != "ROCKMANEXE4 20031022") {
       throw "unknown game name: " + gn;
@@ -237,22 +251,22 @@ export class Editor {
     let version;
     let region;
     switch (checksum) {
-      case rawChecksum + Editor.CHECKSUM_START.bluemoon: {
+      case rawChecksum + CHECKSUM_START.bluemoon: {
         version = "bluemoon";
         region = "JP";
         break;
       }
-      case rawChecksum + Editor.CHECKSUM_START.redsun: {
+      case rawChecksum + CHECKSUM_START.redsun: {
         version = "redsun";
         region = "JP";
         break;
       }
-      case rawChecksum + Editor.CHECKSUM_START.bluemoon + firstVal: {
+      case rawChecksum + CHECKSUM_START.bluemoon + firstVal: {
         version = "bluemoon";
         region = "US";
         break;
       }
-      case rawChecksum + Editor.CHECKSUM_START.redsun + firstVal: {
+      case rawChecksum + CHECKSUM_START.redsun + firstVal: {
         version = "redsun";
         region = "US";
         break;
@@ -262,10 +276,7 @@ export class Editor {
     }
 
     const checksumGuess = region + version;
-    return new Editor(
-      buffer,
-      Editor.ROM_NAMES_BY_CHECKSUM_GUESS[checksumGuess]
-    );
+    return new Editor(buffer, ROM_NAMES_BY_CHECKSUM_GUESS[checksumGuess]);
   }
 
   constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
@@ -282,18 +293,8 @@ export class Editor {
     }
   }
 
-  static maskSave(dv: DataView) {
-    const mask = dv.getUint32(0x1554, true);
-    const unmasked = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
-    for (let i = 0; i < unmasked.length; ++i) {
-      unmasked[i] = (unmasked[i] ^ mask) & 0xff;
-    }
-    // Write the mask back.
-    dv.setUint32(0x1554, mask, true);
-  }
-
   getGameInfo() {
-    return Editor.GAME_INFOS[this.romName];
+    return GAME_INFOS[this.romName];
   }
 
   getGameFamily() {
@@ -305,7 +306,7 @@ export class Editor {
   }
 
   rebuildChecksum() {
-    return this.dv.setUint32(0x21e8, this.computeChecksum(), true);
+    return this.dv.setUint32(CHECKSUM_OFFSET, this.computeChecksum(), true);
   }
 
   computeChecksum() {

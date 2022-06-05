@@ -1,4 +1,5 @@
 import * as bn4 from "./bn4";
+import * as bn5 from "./bn5";
 import * as bn6 from "./bn6";
 
 export interface GameInfo {
@@ -100,6 +101,11 @@ export interface ModcardsEditor {
 export function sniff(buffer: ArrayBuffer): Editor | null {
   try {
     return bn6.Editor.fromUnmaskedSRAM(bn6.Editor.sramDumpToRaw(buffer));
+  } catch (e) {
+    void e;
+  }
+  try {
+    return bn5.Editor.fromUnmaskedSRAM(bn5.Editor.sramDumpToRaw(buffer));
   } catch (e) {
     void e;
   }
