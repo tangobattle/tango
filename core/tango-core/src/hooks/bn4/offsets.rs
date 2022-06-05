@@ -42,6 +42,8 @@ pub(super) struct ROMOffsets {
     /// At this point, it is safe to do the equivalent of selecting the CONTINUE on the START menu.
     pub(super) start_screen_sram_unmask_ret: u32,
 
+    pub(super) ngplus_menu_init_ret: u32,
+
     /// This is immediately after game initialization is complete: that is, the internal state is set correctly.
     ///
     /// At this point, it is safe to jump into the link battle menu.
@@ -154,6 +156,7 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry: 0x0802d786,
         start_screen_sram_unmask_ret: 0x080253ca,
+        ngplus_menu_init_ret: 0x080255aa,
         game_load_ret: 0x08004996,
         main_read_joyflags: 0x080003c6,
         get_copy_data_input_state_ret: 0x08017b8c,

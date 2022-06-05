@@ -90,6 +90,15 @@ impl hooks::Hooks for BN4 {
             {
                 let munger = self.munger.clone();
                 (
+                    self.offsets.rom.ngplus_menu_init_ret,
+                    Box::new(move |core| {
+                        munger.continue_from_ngplus_menu(core);
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
                         munger.open_comm_menu_from_overworld(core);
@@ -469,6 +478,15 @@ impl hooks::Hooks for BN4 {
                     self.offsets.rom.start_screen_sram_unmask_ret,
                     Box::new(move |core| {
                         munger.continue_from_title_menu(core);
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.ngplus_menu_init_ret,
+                    Box::new(move |core| {
+                        munger.continue_from_ngplus_menu(core);
                     }),
                 )
             },
