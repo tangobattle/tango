@@ -43,11 +43,6 @@ pub(super) struct ROMOffsets {
     /// At this point, it is safe to do the equivalent of selecting the CONTINUE on the START menu.
     pub(super) start_screen_sram_unmask_ret: u32,
 
-    /// This is immediately after SRAM is copied to EWRAM and unmasked.
-    ///
-    /// At this point, it is safe to do the equivalent of selecting the From save point option on the NG+ menu.
-    pub(super) ngplus_menu_init_ret: u32,
-
     /// This is immediately after game initialization is complete: that is, the internal state is set correctly.
     ///
     /// At this point, it is safe to jump into the link battle menu.
@@ -132,9 +127,9 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     tx_packet:              0x02036df0,
     rx_packet_arr:          0x0203a090,
     battle_state:           0x02034a90,
-    start_screen_control:   0, // TODO
-    title_menu_control:     0, // TODO
-    subsystem_control:      0, // TODO
+    start_screen_control:   0x02013000,
+    title_menu_control:     0x0200b980,
+    subsystem_control:      0x0200b160,
     submenu_control:        0, // TODO
     rng1_state:             0x02001c94,
     rng2_state:             0x02001d40,
@@ -151,9 +146,8 @@ pub struct Offsets {
 pub static MEGAMAN5_TP_: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
-        start_screen_jump_table_entry:          0, // TODO
-        start_screen_sram_unmask_ret:           0, // TODO
-        ngplus_menu_init_ret:                   0, // TODO
+        start_screen_jump_table_entry:          0x0803c492, // TODO
+        start_screen_sram_unmask_ret:           0x0803008a,
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0x080003ea,
         get_copy_data_input_state_ret:          0x0801c7fe,
@@ -164,10 +158,10 @@ pub static MEGAMAN5_TP_: Offsets = Offsets {
         round_ending_ret:                       0x0800812c,
         round_end_entry:                        0x0800702e,
         round_post_increment_tick:              0x08006c2e,
-        battle_is_p2_tst:                       0, // TODO
-        link_is_p2_ret:                         0, // TODO
+        battle_is_p2_tst:                       0x0803d020,
+        link_is_p2_ret:                         0x0803d03e,
         comm_menu_init_ret:                     0, // TODO
-        handle_sio_entry:                       0, // TODO
+        handle_sio_entry:                       0x0803d11c,
         in_battle_call_handle_link_cable_input: 0, // TODO
         comm_menu_end_battle_entry:             0, // TODO
     },
@@ -179,7 +173,6 @@ pub static MEGAMAN5_TC_: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0, // TODO
         start_screen_sram_unmask_ret:           0, // TODO
-        ngplus_menu_init_ret:                   0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0, // TODO
         get_copy_data_input_state_ret:          0, // TODO
@@ -205,7 +198,6 @@ pub static ROCKEXE5_TOB: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0, // TODO
         start_screen_sram_unmask_ret:           0, // TODO
-        ngplus_menu_init_ret:                   0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0, // TODO
         get_copy_data_input_state_ret:          0, // TODO
@@ -231,7 +223,6 @@ pub static ROCKEXE5_TOC: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0, // TODO
         start_screen_sram_unmask_ret:           0, // TODO
-        ngplus_menu_init_ret:                   0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0, // TODO
         get_copy_data_input_state_ret:          0, // TODO
