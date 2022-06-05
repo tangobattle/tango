@@ -93,7 +93,6 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
-                        log::info!("GAME LOAD RET");
                         munger.open_comm_menu_from_overworld(core);
                     }),
                 )
@@ -296,19 +295,19 @@ impl hooks::Hooks for BN5 {
                     }),
                 )
             },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.comm_menu_end_battle_entry,
-            //         Box::new(move |_core| {
-            //             handle.block_on(async {
-            //                 log::info!("match ended");
-            //                 facade.end_match().await;
-            //             });
-            //         }),
-            //     )
-            // },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.comm_menu_end_battle_entry,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            log::info!("match ended");
+                            facade.end_match().await;
+                        });
+                    }),
+                )
+            },
             {
                 let facade = facade.clone();
                 let munger = self.munger.clone();

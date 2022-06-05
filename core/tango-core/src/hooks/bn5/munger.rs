@@ -74,12 +74,12 @@ impl Munger {
         battle_settings: u8,
         background: u8,
     ) {
-        core.raw_write_8(
-            self.offsets.ewram.submenu_control + 0x16,
-            -1,
-            battle_settings,
-        );
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x17, -1, background);
+        // core.raw_write_8(
+        //     self.offsets.ewram.submenu_control + 0x16,
+        //     -1,
+        //     battle_settings,
+        // );
+        // core.raw_write_8(self.offsets.ewram.submenu_control + 0x17, -1, background);
     }
 
     pub(super) fn current_tick(&self, mut core: mgba::core::CoreMutRef) -> u32 {
