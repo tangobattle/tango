@@ -886,6 +886,7 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
+                        munger.set_copy_data_input_state(core, 2);
                     }),
                 )
             },
