@@ -273,6 +273,7 @@ impl hooks::Hooks for BN5 {
                     self.offsets.rom.comm_menu_init_battle_entry,
                     Box::new(move |core| {
                         handle.block_on(async {
+                            log::info!("ARGH!");
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
                                 None => {

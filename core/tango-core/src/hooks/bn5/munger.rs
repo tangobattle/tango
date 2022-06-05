@@ -35,7 +35,7 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x0c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x3e, -1, match_type);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x34, -1, match_type);
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
@@ -73,12 +73,12 @@ impl Munger {
         battle_settings: u8,
         background: u8,
     ) {
-        // core.raw_write_8(
-        //     self.offsets.ewram.submenu_control + 0x16,
-        //     -1,
-        //     battle_settings,
-        // );
-        // core.raw_write_8(self.offsets.ewram.submenu_control + 0x17, -1, background);
+        core.raw_write_8(
+            self.offsets.ewram.submenu_control + 0x16,
+            -1,
+            battle_settings,
+        );
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x17, -1, background);
     }
 
     pub(super) fn current_tick(&self, mut core: mgba::core::CoreMutRef) -> u32 {
