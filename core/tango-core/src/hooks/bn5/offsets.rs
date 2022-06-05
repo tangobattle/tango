@@ -163,7 +163,7 @@ pub static MEGAMAN5_TP_: Offsets = Offsets {
         round_post_increment_tick:              0x08006c2e,
         battle_is_p2_tst:                       0x0803d020,
         link_is_p2_ret:                         0x0803d03e,
-        comm_menu_init_ret:                     0, // TODO
+        comm_menu_init_ret:                     0x08134c34,
         comm_menu_init_battle_entry:            0x08134f90,
         handle_sio_entry:                       0x0803d11c,
         in_battle_call_handle_link_cable_input: 0x08006c12,
