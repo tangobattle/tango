@@ -83,4 +83,8 @@ impl Munger {
     pub(super) fn set_current_tick(&self, mut core: mgba::core::CoreMutRef, v: u32) {
         core.raw_write_32(self.offsets.ewram.battle_state + 0x60, -1, v)
     }
+
+    pub(super) fn set_copy_data_input_state(&self, mut core: mgba::core::CoreMutRef, v: u8) {
+        core.raw_write_8(self.offsets.ewram.copy_data_input_state, -1, v);
+    }
 }
