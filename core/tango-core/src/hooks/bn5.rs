@@ -802,7 +802,12 @@ impl hooks::Hooks for BN5 {
                     self.offsets.rom.round_post_increment_tick,
                     Box::new(move |core| {
                         let mut round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_mut().expect("round");
+                        let round = match round_state.round.as_mut() {
+                            Some(round) => round,
+                            None => {
+                                return;
+                            }
+                        };
                         if !round.has_first_committed_state() {
                             return;
                         }
