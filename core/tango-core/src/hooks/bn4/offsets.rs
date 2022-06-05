@@ -55,11 +55,6 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
-    /// This hooks the return from the function that is called to determine the current state of copying input data.
-    ///
-    /// Expected values are: 2 if input is ready, 4 if remote has disconnected.
-    pub(super) get_copy_data_input_state_ret: u32,
-
     /// This hooks the entry into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
     ///
     /// Received packets should be injected here into rx_packet_arr.
@@ -151,7 +146,6 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         ngplus_menu_init_ret:                   0x080255aa,
         game_load_ret:                          0x08004996,
         main_read_joyflags:                     0x080003c6,
-        get_copy_data_input_state_ret:          0x08017b8c,
         copy_input_data_entry:                  0x08017b8e,
         copy_input_data_ret:                    0x08017c56,
         round_run_unpaused_step_cmp_retval:     0x08007120,
@@ -177,7 +171,6 @@ pub static MEGAMANBN4RS: Offsets = Offsets {
         ngplus_menu_init_ret:                   0x080255a6,
         game_load_ret:                          0x08004996,
         main_read_joyflags:                     0x080003c6,
-        get_copy_data_input_state_ret:          0x08017b8c,
         copy_input_data_entry:                  0x08017b8e,
         copy_input_data_ret:                    0x08017c56,
         round_run_unpaused_step_cmp_retval:     0x08007120,
@@ -203,7 +196,6 @@ pub static ROCK_EXE4_BM: Offsets = Offsets {
         ngplus_menu_init_ret:                   0x080254b2,
         game_load_ret:                          0x08004976,
         main_read_joyflags:                     0x080003c6,
-        get_copy_data_input_state_ret:          0x08017a98,
         copy_input_data_entry:                  0x08017a9a,
         copy_input_data_ret:                    0x08017b62,
         round_run_unpaused_step_cmp_retval:     0x080070f4,
@@ -229,7 +221,6 @@ pub static ROCK_EXE4_RS: Offsets = Offsets {
         ngplus_menu_init_ret:                   0x080254ae,
         game_load_ret:                          0x08004976,
         main_read_joyflags:                     0x080003c6,
-        get_copy_data_input_state_ret:          0x08017a98,
         copy_input_data_entry:                  0x08017a9a,
         copy_input_data_ret:                    0x08017b62,
         round_run_unpaused_step_cmp_retval:     0x080070f4,
