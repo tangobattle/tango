@@ -104,11 +104,6 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
-    /// This is the entry point to link battle in the comm menu: that is, the first match has started.
-    ///
-    /// We need to perform some initialization we skipped here, such as setting stage and background.
-    pub(super) comm_menu_init_battle_entry: u32,
-
     /// This handles underlying link cable SIO in the comm menu.
     ///
     /// This should never be called.
@@ -172,7 +167,6 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         battle_is_p2_tst: 0x08048204,
         link_is_p2_ret: 0x08048222,
         comm_menu_init_ret: 0x0803956a,
-        comm_menu_init_battle_entry: 0, // TODO
         handle_sio_entry: 0x080482f8,
         in_battle_call_handle_link_cable_input: 0x08006b16,
         comm_menu_end_battle_entry: 0, // TODO

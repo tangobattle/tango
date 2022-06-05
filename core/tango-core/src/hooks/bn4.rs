@@ -50,6 +50,17 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
+fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
+    let battle_settings = match match_type {
+        0 => rng.gen_range(0..0x44u8),
+        1 => rng.gen_range(0..0x60u8),
+        2 => rng.gen_range(0..0x44u8),
+        _ => 0u8,
+    };
+
+    (battle_settings, rng.gen_range(0..0x18u8))
+}
+
 impl hooks::Hooks for BN4 {
     fn primary_traps(
         &self,
@@ -100,8 +111,6 @@ impl hooks::Hooks for BN4 {
                                 }
                             };
 
-                            munger.start_battle_from_comm_menu(core, match_.match_type());
-
                             let mut rng = match_.lock_rng().await;
 
                             // rng1 is the local rng, it should not be synced.
@@ -119,6 +128,19 @@ impl hooks::Hooks for BN4 {
 
                             // rng2 is the shared rng, it must be synced.
                             munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+
+                            let (battle_settings, background) =
+                                random_battle_settings_and_background(
+                                    &mut *rng,
+                                    match_.match_type(),
+                                );
+
+                            munger.start_battle_from_comm_menu(
+                                core,
+                                match_.match_type(),
+                                battle_settings,
+                                background,
+                            );
                         });
                     }),
                 )
@@ -285,7 +307,6 @@ impl hooks::Hooks for BN4 {
                     }),
                 )
             },
-            // TODO: comm_menu_init_battle_entry
             // TODO: comm_menu_end_battle_entry
             {
                 let facade = facade.clone();
@@ -453,8 +474,6 @@ impl hooks::Hooks for BN4 {
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
-                        munger.start_battle_from_comm_menu(core, shadow_state.match_type());
-
                         let mut rng = shadow_state.lock_rng();
 
                         // rng1 is the local rng, it should not be synced.
@@ -472,6 +491,18 @@ impl hooks::Hooks for BN4 {
 
                         // rng2 is the shared rng, it must be synced.
                         munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+
+                        let (battle_settings, background) = random_battle_settings_and_background(
+                            &mut *rng,
+                            shadow_state.match_type(),
+                        );
+
+                        munger.start_battle_from_comm_menu(
+                            core,
+                            shadow_state.match_type(),
+                            battle_settings,
+                            background,
+                        );
                     }),
                 )
             },
@@ -572,7 +603,6 @@ impl hooks::Hooks for BN4 {
                     }),
                 )
             },
-            // TODO: comm_menu_init_battle_entry
             {
                 let shadow_state = shadow_state.clone();
                 let munger = self.munger.clone();
