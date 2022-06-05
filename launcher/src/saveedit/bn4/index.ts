@@ -35,8 +35,111 @@ function computeChecksumRaw(dv: DataView) {
   return checksum;
 }
 
+class FolderEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getFolderCount() {
+    return 3; // TODO
+  }
+
+  getEquippedFolder() {
+    return this.editor.dv.getUint8(0x2132);
+  }
+
+  setEquippedFolder(i: number) {
+    return this.editor.dv.setUint8(0x2132, i);
+  }
+
+  isRegularChipInPlace() {
+    return false;
+  }
+
+  getRegularChipIndex(folderIdx: number) {
+    const i = this.editor.dv.getUint8(0x214d + folderIdx);
+    return i != 0xff ? i : null;
+  }
+
+  setRegularChipIndex(folderIdx: number, i: number | null) {
+    this.editor.dv.setUint8(0x214d + folderIdx, i == null ? 0xff : i);
+  }
+
+  getTagChip1Index() {
+    // Not supported.
+    return null;
+  }
+
+  getTagChip2Index() {
+    // Not supported.
+    return null;
+  }
+
+  getChipData() {
+    return CHIPS;
+  }
+
+  getChipCount(id: number, code: string) {
+    return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
+  }
+
+  getChipCountRaw(id: number, variant: number) {
+    return this.editor.dv.getUint8(0x26e4 + ((id * 0xc) | variant));
+  }
+
+  setChipCount(id: number, code: string, n: number) {
+    this.setChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code), n);
+  }
+
+  setChipCountRaw(id: number, variant: number, n: number) {
+    this.editor.dv.setUint8(0x26e4 + ((id * 0xc) | variant), n);
+  }
+
+  getChipRaw(folderIdx: number, chipIdx: number) {
+    const chipConstant = this.editor.dv.getUint16(
+      0x262c + folderIdx * (30 * 2) + chipIdx * 2,
+      true
+    );
+
+    if (chipConstant == 0) {
+      return null;
+    }
+
+    return {
+      id: chipConstant & 0x1ff,
+      variant: chipConstant >> 9,
+    };
+  }
+
+  getChip(folderIdx: number, chipIdx: number) {
+    const rawChip = this.getChipRaw(folderIdx, chipIdx);
+    if (rawChip == null) {
+      return null;
+    }
+
+    return {
+      id: rawChip.id,
+      code: CHIP_CODES[rawChip.variant],
+    };
+  }
+
+  setChipRaw(folderIdx: number, chipIdx: number, id: number, variant: number) {
+    this.editor.dv.setUint16(
+      0x262c + folderIdx * (30 * 2) + chipIdx * 2,
+      id | (variant << 9),
+      true
+    );
+  }
+
+  setChip(folderIdx: number, chipIdx: number, id: number, code: string) {
+    this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
+  }
+}
+
 export class Editor {
-  private dv: DataView;
+  dv: DataView;
   private romName: string;
 
   static SRAM_END_OFFSET = 0x73d2;
@@ -209,59 +312,8 @@ export class Editor {
     return computeChecksum(this.dv, this.getGameInfo());
   }
 
-  getFolderCount() {
-    return 3; // TODO
-  }
-
-  getEquippedFolder() {
-    return this.dv.getUint8(0x2132);
-  }
-
-  setEquippedFolder(i: number) {
-    return this.dv.setUint8(0x2132, i);
-  }
-
-  isRegularChipInPlace() {
-    return false;
-  }
-
-  getRegularChipIndex(folderIdx: number) {
-    const i = this.dv.getUint8(0x214d + folderIdx);
-    return i != 0xff ? i : null;
-  }
-
-  setRegularChipIndex(folderIdx: number, i: number | null) {
-    this.dv.setUint8(0x214d + folderIdx, i == null ? 0xff : i);
-  }
-
-  getTagChip1Index() {
-    // Not supported.
-    return null;
-  }
-
-  getTagChip2Index() {
-    // Not supported.
-    return null;
-  }
-
-  getChipData() {
-    return CHIPS;
-  }
-
-  getChipCount(id: number, code: string) {
-    return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
-  }
-
-  getChipCountRaw(id: number, variant: number) {
-    return this.dv.getUint8(0x26e4 + ((id * 0xc) | variant));
-  }
-
-  setChipCount(id: number, code: string, n: number) {
-    this.setChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code), n);
-  }
-
-  setChipCountRaw(id: number, variant: number, n: number) {
-    this.dv.setUint8(0x26e4 + ((id * 0xc) | variant), n);
+  rebuild() {
+    this.rebuildChecksum();
   }
 
   getRawBufferForSave() {
@@ -271,47 +323,7 @@ export class Editor {
     return this.dv.buffer;
   }
 
-  getChipRaw(folderIdx: number, chipIdx: number) {
-    const chipConstant = this.dv.getUint16(
-      0x262c + folderIdx * (30 * 2) + chipIdx * 2,
-      true
-    );
-
-    if (chipConstant == 0) {
-      return null;
-    }
-
-    return {
-      id: chipConstant & 0x1ff,
-      variant: chipConstant >> 9,
-    };
-  }
-
-  getChip(folderIdx: number, chipIdx: number) {
-    const rawChip = this.getChipRaw(folderIdx, chipIdx);
-    if (rawChip == null) {
-      return null;
-    }
-
-    return {
-      id: rawChip.id,
-      code: CHIP_CODES[rawChip.variant],
-    };
-  }
-
-  setChipRaw(folderIdx: number, chipIdx: number, id: number, variant: number) {
-    this.dv.setUint16(
-      0x262c + folderIdx * (30 * 2) + chipIdx * 2,
-      id | (variant << 9),
-      true
-    );
-  }
-
-  setChip(folderIdx: number, chipIdx: number, id: number, code: string) {
-    this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
-  }
-
-  rebuild() {
-    this.rebuildChecksum();
+  getFolderEditor() {
+    return new FolderEditor(this);
   }
 }

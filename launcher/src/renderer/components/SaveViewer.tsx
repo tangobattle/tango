@@ -29,7 +29,11 @@ function BN4SaveViewer({ editor }: { editor: bn4.Editor }) {
       >
         <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
       </Tabs>
-      <FolderViewer editor={editor} active={tab == "folder"} />
+      <FolderViewer
+        gameFamily={editor.getGameFamily()}
+        editor={editor.getFolderEditor()}
+        active={tab == "folder"}
+      />
     </Stack>
   );
 }
@@ -61,7 +65,11 @@ function BN6SaveViewer({ editor }: { editor: bn6.Editor }) {
         />
       </Tabs>
       <NavicustViewer editor={editor} active={tab == "navicust"} />
-      <FolderViewer editor={editor} active={tab == "folder"} />
+      <FolderViewer
+        gameFamily={editor.getGameFamily()}
+        editor={editor.getFolderEditor()}
+        active={tab == "folder"}
+      />
       {editor.supportsModcards() ? (
         <ModcardsViewer editor={editor} active={tab == "modcards"} />
       ) : null}

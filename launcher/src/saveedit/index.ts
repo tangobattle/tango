@@ -20,6 +20,11 @@ export interface Chip {
 export interface Editor {
   getROMName(): string;
   getGameFamily(): string;
+  getFolderEditor(): FolderEditor | null;
+  rebuild(): void;
+}
+
+export interface FolderEditor {
   getChipData(): (Chip | null)[];
   getEquippedFolder(): number;
   getChip(
@@ -33,7 +38,6 @@ export interface Editor {
   getRegularChipIndex(folderIdx: number): number | null;
   getTagChip1Index(folderIdx: number): number | null;
   getTagChip2Index(folderIdx: number): number | null;
-  rebuild(): void;
 }
 
 export function sniff(buffer: ArrayBuffer): Editor | null {

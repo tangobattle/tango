@@ -10,7 +10,7 @@ import TableRow from "@mui/material/TableRow";
 import Tooltip from "@mui/material/Tooltip";
 import useTheme from "@mui/system/useTheme";
 
-import { Chip as ChipInfo, Editor } from "../../saveedit";
+import { Chip as ChipInfo, FolderEditor } from "../../saveedit";
 import { fallbackLng } from "../i18n";
 
 const MEGA_BG = {
@@ -137,10 +137,12 @@ function FolderChipRow({
 }
 
 export default function FolderViewer({
+  gameFamily,
   editor,
   active,
 }: {
-  editor: Editor;
+  gameFamily: string;
+  editor: FolderEditor;
   active: boolean;
 }) {
   const chips: ({ id: number; code: string } | null)[] = [];
@@ -229,7 +231,7 @@ export default function FolderViewer({
             <FolderChipRow
               key={i}
               groupedChip={groupedChip}
-              gameFamily={editor.getGameFamily()}
+              gameFamily={gameFamily}
               chipData={editor.getChipData()}
             />
           ))}

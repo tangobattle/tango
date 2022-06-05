@@ -12,8 +12,151 @@ export interface GameInfo {
   version: "falzar" | "gregar";
 }
 
+class FolderEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getChipData() {
+    return CHIPS;
+  }
+
+  getChipCount(id: number, code: string) {
+    return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
+  }
+
+  getChipCountRaw(id: number, variant: number) {
+    return this.editor.dv.getUint8(0x2230 + ((id * 0xc) | variant));
+  }
+
+  setChipCount(id: number, code: string, n: number) {
+    this.setChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code), n);
+  }
+
+  setChipCountRaw(id: number, variant: number, n: number) {
+    this.editor.dv.setUint8(0x2230 + ((id * 0xc) | variant), n);
+  }
+
+  getFolderCount() {
+    return this.editor.dv.getUint8(0x1c09);
+  }
+
+  getChipRaw(folderIdx: number, chipIdx: number) {
+    const chipConstant = this.editor.dv.getUint16(
+      0x2178 + folderIdx * (30 * 2) + chipIdx * 2,
+      true
+    );
+
+    if (chipConstant == 0) {
+      return null;
+    }
+
+    return {
+      id: chipConstant & 0x1ff,
+      variant: chipConstant >> 9,
+    };
+  }
+
+  getChip(folderIdx: number, chipIdx: number) {
+    const rawChip = this.getChipRaw(folderIdx, chipIdx);
+    if (rawChip == null) {
+      return null;
+    }
+
+    return {
+      id: rawChip.id,
+      code: CHIP_CODES[rawChip.variant],
+    };
+  }
+
+  setChipRaw(folderIdx: number, chipIdx: number, id: number, variant: number) {
+    this.editor.dv.setUint16(
+      0x2178 + folderIdx * (30 * 2) + chipIdx * 2,
+      id | (variant << 9),
+      true
+    );
+  }
+
+  setChip(folderIdx: number, chipIdx: number, id: number, code: string) {
+    this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
+  }
+
+  getEquippedFolder() {
+    return this.editor.dv.getUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) + 0x2d
+    );
+  }
+
+  setEquippedFolder(i: number) {
+    return this.editor.dv.setUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) + 0x2d,
+      i
+    );
+  }
+
+  isRegularChipInPlace() {
+    return true;
+  }
+
+  getRegularChipIndex(folderIdx: number) {
+    const i = this.editor.dv.getUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) +
+        0x2e +
+        folderIdx
+    );
+    return i != 0xff ? i : null;
+  }
+
+  setRegularChipIndex(folderIdx: number, i: number) {
+    this.editor.dv.setUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) +
+        0x2e +
+        folderIdx,
+      i != null ? i : 0xff
+    );
+  }
+
+  getTagChip1Index(folderIdx: number) {
+    const i = this.editor.dv.getUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) +
+        0x56 +
+        folderIdx * 2
+    );
+    return i != 0xff ? i : null;
+  }
+
+  setTagChip1Index(folderIdx: number, i: number) {
+    this.editor.dv.setUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) +
+        0x56 +
+        folderIdx * 2,
+      i != null ? i : 0xff
+    );
+  }
+
+  getTagChip2Index(folderIdx: number) {
+    const i = this.editor.dv.getUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) +
+        0x57 +
+        folderIdx * 2
+    );
+    return i != 0xff ? i : null;
+  }
+
+  setTagChip2Index(folderIdx: number, i: number) {
+    this.editor.dv.setUint8(
+      this.editor.getNaviStatsOffset(this.editor.getCurrentNavi()) +
+        0x57 +
+        folderIdx * 2,
+      i != null ? i : 0xff
+    );
+  }
+}
+
 export class Editor {
-  private dv: DataView;
+  dv: DataView;
   private romName: string;
   private navicustDirty: boolean;
   private modcardsDirty: boolean;
@@ -203,6 +346,10 @@ export class Editor {
     return this.dv.setUint32(0x1c6c, this.computeChecksum(), true);
   }
 
+  getFolderEditor() {
+    return new FolderEditor(this);
+  }
+
   getNaviStatsOffset(i: number) {
     return (
       (this.getGameInfo().region == "JP" ? 0x478c : 0x47cc) +
@@ -296,26 +443,6 @@ export class Editor {
     this.navicustDirty = false;
   }
 
-  getChipData() {
-    return CHIPS;
-  }
-
-  getChipCount(id: number, code: string) {
-    return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
-  }
-
-  getChipCountRaw(id: number, variant: number) {
-    return this.dv.getUint8(0x2230 + ((id * 0xc) | variant));
-  }
-
-  setChipCount(id: number, code: string, n: number) {
-    this.setChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code), n);
-  }
-
-  setChipCountRaw(id: number, variant: number, n: number) {
-    this.dv.setUint8(0x2230 + ((id * 0xc) | variant), n);
-  }
-
   getModcardCount() {
     return this.dv.getUint8(0x65f0);
   }
@@ -361,111 +488,8 @@ export class Editor {
     this.modcardsDirty = false;
   }
 
-  getFolderCount() {
-    return this.dv.getUint8(0x1c09);
-  }
-
-  getChipRaw(folderIdx: number, chipIdx: number) {
-    const chipConstant = this.dv.getUint16(
-      0x2178 + folderIdx * (30 * 2) + chipIdx * 2,
-      true
-    );
-
-    if (chipConstant == 0) {
-      return null;
-    }
-
-    return {
-      id: chipConstant & 0x1ff,
-      variant: chipConstant >> 9,
-    };
-  }
-
-  getChip(folderIdx: number, chipIdx: number) {
-    const rawChip = this.getChipRaw(folderIdx, chipIdx);
-    if (rawChip == null) {
-      return null;
-    }
-
-    return {
-      id: rawChip.id,
-      code: CHIP_CODES[rawChip.variant],
-    };
-  }
-
-  setChipRaw(folderIdx: number, chipIdx: number, id: number, variant: number) {
-    this.dv.setUint16(
-      0x2178 + folderIdx * (30 * 2) + chipIdx * 2,
-      id | (variant << 9),
-      true
-    );
-  }
-
-  setChip(folderIdx: number, chipIdx: number, id: number, code: string) {
-    this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
-  }
-
   getCurrentNavi() {
     return this.dv.getUint8(0x1b81);
-  }
-
-  getEquippedFolder() {
-    return this.dv.getUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2d
-    );
-  }
-
-  setEquippedFolder(i: number) {
-    return this.dv.setUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2d,
-      i
-    );
-  }
-
-  isRegularChipInPlace() {
-    return true;
-  }
-
-  getRegularChipIndex(folderIdx: number) {
-    const i = this.dv.getUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2e + folderIdx
-    );
-    return i != 0xff ? i : null;
-  }
-
-  setRegularChipIndex(folderIdx: number, i: number) {
-    this.dv.setUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x2e + folderIdx,
-      i != null ? i : 0xff
-    );
-  }
-
-  getTagChip1Index(folderIdx: number) {
-    const i = this.dv.getUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x56 + folderIdx * 2
-    );
-    return i != 0xff ? i : null;
-  }
-
-  setTagChip1Index(folderIdx: number, i: number) {
-    this.dv.setUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x56 + folderIdx * 2,
-      i != null ? i : 0xff
-    );
-  }
-
-  getTagChip2Index(folderIdx: number) {
-    const i = this.dv.getUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x57 + folderIdx * 2
-    );
-    return i != 0xff ? i : null;
-  }
-
-  setTagChip2Index(folderIdx: number, i: number) {
-    this.dv.setUint8(
-      this.getNaviStatsOffset(this.getCurrentNavi()) + 0x57 + folderIdx * 2,
-      i != null ? i : 0xff
-    );
   }
 
   getRegMemory() {
