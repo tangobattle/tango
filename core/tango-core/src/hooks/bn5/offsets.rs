@@ -146,9 +146,9 @@ pub struct Offsets {
 pub static MEGAMAN5_TP_: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
-        start_screen_jump_table_entry:          0x0803c492, // TODO
+        start_screen_jump_table_entry:          0x0803c492,
         start_screen_sram_unmask_ret:           0x0803008a,
-        game_load_ret:                          0, // TODO
+        game_load_ret:                          0x08004a74,
         main_read_joyflags:                     0x080003ea,
         get_copy_data_input_state_ret:          0x0801c7fe,
         copy_input_data_entry:                  0x0801c800,
