@@ -9,82 +9,71 @@ import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 
 import { Editor } from "../../saveedit";
-import * as bn4 from "../../saveedit/bn4";
-import * as bn6 from "../../saveedit/bn6";
 import FolderViewer from "./FolderViewer";
-import ModcardsViewer from "./ModcardsViewer";
+// import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
 
-function BN4SaveViewer({ editor }: { editor: bn4.Editor }) {
-  const [tab, setTab] = React.useState("folder");
+export default function SaveViewer({ editor }: { editor: Editor }) {
+  const navicustEditor = editor.getNavicustEditor();
+  const folderEditor = editor.getFolderEditor();
 
-  return (
-    <Stack flexGrow={1} flexShrink={0}>
-      <Tabs
-        sx={{ px: 1 }}
-        value={tab}
-        onChange={(e, value) => {
-          setTab(value);
-        }}
-      >
-        <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
-      </Tabs>
-      <FolderViewer
-        gameFamily={editor.getGameFamily()}
-        editor={editor.getFolderEditor()}
-        active={tab == "folder"}
-      />
-    </Stack>
+  const availableTabs = React.useMemo(
+    () => [
+      ...(navicustEditor != null ? ["navicust"] : []),
+      ...(folderEditor != null ? ["folder"] : []),
+    ],
+    [navicustEditor, folderEditor]
   );
-}
 
-function BN6SaveViewer({ editor }: { editor: bn6.Editor }) {
   const [tab, setTab] = React.useState("navicust");
 
   React.useEffect(() => {
-    if (tab == "modcards" && !editor.supportsModcards()) {
-      setTab("navicust");
+    if (availableTabs.indexOf(tab) == -1) {
+      setTab(availableTabs[0] || "navicust");
     }
-  }, [tab, editor]);
+  }, [tab, availableTabs]);
 
   return (
-    <Stack flexGrow={1} flexShrink={0}>
-      <Tabs
-        sx={{ px: 1 }}
-        value={tab}
-        onChange={(e, value) => {
-          setTab(value);
-        }}
-      >
-        <Tab label={<Trans i18nKey="play:tab.navicust" />} value="navicust" />
-        <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
-        <Tab
-          label={<Trans i18nKey="play:tab.modcards" />}
-          value="modcards"
-          disabled={!editor.supportsModcards()}
-        />
-      </Tabs>
-      <NavicustViewer editor={editor} active={tab == "navicust"} />
-      <FolderViewer
-        gameFamily={editor.getGameFamily()}
-        editor={editor.getFolderEditor()}
-        active={tab == "folder"}
-      />
-      {editor.supportsModcards() ? (
-        <ModcardsViewer editor={editor} active={tab == "modcards"} />
-      ) : null}
-    </Stack>
-  );
-}
-
-export default function SaveViewer({ editor }: { editor: Editor }) {
-  switch (editor.getGameFamily()) {
-    case "bn6":
-      return <BN6SaveViewer editor={editor as bn6.Editor} />;
-    case "bn4":
-      return <BN4SaveViewer editor={editor as bn4.Editor} />;
-    default:
-      return (
+    <>
+      {availableTabs.length > 0 ? (
+        <Stack flexGrow={1} flexShrink={0}>
+          <Tabs
+            sx={{ px: 1 }}
+            value={tab}
+            onChange={(e, value) => {
+              setTab(value);
+            }}
+          >
+            {navicustEditor != null ? (
+              <Tab
+                label={<Trans i18nKey="play:tab.navicust" />}
+                value="navicust"
+              />
+            ) : null}
+            {folderEditor != null ? (
+              <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
+            ) : null}
+          </Tabs>
+          {navicustEditor != null ? (
+            <NavicustViewer
+              gameFamily={editor.getGameFamily()}
+              gameVersion={editor.getGameInfo().version}
+              editor={navicustEditor}
+              active={tab == "navicust"}
+            />
+          ) : null}
+          {folderEditor != null ? (
+            <FolderViewer
+              gameFamily={editor.getGameFamily()}
+              editor={folderEditor}
+              active={tab == "folder"}
+            />
+          ) : null}
+          {/* {editor.supportsModcards() ? (
+            <ModcardsViewer editor={editor} active={tab == "modcards"} />
+          ) : null} */}
+        </Stack>
+      ) : (
         <Box
           flexGrow={1}
           display="flex"
@@ -99,6 +88,7 @@ export default function SaveViewer({ editor }: { editor: Editor }) {
             </Typography>
           </Stack>
         </Box>
-      );
-  }
+      )}
+    </>
+  );
 }

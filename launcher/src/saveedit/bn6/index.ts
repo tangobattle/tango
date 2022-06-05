@@ -155,11 +155,58 @@ class FolderEditor {
   }
 }
 
+class NavicustEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getNavicustProgramData() {
+    return NCPS;
+  }
+
+  getNavicustBlock(i: number) {
+    const offset = this.editor.getNaviCustOffset() + i * 8;
+    const blockConstant = this.editor.dv.getUint8(offset);
+    if (blockConstant == 0) {
+      return null;
+    }
+
+    return {
+      id: blockConstant >> 2,
+      variant: blockConstant & 0x3,
+      col: this.editor.dv.getUint8(offset + 3),
+      row: this.editor.dv.getUint8(offset + 4),
+      rot: this.editor.dv.getUint8(offset + 5),
+      compressed: !!this.editor.dv.getUint8(offset + 6),
+    };
+  }
+
+  setNavicustBlock(
+    i: number,
+    id: number,
+    variant: number,
+    col: number,
+    row: number,
+    rot: number,
+    compressed: boolean
+  ) {
+    const offset = this.editor.getNaviCustOffset() + i * 8;
+    this.editor.dv.setUint8(offset, (id << 2) | variant);
+    this.editor.dv.setUint8(offset + 3, col);
+    this.editor.dv.setUint8(offset + 4, row);
+    this.editor.dv.setUint8(offset + 5, rot);
+    this.editor.dv.setUint8(offset + 6, compressed ? 1 : 0);
+    this.editor.navicustDirty = true;
+  }
+}
+
 export class Editor {
   dv: DataView;
   private romName: string;
-  private navicustDirty: boolean;
-  private modcardsDirty: boolean;
+  navicustDirty: boolean;
+  modcardsDirty: boolean;
 
   static SRAM_START_OFFSET = 0x0100;
   static SRAM_END_OFFSET = 0x6810;
@@ -350,6 +397,10 @@ export class Editor {
     return new FolderEditor(this);
   }
 
+  getNavicustEditor() {
+    return new NavicustEditor(this);
+  }
+
   getNaviStatsOffset(i: number) {
     return (
       (this.getGameInfo().region == "JP" ? 0x478c : 0x47cc) +
@@ -365,41 +416,6 @@ export class Editor {
     return this.getGameInfo().region == "JP" ? 0x410c : 0x414c;
   }
 
-  getNavicustBlock(i: number) {
-    const offset = this.getNaviCustOffset() + i * 8;
-    const blockConstant = this.dv.getUint8(offset);
-    if (blockConstant == 0) {
-      return null;
-    }
-
-    return {
-      id: blockConstant >> 2,
-      variant: blockConstant & 0x3,
-      col: this.dv.getUint8(offset + 3),
-      row: this.dv.getUint8(offset + 4),
-      rot: this.dv.getUint8(offset + 5),
-      compressed: !!this.dv.getUint8(offset + 6),
-    };
-  }
-
-  setNavicustBlock(
-    i: number,
-    id: number,
-    variant: number,
-    col: number,
-    row: number,
-    rot: number,
-    compressed: boolean
-  ) {
-    const offset = this.getNaviCustOffset() + i * 8;
-    this.dv.setUint8(offset, (id << 2) | variant);
-    this.dv.setUint8(offset + 3, col);
-    this.dv.setUint8(offset + 4, row);
-    this.dv.setUint8(offset + 5, rot);
-    this.dv.setUint8(offset + 6, compressed ? 1 : 0);
-    this.navicustDirty = true;
-  }
-
   rebuildNavicustTiles() {
     const arr = new Uint8Array(
       this.dv.buffer,
@@ -412,7 +428,7 @@ export class Editor {
     }
 
     for (let idx = 0; idx < 30; ++idx) {
-      const placement = this.getNavicustBlock(idx);
+      const placement = this.getNavicustEditor().getNavicustBlock(idx);
       if (placement == null) {
         continue;
       }

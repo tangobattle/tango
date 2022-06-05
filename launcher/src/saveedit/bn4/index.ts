@@ -326,4 +326,8 @@ export class Editor {
   getFolderEditor() {
     return new FolderEditor(this);
   }
+
+  getNavicustEditor() {
+    return null;
+  }
 }

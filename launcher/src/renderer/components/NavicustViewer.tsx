@@ -11,7 +11,7 @@ import TableRow from "@mui/material/TableRow";
 import { lighten } from "@mui/system/colorManipulator";
 
 import array2d from "../../array2d";
-import * as bn6 from "../../saveedit/bn6";
+import { NavicustEditor, NavicustProgram } from "../../saveedit";
 import { fallbackLng } from "../i18n";
 
 const NAVICUST_COLORS = {
@@ -42,6 +42,7 @@ const NAVICUST_COLORS = {
 };
 
 function placementsToArray2D(
+  ncps: (NavicustProgram | null)[],
   placements: {
     id: number;
     rot: number;
@@ -53,7 +54,7 @@ function placementsToArray2D(
   const cust = array2d.full(-1, 7, 7);
   for (let idx = 0; idx < placements.length; ++idx) {
     const placement = placements[idx];
-    const ncp = bn6.NCPS[placement.id]!;
+    const ncp = ncps[placement.id]!;
 
     let squares = array2d.from(ncp.squares, 5, 5);
     for (let i = 0; i < placement.rot; ++i) {
@@ -87,9 +88,12 @@ const borderColor = "#29314a";
 const emptyColor = "#105284";
 
 function NavicustGrid({
+  ncps,
   placements,
+  gameFamily,
   gameVersion,
 }: {
+  ncps: (NavicustProgram | null)[];
   placements: {
     id: number;
     variant: number;
@@ -98,21 +102,22 @@ function NavicustGrid({
     col: number;
     compressed: boolean;
   }[];
-  gameVersion: string;
+  gameFamily: string;
+  gameVersion: string | null;
 }) {
   const grid = React.useMemo(() => {
     const grid = [];
-    const arr2d = placementsToArray2D(placements);
+    const arr2d = placementsToArray2D(ncps, placements);
     for (let row = 0; row < arr2d.nrows; row++) {
       grid.push(array2d.row(arr2d, row));
     }
     return grid;
-  }, [placements]);
+  }, [ncps, placements]);
 
   const colors = React.useMemo(() => {
     const colors = [];
     for (const placement of placements) {
-      const ncp = bn6.NCPS[placement.id];
+      const ncp = ncps[placement.id];
       if (ncp == null) {
         console.error("unrecognized ncp:", placement.id);
         continue;
@@ -124,16 +129,21 @@ function NavicustGrid({
       colors.push(color);
     }
     return colors;
-  }, [placements]);
+  }, [ncps, placements]);
 
   return (
     <div
       style={{
         padding: "20px",
-        background: {
-          falzar: "#E78C39",
-          gregar: "#08BD73",
-        }[gameVersion],
+        background:
+          gameVersion != null
+            ? ({
+                bn6: {
+                  falzar: "#E78C39",
+                  gregar: "#08BD73",
+                },
+              }[gameFamily] ?? ({} as { [key: string]: string }))[gameVersion]
+            : undefined,
         display: "inline-block",
         borderRadius: "4px",
         textAlign: "left",
@@ -251,8 +261,7 @@ function NavicustGrid({
                     const placement =
                       placementIdx != -1 ? placements[placementIdx] : null;
 
-                    const ncp =
-                      placement != null ? bn6.NCPS[placement.id] : null;
+                    const ncp = placement != null ? ncps[placement.id] : null;
                     const ncpColor =
                       ncp != null
                         ? NAVICUST_COLORS[
@@ -418,9 +427,13 @@ function NavicustGrid({
 
 export default function NavicustViewer({
   editor,
+  gameFamily,
+  gameVersion,
   active,
 }: {
-  editor: bn6.Editor;
+  editor: NavicustEditor;
+  gameFamily: string;
+  gameVersion: string | null;
   active: boolean;
 }) {
   const { i18n } = useTranslation();
@@ -435,6 +448,8 @@ export default function NavicustViewer({
     }
     return placements;
   }, [editor]);
+
+  const ncps = editor.getNavicustProgramData();
 
   return (
     <Box
@@ -456,8 +471,10 @@ export default function NavicustViewer({
           }}
         >
           <NavicustGrid
+            ncps={ncps}
             placements={placements}
-            gameVersion={editor.getGameInfo().version}
+            gameFamily={gameFamily}
+            gameVersion={gameVersion}
           />
         </Box>
         <Table
@@ -473,7 +490,7 @@ export default function NavicustViewer({
               <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                 <Stack spacing={0.5} flexGrow={1}>
                   {placements.flatMap((placement, i) => {
-                    const ncp = bn6.NCPS[placement.id]!;
+                    const ncp = ncps[placement.id]!;
                     if (!ncp.isSolid) {
                       return [];
                     }
@@ -507,7 +524,7 @@ export default function NavicustViewer({
               <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                 <Stack spacing={0.5} flexGrow={1}>
                   {placements.flatMap((placement, i) => {
-                    const ncp = bn6.NCPS[placement.id]!;
+                    const ncp = ncps[placement.id]!;
                     if (ncp.isSolid) {
                       return [];
                     }

@@ -1,6 +1,11 @@
 import * as bn4 from "./bn4";
 import * as bn6 from "./bn6";
 
+export interface GameInfo {
+  region: "US" | "JP" | "PL";
+  version: string | null;
+}
+
 export interface Chip {
   index?: number;
   name: {
@@ -17,10 +22,21 @@ export interface Chip {
   class?: string;
 }
 
+export interface NavicustProgram {
+  name: {
+    [lang: string]: string;
+  };
+  colors: string[];
+  isSolid: boolean;
+  squares: number[];
+}
+
 export interface Editor {
   getROMName(): string;
   getGameFamily(): string;
+  getGameInfo(): GameInfo;
   getFolderEditor(): FolderEditor | null;
+  getNavicustEditor(): NavicustEditor | null;
   rebuild(): void;
 }
 
@@ -38,6 +54,18 @@ export interface FolderEditor {
   getRegularChipIndex(folderIdx: number): number | null;
   getTagChip1Index(folderIdx: number): number | null;
   getTagChip2Index(folderIdx: number): number | null;
+}
+
+export interface NavicustEditor {
+  getNavicustProgramData(): (NavicustProgram | null)[];
+  getNavicustBlock(i: number): {
+    id: number;
+    variant: number;
+    col: number;
+    row: number;
+    rot: number;
+    compressed: boolean;
+  } | null;
 }
 
 export function sniff(buffer: ArrayBuffer): Editor | null {
