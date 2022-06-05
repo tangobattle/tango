@@ -6,9 +6,6 @@ pub(super) struct EWRAMOffsets {
     // Incoming packet.
     pub(super) rx_packet_arr: u32,
 
-    /// Location of the battle state struct in memory.
-    pub(super) battle_state: u32,
-
     /// Start screen jump table control.
     pub(super) start_screen_control: u32,
 
@@ -127,10 +124,9 @@ pub(super) struct ROMOffsets {
     pub(super) opponent_name: u32,
 }
 
-static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
+static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     tx_packet: 0x02037bc0,
     rx_packet_arr: 0x0203ac10,
-    battle_state: 0x02035810,
     start_screen_control: 0x0200b220,
     title_menu_control: 0x0200b220,
     subsystem_control: 0x0200a7e0,
@@ -140,11 +136,6 @@ static EWRAM_OFFSETS_US: EWRAMOffsets = EWRAMOffsets {
     copy_data_input_state: 0x0203f6d5,
 };
 
-static EWRAM_OFFSETS_JP: EWRAMOffsets = EWRAMOffsets {
-    start_screen_control: 0, // TODO
-    ..EWRAM_OFFSETS_US
-};
-
 #[derive(Clone, Copy)]
 pub struct Offsets {
     pub(super) rom: ROMOffsets,
@@ -152,7 +143,7 @@ pub struct Offsets {
 }
 
 pub static MEGAMANBN4BM: Offsets = Offsets {
-    ewram: EWRAM_OFFSETS_US,
+    ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry: 0x0802d786,
         start_screen_sram_unmask_ret: 0x080253ca,
@@ -178,7 +169,7 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
 };
 
 pub static MEGAMANBN4RS: Offsets = Offsets {
-    ewram: EWRAM_OFFSETS_US,
+    ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry: 0x0802d786,
         start_screen_sram_unmask_ret: 0x080253c6,
@@ -200,5 +191,57 @@ pub static MEGAMANBN4RS: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006b16,
         comm_menu_end_battle_entry: 0x0803a78c,
         opponent_name: 0, // TODO
+    },
+};
+
+pub static ROCK_EXE4_BM: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry: 0x0802d69a,
+        start_screen_sram_unmask_ret: 0x080252d2,
+        ngplus_menu_init_ret: 0x080254b2,
+        game_load_ret: 0x08004976,
+        main_read_joyflags: 0x080003c6,
+        get_copy_data_input_state_ret: 0x08017a98,
+        copy_input_data_entry: 0x08017a9a,
+        copy_input_data_ret: 0x08017b62,
+        round_run_unpaused_step_cmp_retval: 0x080070f4,
+        round_start_ret: 0x080066ec,
+        round_ending_ret: 0x080077ae,
+        round_end_entry: 0x08006dfa,
+        round_call_jump_table_ret: 0x08006b04,
+        battle_is_p2_tst: 0x080480c4,
+        link_is_p2_ret: 0x080480e2,
+        comm_menu_init_ret: 0x08039442,
+        handle_sio_entry: 0x080481b8,
+        in_battle_call_handle_link_cable_input: 0x08006af2,
+        comm_menu_end_battle_entry: 0x0803a66c,
+        opponent_name: 0,
+    },
+};
+
+pub static ROCK_EXE4_RS: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry: 0x0802d696,
+        start_screen_sram_unmask_ret: 0x080252ce,
+        ngplus_menu_init_ret: 0x080254b6,
+        game_load_ret: 0x08004976,
+        main_read_joyflags: 0x080003c6,
+        get_copy_data_input_state_ret: 0x08017a98,
+        copy_input_data_entry: 0x08017a9a,
+        copy_input_data_ret: 0x08017b62,
+        round_run_unpaused_step_cmp_retval: 0x080070f4,
+        round_start_ret: 0x080066ec,
+        round_ending_ret: 0x080077ae,
+        round_end_entry: 0x08006dfa,
+        round_call_jump_table_ret: 0x08006b04,
+        battle_is_p2_tst: 0x080480bc,
+        link_is_p2_ret: 0x080480da,
+        comm_menu_init_ret: 0x0803943a,
+        handle_sio_entry: 0x080481b0,
+        in_battle_call_handle_link_cable_input: 0x08006af2,
+        comm_menu_end_battle_entry: 0x0803a664,
+        opponent_name: 0,
     },
 };
