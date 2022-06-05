@@ -86,12 +86,4 @@ impl Munger {
     pub(super) fn set_copy_data_input_state(&self, mut core: mgba::core::CoreMutRef, v: u8) {
         core.raw_write_8(self.offsets.ewram.copy_data_input_state, -1, v);
     }
-
-    pub(super) fn set_link_battle_settings_and_background(
-        &self,
-        mut core: mgba::core::CoreMutRef,
-        v: u16,
-    ) {
-        todo!();
-    }
 }

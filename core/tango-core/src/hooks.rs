@@ -12,7 +12,7 @@ lazy_static! {
         hooks.insert("ROCKEXE6_RXX".to_string(), &bn6::ROCKEXE6_RXX);
         hooks.insert("ROCKEXE6_GXX".to_string(), &bn6::ROCKEXE6_GXX);
         hooks.insert("MEGAMANBN4BM".to_string(), &bn4::MEGAMANBN4BM);
-        // hooks.insert("MEGAMANBN4RS".to_string(), &bn4::MEGAMANBN4RS);
+        hooks.insert("MEGAMANBN4RS".to_string(), &bn4::MEGAMANBN4RS);
         // hooks.insert("ROCK_EXE4_BM".to_string(), &bn4::ROCK_EXE4_BM);
         // hooks.insert("ROCK_EXE4_RS".to_string(), &bn4::ROCK_EXE4_RS);
         hooks

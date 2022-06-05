@@ -164,7 +164,7 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         copy_input_data_ret: 0x08017c56,
         round_run_unpaused_step_cmp_retval: 0x08007120,
         round_start_ret: 0x08006710,
-        round_ending_ret: 0x080077da,
+        round_ending_ret: 0x080077dc,
         round_end_entry: 0x08006e1e,
         round_call_jump_table_ret: 0x08006b28,
         battle_is_p2_tst: 0x08048204,
@@ -173,6 +173,32 @@ pub static MEGAMANBN4BM: Offsets = Offsets {
         handle_sio_entry: 0x080482f8,
         in_battle_call_handle_link_cable_input: 0x08006b16,
         comm_menu_end_battle_entry: 0x0803a794,
+        opponent_name: 0, // TODO
+    },
+};
+
+pub static MEGAMANBN4RS: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS_US,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry: 0x0802d786,
+        start_screen_sram_unmask_ret: 0x080253c6,
+        ngplus_menu_init_ret: 0x080255a6,
+        game_load_ret: 0x08004996,
+        main_read_joyflags: 0x080003c6,
+        get_copy_data_input_state_ret: 0x08017b8c,
+        copy_input_data_entry: 0x08017b8e,
+        copy_input_data_ret: 0x08017c56,
+        round_run_unpaused_step_cmp_retval: 0x08007120,
+        round_start_ret: 0x08006710,
+        round_ending_ret: 0x080077dc,
+        round_end_entry: 0x08006e1e,
+        round_call_jump_table_ret: 0x08006b28,
+        battle_is_p2_tst: 0x080481fc,
+        link_is_p2_ret: 0x0804821,
+        comm_menu_init_ret: 0x08039562,
+        handle_sio_entry: 0x080482f0,
+        in_battle_call_handle_link_cable_input: 0x08006b16,
+        comm_menu_end_battle_entry: 0x0803a78c,
         opponent_name: 0, // TODO
     },
 };
