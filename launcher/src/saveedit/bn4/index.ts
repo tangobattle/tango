@@ -330,4 +330,8 @@ export class Editor {
   getNavicustEditor() {
     return null;
   }
+
+  getModcardsEditor() {
+    return null;
+  }
 }

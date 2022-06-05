@@ -10,19 +10,21 @@ import Typography from "@mui/material/Typography";
 
 import { Editor } from "../../saveedit";
 import FolderViewer from "./FolderViewer";
-// import ModcardsViewer from "./ModcardsViewer";
+import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
 
 export default function SaveViewer({ editor }: { editor: Editor }) {
   const navicustEditor = editor.getNavicustEditor();
   const folderEditor = editor.getFolderEditor();
+  const modcardsEditor = editor.getModcardsEditor();
 
   const availableTabs = React.useMemo(
     () => [
       ...(navicustEditor != null ? ["navicust"] : []),
       ...(folderEditor != null ? ["folder"] : []),
+      ...(modcardsEditor != null ? ["modcards"] : []),
     ],
-    [navicustEditor, folderEditor]
+    [navicustEditor, folderEditor, modcardsEditor]
   );
 
   const [tab, setTab] = React.useState("navicust");
@@ -53,6 +55,12 @@ export default function SaveViewer({ editor }: { editor: Editor }) {
             {folderEditor != null ? (
               <Tab label={<Trans i18nKey="play:tab.folder" />} value="folder" />
             ) : null}
+            {modcardsEditor != null ? (
+              <Tab
+                label={<Trans i18nKey="play:tab.modcards" />}
+                value="modcards"
+              />
+            ) : null}
           </Tabs>
           {navicustEditor != null ? (
             <NavicustViewer
@@ -69,9 +77,13 @@ export default function SaveViewer({ editor }: { editor: Editor }) {
               active={tab == "folder"}
             />
           ) : null}
-          {/* {editor.supportsModcards() ? (
-            <ModcardsViewer editor={editor} active={tab == "modcards"} />
-          ) : null} */}
+          {modcardsEditor != null ? (
+            <ModcardsViewer
+              gameVersion={editor.getGameInfo().version}
+              editor={modcardsEditor}
+              active={tab == "modcards"}
+            />
+          ) : null}
         </Stack>
       ) : (
         <Box

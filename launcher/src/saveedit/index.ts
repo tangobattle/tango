@@ -31,12 +31,34 @@ export interface NavicustProgram {
   squares: number[];
 }
 
+export interface Modcard {
+  name: {
+    [lang: string]: string;
+  };
+  mb: number;
+  parameters: {
+    name: {
+      [lang: string]: string;
+    };
+    version: string | null;
+    debuff: boolean;
+  }[];
+  abilities: {
+    name: {
+      [lang: string]: string;
+    };
+    version: string | null;
+    debuff: boolean;
+  }[];
+}
+
 export interface Editor {
   getROMName(): string;
   getGameFamily(): string;
   getGameInfo(): GameInfo;
   getFolderEditor(): FolderEditor | null;
   getNavicustEditor(): NavicustEditor | null;
+  getModcardsEditor(): ModcardsEditor | null;
   rebuild(): void;
 }
 
@@ -66,6 +88,13 @@ export interface NavicustEditor {
     rot: number;
     compressed: boolean;
   } | null;
+}
+
+export interface ModcardsEditor {
+  getModcardData(): (Modcard | null)[];
+  getModcardCount(): number;
+  setModcardCount(n: number): void;
+  getModcard(i: number): { id: number; enabled: boolean } | null;
 }
 
 export function sniff(buffer: ArrayBuffer): Editor | null {

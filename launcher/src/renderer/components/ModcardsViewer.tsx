@@ -9,7 +9,7 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 
-import * as bn6 from "../../saveedit/bn6";
+import { ModcardsEditor } from "../../saveedit";
 import { fallbackLng } from "../i18n";
 
 const DEBUFF_COLOR = "#b55ade";
@@ -18,16 +18,18 @@ const OFF_COLOR = "#bdbdbd";
 
 export default function ModcardsViewer({
   editor,
+  gameVersion,
   active,
 }: {
-  editor: bn6.Editor;
+  editor: ModcardsEditor;
+  gameVersion: string | null;
   active: boolean;
 }) {
   const { i18n } = useTranslation();
 
   const modcards: { id: number; enabled: boolean }[] = [];
   for (let i = 0; i < editor.getModcardCount(); i++) {
-    modcards.push(editor.getModcard(i));
+    modcards.push(editor.getModcard(i)!);
   }
 
   return (
@@ -40,7 +42,7 @@ export default function ModcardsViewer({
       <Table size="small">
         <TableBody>
           {modcards.map(({ id, enabled }, i) => {
-            const modcard = bn6.MODCARDS[id];
+            const modcard = editor.getModcardData()[id];
             if (modcard == null) {
               return null;
             }
@@ -57,8 +59,7 @@ export default function ModcardsViewer({
                 <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                   <Stack spacing={0.5}>
                     {modcard.parameters.flatMap((l, i) =>
-                      l.version == null ||
-                      l.version == editor.getGameInfo().version
+                      l.version == null || l.version == gameVersion
                         ? [
                             <Chip
                               key={i}
@@ -87,8 +88,7 @@ export default function ModcardsViewer({
                 <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                   <Stack spacing={0.5}>
                     {modcard.abilities.flatMap((l, i) =>
-                      l.version == null ||
-                      l.version == editor.getGameInfo().version
+                      l.version == null || l.version == gameVersion
                         ? [
                             <Chip
                               key={i}

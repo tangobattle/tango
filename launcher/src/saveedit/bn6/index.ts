@@ -202,6 +202,57 @@ class NavicustEditor {
   }
 }
 
+class ModcardsEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getModcardData() {
+    return MODCARDS;
+  }
+
+  getModcardCount() {
+    return this.editor.dv.getUint8(0x65f0);
+  }
+
+  setModcardCount(n: number) {
+    this.editor.dv.setUint8(0x65f0, n);
+    this.editor.modcardsDirty = true;
+  }
+
+  getModcard(i: number) {
+    if (i >= this.getModcardCount()) {
+      return null;
+    }
+
+    const c = this.editor.dv.getUint8(0x6620 + i);
+    return {
+      id: c & 0x7f,
+      enabled: !(c >> 7),
+    };
+  }
+
+  setModcard(i: number, id: number, enabled: boolean) {
+    this.editor.dv.setUint8(0x6620 + i, id | ((enabled ? 0 : 1) << 7));
+    this.editor.modcardsDirty = true;
+  }
+
+  setModcardLoaded(id: number, loaded: boolean) {
+    this.editor.dv.setUint8(
+      0x5047 + id,
+      this.editor.dv.getUint8(0x06bf + id) ^
+        (loaded
+          ? {
+              falzar: 0x8d,
+              gregar: 0x43,
+            }[this.editor.getGameInfo().version]
+          : 0xff)
+    );
+  }
+}
+
 export class Editor {
   dv: DataView;
   private romName: string;
@@ -340,10 +391,6 @@ export class Editor {
     return "bn6";
   }
 
-  supportsModcards() {
-    return this.getGameInfo().region == "JP";
-  }
-
   getRawBufferForSave() {
     if (this.getChecksum() != this.computeChecksum()) {
       throw "checksum does not match";
@@ -401,6 +448,13 @@ export class Editor {
     return new NavicustEditor(this);
   }
 
+  getModcardsEditor() {
+    if (this.getGameInfo().region != "JP") {
+      return null;
+    }
+    return new ModcardsEditor(this);
+  }
+
   getNaviStatsOffset(i: number) {
     return (
       (this.getGameInfo().region == "JP" ? 0x478c : 0x47cc) +
@@ -417,6 +471,8 @@ export class Editor {
   }
 
   rebuildNavicustTiles() {
+    const navicustEditor = this.getNavicustEditor();
+
     const arr = new Uint8Array(
       this.dv.buffer,
       this.dv.byteOffset + this.getNaviCustTilesOffset(),
@@ -428,7 +484,7 @@ export class Editor {
     }
 
     for (let idx = 0; idx < 30; ++idx) {
-      const placement = this.getNavicustEditor().getNavicustBlock(idx);
+      const placement = navicustEditor.getNavicustBlock(idx);
       if (placement == null) {
         continue;
       }
@@ -459,47 +515,17 @@ export class Editor {
     this.navicustDirty = false;
   }
 
-  getModcardCount() {
-    return this.dv.getUint8(0x65f0);
-  }
-
-  setModcardCount(n: number) {
-    this.dv.setUint8(0x65f0, n);
-    this.modcardsDirty = true;
-  }
-
-  getModcard(i: number) {
-    const c = this.dv.getUint8(0x6620 + i);
-    return {
-      id: c & 0x7f,
-      enabled: !(c >> 7),
-    };
-  }
-
-  setModcard(i: number, id: number, enabled: boolean) {
-    this.dv.setUint8(0x6620 + i, id | ((enabled ? 0 : 1) << 7));
-    this.modcardsDirty = true;
-  }
-
-  setModcardLoaded(id: number, loaded: boolean) {
-    this.dv.setUint8(
-      0x5047 + id,
-      this.dv.getUint8(0x06bf + id) ^
-        (loaded
-          ? {
-              falzar: 0x8d,
-              gregar: 0x43,
-            }[this.getGameInfo().version]
-          : 0xff)
-    );
-  }
-
   rebuildModcardsLoaded() {
-    for (let i = 1; i < MODCARDS.length; ++i) {
-      this.setModcardLoaded(i, false);
+    const modcardsEditor = this.getModcardsEditor();
+    if (modcardsEditor == null) {
+      return;
     }
-    for (let i = 0; i < this.getModcardCount(); ++i) {
-      this.setModcardLoaded(this.getModcard(i).id, true);
+
+    for (let i = 1; i < MODCARDS.length; ++i) {
+      modcardsEditor.setModcardLoaded(i, false);
+    }
+    for (let i = 0; i < modcardsEditor.getModcardCount(); ++i) {
+      modcardsEditor.setModcardLoaded(modcardsEditor.getModcard(i)!.id, true);
     }
     this.modcardsDirty = false;
   }
