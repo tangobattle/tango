@@ -5,7 +5,7 @@ mod bn5;
 mod bn6;
 
 pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + Send + Sync>> {
-    match &core.raw_read_range::<16>(0x080000a0, -1) {
+    match &core.full_rom_name() {
         b"MEGAMAN6_FXXBR6E" => Some(&bn6::MEGAMAN6_FXXBR6E),
         b"MEGAMAN6_GXXBR5E" => Some(&bn6::MEGAMAN6_GXXBR5E),
         b"ROCKEXE6_RXXBR6J" => Some(&bn6::ROCKEXE6_RXXBR6J),
@@ -16,26 +16,14 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
         b"ROCKEXE5_TOCBRKJ" => Some(&bn5::ROCKEXE5_TOCBRKJ),
         b"MEGAMANBN4BMB4BE" => Some(&bn4::MEGAMANBN4BMB4BE),
         b"MEGAMANBN4RSB4WE" => Some(&bn4::MEGAMANBN4RSB4WE),
-        b"ROCK_EXE4_BMB4BJ" => match core.raw_read_8(0x080000bc, -1) {
-            0x00 => {
-                log::info!("this is blue moon 1.0");
-                Some(&bn4::ROCK_EXE4_BMB4BJ_10)
-            }
-            0x01 => {
-                log::info!("this is blue moon 1.1");
-                Some(&bn4::ROCK_EXE4_BMB4BJ_11)
-            }
+        b"ROCK_EXE4_BMB4BJ" => match core.rom_revision() {
+            0x00 => Some(&bn4::ROCK_EXE4_BMB4BJ_10),
+            0x01 => Some(&bn4::ROCK_EXE4_BMB4BJ_11),
             _ => None,
         },
-        b"ROCK_EXE4_RSB4WJ" => match core.raw_read_8(0x080000bc, -1) {
-            0x00 => {
-                log::info!("this is red sun 1.0");
-                Some(&bn4::ROCK_EXE4_RSB4WJ_10)
-            }
-            0x01 => {
-                log::info!("this is red sun 1.1");
-                Some(&bn4::ROCK_EXE4_RSB4WJ_11)
-            }
+        b"ROCK_EXE4_RSB4WJ" => match core.rom_revision() {
+            0x00 => Some(&bn4::ROCK_EXE4_RSB4WJ_10),
+            0x01 => Some(&bn4::ROCK_EXE4_RSB4WJ_11),
             _ => None,
         },
         _ => None,

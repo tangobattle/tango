@@ -165,8 +165,9 @@ impl Shadow {
         core.as_mut().load_rom(rom_vf)?;
 
         log::info!(
-            "loaded shadow game: {:?}",
-            std::str::from_utf8(&core.as_mut().raw_read_range::<16>(0x080000a0, -1))
+            "loaded shadow game: {} rev {}",
+            std::str::from_utf8(&core.as_mut().full_rom_name()).unwrap(),
+            core.as_mut().rom_revision(),
         );
 
         let save_vf = mgba::vfile::VFile::open(

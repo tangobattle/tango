@@ -184,6 +184,14 @@ impl<'a> CoreMutRef<'a> {
         }
     }
 
+    pub fn full_rom_name(&mut self) -> [u8; 16] {
+        self.raw_read_range(0x080000a0, -1)
+    }
+
+    pub fn rom_revision(&mut self) -> u8 {
+        self.raw_read_8(0x080000bc, -1)
+    }
+
     pub fn gba_mut(&mut self) -> gba::GBAMutRef {
         gba::GBAMutRef {
             ptr: unsafe { (*self.ptr).board as *mut mgba_sys::GBA },
