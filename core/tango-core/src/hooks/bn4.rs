@@ -17,7 +17,7 @@ lazy_static! {
     pub static ref ROCK_EXE4_BM: Box<dyn hooks::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_BM_10);
     pub static ref ROCK_EXE4_RS: Box<dyn hooks::Hooks + Send + Sync> =
-        BN4::new(offsets::ROCK_EXE4_RS_11);
+        BN4::new(offsets::ROCK_EXE4_RS_10);
 }
 
 impl BN4 {
