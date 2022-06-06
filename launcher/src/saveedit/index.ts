@@ -1,3 +1,5 @@
+import { RunningWithErrors } from "@mui/icons-material";
+
 import * as bn4 from "./bn4";
 import * as bn5 from "./bn5";
 import * as bn6 from "./bn6";
@@ -98,21 +100,22 @@ export interface ModcardsEditor {
   getModcard(i: number): { id: number; enabled: boolean } | null;
 }
 
-export function sniff(buffer: ArrayBuffer): Editor | null {
+export function sniff(buffer: ArrayBuffer): Editor {
+  const errors: { [key: string]: any } = {};
   try {
     return bn6.Editor.fromUnmaskedSRAM(bn6.Editor.sramDumpToRaw(buffer));
   } catch (e) {
-    void e;
+    errors.bn6 = e;
   }
   try {
     return bn5.Editor.fromUnmaskedSRAM(bn5.Editor.sramDumpToRaw(buffer));
   } catch (e) {
-    void e;
+    errors.bn5 = e;
   }
   try {
     return bn4.Editor.fromUnmaskedSRAM(bn4.Editor.sramDumpToRaw(buffer));
   } catch (e) {
-    void e;
+    errors.bn4 = e;
   }
-  return null;
+  throw errors;
 }

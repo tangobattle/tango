@@ -2,7 +2,7 @@ import { readdir, readFile } from "fs/promises";
 import mkdirp from "mkdirp";
 import path from "path";
 
-import { sniff } from "./saveedit";
+import { Editor, sniff } from "./saveedit";
 
 export interface SaveInfo {
   gameFamily: string;
@@ -26,9 +26,11 @@ export async function scan(dir: string) {
 
   for (const result of await Promise.allSettled(
     saveNames.map(async (saveName) => {
-      const editor = sniff((await readFile(path.join(dir, saveName))).buffer);
-      if (editor == null) {
-        console.warn("could not sniff save", saveName);
+      let editor: Editor;
+      try {
+        editor = sniff((await readFile(path.join(dir, saveName))).buffer);
+      } catch (e) {
+        console.warn("failed to sniff", saveName, e);
         return;
       }
       saves[saveName] = {
