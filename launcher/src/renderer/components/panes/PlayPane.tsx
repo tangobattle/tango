@@ -90,7 +90,7 @@ export default function SavesPane({ active }: { active: boolean }) {
     groupedSaves[saves[k].romName].push(k);
   }
 
-  const romNames = Object.keys(roms);
+  const romNames = Object.keys(KNOWN_ROMS);
   romNames.sort((k1, k2) => {
     const title1 =
       KNOWN_ROMS[k1].title[i18n.resolvedLanguage] ||
@@ -259,7 +259,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                   setSaveName(e.target.value);
                 }}
               >
-                {Object.keys(KNOWN_ROMS).flatMap((romName) => {
+                {romNames.flatMap((romName) => {
                   const saveNames = groupedSaves[romName] || [];
                   if (saveNames.length == 0) {
                     return [];
@@ -278,7 +278,12 @@ export default function SavesPane({ active }: { active: boolean }) {
                           <MenuItem
                             key={v}
                             value={v}
-                            disabled={romNames.indexOf(romName) == -1}
+                            disabled={
+                              !Object.prototype.hasOwnProperty.call(
+                                roms,
+                                romName
+                              )
+                            }
                           >
                             {opponentSettings?.gameInfo != null &&
                             !Object.keys(patches)
