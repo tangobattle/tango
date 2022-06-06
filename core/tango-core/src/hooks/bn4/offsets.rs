@@ -187,7 +187,6 @@ pub static MEGAMANBN4RS: Offsets = Offsets {
     },
 };
 
-#[allow(dead_code)]
 #[rustfmt::skip]
 pub static ROCK_EXE4_BM_10: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
@@ -213,7 +212,6 @@ pub static ROCK_EXE4_BM_10: Offsets = Offsets {
     },
 };
 
-#[allow(dead_code)]
 #[rustfmt::skip]
 pub static ROCK_EXE4_BM_11: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
@@ -239,7 +237,6 @@ pub static ROCK_EXE4_BM_11: Offsets = Offsets {
     },
 };
 
-#[allow(dead_code)]
 #[rustfmt::skip]
 pub static ROCK_EXE4_RS_10: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
@@ -265,7 +262,6 @@ pub static ROCK_EXE4_RS_10: Offsets = Offsets {
     },
 };
 
-#[allow(dead_code)]
 #[rustfmt::skip]
 pub static ROCK_EXE4_RS_11: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
