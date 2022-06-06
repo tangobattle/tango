@@ -4,7 +4,7 @@ export interface GameInfo {
 }
 
 const SRAM_START_OFFSET = 0x0100;
-const SRAM_END_OFFSET = 0x7d14;
+const SRAM_SIZE = 0x7c14;
 const MASK_OFFSET = 0x1a34;
 const GAME_NAME_OFFSET = 0x29e0;
 const CHECKSUM_OFFSET = 0x29dc;
@@ -67,7 +67,7 @@ export class Editor {
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    buffer = buffer.slice(SRAM_START_OFFSET, SRAM_END_OFFSET);
+    buffer = buffer.slice(SRAM_START_OFFSET, SRAM_START_OFFSET + SRAM_SIZE);
     maskSave(new DataView(buffer));
     return buffer;
   }
@@ -75,13 +75,7 @@ export class Editor {
   static rawToSRAMDump(buffer: ArrayBuffer) {
     const arr = new Uint8Array(0x10000);
     arr.set(new Uint8Array(buffer), SRAM_START_OFFSET);
-    maskSave(
-      new DataView(
-        arr.buffer,
-        SRAM_START_OFFSET,
-        SRAM_END_OFFSET - SRAM_START_OFFSET
-      )
-    );
+    maskSave(new DataView(arr.buffer, SRAM_START_OFFSET, SRAM_SIZE));
     return arr.buffer;
   }
 
@@ -93,10 +87,10 @@ export class Editor {
     return "bn5";
   }
   static fromUnmaskedSRAM(buffer: ArrayBuffer) {
-    if (buffer.byteLength != SRAM_END_OFFSET - SRAM_START_OFFSET) {
+    if (buffer.byteLength != SRAM_SIZE) {
       throw (
         "invalid byte length of save file: expected " +
-        (SRAM_END_OFFSET - SRAM_START_OFFSET) +
+        SRAM_SIZE +
         " but got " +
         buffer.byteLength
       );

@@ -4,7 +4,7 @@ export { CHIPS };
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
-const SRAM_END_OFFSET = 0x73d2;
+const SRAM_SIZE = 0x73d2;
 const MASK_OFFSET = 0x1554;
 const GAME_NAME_OFFSET = 0x2208;
 const CHECKSUM_OFFSET = 0x21e8;
@@ -205,7 +205,7 @@ export class Editor {
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    buffer = buffer.slice(0, SRAM_END_OFFSET);
+    buffer = buffer.slice(0, SRAM_SIZE);
     const dv = new DataView(buffer);
     maskSave(dv);
     return buffer;
@@ -219,10 +219,10 @@ export class Editor {
   }
 
   static fromUnmaskedSRAM(buffer: ArrayBuffer) {
-    if (buffer.byteLength != SRAM_END_OFFSET) {
+    if (buffer.byteLength != SRAM_SIZE) {
       throw (
         "invalid byte length of save file: expected " +
-        SRAM_END_OFFSET +
+        SRAM_SIZE +
         " but got " +
         buffer.byteLength
       );
