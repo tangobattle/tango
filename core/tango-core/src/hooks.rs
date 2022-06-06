@@ -4,24 +4,42 @@ mod bn4;
 mod bn5;
 mod bn6;
 
-lazy_static! {
-    pub static ref HOOKS: std::collections::HashMap<String, &'static Box<dyn Hooks + Send + Sync>> = {
-        let mut hooks =
-            std::collections::HashMap::<String, &'static Box<dyn Hooks + Send + Sync>>::new();
-        hooks.insert("MEGAMAN6_FXX".to_string(), &bn6::MEGAMAN6_FXX);
-        hooks.insert("MEGAMAN6_GXX".to_string(), &bn6::MEGAMAN6_GXX);
-        hooks.insert("ROCKEXE6_RXX".to_string(), &bn6::ROCKEXE6_RXX);
-        hooks.insert("ROCKEXE6_GXX".to_string(), &bn6::ROCKEXE6_GXX);
-        hooks.insert("MEGAMAN5_TP_".to_string(), &bn5::MEGAMAN5_TP_);
-        hooks.insert("MEGAMAN5_TC_".to_string(), &bn5::MEGAMAN5_TC_);
-        hooks.insert("ROCKEXE5_TOB".to_string(), &bn5::ROCKEXE5_TOB);
-        hooks.insert("ROCKEXE5_TOC".to_string(), &bn5::ROCKEXE5_TOC);
-        hooks.insert("MEGAMANBN4BM".to_string(), &bn4::MEGAMANBN4BM);
-        hooks.insert("MEGAMANBN4RS".to_string(), &bn4::MEGAMANBN4RS);
-        hooks.insert("ROCK_EXE4_BM".to_string(), &bn4::ROCK_EXE4_BM);
-        hooks.insert("ROCK_EXE4_RS".to_string(), &bn4::ROCK_EXE4_RS);
-        hooks
-    };
+pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + Send + Sync>> {
+    match core.as_ref().game_title().as_str() {
+        "MEGAMAN6_FXX" => Some(&bn6::MEGAMAN6_FXX),
+        "MEGAMAN6_GXX" => Some(&bn6::MEGAMAN6_GXX),
+        "ROCKEXE6_RXX" => Some(&bn6::ROCKEXE6_RXX),
+        "ROCKEXE6_GXX" => Some(&bn6::ROCKEXE6_GXX),
+        "MEGAMAN5_TP_" => Some(&bn5::MEGAMAN5_TP_),
+        "MEGAMAN5_TC_" => Some(&bn5::MEGAMAN5_TC_),
+        "ROCKEXE5_TOB" => Some(&bn5::ROCKEXE5_TOB),
+        "ROCKEXE5_TOC" => Some(&bn5::ROCKEXE5_TOC),
+        "MEGAMANBN4BM" => Some(&bn4::MEGAMANBN4BM),
+        "MEGAMANBN4RS" => Some(&bn4::MEGAMANBN4RS),
+        "ROCK_EXE4_BM" => {
+            if &core.raw_read_range(0x08113abc, -1) == b"Nov 11 2003 21:54:47" {
+                log::info!("this is blue moon 1.0");
+                Some(&bn4::ROCK_EXE4_BM_10)
+            } else if &core.raw_read_range(0x08113b38, -1) == b"Jan 27 2004 21:00:28" {
+                log::info!("this is blue moon 1.1");
+                Some(&bn4::ROCK_EXE4_BM_11)
+            } else {
+                None
+            }
+        }
+        "ROCK_EXE4_RS" => {
+            if &core.raw_read_range(0x08113aa8, -1) == b"Nov 11 2003 21:54:47" {
+                log::info!("this is red sun 1.0");
+                Some(&bn4::ROCK_EXE4_RS_10)
+            } else if &core.raw_read_range(0x08113b24, -1) == b"Jan 27 2004 21:00:28" {
+                log::info!("this is red sun 1.1");
+                Some(&bn4::ROCK_EXE4_RS_11)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 pub trait Hooks {

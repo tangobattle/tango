@@ -63,10 +63,7 @@ fn main() -> Result<(), anyhow::Error> {
         .unwrap();
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let hooks = tango_core::hooks::HOOKS
-        .get(&core.as_ref().game_title())
-        .unwrap();
-
+    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     let local_player_index = if !args.remote {
         replay.local_player_index
     } else {

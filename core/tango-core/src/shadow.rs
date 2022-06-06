@@ -174,7 +174,7 @@ impl Shadow {
 
         let state = State::new(match_type, is_offerer, rng, won_last_round);
 
-        let hooks = hooks::HOOKS.get(&core.as_ref().game_title()).unwrap();
+        let hooks = hooks::get(core.as_mut()).unwrap();
 
         core.set_traps(hooks.shadow_traps(state.clone()));
         core.as_mut().reset();

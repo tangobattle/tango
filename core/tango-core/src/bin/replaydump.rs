@@ -116,14 +116,11 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
             },
         )
     };
-    let hooks = tango_core::hooks::HOOKS
-        .get(&core.as_ref().game_title())
-        .unwrap();
+    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     {
         let ff_state = ff_state.clone();
         core.set_traps(hooks.fastforwarder_traps(ff_state));
     }
-
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     #[cfg(windows)]

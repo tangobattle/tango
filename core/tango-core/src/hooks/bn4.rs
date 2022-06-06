@@ -14,10 +14,14 @@ lazy_static! {
         BN4::new(offsets::MEGAMANBN4BM);
     pub static ref MEGAMANBN4RS: Box<dyn hooks::Hooks + Send + Sync> =
         BN4::new(offsets::MEGAMANBN4RS);
-    pub static ref ROCK_EXE4_BM: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCK_EXE4_BM_10: Box<dyn hooks::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_BM_10);
-    pub static ref ROCK_EXE4_RS: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCK_EXE4_BM_11: Box<dyn hooks::Hooks + Send + Sync> =
+        BN4::new(offsets::ROCK_EXE4_BM_11);
+    pub static ref ROCK_EXE4_RS_10: Box<dyn hooks::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_RS_10);
+    pub static ref ROCK_EXE4_RS_11: Box<dyn hooks::Hooks + Send + Sync> =
+        BN4::new(offsets::ROCK_EXE4_RS_11);
 }
 
 impl BN4 {
