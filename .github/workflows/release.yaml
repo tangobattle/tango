@@ -20,7 +20,7 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       core/target
-                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+                  key: linux-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - uses: actions/setup-node@v1
               with:
@@ -81,7 +81,7 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       core/target
-                  key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+                  key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - uses: actions/setup-node@v1
               with:
