@@ -16,28 +16,28 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
         "ROCKEXE5_TOC" => Some(&bn5::ROCKEXE5_TOC),
         "MEGAMANBN4BM" => Some(&bn4::MEGAMANBN4BM),
         "MEGAMANBN4RS" => Some(&bn4::MEGAMANBN4RS),
-        "ROCK_EXE4_BM" => {
-            if &core.raw_read_range(0x08113abc, -1) == b"Nov 11 2003 22:00:07" {
+        "ROCK_EXE4_BM" => match core.raw_read_8(0x080000bc, -1) {
+            0x00 => {
                 log::info!("this is blue moon 1.0");
                 Some(&bn4::ROCK_EXE4_BM_10)
-            } else if &core.raw_read_range(0x08113b38, -1) == b"Jan 27 2004 21:09:17" {
+            }
+            0x01 => {
                 log::info!("this is blue moon 1.1");
                 Some(&bn4::ROCK_EXE4_BM_11)
-            } else {
-                None
             }
-        }
-        "ROCK_EXE4_RS" => {
-            if &core.raw_read_range(0x08113aa8, -1) == b"Nov 11 2003 21:54:47" {
+            _ => None,
+        },
+        "ROCK_EXE4_RS" => match core.raw_read_8(0x080000bc, -1) {
+            0x00 => {
                 log::info!("this is red sun 1.0");
                 Some(&bn4::ROCK_EXE4_RS_10)
-            } else if &core.raw_read_range(0x08113b24, -1) == b"Jan 27 2004 21:00:28" {
+            }
+            0x01 => {
                 log::info!("this is red sun 1.1");
                 Some(&bn4::ROCK_EXE4_RS_11)
-            } else {
-                None
             }
-        }
+            _ => None,
+        },
         _ => None,
     }
 }
