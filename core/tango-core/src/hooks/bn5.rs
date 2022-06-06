@@ -10,14 +10,14 @@ pub struct BN5 {
 }
 
 lazy_static! {
-    pub static ref MEGAMAN5_TP_: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::MEGAMAN5_TP_);
-    pub static ref MEGAMAN5_TC_: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::MEGAMAN5_TC_);
-    pub static ref ROCKEXE5_TOB: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::ROCKEXE5_TOB);
-    pub static ref ROCKEXE5_TOC: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::ROCKEXE5_TOC);
+    pub static ref MEGAMAN5_TP_BRBE: Box<dyn hooks::Hooks + Send + Sync> =
+        BN5::new(offsets::MEGAMAN5_TP_BRBE);
+    pub static ref MEGAMAN5_TC_BRKE: Box<dyn hooks::Hooks + Send + Sync> =
+        BN5::new(offsets::MEGAMAN5_TC_BRKE);
+    pub static ref ROCKEXE5_TOBBRBJ: Box<dyn hooks::Hooks + Send + Sync> =
+        BN5::new(offsets::ROCKEXE5_TOBBRBJ);
+    pub static ref ROCKEXE5_TOCBRKJ: Box<dyn hooks::Hooks + Send + Sync> =
+        BN5::new(offsets::ROCKEXE5_TOCBRKJ);
 }
 
 impl BN5 {

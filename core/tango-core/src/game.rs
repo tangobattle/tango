@@ -144,7 +144,10 @@ impl Game {
         let rom_vf = mgba::vfile::VFile::open(&rom_path, mgba::vfile::flags::O_RDONLY)?;
         core.as_mut().load_rom(rom_vf)?;
 
-        log::info!("loaded game: {}", core.as_ref().game_title());
+        log::info!(
+            "loaded game: {:?}",
+            std::str::from_utf8(&core.as_mut().raw_read_range::<16>(0x080000a0, -1))
+        );
 
         let save_vf = mgba::vfile::VFile::open(
             &save_path,
