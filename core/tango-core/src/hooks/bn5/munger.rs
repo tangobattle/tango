@@ -35,6 +35,7 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x0c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, match_type * 2);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, 0x01);
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
