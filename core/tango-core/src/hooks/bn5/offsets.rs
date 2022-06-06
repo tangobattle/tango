@@ -200,24 +200,24 @@ pub static MEGAMAN5_TC_: Offsets = Offsets {
 pub static ROCKEXE5_TOB: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
-        start_screen_jump_table_entry:          0, // TODO
-        start_screen_sram_unmask_ret:           0, // TODO
-        game_load_ret:                          0, // TODO
-        main_read_joyflags:                     0, // TODO
-        copy_input_data_entry:                  0, // TODO
-        copy_input_data_ret:                    0, // TODO
-        round_run_unpaused_step_cmp_retval:     0, // TODO
-        round_start_ret:                        0, // TODO
-        round_ending_ret:                       0, // TODO
-        round_end_entry:                        0, // TODO
-        round_post_increment_tick:              0, // TODO
-        battle_is_p2_tst:                       0, // TODO
-        link_is_p2_ret:                         0, // TODO
-        comm_menu_init_ret:                     0, // TODO
-        comm_menu_init_battle_entry:            0, // TODO
-        handle_sio_entry:                       0, // TODO
-        in_battle_call_handle_link_cable_input: 0, // TODO
-        comm_menu_end_battle_entry:             0, // TODO
+        start_screen_jump_table_entry:          0x0803c3f6,
+        start_screen_sram_unmask_ret:           0x08030026,
+        game_load_ret:                          0x08004a74,
+        main_read_joyflags:                     0x080003ea,
+        copy_input_data_entry:                  0x0801c7bc,
+        copy_input_data_ret:                    0x0801c884,
+        round_run_unpaused_step_cmp_retval:     0x08007464,
+        round_start_ret:                        0x0800673e,
+        round_ending_ret:                       0x0800812c,
+        round_end_entry:                        0x0800702e,
+        round_post_increment_tick:              0x08006c2e,
+        battle_is_p2_tst:                       0x0803cf34,
+        link_is_p2_ret:                         0x0803cf52,
+        comm_menu_init_ret:                     0x081347ec,
+        comm_menu_init_battle_entry:            0x081354e0,
+        handle_sio_entry:                       0x0803d030,
+        in_battle_call_handle_link_cable_input: 0x08006c12,
+        comm_menu_end_battle_entry:             0x08134708,
     },
 };
 
