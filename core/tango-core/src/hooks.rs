@@ -17,10 +17,10 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
         "MEGAMANBN4BM" => Some(&bn4::MEGAMANBN4BM),
         "MEGAMANBN4RS" => Some(&bn4::MEGAMANBN4RS),
         "ROCK_EXE4_BM" => {
-            if &core.raw_read_range(0x08113abc, -1) == b"Nov 11 2003 21:54:47" {
+            if &core.raw_read_range(0x08113abc, -1) == b"Nov 11 2003 22:00:07" {
                 log::info!("this is blue moon 1.0");
                 Some(&bn4::ROCK_EXE4_BM_10)
-            } else if &core.raw_read_range(0x08113b38, -1) == b"Jan 27 2004 21:00:28" {
+            } else if &core.raw_read_range(0x08113b38, -1) == b"Jan 27 2004 21:09:17" {
                 log::info!("this is blue moon 1.1");
                 Some(&bn4::ROCK_EXE4_BM_11)
             } else {
