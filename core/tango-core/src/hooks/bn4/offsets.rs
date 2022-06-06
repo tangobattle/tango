@@ -188,7 +188,7 @@ pub static MEGAMANBN4RS: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCK_EXE4_BM: Offsets = Offsets {
+pub static ROCK_EXE4_BM_10: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d69a,
@@ -239,7 +239,7 @@ pub static ROCK_EXE4_RS_10: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCK_EXE4_RS: Offsets = Offsets {
+pub static ROCK_EXE4_RS_11: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d6d2,
