@@ -1406,7 +1406,11 @@ export default function BattleStarter({
                           }}
                         />
                       }
-                      label={<Trans i18nKey={"play:ready"} />}
+                      label={
+                        <span style={{ userSelect: "none" }}>
+                          <Trans i18nKey={"play:ready"} />
+                        </span>
+                      }
                     />
                   </FormGroup>
                 </>
