@@ -4,7 +4,7 @@ export interface GameInfo {
 }
 
 const SRAM_START_OFFSET = 0x0100;
-const SRAM_END_OFFSET = 0x7c14;
+const SRAM_END_OFFSET = 0x7d14;
 const MASK_OFFSET = 0x1a34;
 const GAME_NAME_OFFSET = 0x29e0;
 const CHECKSUM_OFFSET = 0x29dc;
