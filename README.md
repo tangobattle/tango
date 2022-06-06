@@ -2,6 +2,21 @@
 
 Tango is rollback netplay for Mega Man Battle Network.
 
+## Supported games
+
+-   `MEGAMAN6_FXXBR6E`: Mega Man Battle Network 6: Cybeast Falzar
+-   `MEGAMAN6_GXXBR5E`: Mega Man Battle Network 6: Cybeast Gregar
+-   `ROCKEXE6_RXXBR6J`: Rockman EXE 6: Dennoujuu Falzer
+-   `ROCKEXE6_GXXBR5J`: Rockman EXE 6: Dennoujuu Glaga
+-   `MEGAMAN5_TP_BRBE`: Mega Man Battle Network 5: Team Protoman
+-   `MEGAMAN5_TC_BRKE`: Mega Man Battle Network 5: Team Colonel
+-   `ROCKEXE5_TOBBRBJ`: Rockman EXE 5: Team of Blues
+-   `ROCKEXE5_TOCBRKJ`: Rockman EXE 5: Team of Colonel
+-   `MEGAMANBN4BMB4BE`: Mega Man Battle Network 4: Blue Moon
+-   `MEGAMANBN4RSB4WE`: Mega Man Battle Network 4: Red Sun
+-   `ROCK_EXE4_BMB4BJ`: Rockman EXE 4: Tournament Blue Moon **(v1.0 only!)**
+-   `ROCK_EXE4_RSB4WJ`: Rockman EXE 4: Tournament Red Sun **(v1.1 only!)**
+
 ## Design
 
 Tango is composed of two parts: the launcher and the core. The launcher performs high-level control operations, such as starting matches and configuration, while the core performs emulation and netplay. There are additional supplementary tools (replayview, replaydump, keymaptool) that the launcher may also use for certain specialized operations.
