@@ -95,7 +95,9 @@ fn main() -> Result<(), anyhow::Error> {
             })
         },
     );
-    core.set_traps(hooks.fastforwarder_traps(ff_state.clone()));
+    let mut traps = hooks.common_traps();
+    traps.extend(hooks.fastforwarder_traps(ff_state.clone()));
+    core.set_traps(traps);
 
     let thread = mgba::thread::Thread::new(core);
     thread.start().expect("start thread");

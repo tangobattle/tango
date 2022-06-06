@@ -176,7 +176,9 @@ impl Shadow {
 
         let hooks = hooks::get(core.as_mut()).unwrap();
 
-        core.set_traps(hooks.shadow_traps(state.clone()));
+        let mut traps = hooks.common_traps();
+        traps.extend(hooks.shadow_traps(state.clone()));
+        core.set_traps(traps);
         core.as_mut().reset();
 
         Ok(Shadow { core, hooks, state })

@@ -43,6 +43,8 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
 }
 
 pub trait Hooks {
+    fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+
     fn fastforwarder_traps(
         &self,
         ff_state: fastforwarder::State,

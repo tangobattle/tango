@@ -161,11 +161,13 @@ impl Game {
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         if let Some(match_init) = match_init.as_ref() {
             let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
-            core.set_traps(hooks.primary_traps(
+            let mut traps = hooks.common_traps();
+            traps.extend(hooks.primary_traps(
                 handle.clone(),
                 joyflags.clone(),
                 facade::Facade::new(match_.clone(), cancellation_token.clone()),
             ));
+            core.set_traps(traps);
             if let Some(opponent_nickname) = match_init.settings.opponent_nickname.as_ref() {
                 hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
             }

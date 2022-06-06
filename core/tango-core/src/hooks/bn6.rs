@@ -71,12 +71,7 @@ fn step_rng(seed: u32) -> u32 {
 }
 
 impl hooks::Hooks for BN6 {
-    fn primary_traps(
-        &self,
-        handle: tokio::runtime::Handle,
-        joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        facade: facade::Facade,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let munger = self.munger.clone();
@@ -105,6 +100,16 @@ impl hooks::Hooks for BN6 {
                     }),
                 )
             },
+        ]
+    }
+
+    fn primary_traps(
+        &self,
+        handle: tokio::runtime::Handle,
+        joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
+        facade: facade::Facade,
+    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+        vec![
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -502,33 +507,6 @@ impl hooks::Hooks for BN6 {
         shadow_state: shadow::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
-            {
-                let munger = self.munger.clone();
-                (
-                    self.offsets.rom.start_screen_jump_table_entry,
-                    Box::new(move |core| {
-                        munger.skip_logo(core);
-                    }),
-                )
-            },
-            {
-                let munger = self.munger.clone();
-                (
-                    self.offsets.rom.start_screen_sram_unmask_ret,
-                    Box::new(move |core| {
-                        munger.continue_from_title_menu(core);
-                    }),
-                )
-            },
-            {
-                let munger = self.munger.clone();
-                (
-                    self.offsets.rom.game_load_ret,
-                    Box::new(move |core| {
-                        munger.open_comm_menu_from_overworld(core);
-                    }),
-                )
-            },
             {
                 let munger = self.munger.clone();
                 let shadow_state = shadow_state.clone();
