@@ -15,7 +15,7 @@ Tango is rollback netplay for Mega Man Battle Network.
 -   `MEGAMANBN4BMB4BE`: Mega Man Battle Network 4: Blue Moon
 -   `MEGAMANBN4RSB4WE`: Mega Man Battle Network 4: Red Sun
 -   `ROCK_EXE4_BMB4BJ`: Rockman EXE 4: Tournament Blue Moon **(v1.0 only!)**
--   `ROCK_EXE4_RSB4WJ`: Rockman EXE 4: Tournament Red Sun **(v1.1 only!)**
+-   `ROCK_EXE4_RSB4WJ`: Rockman EXE 4: Tournament Red Sun **(v1.0 only!)**
 
 ## Design
 
