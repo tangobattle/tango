@@ -369,7 +369,7 @@ impl hooks::Hooks for BN3 {
                 let handle = handle.clone();
                 (
                     self.offsets.rom.exchange_tx_rx_call,
-                    Box::new(move |core| {
+                    Box::new(move |mut core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -618,7 +618,7 @@ impl hooks::Hooks for BN3 {
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.exchange_tx_rx_call,
-                    Box::new(move |core| {
+                    Box::new(move |mut core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
 
@@ -795,7 +795,7 @@ impl hooks::Hooks for BN3 {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.exchange_tx_rx_call,
-                    Box::new(move |core| {
+                    Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
