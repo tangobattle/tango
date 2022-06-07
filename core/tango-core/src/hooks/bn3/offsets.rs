@@ -47,15 +47,7 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
-    /// This hooks the entry into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
-    ///
-    /// Received packets should be injected here into rx_packet_arr.
-    pub(super) copy_input_data_entry: u32,
-
-    /// This hooks the exit into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
-    ///
-    /// Packets to transmit should be injected here into tx_packet.
-    pub(super) copy_input_data_ret: u32,
+    pub(super) exchange_tx_rx_call: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
@@ -136,8 +128,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0, // TODO
         game_load_ret:                          0, // TODO
         main_read_joyflags:                     0x08000392,
-        copy_input_data_entry:                  0, // TODO
-        copy_input_data_ret:                    0, // TODO
+        exchange_tx_rx_call:                    0x080086a8,
         round_run_unpaused_step_cmp_retval:     0, // TODO
         round_start_ret:                        0, // TODO
         round_ending_ret:                       0, // TODO
