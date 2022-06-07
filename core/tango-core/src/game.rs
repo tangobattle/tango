@@ -126,7 +126,7 @@ impl Game {
 
         let window = video
             .window(
-                &window_title,
+                &format!("Tango: {}", window_title),
                 mgba::gba::SCREEN_WIDTH * 3,
                 mgba::gba::SCREEN_HEIGHT * 3,
             )
