@@ -5628,7 +5628,8 @@
     },
     "description": {
       "en": "Fang&wing\ndoubl atk\nfrenzy!",
-      "ja": "はかいするキバと\nひきさくツバサ！\nゆめのダブル攻撃"
+      "ja": "はかいするキバと\nひきさくツバサ！\nゆめのダブル攻撃",
+      "zh-Hans": "破坏之牙与切裂之翼联手，梦幻的双重攻击。"
     },
     "element": "null",
     "codes": "W",
@@ -5648,7 +5649,8 @@
     },
     "description": {
       "en": "Gregar's\nscorching\nbreath!",
-      "ja": "電脳獣グレイガが\nブレス攻撃！\nすべてをやきつくす"
+      "ja": "電脳獣グレイガが\nブレス攻撃！\nすべてをやきつくす",
+      "zh-Hans": "电脑兽麒麟的吐息攻击，烧尽一切敌人。"
     },
     "element": "null",
     "codes": "X",
@@ -5668,7 +5670,8 @@
     },
     "description": {
       "en": "Falzar's\nstorming\ntornado!",
-      "ja": "電脳獣ファルザーが\nトルネード攻撃！\nすべてをふきとばす"
+      "ja": "電脳獣ファルザーが\nトルネード攻撃！\nすべてをふきとばす",
+      "zh-Hans": "电脑兽凤凰的龙卷风攻击，吹飞一切敌人。"
     },
     "element": "null",
     "codes": "X",
