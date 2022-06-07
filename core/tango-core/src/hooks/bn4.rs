@@ -14,14 +14,14 @@ lazy_static! {
         BN4::new(offsets::MEGAMANBN4BMB4BE);
     pub static ref MEGAMANBN4RSB4WE: Box<dyn hooks::Hooks + Send + Sync> =
         BN4::new(offsets::MEGAMANBN4RSB4WE);
-    pub static ref ROCK_EXE4_BMB4BJ_10: Box<dyn hooks::Hooks + Send + Sync> =
-        BN4::new(offsets::ROCK_EXE4_BMB4BJ_10);
-    pub static ref ROCK_EXE4_BMB4BJ_11: Box<dyn hooks::Hooks + Send + Sync> =
-        BN4::new(offsets::ROCK_EXE4_BMB4BJ_11);
-    pub static ref ROCK_EXE4_RSB4WJ_10: Box<dyn hooks::Hooks + Send + Sync> =
-        BN4::new(offsets::ROCK_EXE4_RSB4WJ_10);
-    pub static ref ROCK_EXE4_RSB4WJ_11: Box<dyn hooks::Hooks + Send + Sync> =
-        BN4::new(offsets::ROCK_EXE4_RSB4WJ_11);
+    pub static ref ROCK_EXE4_BMB4BJ_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN4::new(offsets::ROCK_EXE4_BMB4BJ_00);
+    pub static ref ROCK_EXE4_BMB4BJ_01: Box<dyn hooks::Hooks + Send + Sync> =
+        BN4::new(offsets::ROCK_EXE4_BMB4BJ_01);
+    pub static ref ROCK_EXE4_RSB4WJ_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN4::new(offsets::ROCK_EXE4_RSB4WJ_00);
+    pub static ref ROCK_EXE4_RSB4WJ_01: Box<dyn hooks::Hooks + Send + Sync> =
+        BN4::new(offsets::ROCK_EXE4_RSB4WJ_01);
 }
 
 impl BN4 {

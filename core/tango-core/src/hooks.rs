@@ -17,13 +17,13 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
         b"MEGAMANBN4BMB4BE" => Some(&bn4::MEGAMANBN4BMB4BE),
         b"MEGAMANBN4RSB4WE" => Some(&bn4::MEGAMANBN4RSB4WE),
         b"ROCK_EXE4_BMB4BJ" => match core.rom_revision() {
-            0x00 => Some(&bn4::ROCK_EXE4_BMB4BJ_10),
-            0x01 => Some(&bn4::ROCK_EXE4_BMB4BJ_11),
+            0x00 => Some(&bn4::ROCK_EXE4_BMB4BJ_00),
+            0x01 => Some(&bn4::ROCK_EXE4_BMB4BJ_01),
             _ => None,
         },
         b"ROCK_EXE4_RSB4WJ" => match core.rom_revision() {
-            0x00 => Some(&bn4::ROCK_EXE4_RSB4WJ_10),
-            0x01 => Some(&bn4::ROCK_EXE4_RSB4WJ_11),
+            0x00 => Some(&bn4::ROCK_EXE4_RSB4WJ_00),
+            0x01 => Some(&bn4::ROCK_EXE4_RSB4WJ_01),
             _ => None,
         },
         _ => None,

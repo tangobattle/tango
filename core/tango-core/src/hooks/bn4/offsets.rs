@@ -188,7 +188,7 @@ pub static MEGAMANBN4RSB4WE: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCK_EXE4_BMB4BJ_10: Offsets = Offsets {
+pub static ROCK_EXE4_BMB4BJ_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d69a,
@@ -213,7 +213,7 @@ pub static ROCK_EXE4_BMB4BJ_10: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCK_EXE4_BMB4BJ_11: Offsets = Offsets {
+pub static ROCK_EXE4_BMB4BJ_01: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d6d6,
@@ -238,7 +238,7 @@ pub static ROCK_EXE4_BMB4BJ_11: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCK_EXE4_RSB4WJ_10: Offsets = Offsets {
+pub static ROCK_EXE4_RSB4WJ_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d696,
@@ -263,7 +263,7 @@ pub static ROCK_EXE4_RSB4WJ_10: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCK_EXE4_RSB4WJ_11: Offsets = Offsets {
+pub static ROCK_EXE4_RSB4WJ_01: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d6d2,
