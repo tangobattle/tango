@@ -169,7 +169,7 @@ impl hooks::Hooks for BN4 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.comm_menu_end_battle_entry,
+                    self.offsets.rom.match_end_ret,
                     Box::new(move |_core| {
                         handle.block_on(async {
                             log::info!("match ended");

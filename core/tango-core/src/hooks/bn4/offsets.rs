@@ -115,7 +115,7 @@ pub(super) struct ROMOffsets {
     /// This hooks the entrypoint to the function that is called when a match ends.
     ///
     /// Tango ends its match here.
-    pub(super) comm_menu_end_battle_entry: u32,
+    pub(super) match_end_ret: u32,
 }
 
 #[rustfmt::skip]
@@ -158,7 +158,7 @@ pub static MEGAMANBN4BMB4BE: Offsets = Offsets {
         comm_menu_init_ret:                     0x0803956a,
         handle_sio_entry:                       0x080482f8,
         in_battle_call_handle_link_cable_input: 0x08006b16,
-        comm_menu_end_battle_entry:             0x0803a794,
+        match_end_ret:                          0x08004f68,
     },
 };
 
@@ -183,7 +183,7 @@ pub static MEGAMANBN4RSB4WE: Offsets = Offsets {
         comm_menu_init_ret:                     0x08039562,
         handle_sio_entry:                       0x080482f0,
         in_battle_call_handle_link_cable_input: 0x08006b16,
-        comm_menu_end_battle_entry:             0x0803a78c,
+        match_end_ret:                          0x08004f68,
     },
 };
 
@@ -208,7 +208,7 @@ pub static ROCK_EXE4_BMB4BJ_10: Offsets = Offsets {
         comm_menu_init_ret:                     0x08039442,
         handle_sio_entry:                       0x080481b8,
         in_battle_call_handle_link_cable_input: 0x08006af2,
-        comm_menu_end_battle_entry:             0x0803a66c,
+        match_end_ret:                          0x08004f48,
     },
 };
 
@@ -233,7 +233,7 @@ pub static ROCK_EXE4_BMB4BJ_11: Offsets = Offsets {
         comm_menu_init_ret:                     0x0803947e,
         handle_sio_entry:                       0x080481f4,
         in_battle_call_handle_link_cable_input: 0x08006af6,
-        comm_menu_end_battle_entry:             0x0803a6a8,
+        match_end_ret:                          0x08004f48,
     },
 };
 
@@ -258,7 +258,7 @@ pub static ROCK_EXE4_RSB4WJ_10: Offsets = Offsets {
         comm_menu_init_ret:                     0x0803943a,
         handle_sio_entry:                       0x080481b0,
         in_battle_call_handle_link_cable_input: 0x08006af2,
-        comm_menu_end_battle_entry:             0x0803a664,
+        match_end_ret:                          0x08004f48,
     },
 };
 
@@ -283,6 +283,6 @@ pub static ROCK_EXE4_RSB4WJ_11: Offsets = Offsets {
         comm_menu_init_ret:                     0x08039476,
         handle_sio_entry:                       0x080481ec,
         in_battle_call_handle_link_cable_input: 0x08006af6,
-        comm_menu_end_battle_entry:             0x0803a6a0,
+        match_end_ret:                          0x08004f48,
     },
 };
