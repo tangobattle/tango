@@ -135,7 +135,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         start_screen_jump_table_entry:          0x0802b32c,
         start_screen_sram_unmask_ret:           0, // TODO
         game_load_ret:                          0, // TODO
-        main_read_joyflags:                     0, // TODO
+        main_read_joyflags:                     0x08000392,
         copy_input_data_entry:                  0, // TODO
         copy_input_data_ret:                    0, // TODO
         round_run_unpaused_step_cmp_retval:     0, // TODO
