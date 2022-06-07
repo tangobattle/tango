@@ -86,11 +86,6 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
-    /// This handles underlying link cable SIO in the comm menu.
-    ///
-    /// This should never be called.
-    pub(super) handle_sio_entry: u32,
-
     /// This handles in-battle link cable SIO in the comm menu.
     ///
     /// This should be skipped.
@@ -111,7 +106,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     submenu_control:        0x020093d0,
     rng1_state:             0x02009730,
     rng2_state:             0x02009800,
-    copy_data_input_state:  0x0203b368, // 0 if ok, 1 if not
+    copy_data_input_state:  0x0203b368,
 };
 
 #[derive(Clone, Copy)]
@@ -137,7 +132,6 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         battle_is_p2_tst:                       0, // TODO
         link_is_p2_ret:                         0, // TODO
         comm_menu_init_ret:                     0, // TODO
-        handle_sio_entry:                       0, // TODO
         in_battle_call_handle_link_cable_input: 0, // TODO
         match_end_ret:                          0, // TODO
     },
