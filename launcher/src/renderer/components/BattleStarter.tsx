@@ -55,7 +55,7 @@ import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/ge
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
 import { KNOWN_ROMS } from "../../rom";
-import { Editor, sniff } from "../../saveedit";
+import { Editor, EDITORS_BY_GAME_FAMILY } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { fallbackLng } from "../i18n";
 import { useConfig } from "./ConfigContext";
@@ -640,8 +640,14 @@ async function runCallback(
     await writeFile(shadowSavePath, remoteState.saveData);
 
     if (opponentGameSettings.revealSetup) {
+      const Editor =
+        EDITORS_BY_GAME_FAMILY[KNOWN_ROMS[opponentGameInfo.rom]!.gameFamily]!;
       ref.current.setRevealedSetupEditor(
-        sniff(new Uint8Array(remoteState.saveData).buffer)
+        new Editor(
+          Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
+          opponentGameInfo.rom,
+          false
+        )
       );
     }
 

@@ -8,6 +8,7 @@
     "versions": {
       "1.0": { "crc32": 3739677353 }
     },
+    "gameFamily": "bn6",
     "netplayCompatibility": "bn6"
   },
   "MEGAMAN6_GXXBR5E": {
@@ -19,6 +20,7 @@
     "versions": {
       "1.0": { "crc32": 2034573698 }
     },
+    "gameFamily": "bn6",
     "netplayCompatibility": "bn6"
   },
   "ROCKEXE6_RXXBR6J": {
@@ -30,6 +32,7 @@
     "versions": {
       "1.0": { "crc32": 771448894 }
     },
+    "gameFamily": "bn6",
     "netplayCompatibility": "exe6"
   },
   "ROCKEXE6_GXXBR5J": {
@@ -41,6 +44,7 @@
     "versions": {
       "1.0": { "crc32": 1652920714 }
     },
+    "gameFamily": "bn6",
     "netplayCompatibility": "exe6"
   },
 
@@ -53,6 +57,7 @@
     "versions": {
       "1.0": { "crc32": 2805892004 }
     },
+    "gameFamily": "bn5",
     "netplayCompatibility": "bn5"
   },
   "MEGAMAN5_TC_BRKE": {
@@ -64,6 +69,7 @@
     "versions": {
       "1.0": { "crc32": 2773677699 }
     },
+    "gameFamily": "bn5",
     "netplayCompatibility": "bn5"
   },
   "ROCKEXE5_TOBBRBJ": {
@@ -75,6 +81,7 @@
     "versions": {
       "1.0": { "crc32": 3342803904 }
     },
+    "gameFamily": "bn5",
     "netplayCompatibility": "exe5"
   },
   "ROCKEXE5_TOCBRKJ": {
@@ -86,6 +93,7 @@
     "versions": {
       "1.0": { "crc32": 377759285 }
     },
+    "gameFamily": "bn5",
     "netplayCompatibility": "exe5"
   },
 
@@ -98,6 +106,7 @@
     "versions": {
       "1.0": { "crc32": 1971996393 }
     },
+    "gameFamily": "bn4",
     "netplayCompatibility": "bn4"
   },
   "MEGAMANBN4RSB4WE": {
@@ -109,6 +118,7 @@
     "versions": {
       "1.0": { "crc32": 555772252 }
     },
+    "gameFamily": "bn4",
     "netplayCompatibility": "bn4"
   },
   "ROCK_EXE4_BMB4BJ": {
@@ -120,6 +130,7 @@
     "versions": {
       "1.0": { "crc32": 3984350032 }
     },
+    "gameFamily": "bn4",
     "netplayCompatibility": "exe4"
   },
   "ROCK_EXE4_RSB4WJ": {
@@ -132,6 +143,7 @@
       "1.0": { "crc32": 1783730301 },
       "1.1": { "crc32": 3473836805 }
     },
+    "gameFamily": "bn4",
     "netplayCompatibility": "exe4"
   }
 }

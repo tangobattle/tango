@@ -112,14 +112,14 @@ pub(super) struct ROMOffsets {
 
 #[rustfmt::skip]
 static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
-    tx_packet:              0, // TODO
-    rx_packet_arr:          0, // TODO
+    tx_packet:              0x02006d50,
+    rx_packet_arr:          0x0200a330,
     title_menu_control:     0x0200a300,
     subsystem_control:      0x020097f8,
     submenu_control:        0x020093d0,
     rng1_state:             0x02009730,
     rng2_state:             0x02009800,
-    copy_data_input_state:  0, // TODO
+    copy_data_input_state:  0x0203b368, // 0 if ok, 1 if not
 };
 
 #[derive(Clone, Copy)]

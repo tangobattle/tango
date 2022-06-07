@@ -53,6 +53,11 @@ export interface Modcard {
   }[];
 }
 
+export interface EditorClass {
+  new (buffer: ArrayBuffer, romName: string, verifyChecksum: boolean): Editor;
+  sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
+}
+
 export interface Editor {
   getROMName(): string;
   getGameFamily(): string;
@@ -117,3 +122,9 @@ export function sniff(buffer: ArrayBuffer): Editor {
   }
   throw errors;
 }
+
+export const EDITORS_BY_GAME_FAMILY: { [key: string]: EditorClass } = {
+  bn4: bn4.Editor,
+  bn5: bn5.Editor,
+  bn6: bn6.Editor,
+};

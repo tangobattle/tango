@@ -22,6 +22,7 @@ export function getROMInfo(buffer: ArrayBuffer) {
 export interface KnownROM {
   title: { [language: string]: string };
   versions: { [key: string]: { crc32: number } };
+  gameFamily: string;
   netplayCompatibility: string;
 }
 
