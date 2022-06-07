@@ -27,7 +27,7 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
             0x01 => Some(&bn4::ROCK_EXE4_RSB4WJ_01),
             _ => None,
         },
-        b"MEGA_EXE3_BLA3XE" => Some(&bn4::MEGA_EXE3_BLA3XE),
+        b"MEGA_EXE3_BLA3XE" => Some(&bn3::MEGA_EXE3_BLA3XE),
         _ => None,
     }
 }
