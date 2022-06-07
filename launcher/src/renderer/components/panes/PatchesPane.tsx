@@ -56,6 +56,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
         width: "100%",
         height: "100%",
         display: active ? "flex" : "none",
+        overflow: "auto",
       }}
     >
       {romNames.length > 0 ? (
