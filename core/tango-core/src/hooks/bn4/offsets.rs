@@ -6,9 +6,6 @@ pub(super) struct EWRAMOffsets {
     // Incoming packet.
     pub(super) rx_packet_arr: u32,
 
-    /// Start screen jump table control.
-    pub(super) start_screen_control: u32,
-
     /// Title menu jump table control.
     pub(super) title_menu_control: u32,
 
@@ -122,7 +119,6 @@ pub(super) struct ROMOffsets {
 static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     tx_packet:              0x02037bc0,
     rx_packet_arr:          0x0203ac10,
-    start_screen_control:   0x0200b220,
     title_menu_control:     0x0200b220,
     subsystem_control:      0x0200a7e0,
     submenu_control:        0x0200a450,

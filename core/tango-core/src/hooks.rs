@@ -1,5 +1,6 @@
 use crate::{facade, fastforwarder, shadow};
 
+mod bn3;
 mod bn4;
 mod bn5;
 mod bn6;
