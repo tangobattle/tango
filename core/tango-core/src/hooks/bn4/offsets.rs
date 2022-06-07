@@ -112,7 +112,7 @@ pub(super) struct ROMOffsets {
     /// This should be skipped.
     pub(super) in_battle_call_handle_link_cable_input: u32,
 
-    /// This hooks the entrypoint to the function that is called when a match ends.
+    /// This hooks the exit from the function that is called when a match ends.
     ///
     /// Tango ends its match here.
     pub(super) match_end_ret: u32,
