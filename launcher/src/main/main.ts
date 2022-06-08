@@ -92,6 +92,7 @@ function createWindow() {
     height: 600,
     minWidth: 800,
     minHeight: 600,
+    backgroundColor: "#000000",
     title: "Tango",
     fullscreenable: false,
     webPreferences: {
