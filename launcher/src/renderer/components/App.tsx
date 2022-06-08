@@ -137,7 +137,7 @@ function SetupAppBody() {
               </Typography>
               {romsScanState == "done" && activeStep == 0 ? (
                 <Alert sx={{ mb: 2 }} severity="warning">
-                  <Trans i18nKey="setup:step-2-error" />
+                  <Trans i18nKey="setup:roms-step-error" />
                 </Alert>
               ) : null}
               <Stack spacing={1} direction="row">
