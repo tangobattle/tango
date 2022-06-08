@@ -515,11 +515,7 @@ impl Round {
             }
         };
 
-        let last_committed_state = self
-            .committed_state()
-            .as_ref()
-            .expect("committed state")
-            .clone();
+        let last_committed_state = self.committed_state.take().expect("committed state");
         let last_committed_remote_input = self.last_committed_remote_input();
 
         let (committed_state, dirty_state, last_input) = match self.fastforwarder.fastforward(
@@ -577,10 +573,6 @@ impl Round {
     }
     pub fn last_committed_remote_input(&self) -> input::Input {
         self.last_committed_remote_input.clone()
-    }
-
-    pub fn committed_state(&self) -> &Option<CommittedState> {
-        &self.committed_state
     }
 
     pub fn queue_tx(&mut self, for_tick: u32, tx: Vec<u8>) {
