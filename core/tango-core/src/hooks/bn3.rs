@@ -336,41 +336,66 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let facade = facade.clone();
-            //     let munger = self.munger.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.exchange_tx_rx_call,
-            //         Box::new(move |mut core| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+            {
+                let facade = facade.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.send_and_receive_entry,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let mut round_state = match_.lock_round_state().await;
+                            let mut round_state = match_.lock_round_state().await;
 
-            //                 let round = match round_state.round.as_mut() {
-            //                     Some(round) => round,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-            //                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                            round.queue_tx(
+                                round.current_tick() + 1,
+                                munger.tx_packet(core).to_vec(),
+                            );
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.send_and_receive_ret,
+                    Box::new(move |mut core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 round.queue_tx(
-            //                     round.current_tick() + 1,
-            //                     munger.tx_packet(core).to_vec(),
-            //                 );
-            //             });
-            //         }),
-            //     )
-            // },
+                            let mut round_state = match_.lock_round_state().await;
+
+                            let _round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            core.gba_mut().cpu_mut().set_gpr(0, 3);
+                        });
+                    }),
+                )
+            },
             // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();

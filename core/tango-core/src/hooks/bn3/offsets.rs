@@ -21,6 +21,8 @@ pub(super) struct EWRAMOffsets {
     /// Shared RNG state. Must be synced.
     pub(super) rng2_state: u32,
 
+    pub(super) packet_counter: u32,
+
     /// The state of copying input data, usually returned by get_copy_data_input_state_ret.
     pub(super) copy_data_input_state: u32,
 }
@@ -47,7 +49,9 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
-    pub(super) exchange_tx_rx_call: u32,
+    pub(super) send_and_receive_entry: u32,
+
+    pub(super) send_and_receive_ret: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
@@ -101,6 +105,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     submenu_control:        0x020093d0,
     rng1_state:             0x02009730,
     rng2_state:             0x02009800,
+    packet_counter:         0x03002e4b,
     copy_data_input_state:  0x0203b368,
 };
 
@@ -118,7 +123,8 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0x08022016,
         game_load_ret:                          0x08004510,
         main_read_joyflags:                     0x08000392,
-        exchange_tx_rx_call:                    0x080086a8,
+        send_and_receive_entry:                 0x081324a4,
+        send_and_receive_ret:                   0x0813254e,
         round_run_unpaused_step_cmp_retval:     0, // TODO
         round_start_ret:                        0, // TODO
         round_ending_ret:                       0, // TODO
