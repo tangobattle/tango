@@ -20,6 +20,11 @@ const config: Configuration = {
           loader: "ts-loader",
         },
       },
+      {
+        test: /\.json5$/i,
+        loader: "json5-loader",
+        type: "javascript/auto",
+      },
     ],
   },
   node: {

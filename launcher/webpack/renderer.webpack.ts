@@ -28,6 +28,11 @@ const config: Configuration = {
         },
       },
       {
+        test: /\.json5$/i,
+        loader: "json5-loader",
+        type: "javascript/auto",
+      },
+      {
         test: /\.(png|svg|jpg|jpeg|gif)$/i,
         exclude: [path.join(rootPath, "core")],
         type: "asset/resource",

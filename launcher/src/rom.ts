@@ -3,9 +3,9 @@ import { readdir, readFile } from "fs/promises";
 import mkdirp from "mkdirp";
 import path from "path";
 
-import _roms from "./roms.json";
-
-export const KNOWN_ROMS = _roms as { [name: string]: KnownROM };
+export const KNOWN_ROMS = require("./roms.json5").default as {
+  [name: string]: KnownROM;
+};
 
 export interface ROMInfo {
   name: string;
