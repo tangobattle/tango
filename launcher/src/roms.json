@@ -145,5 +145,18 @@
     },
     "gameFamily": "bn4",
     "netplayCompatibility": "exe4"
+  },
+
+  "MEGA_EXE3_BLA3XE": {
+    "title": {
+      "en": "Mega Man Battle Network 3: Blue",
+      "ja": "バトルネットワーク ロックマンエグゼ3 BLACK（英語版）",
+      "zh-Hans": "洛克人EXE3 BLX"
+    },
+    "versions": {
+      "1.0": { "crc32": 3234300153 }
+    },
+    "gameFamily": "bn3",
+    "netplayCompatibility": "bn3"
   }
 }

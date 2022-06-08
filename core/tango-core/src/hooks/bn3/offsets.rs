@@ -86,11 +86,6 @@ pub(super) struct ROMOffsets {
     /// Here, Tango jumps directly into link battle.
     pub(super) comm_menu_init_ret: u32,
 
-    /// This handles in-battle link cable SIO in the comm menu.
-    ///
-    /// This should be skipped.
-    pub(super) in_battle_call_handle_link_cable_input: u32,
-
     /// This hooks the exit from the function that is called when a match ends.
     ///
     /// Tango ends its match here.
@@ -120,8 +115,8 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802b32c,
-        start_screen_sram_unmask_ret:           0, // TODO
-        game_load_ret:                          0, // TODO
+        start_screen_sram_unmask_ret:           0x08022016,
+        game_load_ret:                          0x08004510,
         main_read_joyflags:                     0x08000392,
         exchange_tx_rx_call:                    0x080086a8,
         round_run_unpaused_step_cmp_retval:     0, // TODO
@@ -132,7 +127,6 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         battle_is_p2_tst:                       0, // TODO
         link_is_p2_ret:                         0, // TODO
         comm_menu_init_ret:                     0, // TODO
-        in_battle_call_handle_link_cable_input: 0, // TODO
         match_end_ret:                          0, // TODO
     },
 };

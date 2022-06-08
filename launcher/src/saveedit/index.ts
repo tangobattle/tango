@@ -1,3 +1,4 @@
+import * as bn3 from "./bn3";
 import * as bn4 from "./bn4";
 import * as bn5 from "./bn5";
 import * as bn6 from "./bn6";
@@ -56,6 +57,7 @@ export interface Modcard {
 export interface EditorClass {
   new (buffer: ArrayBuffer, romName: string, verifyChecksum: boolean): Editor;
   sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
+  fromUnmaskedSRAM(buffer: ArrayBuffer): Editor;
 }
 
 export interface Editor {
@@ -103,28 +105,22 @@ export interface ModcardsEditor {
   getModcard(i: number): { id: number; enabled: boolean } | null;
 }
 
-export function sniff(buffer: ArrayBuffer): Editor {
-  const errors: { [key: string]: any } = {};
-  try {
-    return bn6.Editor.fromUnmaskedSRAM(bn6.Editor.sramDumpToRaw(buffer));
-  } catch (e) {
-    errors.bn6 = e;
-  }
-  try {
-    return bn5.Editor.fromUnmaskedSRAM(bn5.Editor.sramDumpToRaw(buffer));
-  } catch (e) {
-    errors.bn5 = e;
-  }
-  try {
-    return bn4.Editor.fromUnmaskedSRAM(bn4.Editor.sramDumpToRaw(buffer));
-  } catch (e) {
-    errors.bn4 = e;
-  }
-  throw errors;
-}
-
 export const EDITORS_BY_GAME_FAMILY: { [key: string]: EditorClass } = {
+  bn3: bn3.Editor,
   bn4: bn4.Editor,
   bn5: bn5.Editor,
   bn6: bn6.Editor,
 };
+
+export function sniff(buffer: ArrayBuffer): Editor {
+  const errors: { [key: string]: any } = {};
+  for (const k of Object.keys(EDITORS_BY_GAME_FAMILY)) {
+    const Editor = EDITORS_BY_GAME_FAMILY[k];
+    try {
+      return Editor.fromUnmaskedSRAM(Editor.sramDumpToRaw(buffer));
+    } catch (e) {
+      errors[k] = e;
+    }
+  }
+  throw errors;
+}
