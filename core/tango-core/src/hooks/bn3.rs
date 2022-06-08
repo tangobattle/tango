@@ -97,55 +97,50 @@ impl hooks::Hooks for BN3 {
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     let munger = self.munger.clone();
-            //     (
-            //         self.offsets.rom.comm_menu_init_ret,
-            //         Box::new(move |core| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.comm_menu_init_ret,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let mut rng = match_.lock_rng().await;
+                            let mut rng = match_.lock_rng().await;
 
-            //                 // rng1 is the local rng, it should not be synced.
-            //                 // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-            //                 let offerer_rng1_state = generate_rng1_state(&mut *rng);
-            //                 let answerer_rng1_state = generate_rng1_state(&mut *rng);
-            //                 munger.set_rng1_state(
-            //                     core,
-            //                     if match_.is_offerer() {
-            //                         offerer_rng1_state
-            //                     } else {
-            //                         answerer_rng1_state
-            //                     },
-            //                 );
+                            // rng1 is the local rng, it should not be synced.
+                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                            munger.set_rng1_state(
+                                core,
+                                if match_.is_offerer() {
+                                    offerer_rng1_state
+                                } else {
+                                    answerer_rng1_state
+                                },
+                            );
 
-            //                 // rng2 is the shared rng, it must be synced.
-            //                 munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                            // rng2 is the shared rng, it must be synced.
+                            munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-            //                 let (battle_settings, background) =
-            //                     random_battle_settings_and_background(
-            //                         &mut *rng,
-            //                         match_.match_type(),
-            //                     );
+                            let (battle_settings, background) =
+                                random_battle_settings_and_background(
+                                    &mut *rng,
+                                    match_.match_type(),
+                                );
 
-            //                 munger.start_battle_from_comm_menu(
-            //                     core,
-            //                     match_.match_type(),
-            //                     battle_settings,
-            //                     background,
-            //                 );
-            //             });
-            //         }),
-            //     )
-            // },
+                            munger.start_battle_from_comm_menu(core);
+                        });
+                    }),
+                )
+            },
             // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();
