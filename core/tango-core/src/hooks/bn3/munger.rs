@@ -28,6 +28,7 @@ impl Munger {
     pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x30);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         // TODO
     }
 

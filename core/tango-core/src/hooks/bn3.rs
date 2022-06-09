@@ -130,25 +130,22 @@ impl hooks::Hooks for BN3 {
                             // rng2 is the shared rng, it must be synced.
                             munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-                            let (battle_settings, background) =
-                                random_battle_settings_and_background(
-                                    &mut *rng,
-                                    match_.match_type(),
-                                );
-
                             munger.start_battle_from_comm_menu(core);
                         });
                     }),
                 )
             },
-            {
-                (
-                    0x0803e8fc,
-                    Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 8);
-                    }),
-                )
-            },
+            // {
+            //     let offsets = self.offsets.clone();
+            //     let placeholder_rx = self.placeholder_rx();
+            //     (
+            //         0x0803e8fc,
+            //         Box::new(move |mut core| {
+            //             core.gba_mut().cpu_mut().set_gpr(0, 0);
+            //             core.raw_write_range(offsets.ewram.tx_packet, -1, &placeholder_rx);
+            //         }),
+            //     )
+            // },
             // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();
@@ -281,71 +278,72 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let facade = facade.clone();
-            //     let munger = self.munger.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.main_read_joyflags,
-            //         Box::new(move |core| {
-            //             handle.block_on(async {
-            //                 'abort: loop {
-            //                     let match_ = match facade.match_().await {
-            //                         Some(match_) => match_,
-            //                         None => {
-            //                             return;
-            //                         }
-            //                     };
-
-            //                     let mut round_state = match_.lock_round_state().await;
-
-            //                     let round = match round_state.round.as_mut() {
-            //                         Some(round) => round,
-            //                         None => {
-            //                             return;
-            //                         }
-            //                     };
-
-            //                     if !round.has_committed_state() {
-            //                         round.set_first_committed_state(
-            //                             core.save_state().expect("save state"),
-            //                             match_
-            //                                 .advance_shadow_until_first_committed_state()
-            //                                 .await
-            //                                 .expect("shadow save state"),
-            //                         );
-            //                         log::info!(
-            //                             "primary rng1 state: {:08x}",
-            //                             munger.rng1_state(core)
-            //                         );
-            //                         log::info!(
-            //                             "primary rng2 state: {:08x}",
-            //                             munger.rng2_state(core)
-            //                         );
-            //                         log::info!(
-            //                             "battle state committed on {}",
-            //                             round.current_tick()
-            //                         );
-            //                     }
-
-            //                     if !round
-            //                         .add_local_input_and_fastforward(
-            //                             core,
-            //                             joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-            //                         )
-            //                         .await
-            //                     {
-            //                         break 'abort;
-            //                     }
-            //                     return;
-            //                 }
-            //                 facade.abort_match().await;
-            //             });
-            //         }),
-            //     )
-            // },
             {
                 let facade = facade.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.main_read_joyflags,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            'abort: loop {
+                                let match_ = match facade.match_().await {
+                                    Some(match_) => match_,
+                                    None => {
+                                        return;
+                                    }
+                                };
+
+                                let mut round_state = match_.lock_round_state().await;
+
+                                let round = match round_state.round.as_mut() {
+                                    Some(round) => round,
+                                    None => {
+                                        return;
+                                    }
+                                };
+
+                                if !round.has_committed_state() {
+                                    round.set_first_committed_state(
+                                        core.save_state().expect("save state"),
+                                        match_
+                                            .advance_shadow_until_first_committed_state()
+                                            .await
+                                            .expect("shadow save state"),
+                                    );
+                                    log::info!(
+                                        "primary rng1 state: {:08x}",
+                                        munger.rng1_state(core)
+                                    );
+                                    log::info!(
+                                        "primary rng2 state: {:08x}",
+                                        munger.rng2_state(core)
+                                    );
+                                    log::info!(
+                                        "battle state committed on {}",
+                                        round.current_tick()
+                                    );
+                                }
+
+                                if !round
+                                    .add_local_input_and_fastforward(
+                                        core,
+                                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                                    )
+                                    .await
+                                {
+                                    break 'abort;
+                                }
+                                return;
+                            }
+                            facade.abort_match().await;
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let placeholder_rx = self.placeholder_rx();
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
@@ -364,6 +362,16 @@ impl hooks::Hooks for BN3 {
                             let round = match round_state.round.as_mut() {
                                 Some(round) => round,
                                 None => {
+                                    munger.set_rx_packet(
+                                        core,
+                                        0,
+                                        &placeholder_rx.clone().try_into().unwrap(),
+                                    );
+                                    munger.set_rx_packet(
+                                        core,
+                                        1,
+                                        &placeholder_rx.clone().try_into().unwrap(),
+                                    );
                                     return;
                                 }
                             };
@@ -377,30 +385,10 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.send_and_receive_ret,
                     Box::new(move |mut core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-
-                            let _round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            core.gba_mut().cpu_mut().set_gpr(0, 3);
-                        });
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
                     }),
                 )
             },
@@ -442,44 +430,34 @@ impl hooks::Hooks for BN3 {
         shadow_state: shadow::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
-            // {
-            //     let munger = self.munger.clone();
-            //     let shadow_state = shadow_state.clone();
-            //     (
-            //         self.offsets.rom.comm_menu_init_ret,
-            //         Box::new(move |core| {
-            //             let mut rng = shadow_state.lock_rng();
+            {
+                let munger = self.munger.clone();
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.comm_menu_init_ret,
+                    Box::new(move |core| {
+                        let mut rng = shadow_state.lock_rng();
 
-            //             // rng1 is the local rng, it should not be synced.
-            //             // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-            //             let offerer_rng1_state = generate_rng1_state(&mut *rng);
-            //             let answerer_rng1_state = generate_rng1_state(&mut *rng);
-            //             munger.set_rng1_state(
-            //                 core,
-            //                 if shadow_state.is_offerer() {
-            //                     answerer_rng1_state
-            //                 } else {
-            //                     offerer_rng1_state
-            //                 },
-            //             );
+                        // rng1 is the local rng, it should not be synced.
+                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                        munger.set_rng1_state(
+                            core,
+                            if shadow_state.is_offerer() {
+                                answerer_rng1_state
+                            } else {
+                                offerer_rng1_state
+                            },
+                        );
 
-            //             // rng2 is the shared rng, it must be synced.
-            //             munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                        // rng2 is the shared rng, it must be synced.
+                        munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-            //             let (battle_settings, background) = random_battle_settings_and_background(
-            //                 &mut *rng,
-            //                 shadow_state.match_type(),
-            //             );
-
-            //             munger.start_battle_from_comm_menu(
-            //                 core,
-            //                 shadow_state.match_type(),
-            //                 battle_settings,
-            //                 background,
-            //             );
-            //         }),
-            //     )
-            // },
+                        munger.start_battle_from_comm_menu(core);
+                    }),
+                )
+            },
             // {
             //     let shadow_state = shadow_state.clone();
             //     (
@@ -544,129 +522,137 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     let munger = self.munger.clone();
-            //     (
-            //         self.offsets.rom.main_read_joyflags,
-            //         Box::new(move |mut core| {
-            //             let mut round_state = shadow_state.lock_round_state();
-            //             let round = match round_state.round.as_mut() {
-            //                 Some(round) => round,
-            //                 None => {
-            //                     return;
-            //                 }
-            //             };
+            {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.main_read_joyflags,
+                    Box::new(move |mut core| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let round = match round_state.round.as_mut() {
+                            Some(round) => round,
+                            None => {
+                                return;
+                            }
+                        };
 
-            //             if !round.has_first_committed_state() {
-            //                 // HACK: For some inexplicable reason, we don't always start on tick 0.
-            //                 round.set_first_committed_state(core.save_state().expect("save state"));
-            //                 log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
-            //                 log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
-            //                 log::info!("shadow state committed on {}", round.current_tick());
-            //                 return;
-            //             }
+                        if !round.has_first_committed_state() {
+                            // HACK: For some inexplicable reason, we don't always start on tick 0.
+                            round.set_first_committed_state(core.save_state().expect("save state"));
+                            log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
+                            log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
+                            log::info!("shadow state committed on {}", round.current_tick());
+                            return;
+                        }
 
-            //             if let Some(ip) = round.take_in_input_pair() {
-            //                 if ip.local.local_tick != ip.remote.local_tick {
-            //                     shadow_state.set_anyhow_error(anyhow::anyhow!(
-            //                         "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
-            //                         round.current_tick(),
-            //                         ip.local.local_tick,
-            //                         ip.remote.local_tick
-            //                     ));
-            //                     return;
-            //                 }
+                        if let Some(ip) = round.take_in_input_pair() {
+                            if ip.local.local_tick != ip.remote.local_tick {
+                                shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                    "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
+                                    round.current_tick(),
+                                    ip.local.local_tick,
+                                    ip.remote.local_tick
+                                ));
+                                return;
+                            }
 
-            //                 if ip.local.local_tick != round.current_tick() {
-            //                     shadow_state.set_anyhow_error(anyhow::anyhow!(
-            //                         "read joyflags: input tick != in battle tick: {} != {}",
-            //                         ip.local.local_tick,
-            //                         round.current_tick(),
-            //                     ));
-            //                     return;
-            //                 }
+                            if ip.local.local_tick != round.current_tick() {
+                                shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                    "read joyflags: input tick != in battle tick: {} != {}",
+                                    ip.local.local_tick,
+                                    round.current_tick(),
+                                ));
+                                return;
+                            }
 
-            //                 round.set_out_input_pair(input::Pair {
-            //                     local: ip.local,
-            //                     remote: input::Input {
-            //                         local_tick: ip.remote.local_tick,
-            //                         remote_tick: ip.remote.remote_tick,
-            //                         joyflags: ip.remote.joyflags,
-            //                         rx: munger.tx_packet(core).to_vec(),
-            //                     },
-            //                 });
+                            round.set_out_input_pair(input::Pair {
+                                local: ip.local,
+                                remote: input::Input {
+                                    local_tick: ip.remote.local_tick,
+                                    remote_tick: ip.remote.remote_tick,
+                                    joyflags: ip.remote.joyflags,
+                                    rx: munger.tx_packet(core).to_vec(),
+                                },
+                            });
 
-            //                 core.gba_mut()
-            //                     .cpu_mut()
-            //                     .set_gpr(4, (ip.remote.joyflags | 0xfc00) as i32);
-            //             }
+                            core.gba_mut()
+                                .cpu_mut()
+                                .set_gpr(4, (ip.remote.joyflags | 0xfc00) as i32);
+                        }
 
-            //             if round.take_input_injected() {
-            //                 shadow_state.set_applied_state(core.save_state().expect("save state"));
-            //             }
-            //         }),
-            //     )
-            // },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     let munger = self.munger.clone();
-            //     (
-            //         self.offsets.rom.exchange_tx_rx_call,
-            //         Box::new(move |mut core| {
-            //             let mut round_state = shadow_state.lock_round_state();
-            //             let round = round_state.round.as_mut().expect("round");
+                        if round.take_input_injected() {
+                            shadow_state.set_applied_state(core.save_state().expect("save state"));
+                        }
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.send_and_receive_entry,
+                    Box::new(move |mut core| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let round = round_state.round.as_mut().expect("round");
 
-            //             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-            //             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-            //             let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
-            //                 ip
-            //             } else {
-            //                 return;
-            //             };
+                        let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
+                            ip
+                        } else {
+                            return;
+                        };
 
-            //             // HACK: This is required if the emulator advances beyond read joyflags and runs this function again, but is missing input data.
-            //             // We permit this for one tick only, but really we should just not be able to get into this situation in the first place.
-            //             if ip.local.local_tick + 1 == round.current_tick() {
-            //                 return;
-            //             }
+                        // HACK: This is required if the emulator advances beyond read joyflags and runs this function again, but is missing input data.
+                        // We permit this for one tick only, but really we should just not be able to get into this situation in the first place.
+                        if ip.local.local_tick + 1 == round.current_tick() {
+                            return;
+                        }
 
-            //             if ip.local.local_tick != ip.remote.local_tick {
-            //                 shadow_state.set_anyhow_error(anyhow::anyhow!(
-            //                     "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-            //                     round.current_tick(),
-            //                     ip.local.local_tick,
-            //                     ip.remote.local_tick
-            //                 ));
-            //                 return;
-            //             }
+                        if ip.local.local_tick != ip.remote.local_tick {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                                round.current_tick(),
+                                ip.local.local_tick,
+                                ip.remote.local_tick
+                            ));
+                            return;
+                        }
 
-            //             if ip.local.local_tick != round.current_tick() {
-            //                 shadow_state.set_anyhow_error(anyhow::anyhow!(
-            //                     "copy input data: input tick != in battle tick: {} != {}",
-            //                     ip.local.local_tick,
-            //                     round.current_tick(),
-            //                 ));
-            //                 return;
-            //             }
+                        if ip.local.local_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: input tick != in battle tick: {} != {}",
+                                ip.local.local_tick,
+                                round.current_tick(),
+                            ));
+                            return;
+                        }
 
-            //             munger.set_rx_packet(
-            //                 core,
-            //                 round.local_player_index() as u32,
-            //                 &ip.local.rx.clone().try_into().unwrap(),
-            //             );
+                        munger.set_rx_packet(
+                            core,
+                            round.local_player_index() as u32,
+                            &ip.local.rx.clone().try_into().unwrap(),
+                        );
 
-            //             munger.set_rx_packet(
-            //                 core,
-            //                 round.remote_player_index() as u32,
-            //                 &ip.remote.rx.clone().try_into().unwrap(),
-            //             );
+                        munger.set_rx_packet(
+                            core,
+                            round.remote_player_index() as u32,
+                            &ip.remote.rx.clone().try_into().unwrap(),
+                        );
 
-            //             round.set_input_injected();
-            //         }),
-            //     )
-            // },
+                        round.set_input_injected();
+                    }),
+                )
+            },
+            {
+                (
+                    self.offsets.rom.send_and_receive_ret,
+                    Box::new(move |mut core| {
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
+                    }),
+                )
+            },
             // {
             //     let shadow_state = shadow_state.clone();
             //     (
@@ -724,107 +710,112 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let ff_state = ff_state.clone();
-            //     (
-            //         self.offsets.rom.main_read_joyflags,
-            //         Box::new(move |mut core| {
-            //             let current_tick = ff_state.current_tick();
+            {
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.main_read_joyflags,
+                    Box::new(move |mut core| {
+                        let current_tick = ff_state.current_tick();
 
-            //             if current_tick == ff_state.commit_time() {
-            //                 ff_state.set_committed_state(
-            //                     core.save_state().expect("save committed state"),
-            //                 );
-            //             }
+                        if current_tick == ff_state.commit_time() {
+                            ff_state.set_committed_state(
+                                core.save_state().expect("save committed state"),
+                            );
+                        }
 
-            //             let ip = match ff_state.peek_input_pair() {
-            //                 Some(ip) => ip,
-            //                 None => {
-            //                     ff_state.on_inputs_exhausted();
-            //                     return;
-            //                 }
-            //             };
+                        let ip = match ff_state.peek_input_pair() {
+                            Some(ip) => ip,
+                            None => {
+                                ff_state.on_inputs_exhausted();
+                                return;
+                            }
+                        };
 
-            //             if ip.local.local_tick != ip.remote.local_tick {
-            //                 ff_state.set_anyhow_error(anyhow::anyhow!(
-            //                     "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
-            //                     current_tick,
-            //                     ip.local.local_tick,
-            //                     ip.remote.local_tick
-            //                 ));
-            //                 return;
-            //             }
+                        if ip.local.local_tick != ip.remote.local_tick {
+                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                                "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
+                                current_tick,
+                                ip.local.local_tick,
+                                ip.remote.local_tick
+                            ));
+                            return;
+                        }
 
-            //             if ip.local.local_tick != current_tick {
-            //                 ff_state.set_anyhow_error(anyhow::anyhow!(
-            //                     "read joyflags: input tick != in battle tick: {} != {}",
-            //                     ip.local.local_tick,
-            //                     current_tick,
-            //                 ));
-            //                 return;
-            //             }
+                        if ip.local.local_tick != current_tick {
+                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                                "read joyflags: input tick != in battle tick: {} != {}",
+                                ip.local.local_tick,
+                                current_tick,
+                            ));
+                            return;
+                        }
 
-            //             core.gba_mut()
-            //                 .cpu_mut()
-            //                 .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+                        core.gba_mut()
+                            .cpu_mut()
+                            .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-            //             if current_tick == ff_state.dirty_time() {
-            //                 ff_state.set_dirty_state(core.save_state().expect("save dirty state"));
-            //             }
-            //         }),
-            //     )
-            // },
-            // {
-            //     let munger = self.munger.clone();
-            //     let ff_state = ff_state.clone();
-            //     (
-            //         self.offsets.rom.exchange_tx_rx_call,
-            //         Box::new(move |mut core| {
-            //             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-            //             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        if current_tick == ff_state.dirty_time() {
+                            ff_state.set_dirty_state(core.save_state().expect("save dirty state"));
+                        }
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.send_and_receive_entry,
+                    Box::new(move |mut core| {
+                        let current_tick = ff_state.current_tick();
 
-            //             let current_tick = ff_state.current_tick();
+                        let ip = match ff_state.pop_input_pair() {
+                            Some(ip) => ip,
+                            None => {
+                                return;
+                            }
+                        };
 
-            //             let ip = match ff_state.pop_input_pair() {
-            //                 Some(ip) => ip,
-            //                 None => {
-            //                     return;
-            //                 }
-            //             };
+                        if ip.local.local_tick != ip.remote.local_tick {
+                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                                current_tick,
+                                ip.local.local_tick,
+                                ip.remote.local_tick
+                            ));
+                            return;
+                        }
 
-            //             if ip.local.local_tick != ip.remote.local_tick {
-            //                 ff_state.set_anyhow_error(anyhow::anyhow!(
-            //                     "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-            //                     current_tick,
-            //                     ip.local.local_tick,
-            //                     ip.remote.local_tick
-            //                 ));
-            //                 return;
-            //             }
+                        if ip.local.local_tick != current_tick {
+                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: input tick != in battle tick: {} != {}",
+                                ip.local.local_tick,
+                                current_tick,
+                            ));
+                            return;
+                        }
 
-            //             if ip.local.local_tick != current_tick {
-            //                 ff_state.set_anyhow_error(anyhow::anyhow!(
-            //                     "copy input data: input tick != in battle tick: {} != {}",
-            //                     ip.local.local_tick,
-            //                     current_tick,
-            //                 ));
-            //                 return;
-            //             }
+                        munger.set_rx_packet(
+                            core,
+                            ff_state.local_player_index() as u32,
+                            &ip.local.rx.try_into().unwrap(),
+                        );
 
-            //             munger.set_rx_packet(
-            //                 core,
-            //                 ff_state.local_player_index() as u32,
-            //                 &ip.local.rx.try_into().unwrap(),
-            //             );
-
-            //             munger.set_rx_packet(
-            //                 core,
-            //                 ff_state.remote_player_index() as u32,
-            //                 &ip.remote.rx.try_into().unwrap(),
-            //             );
-            //         }),
-            //     )
-            // },
+                        munger.set_rx_packet(
+                            core,
+                            ff_state.remote_player_index() as u32,
+                            &ip.remote.rx.try_into().unwrap(),
+                        );
+                    }),
+                )
+            },
+            {
+                (
+                    self.offsets.rom.send_and_receive_ret,
+                    Box::new(move |mut core| {
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
+                    }),
+                )
+            },
             // {
             //     let ff_state = ff_state.clone();
             //     (
@@ -839,7 +830,7 @@ impl hooks::Hooks for BN3 {
 
     fn placeholder_rx(&self) -> Vec<u8> {
         vec![
-            0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x01, 0x00, 0x00, 0xFF, 0x06, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00,
         ]
     }

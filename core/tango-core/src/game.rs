@@ -375,7 +375,15 @@ impl Game {
                 }
             }
 
-            assert!(!thread_handle.has_crashed(), "mgba thread crashed");
+            if thread_handle.has_crashed() {
+                // HACK: No better way to lock the core.
+                let audio_guard = thread_handle.lock_audio();
+                panic!(
+                    "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
+                    audio_guard.core().gba().cpu().gpr(14),
+                    audio_guard.core().gba().cpu().thumb_pc()
+                );
+            }
 
             texture
                 .update(
