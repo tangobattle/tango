@@ -48,6 +48,10 @@ impl Munger {
         core.raw_read_32(self.offsets.ewram.rng2_state, -1)
     }
 
+    pub(super) fn set_tx_packet(&self, mut core: mgba::core::CoreMutRef, packet: &[u8; 0x10]) {
+        core.raw_write_range(self.offsets.ewram.tx_packet, -1, packet)
+    }
+
     pub(super) fn set_rx_packet(
         &self,
         mut core: mgba::core::CoreMutRef,
