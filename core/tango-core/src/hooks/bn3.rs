@@ -247,7 +247,7 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.get_sio_multiplayer_id_ret,
+                    self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -513,7 +513,7 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.get_sio_multiplayer_id_ret,
+                    self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         let round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_ref() {
@@ -721,7 +721,7 @@ impl hooks::Hooks for BN3 {
             {
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.get_sio_multiplayer_id_ret,
+                    self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         core.gba_mut()
                             .cpu_mut()
