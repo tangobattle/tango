@@ -145,6 +145,14 @@ impl Handle {
         AudioGuard { sync, thread }
     }
 
+    pub fn has_crashed(&self) -> bool {
+        unsafe { mgba_sys::mCoreThreadHasCrashed(self.ptr) }
+    }
+
+    pub fn has_exited(&self) -> bool {
+        unsafe { mgba_sys::mCoreThreadHasExited(self.ptr) }
+    }
+
     pub fn end(&self) {
         unsafe { mgba_sys::mCoreThreadEnd(self.ptr) }
     }

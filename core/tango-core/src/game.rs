@@ -96,7 +96,7 @@ pub struct Game {
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     input_mapping: InputMapping,
-    _thread: mgba::thread::Thread,
+    thread: mgba::thread::Thread,
 }
 
 impl Game {
@@ -285,7 +285,7 @@ impl Game {
             vbuf,
             joyflags,
             match_: Arc::downgrade(&match_),
-            _thread: thread,
+            thread,
         })
     }
 
@@ -337,6 +337,8 @@ impl Game {
         }
         let mut input_state = sdl2_input_helper::State::new();
 
+        let thread_handle = self.thread.handle();
+
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
                 match event {
@@ -372,6 +374,8 @@ impl Game {
                     );
                 }
             }
+
+            assert!(!thread_handle.has_crashed(), "mgba thread crashed");
 
             texture
                 .update(

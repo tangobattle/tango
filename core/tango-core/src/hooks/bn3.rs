@@ -141,6 +141,14 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
+            {
+                (
+                    0x0803e8fc,
+                    Box::new(move |mut core| {
+                        core.gba_mut().cpu_mut().set_gpr(0, 8);
+                    }),
+                )
+            },
             // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();
