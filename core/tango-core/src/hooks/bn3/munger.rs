@@ -27,7 +27,7 @@ impl Munger {
 
     pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x30);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x2c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         // TODO
     }
@@ -46,10 +46,6 @@ impl Munger {
 
     pub(super) fn rng2_state(&self, mut core: mgba::core::CoreMutRef) -> u32 {
         core.raw_read_32(self.offsets.ewram.rng2_state, -1)
-    }
-
-    pub(super) fn set_tx_packet(&self, mut core: mgba::core::CoreMutRef, packet: &[u8; 0x10]) {
-        core.raw_write_range(self.offsets.ewram.tx_packet, -1, packet)
     }
 
     pub(super) fn set_rx_packet(

@@ -362,10 +362,6 @@ impl hooks::Hooks for BN3 {
                             let round = match round_state.round.as_mut() {
                                 Some(round) => round,
                                 None => {
-                                    munger.set_tx_packet(
-                                        core,
-                                        &placeholder_rx.clone().try_into().unwrap(),
-                                    );
                                     munger.set_rx_packet(
                                         core,
                                         0,
