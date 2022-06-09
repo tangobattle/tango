@@ -245,6 +245,35 @@ impl hooks::Hooks for BN3 {
             },
             {
                 let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.get_sio_multiplayer_id_ret,
+                    Box::new(move |mut core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let round_state = match_.lock_round_state().await;
+                            let round = match round_state.round.as_ref() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            core.gba_mut()
+                                .cpu_mut()
+                                .set_gpr(0, round.local_player_index() as i32);
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
@@ -472,8 +501,27 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.battle_is_p2_ret,
                     Box::new(move |mut core| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_mut().expect("round");
+                        let round_state = shadow_state.lock_round_state();
+                        let round = round_state.round.as_ref().expect("round");
+
+                        core.gba_mut()
+                            .cpu_mut()
+                            .set_gpr(0, round.remote_player_index() as i32);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.get_sio_multiplayer_id_ret,
+                    Box::new(move |mut core| {
+                        let round_state = shadow_state.lock_round_state();
+                        let round = match round_state.round.as_ref() {
+                            Some(round) => round,
+                            None => {
+                                return;
+                            }
+                        };
 
                         core.gba_mut()
                             .cpu_mut()
@@ -663,6 +711,17 @@ impl hooks::Hooks for BN3 {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.battle_is_p2_ret,
+                    Box::new(move |mut core| {
+                        core.gba_mut()
+                            .cpu_mut()
+                            .set_gpr(0, ff_state.local_player_index() as i32);
+                    }),
+                )
+            },
+            {
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.get_sio_multiplayer_id_ret,
                     Box::new(move |mut core| {
                         core.gba_mut()
                             .cpu_mut()

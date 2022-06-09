@@ -73,13 +73,20 @@ pub(super) struct ROMOffsets {
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
 
+    /// This hooks the point before the battle jump table is called.
+    ///
+    /// HACK: For some reason, without this hook, mGBA may incorrectly execute the jump table twice. Why this is the case I have no idea.
     pub(super) round_call_jump_table_pre: u32,
+
+    /// This hooks the point after the battle jump table is called.
     pub(super) round_call_jump_table_post: u32,
 
     /// This hooks the point determining if the player is player 2 or not.
     ///
     /// r0 should be set to the local player index.
     pub(super) battle_is_p2_ret: u32,
+
+    pub(super) get_sio_multiplayer_id_ret: u32,
 
     /// This is the entry point to the comm menu.
     ///
@@ -128,6 +135,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         round_call_jump_table_pre:              0x0800859a,
         round_call_jump_table_post:             0x0800859c,
         battle_is_p2_ret:                       0x08008c6a,
+        get_sio_multiplayer_id_ret:             0x0800354c,
         comm_menu_init_ret:                     0x0803e08a,
         match_end_ret:                          0, // TODO
     },
