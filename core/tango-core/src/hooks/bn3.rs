@@ -319,7 +319,6 @@ impl hooks::Hooks for BN3 {
                                     );
                                 }
 
-                                log::info!("read joyflags: {}", round.current_tick());
                                 if !round
                                     .add_local_input_and_fastforward(
                                         core,
@@ -329,7 +328,6 @@ impl hooks::Hooks for BN3 {
                                 {
                                     break 'abort;
                                 }
-                                log::info!("fastforward complete");
                                 return;
                             }
                             facade.abort_match().await;
@@ -343,9 +341,13 @@ impl hooks::Hooks for BN3 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.send_and_receive_entry,
-                    Box::new(move |core| {
+                    self.offsets.rom.send_and_receive_entry_post_prolog,
+                    Box::new(move |mut core| {
                         handle.block_on(async {
+                            let pc = core.as_ref().gba().cpu().thumb_pc();
+                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa4);
+                            core.gba_mut().cpu_mut().set_gpr(0, 3);
+
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
                                 None => {
@@ -372,26 +374,18 @@ impl hooks::Hooks for BN3 {
                                 }
                             };
 
+                            log::info!(
+                                "primary: s&r: {}, lr = {:08x}",
+                                round.current_tick(),
+                                core.as_ref().gba().cpu().gpr(14)
+                            );
+
                             round.queue_tx(
                                 round.current_tick() + 1,
                                 munger.tx_packet(core).to_vec(),
                             );
                         });
                     }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.send_and_receive_ret,
-                    Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 3);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.round_call_jump_table_pre,
-                    Box::new(move |_core| {}),
                 )
             },
             {
@@ -420,6 +414,10 @@ impl hooks::Hooks for BN3 {
                             }
 
                             round.increment_current_tick();
+                            log::info!(
+                                "primary: round_call_jump_table_post: {}",
+                                round.current_tick()
+                            );
                         });
                     }),
                 )
@@ -598,8 +596,12 @@ impl hooks::Hooks for BN3 {
                 let placeholder_rx = self.placeholder_rx();
                 let munger = self.munger.clone();
                 (
-                    self.offsets.rom.send_and_receive_entry,
-                    Box::new(move |core| {
+                    self.offsets.rom.send_and_receive_entry_post_prolog,
+                    Box::new(move |mut core| {
+                        let pc = core.as_ref().gba().cpu().thumb_pc();
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa4);
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
+
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -662,22 +664,6 @@ impl hooks::Hooks for BN3 {
                         );
 
                         round.set_input_injected();
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.send_and_receive_ret,
-                    Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 3);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.round_call_jump_table_pre,
-                    Box::new(move |_core| {
-                        // HACK: This is a load bearing hook. Don't remove it or you'll be sad.
                     }),
                 )
             },
@@ -792,8 +778,12 @@ impl hooks::Hooks for BN3 {
                 let munger = self.munger.clone();
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.send_and_receive_entry,
-                    Box::new(move |core| {
+                    self.offsets.rom.send_and_receive_entry_post_prolog,
+                    Box::new(move |mut core| {
+                        let pc = core.as_ref().gba().cpu().thumb_pc();
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa4);
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
+
                         let current_tick = ff_state.current_tick();
 
                         let ip = match ff_state.pop_input_pair() {
@@ -834,20 +824,6 @@ impl hooks::Hooks for BN3 {
                             &ip.remote.rx.try_into().unwrap(),
                         );
                     }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.send_and_receive_ret,
-                    Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 3);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.round_call_jump_table_pre,
-                    Box::new(move |_core| {}),
                 )
             },
             {

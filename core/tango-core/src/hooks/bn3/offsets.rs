@@ -49,9 +49,7 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
-    pub(super) send_and_receive_entry: u32,
-
-    pub(super) send_and_receive_ret: u32,
+    pub(super) send_and_receive_entry_post_prolog: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
@@ -72,11 +70,6 @@ pub(super) struct ROMOffsets {
 
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
-
-    /// This hooks the point before the battle jump table is called.
-    ///
-    /// HACK: For some reason, without this hook, mGBA may incorrectly execute the jump table twice. Why this is the case I have no idea.
-    pub(super) round_call_jump_table_pre: u32,
 
     /// This hooks the point after the battle jump table is called.
     pub(super) round_call_jump_table_post: u32,
@@ -129,16 +122,14 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         start_screen_sram_unmask_ret:           0x08022016,
         game_load_ret:                          0x08004510,
         main_read_joyflags:                     0x08000392,
-        send_and_receive_entry:                 0x081324a4,
-        send_and_receive_ret:                   0x0813254e,
+        send_and_receive_entry_post_prolog:     0x081324a6,
         round_run_unpaused_step_cmp_retval:     0, // TODO
         round_start_ret:                        0x080059a8,
         round_ending_ret:                       0, // TODO
         round_end_entry:                        0, // TODO
-        round_call_jump_table_pre:              0x0800859a,
         round_call_jump_table_post:             0x0800859c,
         battle_is_p2_ret:                       0x08008c6a,
-        link_is_p2_ret:             0x0800354c,
+        link_is_p2_ret:                         0x0800354c,
         comm_menu_init_ret:                     0x0803e08a,
         match_end_ret:                          0, // TODO
     },
