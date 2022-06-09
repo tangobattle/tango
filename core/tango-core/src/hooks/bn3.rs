@@ -357,36 +357,36 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.round_call_jump_table_ret,
-            //         Box::new(move |_core| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_call_jump_table_ret,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let mut round_state = match_.lock_round_state().await;
-            //                 let round = if let Some(round) = round_state.round.as_mut() {
-            //                     round
-            //                 } else {
-            //                     return;
-            //                 };
+                            let mut round_state = match_.lock_round_state().await;
+                            let round = if let Some(round) = round_state.round.as_mut() {
+                                round
+                            } else {
+                                return;
+                            };
 
-            //                 if !round.has_committed_state() {
-            //                     return;
-            //                 }
+                            if !round.has_committed_state() {
+                                return;
+                            }
 
-            //                 round.increment_current_tick();
-            //             });
-            //         }),
-            //     )
-            // },
+                            round.increment_current_tick();
+                        });
+                    }),
+                )
+            },
         ]
     }
 
@@ -543,7 +543,7 @@ impl hooks::Hooks for BN3 {
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.send_and_receive_entry,
-                    Box::new(move |mut core| {
+                    Box::new(move |core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -561,9 +561,6 @@ impl hooks::Hooks for BN3 {
                                 return;
                             }
                         };
-
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
                         let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
                             ip
@@ -620,24 +617,24 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     (
-            //         self.offsets.rom.round_call_jump_table_ret,
-            //         Box::new(move |_core| {
-            //             let mut round_state = shadow_state.lock_round_state();
-            //             let round = if let Some(round) = round_state.round.as_mut() {
-            //                 round
-            //             } else {
-            //                 return;
-            //             };
-            //             if !round.has_first_committed_state() {
-            //                 return;
-            //             }
-            //             round.increment_current_tick();
-            //         }),
-            //     )
-            // },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_call_jump_table_ret,
+                    Box::new(move |_core| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let round = if let Some(round) = round_state.round.as_mut() {
+                            round
+                        } else {
+                            return;
+                        };
+                        if !round.has_first_committed_state() {
+                            return;
+                        }
+                        round.increment_current_tick();
+                    }),
+                )
+            },
         ]
     }
 
@@ -671,6 +668,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
+                        log::info!("read joyflags ff");
                         let current_tick = ff_state.current_tick();
 
                         if current_tick == ff_state.commit_time() {
@@ -772,15 +770,15 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let ff_state = ff_state.clone();
-            //     (
-            //         self.offsets.rom.round_call_jump_table_ret,
-            //         Box::new(move |_core| {
-            //             ff_state.increment_current_tick();
-            //         }),
-            //     )
-            // },
+            {
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.round_call_jump_table_ret,
+                    Box::new(move |_core| {
+                        ff_state.increment_current_tick();
+                    }),
+                )
+            },
         ]
     }
 
