@@ -136,17 +136,6 @@ impl hooks::Hooks for BN3 {
                 )
             },
             // {
-            //     let offsets = self.offsets.clone();
-            //     let placeholder_rx = self.placeholder_rx();
-            //     (
-            //         0x0803e8fc,
-            //         Box::new(move |mut core| {
-            //             core.gba_mut().cpu_mut().set_gpr(0, 0);
-            //             core.raw_write_range(offsets.ewram.tx_packet, -1, &placeholder_rx);
-            //         }),
-            //     )
-            // },
-            // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();
             //     (
@@ -212,24 +201,24 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.round_start_ret,
-            //         Box::new(move |_core| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
-            //                 match_.start_round().await.expect("start round");
-            //             });
-            //         }),
-            //     )
-            // },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_start_ret,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+                            match_.start_round().await.expect("start round");
+                        });
+                    }),
+                )
+            },
             // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();
@@ -475,15 +464,15 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     (
-            //         self.offsets.rom.round_start_ret,
-            //         Box::new(move |_| {
-            //             shadow_state.start_round();
-            //         }),
-            //     )
-            // },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_start_ret,
+                    Box::new(move |_| {
+                        shadow_state.start_round();
+                    }),
+                )
+            },
             // {
             //     let shadow_state = shadow_state.clone();
             //     (
@@ -588,12 +577,28 @@ impl hooks::Hooks for BN3 {
             },
             {
                 let shadow_state = shadow_state.clone();
+                let placeholder_rx = self.placeholder_rx();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.send_and_receive_entry,
                     Box::new(move |mut core| {
                         let mut round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_mut().expect("round");
+                        let round = match round_state.round.as_mut() {
+                            Some(round) => round,
+                            None => {
+                                munger.set_rx_packet(
+                                    core,
+                                    0,
+                                    &placeholder_rx.clone().try_into().unwrap(),
+                                );
+                                munger.set_rx_packet(
+                                    core,
+                                    1,
+                                    &placeholder_rx.clone().try_into().unwrap(),
+                                );
+                                return;
+                            }
+                        };
 
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
