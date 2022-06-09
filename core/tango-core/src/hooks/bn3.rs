@@ -290,6 +290,7 @@ impl hooks::Hooks for BN3 {
                                     );
                                 }
 
+                                log::info!("read joyflags: {}", round.current_tick());
                                 if !round
                                     .add_local_input_and_fastforward(
                                         core,
@@ -299,6 +300,7 @@ impl hooks::Hooks for BN3 {
                                 {
                                     break 'abort;
                                 }
+                                log::info!("fastforward complete");
                                 return;
                             }
                             facade.abort_match().await;
@@ -358,10 +360,16 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
+                (
+                    self.offsets.rom.round_call_jump_table_pre,
+                    Box::new(move |_core| {}),
+                )
+            },
+            {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_call_jump_table_ret,
+                    self.offsets.rom.round_call_jump_table_post,
                     Box::new(move |_core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -618,9 +626,17 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
+                (
+                    self.offsets.rom.round_call_jump_table_pre,
+                    Box::new(move |_core| {
+                        // HACK: This is a load bearing hook. Don't remove it or you'll be sad.
+                    }),
+                )
+            },
+            {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_call_jump_table_ret,
+                    self.offsets.rom.round_call_jump_table_post,
                     Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = if let Some(round) = round_state.round.as_mut() {
@@ -668,7 +684,6 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
-                        log::info!("read joyflags ff");
                         let current_tick = ff_state.current_tick();
 
                         if current_tick == ff_state.commit_time() {
@@ -719,7 +734,7 @@ impl hooks::Hooks for BN3 {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.send_and_receive_entry,
-                    Box::new(move |mut core| {
+                    Box::new(move |core| {
                         let current_tick = ff_state.current_tick();
 
                         let ip = match ff_state.pop_input_pair() {
@@ -771,9 +786,15 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
+                (
+                    self.offsets.rom.round_call_jump_table_pre,
+                    Box::new(move |_core| {}),
+                )
+            },
+            {
                 let ff_state = ff_state.clone();
                 (
-                    self.offsets.rom.round_call_jump_table_ret,
+                    self.offsets.rom.round_call_jump_table_post,
                     Box::new(move |_core| {
                         ff_state.increment_current_tick();
                     }),
