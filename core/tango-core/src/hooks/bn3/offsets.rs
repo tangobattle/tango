@@ -78,12 +78,7 @@ pub(super) struct ROMOffsets {
     /// This hooks the point determining if the player is player 2 or not.
     ///
     /// r0 should be set to the local player index.
-    pub(super) battle_is_p2_tst: u32,
-
-    /// This hooks another point determining if the player is player 2 or not.
-    ///
-    /// r0 should be set to the local player index.
-    pub(super) link_is_p2_ret: u32,
+    pub(super) battle_is_p2_ret: u32,
 
     /// This is the entry point to the comm menu.
     ///
@@ -130,8 +125,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         round_ending_ret:                       0, // TODO
         round_end_entry:                        0, // TODO
         round_call_jump_table_ret:              0, // TODO
-        battle_is_p2_tst:                       0, // TODO
-        link_is_p2_ret:                         0, // TODO
+        battle_is_p2_ret:                       0x08008c6a,
         comm_menu_init_ret:                     0x0803e08a,
         match_end_ret:                          0, // TODO
     },
