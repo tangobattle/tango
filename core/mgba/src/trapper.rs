@@ -95,9 +95,19 @@ impl Trapper {
                     panic!("attempting to install a second trap at 0x{:08x}", addr);
                 }
                 std::collections::hash_map::Entry::Vacant(e) => {
-                    let original = core.raw_read_16(addr, -1);
-                    core.raw_write_16(addr, -1, (0xbe00 | TRAPPER_IMM) as u16);
-                    e.insert(Trap { original, handler });
+                    let mut original = 0i16;
+                    unsafe {
+                        mgba_sys::GBAPatch16(
+                            core.gba_mut().cpu_mut().ptr,
+                            addr,
+                            (0xbe00 | TRAPPER_IMM) as i16,
+                            &mut original,
+                        )
+                    };
+                    e.insert(Trap {
+                        original: original as u16,
+                        handler,
+                    });
                 }
             };
         }
