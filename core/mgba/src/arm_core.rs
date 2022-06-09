@@ -11,8 +11,27 @@ impl<'a> ARMCoreRef<'a> {
     }
 
     pub fn thumb_pc(&self) -> u32 {
-        (self.gpr(15) - 2) as u32
+        self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB
     }
+
+    pub fn arm_pc(&self) -> u32 {
+        self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_ARM
+    }
+
+    pub fn execution_mode(&self) -> ExecutionMode {
+        unsafe {
+            match (*self.ptr).executionMode {
+                mgba_sys::ExecutionMode_MODE_ARM => ExecutionMode::ARM,
+                mgba_sys::ExecutionMode_MODE_THUMB => ExecutionMode::Thumb,
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+pub enum ExecutionMode {
+    ARM,
+    Thumb,
 }
 
 #[repr(transparent)]
