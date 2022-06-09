@@ -65,6 +65,7 @@ fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
         .filter(Some("tango_core"), log::LevelFilter::Info)
         .filter(Some("datachannel"), log::LevelFilter::Info)
+        .filter(Some("mgba"), log::LevelFilter::Info)
         .init();
 
     log::info!("welcome to tango-core {}!", git_version::git_version!());

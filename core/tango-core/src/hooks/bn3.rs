@@ -340,12 +340,15 @@ impl hooks::Hooks for BN3 {
                 let placeholder_rx = self.placeholder_rx();
                 let munger = self.munger.clone();
                 let handle = handle.clone();
+                let send_and_receive_entry_pre_epilog =
+                    self.offsets.rom.send_and_receive_entry_pre_epilog;
                 (
                     self.offsets.rom.send_and_receive_entry_post_prolog,
                     Box::new(move |mut core| {
                         handle.block_on(async {
-                            let pc = core.as_ref().gba().cpu().thumb_pc();
-                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa4);
+                            core.gba_mut()
+                                .cpu_mut()
+                                .set_thumb_pc(send_and_receive_entry_pre_epilog);
                             core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                             let match_ = match facade.match_().await {
@@ -374,15 +377,15 @@ impl hooks::Hooks for BN3 {
                                 }
                             };
 
+                            round.queue_tx(
+                                round.current_tick() + 1,
+                                munger.tx_packet(core).to_vec(),
+                            );
+
                             log::info!(
                                 "primary: s&r: {}, lr = {:08x}",
                                 round.current_tick(),
                                 core.as_ref().gba().cpu().gpr(14)
-                            );
-
-                            round.queue_tx(
-                                round.current_tick() + 1,
-                                munger.tx_packet(core).to_vec(),
                             );
                         });
                     }),
@@ -415,10 +418,26 @@ impl hooks::Hooks for BN3 {
 
                             round.increment_current_tick();
                             log::info!(
-                                "primary: round_call_jump_table_post: {}",
+                                "primary @ 0x0800859c: round_call_jump_table_post: {}",
                                 round.current_tick()
                             );
                         });
+                    }),
+                )
+            },
+            {
+                (
+                    0x0800859a,
+                    Box::new(move |_core| {
+                        log::info!("primary @ 0x0800859a: round call jump pre");
+                    }),
+                )
+            },
+            {
+                (
+                    0x080085a2,
+                    Box::new(move |_core| {
+                        log::info!("primary @ 0x080085a2: branch target");
                     }),
                 )
             },
@@ -455,6 +474,14 @@ impl hooks::Hooks for BN3 {
                         munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
                         munger.start_battle_from_comm_menu(core);
+                    }),
+                )
+            },
+            {
+                (
+                    0x0800859a,
+                    Box::new(move |_core| {
+                        // log::info!("shadow: round call jump pre");
                     }),
                 )
             },
@@ -595,11 +622,14 @@ impl hooks::Hooks for BN3 {
                 let shadow_state = shadow_state.clone();
                 let placeholder_rx = self.placeholder_rx();
                 let munger = self.munger.clone();
+                let send_and_receive_entry_pre_epilog =
+                    self.offsets.rom.send_and_receive_entry_pre_epilog;
                 (
                     self.offsets.rom.send_and_receive_entry_post_prolog,
                     Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc();
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa4);
+                        core.gba_mut()
+                            .cpu_mut()
+                            .set_thumb_pc(send_and_receive_entry_pre_epilog);
                         core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                         let mut round_state = shadow_state.lock_round_state();
@@ -663,6 +693,12 @@ impl hooks::Hooks for BN3 {
                             &ip.remote.rx.clone().try_into().unwrap(),
                         );
 
+                        // log::info!(
+                        //     "shadow: s&r: {}, lr = {:08x}",
+                        //     round.current_tick(),
+                        //     core.as_ref().gba().cpu().gpr(14)
+                        // );
+
                         round.set_input_injected();
                     }),
                 )
@@ -682,6 +718,10 @@ impl hooks::Hooks for BN3 {
                             return;
                         }
                         round.increment_current_tick();
+                        // log::info!(
+                        //     "shadow: round_call_jump_table_post: {}",
+                        //     round.current_tick()
+                        // );
                     }),
                 )
             },
@@ -777,11 +817,14 @@ impl hooks::Hooks for BN3 {
             {
                 let munger = self.munger.clone();
                 let ff_state = ff_state.clone();
+                let send_and_receive_entry_pre_epilog =
+                    self.offsets.rom.send_and_receive_entry_pre_epilog;
                 (
                     self.offsets.rom.send_and_receive_entry_post_prolog,
                     Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc();
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 0xa4);
+                        core.gba_mut()
+                            .cpu_mut()
+                            .set_thumb_pc(send_and_receive_entry_pre_epilog);
                         core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                         let current_tick = ff_state.current_tick();
@@ -835,6 +878,7 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
+            { (0x0800859a, Box::new(move |_core| {})) },
         ]
     }
 

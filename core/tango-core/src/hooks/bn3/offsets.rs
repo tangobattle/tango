@@ -50,6 +50,7 @@ pub(super) struct ROMOffsets {
     pub(super) main_read_joyflags: u32,
 
     pub(super) send_and_receive_entry_post_prolog: u32,
+    pub(super) send_and_receive_entry_pre_epilog: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
@@ -123,6 +124,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         game_load_ret:                          0x08004510,
         main_read_joyflags:                     0x08000392,
         send_and_receive_entry_post_prolog:     0x081324a6,
+        send_and_receive_entry_pre_epilog:      0x0813254a,
         round_run_unpaused_step_cmp_retval:     0, // TODO
         round_start_ret:                        0x080059a8,
         round_ending_ret:                       0, // TODO

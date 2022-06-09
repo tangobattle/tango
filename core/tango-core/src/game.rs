@@ -290,6 +290,7 @@ impl Game {
     }
 
     pub fn run(mut self) -> anyhow::Result<()> {
+        log::info!("running...");
         self.rt.block_on(async {
             self.ipc_sender
                 .send(ipc::protos::FromCoreMessage {
