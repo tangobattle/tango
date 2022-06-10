@@ -52,8 +52,9 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
             ptr: r#impl.core_ptr,
             _lifetime: std::marker::PhantomData,
         });
+    } else {
+        (*trapper).real_bkpt16.unwrap()(arm_core.ptr, imm)
     }
-    (*trapper).real_bkpt16.unwrap()(arm_core.ptr, imm)
 }
 
 impl Trapper {
