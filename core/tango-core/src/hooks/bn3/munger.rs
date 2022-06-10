@@ -57,15 +57,7 @@ impl Munger {
         core.raw_write_range(self.offsets.ewram.rx_packet_arr + index * 0x10, -1, packet)
     }
 
-    pub(super) fn packet_counter(&self, mut core: mgba::core::CoreMutRef) -> u8 {
-        core.raw_read_8(self.offsets.ewram.packet_counter, -1)
-    }
-
     pub(super) fn tx_packet(&self, mut core: mgba::core::CoreMutRef) -> [u8; 0x10] {
         core.raw_read_range(self.offsets.ewram.tx_packet, -1)
-    }
-
-    pub(super) fn set_copy_data_input_state(&self, mut core: mgba::core::CoreMutRef, v: u8) {
-        core.raw_write_8(self.offsets.ewram.copy_data_input_state, -1, v);
     }
 }

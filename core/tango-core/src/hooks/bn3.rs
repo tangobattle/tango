@@ -382,62 +382,8 @@ impl hooks::Hooks for BN3 {
                                 munger.tx_packet(core).to_vec(),
                             );
 
-                            log::info!(
-                                "primary: s&r: {}, lr = {:08x}",
-                                round.current_tick(),
-                                core.as_ref().gba().cpu().gpr(14)
-                            );
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_post,
-                    Box::new(move |_core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-                            let round = if let Some(round) = round_state.round.as_mut() {
-                                round
-                            } else {
-                                return;
-                            };
-
-                            if !round.has_committed_state() {
-                                return;
-                            }
-
                             round.increment_current_tick();
-                            log::info!(
-                                "primary @ 0x0800859c: round_call_jump_table_post: {}",
-                                round.current_tick()
-                            );
                         });
-                    }),
-                )
-            },
-            {
-                (
-                    0x0800859a,
-                    Box::new(move |_core| {
-                        log::info!("primary @ 0x0800859a: round call jump pre");
-                    }),
-                )
-            },
-            {
-                (
-                    0x080085a2,
-                    Box::new(move |_core| {
-                        log::info!("primary @ 0x080085a2: branch target");
                     }),
                 )
             },
@@ -693,35 +639,9 @@ impl hooks::Hooks for BN3 {
                             &ip.remote.rx.clone().try_into().unwrap(),
                         );
 
-                        // log::info!(
-                        //     "shadow: s&r: {}, lr = {:08x}",
-                        //     round.current_tick(),
-                        //     core.as_ref().gba().cpu().gpr(14)
-                        // );
-
                         round.set_input_injected();
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_post,
-                    Box::new(move |_core| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let round = if let Some(round) = round_state.round.as_mut() {
-                            round
-                        } else {
-                            return;
-                        };
-                        if !round.has_first_committed_state() {
-                            return;
-                        }
+
                         round.increment_current_tick();
-                        // log::info!(
-                        //     "shadow: round_call_jump_table_post: {}",
-                        //     round.current_tick()
-                        // );
                     }),
                 )
             },
@@ -866,19 +786,11 @@ impl hooks::Hooks for BN3 {
                             ff_state.remote_player_index() as u32,
                             &ip.remote.rx.try_into().unwrap(),
                         );
-                    }),
-                )
-            },
-            {
-                let ff_state = ff_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_post,
-                    Box::new(move |_core| {
+
                         ff_state.increment_current_tick();
                     }),
                 )
             },
-            { (0x0800859a, Box::new(move |_core| {})) },
         ]
     }
 
