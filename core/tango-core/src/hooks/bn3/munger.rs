@@ -60,4 +60,8 @@ impl Munger {
     pub(super) fn tx_packet(&self, mut core: mgba::core::CoreMutRef) -> [u8; 0x10] {
         core.raw_read_range(self.offsets.ewram.tx_packet, -1)
     }
+
+    pub(super) fn is_linking(&self, mut core: mgba::core::CoreMutRef) -> bool {
+        core.raw_read_8(self.offsets.ewram.is_linking, -1) == 1
+    }
 }

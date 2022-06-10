@@ -20,6 +20,8 @@ pub(super) struct EWRAMOffsets {
 
     /// Shared RNG state. Must be synced.
     pub(super) rng2_state: u32,
+
+    pub(super) is_linking: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -44,8 +46,12 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
-    pub(super) send_and_receive_entry_post_prolog: u32,
-    pub(super) send_and_receive_entry_pre_epilog: u32,
+    pub(super) comm_menu_send_and_receive_call: u32,
+    pub(super) handle_input_init_send_and_receive_call: u32,
+    pub(super) handle_input_update_send_and_receive_call: u32,
+    pub(super) handle_input_deinit_send_and_receive_call: u32,
+
+    pub(super) handle_input_post_call: u32,
 
     /// This hooks the point after the game determines who the winner is, returned in r0.
     ///
@@ -97,6 +103,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     submenu_control:        0x020093d0,
     rng1_state:             0x02009730,
     rng2_state:             0x02009800,
+    is_linking:             0x0203b36e,
 };
 
 #[derive(Clone, Copy)]
@@ -109,19 +116,25 @@ pub struct Offsets {
 pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
-        start_screen_jump_table_entry:          0x0802b32c,
-        start_screen_sram_unmask_ret:           0x08022016,
-        game_load_ret:                          0x08004510,
-        main_read_joyflags:                     0x08000392,
-        send_and_receive_entry_post_prolog:     0x081324a6,
-        send_and_receive_entry_pre_epilog:      0x0813254a,
-        round_run_unpaused_step_cmp_retval:     0, // TODO
-        round_start_ret:                        0x080059a8,
-        round_ending_ret:                       0, // TODO
-        round_end_entry:                        0, // TODO
-        battle_is_p2_ret:                       0x08008c6a,
-        link_is_p2_ret:                         0x0800354c,
-        comm_menu_init_ret:                     0x0803e08a,
-        match_end_ret:                          0, // TODO
+        start_screen_jump_table_entry:              0x0802b32c,
+        start_screen_sram_unmask_ret:               0x08022016,
+        game_load_ret:                              0x08004510,
+        main_read_joyflags:                         0x08000392,
+        comm_menu_send_and_receive_call:            0x0803e996,
+        handle_input_init_send_and_receive_call:    0x080085d2,
+        handle_input_update_send_and_receive_call:  0x080086a8,
+        handle_input_deinit_send_and_receive_call:  0x0800877e,
+        handle_input_post_call:                     0x0800643e,
+        round_run_unpaused_step_cmp_retval:         0, // TODO
+        round_start_ret:                            0x080059a8,
+        round_ending_ret:                           0, // TODO
+        round_end_entry:                            0, // TODO
+        battle_is_p2_ret:                           0x08008c6a,
+        link_is_p2_ret:                             0x0800354c,
+        comm_menu_init_ret:                         0x0803e08a,
+        match_end_ret:                              0, // TODO
+
     },
 };
+
+// 0x080066de
