@@ -1,5 +1,6 @@
 use super::arm_core;
 use super::sync;
+use super::timing;
 
 pub const SCREEN_WIDTH: u32 = mgba_sys::GBA_VIDEO_HORIZONTAL_PIXELS;
 pub const SCREEN_HEIGHT: u32 = mgba_sys::GBA_VIDEO_VERTICAL_PIXELS;
@@ -15,6 +16,13 @@ impl<'a> GBARef<'a> {
     pub fn cpu(&self) -> arm_core::ARMCoreRef<'a> {
         arm_core::ARMCoreRef {
             ptr: unsafe { (*self.ptr).cpu },
+            _lifetime: self._lifetime,
+        }
+    }
+
+    pub fn timing(&self) -> timing::TimingRef {
+        timing::TimingRef {
+            ptr: unsafe { &(*self.ptr).timing },
             _lifetime: self._lifetime,
         }
     }

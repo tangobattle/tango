@@ -10,5 +10,6 @@ pub mod log;
 pub mod state;
 pub mod sync;
 pub mod thread;
+pub mod timing;
 pub mod trapper;
 pub mod vfile;
