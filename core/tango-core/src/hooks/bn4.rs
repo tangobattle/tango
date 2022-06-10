@@ -533,7 +533,7 @@ impl hooks::Hooks for BN4 {
                     self.offsets.rom.round_end_entry,
                     Box::new(move |core| {
                         shadow_state.end_round();
-                        shadow_state.set_applied_state(core.save_state().expect("save state"));
+                        shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
                     }),
                 )
             },
@@ -646,7 +646,10 @@ impl hooks::Hooks for BN4 {
                         }
 
                         if round.take_input_injected() {
-                            shadow_state.set_applied_state(core.save_state().expect("save state"));
+                            shadow_state.set_applied_state(
+                                core.save_state().expect("save state"),
+                                round.current_tick(),
+                            );
                         }
                     }),
                 )

@@ -66,12 +66,17 @@ pub struct RoundState {
     pub won_last_round: bool,
 }
 
+struct AppliedState {
+    tick: u32,
+    state: mgba::state::State,
+}
+
 struct InnerState {
     match_type: u8,
     is_offerer: bool,
     round_state: parking_lot::Mutex<RoundState>,
     rng: parking_lot::Mutex<rand_pcg::Mcg128Xsl64>,
-    applied_state: parking_lot::Mutex<Option<mgba::state::State>>,
+    applied_state: parking_lot::Mutex<Option<AppliedState>>,
     error: parking_lot::Mutex<Option<anyhow::Error>>,
 }
 
@@ -146,8 +151,8 @@ impl State {
         *self.0.error.lock() = Some(err);
     }
 
-    pub fn set_applied_state(&self, state: mgba::state::State) {
-        *self.0.applied_state.lock() = Some(state);
+    pub fn set_applied_state(&self, state: mgba::state::State, tick: u32) {
+        *self.0.applied_state.lock() = Some(AppliedState { tick, state });
     }
 }
 
@@ -196,15 +201,22 @@ impl Shadow {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
 
-            let round_state = self.state.lock_round_state();
-            if let Some(state) = round_state
-                .round
-                .as_ref()
-                .and_then(|round| round.first_committed_state.as_ref())
-            {
-                self.core.as_mut().load_state(state).expect("load state");
-                return Ok(state.clone());
-            }
+            let mut round_state = self.state.lock_round_state();
+            let round = if let Some(round) = round_state.round.as_mut() {
+                round
+            } else {
+                continue;
+            };
+
+            let state = if let Some(state) = round.first_committed_state.as_ref() {
+                state.clone()
+            } else {
+                continue;
+            };
+
+            self.core.as_mut().load_state(&state).expect("load state");
+            round.current_tick = 0;
+            return Ok(state);
         }
     }
 
@@ -219,17 +231,17 @@ impl Shadow {
 
             let round_state = self.state.lock_round_state();
             if round_state.round.is_none() {
+                let applied_state = self
+                    .state
+                    .0
+                    .applied_state
+                    .lock()
+                    .take()
+                    .expect("applied state");
+
                 self.core
                     .as_mut()
-                    .load_state(
-                        &self
-                            .state
-                            .0
-                            .applied_state
-                            .lock()
-                            .take()
-                            .expect("applied state"),
-                    )
+                    .load_state(&applied_state.state)
                     .expect("load state");
                 return Ok(());
             }
@@ -251,15 +263,21 @@ impl Shadow {
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-            if let Some(applied_state) = self.state.0.applied_state.lock().take() {
-                self.core
-                    .as_mut()
-                    .load_state(&applied_state)
-                    .expect("load state");
-                let mut round_state = self.state.lock_round_state();
-                let round = round_state.round.as_mut().expect("round");
-                return Ok(round.pending_out_input.take().expect("pending out input"));
-            }
+            let applied_state =
+                if let Some(applied_state) = self.state.0.applied_state.lock().take() {
+                    applied_state
+                } else {
+                    continue;
+                };
+
+            self.core
+                .as_mut()
+                .load_state(&applied_state.state)
+                .expect("load state");
+            let mut round_state = self.state.lock_round_state();
+            let round = round_state.round.as_mut().expect("round");
+            round.current_tick = applied_state.tick;
+            return Ok(round.pending_out_input.take().expect("pending out input"));
         }
     }
 }
