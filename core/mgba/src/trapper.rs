@@ -21,6 +21,38 @@ struct Impl {
     core_ptr: *mut mgba_sys::mCore,
 }
 
+impl Impl {
+    fn add(
+        &mut self,
+        addr: u32,
+        mut core: core::CoreMutRef,
+        handler: Box<dyn FnMut(core::CoreMutRef)>,
+    ) -> bool {
+        match self.traps.entry(addr) {
+            std::collections::hash_map::Entry::Occupied(mut e) => {
+                e.get_mut().handlers.push(handler);
+                false
+            }
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let mut original = 0i16;
+                unsafe {
+                    mgba_sys::GBAPatch16(
+                        core.gba_mut().cpu_mut().ptr,
+                        addr,
+                        (0xbe00 | TRAPPER_IMM) as i16,
+                        &mut original,
+                    )
+                };
+                e.insert(Trap {
+                    original: original as u16,
+                    handlers: vec![handler],
+                });
+                true
+            }
+        }
+    }
+}
+
 unsafe impl Send for TrapperCStruct {}
 unsafe impl Send for Impl {}
 
@@ -92,26 +124,9 @@ impl Trapper {
         }
 
         for (addr, handler) in handlers {
-            match trapper_c_struct.r#impl.traps.entry(addr) {
-                std::collections::hash_map::Entry::Occupied(_) => {
-                    panic!("attempting to install a second trap at 0x{:08x}", addr);
-                }
-                std::collections::hash_map::Entry::Vacant(e) => {
-                    let mut original = 0i16;
-                    unsafe {
-                        mgba_sys::GBAPatch16(
-                            core.gba_mut().cpu_mut().ptr,
-                            addr,
-                            (0xbe00 | TRAPPER_IMM) as i16,
-                            &mut original,
-                        )
-                    };
-                    e.insert(Trap {
-                        original: original as u16,
-                        handlers: vec![handler],
-                    });
-                }
-            };
+            if !trapper_c_struct.r#impl.add(addr, core, handler) {
+                panic!("attempting to install a second trap at 0x{:08x}", addr);
+            }
         }
         Trapper(trapper_c_struct)
     }
