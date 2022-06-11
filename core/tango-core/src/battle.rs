@@ -66,7 +66,7 @@ impl RoundState {
 
 pub struct Match {
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
-    rom_path: std::path::PathBuf,
+    rom: Vec<u8>,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
@@ -151,7 +151,7 @@ const MAX_QUEUE_LENGTH: usize = 1200;
 
 impl Match {
     pub fn new(
-        rom_path: std::path::PathBuf,
+        rom: Vec<u8>,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         peer_conn: datachannel_wrapper::PeerConnection,
         dc_tx: datachannel_wrapper::DataChannelSender,
@@ -160,20 +160,22 @@ impl Match {
         primary_thread_handle: mgba::thread::Handle,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
+        let shadow_rom = std::fs::read(&settings.shadow_rom_path)?;
+
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let (transport_rendezvous_tx, transport_rendezvous_rx) = tokio::sync::oneshot::channel();
         let did_polite_win_last_round = rng.gen::<bool>();
         let won_last_round = did_polite_win_last_round == is_offerer;
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(tokio::sync::Mutex::new(shadow::Shadow::new(
-                &settings.shadow_rom_path,
+                &shadow_rom,
                 &settings.shadow_save_path,
                 settings.match_type,
                 is_offerer,
                 won_last_round,
                 rng.clone(),
             )?)),
-            rom_path,
+            rom,
             hooks,
             _peer_conn: peer_conn,
             transport: std::sync::Arc::new(tokio::sync::Mutex::new(transport::Transport::new(
@@ -389,7 +391,7 @@ impl Match {
                 self.hooks.placeholder_rx().len() as u8,
             )?),
             fastforwarder: fastforwarder::Fastforwarder::new(
-                &self.rom_path,
+                &self.rom,
                 self.hooks,
                 local_player_index,
                 &self.settings.opponent_nickname,

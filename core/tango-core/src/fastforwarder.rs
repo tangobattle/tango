@@ -144,13 +144,13 @@ impl State {
 
 impl Fastforwarder {
     pub fn new(
-        rom_path: &std::path::Path,
+        rom: &[u8],
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         local_player_index: u8,
         opponent_nickname: &Option<String>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
-        let rom_vf = mgba::vfile::VFile::open(rom_path, mgba::vfile::flags::O_RDONLY)?;
+        let rom_vf = mgba::vfile::VFile::open_memory(rom);
         core.as_mut().load_rom(rom_vf)?;
         hooks.patch(core.as_mut());
 

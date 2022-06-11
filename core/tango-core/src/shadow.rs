@@ -158,7 +158,7 @@ impl State {
 
 impl Shadow {
     pub fn new(
-        rom_path: &std::path::Path,
+        rom: &[u8],
         save_path: &std::path::Path,
         match_type: u8,
         is_offerer: bool,
@@ -166,7 +166,7 @@ impl Shadow {
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
-        let rom_vf = mgba::vfile::VFile::open(rom_path, mgba::vfile::flags::O_RDONLY)?;
+        let rom_vf = mgba::vfile::VFile::open_memory(rom);
         core.as_mut().load_rom(rom_vf)?;
 
         log::info!(

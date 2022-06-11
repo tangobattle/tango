@@ -141,7 +141,8 @@ impl Game {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        let rom_vf = mgba::vfile::VFile::open(&rom_path, mgba::vfile::flags::O_RDONLY)?;
+        let rom = std::fs::read(rom_path)?;
+        let rom_vf = mgba::vfile::VFile::open_memory(&rom);
         core.as_mut().load_rom(rom_vf)?;
 
         log::info!(
@@ -195,7 +196,7 @@ impl Game {
                     .expect("rng seed");
                 *match_.lock().await = Some(
                     battle::Match::new(
-                        rom_path.clone(),
+                        rom,
                         hooks,
                         match_init.peer_conn,
                         dc_tx,
