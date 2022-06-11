@@ -12,7 +12,7 @@ struct TrapperCStruct {
 }
 
 struct Trap {
-    handlers: Vec<Box<dyn FnMut(core::CoreMutRef)>>,
+    handler: Box<dyn FnMut(core::CoreMutRef)>,
     original: u16,
 }
 
@@ -48,12 +48,10 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
         let caller = arm_core.as_ref().gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB * 2;
         let trap = r#impl.traps.get_mut(&caller).unwrap();
         mgba_sys::ARMRunFake(arm_core.ptr, trap.original as u32);
-        for handler in &mut trap.handlers {
-            handler(core::CoreMutRef {
-                ptr: r#impl.core_ptr,
-                _lifetime: std::marker::PhantomData,
-            });
-        }
+        (trap.handler)(core::CoreMutRef {
+            ptr: r#impl.core_ptr,
+            _lifetime: std::marker::PhantomData,
+        });
     }
     (*trapper).real_bkpt16.unwrap()(arm_core.ptr, imm);
 }
@@ -108,7 +106,7 @@ impl Trapper {
                     };
                     e.insert(Trap {
                         original: original as u16,
-                        handlers: vec![handler],
+                        handler,
                     });
                 }
             };

@@ -136,3 +136,5 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
 
     },
 };
+
+// 0x080066de
