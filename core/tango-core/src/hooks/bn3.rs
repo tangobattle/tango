@@ -48,7 +48,7 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
 
 impl hooks::Hooks for BN3 {
     fn patch(&self, mut core: mgba::core::CoreMutRef) {
-        // Disable hblank.
+        // Disable hblank due to https://github.com/mgba-emu/mgba/issues/2551.
         core.raw_write_8(self.offsets.rom.ie_toggle_hblank, -1, 0x00);
     }
 
