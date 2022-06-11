@@ -33,6 +33,8 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
 }
 
 pub trait Hooks {
+    fn patch(&self, core: mgba::core::CoreMutRef) {}
+
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn fastforwarder_traps(
@@ -56,5 +58,5 @@ pub trait Hooks {
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
-    fn replace_opponent_name(&self, core: mgba::core::CoreMutRef, name: &str);
+    fn replace_opponent_name(&self, core: mgba::core::CoreMutRef, name: &str) {}
 }

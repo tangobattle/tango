@@ -26,6 +26,9 @@ pub(super) struct EWRAMOffsets {
 
 #[derive(Clone, Copy)]
 pub(super) struct ROMOffsets {
+    // This sets the IE.
+    pub(super) ie_toggle_hblank: u32,
+
     /// This is the entry point for the start screen, i.e. when the CAPCOM logo is displayed.
     ///
     /// It is expected that at this point, you may write to the start_screen_control EWRAM address to skip to the title screen.
@@ -46,6 +49,7 @@ pub(super) struct ROMOffsets {
     /// Input is injected here directly by Tango into r4 from client. We avoid doing it via the usual input interrupt handling mechanism because this is more precise.
     pub(super) main_read_joyflags: u32,
 
+    pub(super) init_sio_call: u32,
     pub(super) comm_menu_send_and_receive_call: u32,
     pub(super) handle_input_init_send_and_receive_call: u32,
     pub(super) handle_input_update_send_and_receive_call: u32,
@@ -116,10 +120,12 @@ pub struct Offsets {
 pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
+        ie_toggle_hblank:                           0x08000174,
         start_screen_jump_table_entry:              0x0802b32c,
         start_screen_sram_unmask_ret:               0x08022016,
         game_load_ret:                              0x08004510,
         main_read_joyflags:                         0x08000392,
+        init_sio_call:                              0x0803e976,
         comm_menu_send_and_receive_call:            0x0803e996,
         handle_input_init_send_and_receive_call:    0x080085d2,
         handle_input_update_send_and_receive_call:  0x080086a8,
@@ -136,5 +142,3 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
 
     },
 };
-
-// 0x080066de

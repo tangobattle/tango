@@ -184,6 +184,7 @@ impl Shadow {
         let state = State::new(match_type, is_offerer, rng, won_last_round);
 
         let hooks = hooks::get(core.as_mut()).unwrap();
+        hooks.patch(core.as_mut());
 
         let mut traps = hooks.common_traps();
         traps.extend(hooks.shadow_traps(state.clone()));

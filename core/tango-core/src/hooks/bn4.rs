@@ -900,6 +900,4 @@ impl hooks::Hooks for BN4 {
             .cpu_mut()
             .set_thumb_pc(self.offsets.rom.main_read_joyflags);
     }
-
-    fn replace_opponent_name(&self, mut _core: mgba::core::CoreMutRef, _name: &str) {}
 }

@@ -117,6 +117,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
         )
     };
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    hooks.patch(core.as_mut());
     {
         let ff_state = ff_state.clone();
         let mut traps = hooks.common_traps();

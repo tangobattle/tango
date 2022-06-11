@@ -64,6 +64,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    hooks.patch(core.as_mut());
     let local_player_index = if !args.remote {
         replay.local_player_index
     } else {

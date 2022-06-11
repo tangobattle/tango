@@ -157,6 +157,7 @@ impl Game {
         core.as_mut().load_save(save_vf)?;
 
         let hooks = hooks::get(core.as_mut()).unwrap();
+        hooks.patch(core.as_mut());
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
