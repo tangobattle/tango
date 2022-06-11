@@ -152,6 +152,7 @@ impl Fastforwarder {
         let mut core = mgba::core::Core::new_gba("tango")?;
         let rom_vf = mgba::vfile::VFile::open(rom_path, mgba::vfile::flags::O_RDONLY)?;
         core.as_mut().load_rom(rom_vf)?;
+        hooks.patch(core.as_mut());
 
         let state = State(std::sync::Arc::new(parking_lot::Mutex::new(None)));
 
