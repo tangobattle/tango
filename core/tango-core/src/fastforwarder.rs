@@ -231,12 +231,6 @@ impl Fastforwarder {
         let commit_time = last_committed_tick + commit_pairs.len() as u32;
         let dirty_time = last_committed_tick + input_pairs.len() as u32 - 1;
 
-        // log::info!(
-        //     "fastforwarding to commit time = {}, dirty time = {}",
-        //     commit_time,
-        //     dirty_time
-        // );
-
         *self.state.0.lock() = Some(InnerState {
             current_tick: last_committed_tick,
             local_player_index: self.local_player_index,

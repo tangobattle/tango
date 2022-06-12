@@ -881,6 +881,12 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
+            (
+                self.offsets.rom.check_link_status_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             {
                 let ff_state = ff_state.clone();
                 (
