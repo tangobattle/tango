@@ -4,19 +4,19 @@ Tango is rollback netplay for Mega Man Battle Network.
 
 ## Supported games
 
--   `MEGAMAN6_FXXBR6E`: Mega Man Battle Network 6: Cybeast Falzar
--   `MEGAMAN6_GXXBR5E`: Mega Man Battle Network 6: Cybeast Gregar
--   `ROCKEXE6_RXXBR6J`: Rockman EXE 6: Dennoujuu Falzer
--   `ROCKEXE6_GXXBR5J`: Rockman EXE 6: Dennoujuu Glaga
--   `MEGAMAN5_TP_BRBE`: Mega Man Battle Network 5: Team Protoman
--   `MEGAMAN5_TC_BRKE`: Mega Man Battle Network 5: Team Colonel
--   `ROCKEXE5_TOBBRBJ`: Rockman EXE 5: Team of Blues
--   `ROCKEXE5_TOCBRKJ`: Rockman EXE 5: Team of Colonel
--   `MEGAMANBN4BMB4BE`: Mega Man Battle Network 4: Blue Moon
--   `MEGAMANBN4RSB4WE`: Mega Man Battle Network 4: Red Sun
--   `ROCK_EXE4_BMB4BJ`: Rockman EXE 4: Tournament Blue Moon
--   `ROCK_EXE4_RSB4WJ`: Rockman EXE 4: Tournament Red Sun
--   `MEGA_EXE3_BLA3XE`: Mega Man Battle Network 3: Blue (do **NOT** try this unless you want to suffer)
+-   `MEGAMAN6_FXXBR6E`: Mega Man Battle Network 6: Cybeast Falzar (US)
+-   `MEGAMAN6_GXXBR5E`: Mega Man Battle Network 6: Cybeast Gregar (US)
+-   `ROCKEXE6_RXXBR6J`: Rockman EXE 6: Dennoujuu Falzer (JP)
+-   `ROCKEXE6_GXXBR5J`: Rockman EXE 6: Dennoujuu Glaga (JP)
+-   `MEGAMAN5_TP_BRBE`: Mega Man Battle Network 5: Team Protoman (US)
+-   `MEGAMAN5_TC_BRKE`: Mega Man Battle Network 5: Team Colonel (US)
+-   `ROCKEXE5_TOBBRBJ`: Rockman EXE 5: Team of Blues (JP)
+-   `ROCKEXE5_TOCBRKJ`: Rockman EXE 5: Team of Colonel (JP)
+-   `MEGAMANBN4BMB4BE`: Mega Man Battle Network 4: Blue Moon (US)
+-   `MEGAMANBN4RSB4WE`: Mega Man Battle Network 4: Red Sun (US)
+-   `ROCK_EXE4_BMB4BJ`: Rockman EXE 4: Tournament Blue Moon (JP)
+-   `ROCK_EXE4_RSB4WJ`: Rockman EXE 4: Tournament Red Sun (JP)
+-   `MEGA_EXE3_BLA3XE`: Mega Man Battle Network 3: Blue (US) (do **NOT** try this unless you want to suffer)
 
 ## Design
 
