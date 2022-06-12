@@ -53,8 +53,6 @@ const INIT_RX: [u8; 16] = [
 ];
 
 impl hooks::Hooks for BN3 {
-    fn patch(&self, mut core: mgba::core::CoreMutRef) {}
-
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
