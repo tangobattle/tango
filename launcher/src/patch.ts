@@ -8,6 +8,8 @@ import path from "path";
 import semver from "semver";
 import toml from "toml";
 
+import { KNOWN_ROMS } from "./rom";
+
 const decoder = new TextDecoder("utf-8");
 
 export interface PatchInfos {
@@ -109,6 +111,12 @@ export async function scan(dir: string) {
           info = toml.parse(decoder.decode(rawInfo)) as RawPatchInfo;
         } catch (e) {
           throw `could not parse patch info for ${patchName}: ${e}`;
+        }
+
+        if (
+          !Object.prototype.hasOwnProperty.call(KNOWN_ROMS, info.patch.for_rom)
+        ) {
+          throw `patch is for unknown ROM: ${info.patch.for_rom}`;
         }
 
         for (const versionName of Object.keys(info.versions)) {
