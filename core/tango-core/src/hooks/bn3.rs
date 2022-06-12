@@ -1,6 +1,8 @@
 mod munger;
 mod offsets;
 
+use byteorder::ByteOrder;
+
 use crate::{facade, fastforwarder, hooks, input, shadow};
 
 #[derive(Clone)]
@@ -45,6 +47,10 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     }
     rng2_state
 }
+
+const INIT_RX: [u8; 16] = [
+    0x01, 0x00, 0x00, 0xff, 0x06, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+];
 
 impl hooks::Hooks for BN3 {
     fn patch(&self, mut core: mgba::core::CoreMutRef) {
@@ -378,14 +384,13 @@ impl hooks::Hooks for BN3 {
             ),
             {
                 let munger = self.munger.clone();
-                let placeholder_rx = self.placeholder_rx().clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc();
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                        munger.set_rx_packet(core, 0, &placeholder_rx.clone().try_into().unwrap());
-                        munger.set_rx_packet(core, 1, &placeholder_rx.clone().try_into().unwrap());
+                        munger.set_rx_packet(core, 0, &INIT_RX);
+                        munger.set_rx_packet(core, 1, &INIT_RX);
                     }),
                 )
             },
@@ -682,14 +687,13 @@ impl hooks::Hooks for BN3 {
             ),
             {
                 let munger = self.munger.clone();
-                let placeholder_rx = self.placeholder_rx().clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc();
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                        munger.set_rx_packet(core, 0, &placeholder_rx.clone().try_into().unwrap());
-                        munger.set_rx_packet(core, 1, &placeholder_rx.clone().try_into().unwrap());
+                        munger.set_rx_packet(core, 0, &INIT_RX);
+                        munger.set_rx_packet(core, 1, &INIT_RX);
                     }),
                 )
             },
@@ -875,6 +879,7 @@ impl hooks::Hooks for BN3 {
                 make_send_and_receive_call_hook(),
             ),
             {
+                let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
                     Box::new(move |_| {
@@ -887,9 +892,14 @@ impl hooks::Hooks for BN3 {
 
     fn placeholder_rx(&self) -> Vec<u8> {
         vec![
-            0x01, 0x00, 0x00, 0xff, 0x06, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00,
         ]
+    }
+
+    fn predict_rx(&self, rx: &mut Vec<u8>) {
+        let tick = byteorder::LittleEndian::read_u16(&rx[4..6]);
+        byteorder::LittleEndian::write_u16(&mut rx[4..6], tick + 1);
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {
