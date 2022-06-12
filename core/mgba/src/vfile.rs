@@ -35,7 +35,7 @@ impl VFile {
 
     pub fn open_memory(buf: &[u8]) -> Self {
         VFile(unsafe {
-            mgba_sys::VFileFromConstMemory(
+            mgba_sys::VFileMemChunk(
                 buf as *const _ as *const std::ffi::c_void,
                 buf.len() as mgba_sys::size_t,
             )
