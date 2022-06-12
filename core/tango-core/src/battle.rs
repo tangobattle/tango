@@ -593,7 +593,11 @@ impl Round {
         let partial_input_pairs = partial_input_pairs
             .into_iter()
             .map(|pair| {
-                let tx = self.tx_queue.pop_front().unwrap();
+                let tx = if let Some(tx) = self.tx_queue.pop_front() {
+                    tx
+                } else {
+                    anyhow::bail!("tx queue is empty");
+                };
                 if tx.for_tick != pair.local.local_tick {
                     anyhow::bail!(
                         "tx input did not match current tick: {} != {}",

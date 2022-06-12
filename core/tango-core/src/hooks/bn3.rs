@@ -53,6 +53,11 @@ const INIT_RX: [u8; 16] = [
 ];
 
 impl hooks::Hooks for BN3 {
+    fn patch(&self, mut core: mgba::core::CoreMutRef) {
+        // Disable hblank due to https://github.com/mgba-emu/mgba/issues/2551.
+        core.raw_write_8(self.offsets.rom.ie_toggle_hblank, -1, 0x00);
+    }
+
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
