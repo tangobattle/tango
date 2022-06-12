@@ -166,19 +166,19 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.match_end_ret,
-            //         Box::new(move |_core| {
-            //             handle.block_on(async {
-            //                 log::info!("match ended");
-            //                 facade.end_match().await;
-            //             });
-            //         }),
-            //     )
-            // },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.match_end_ret,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            log::info!("match ended");
+                            facade.end_match().await;
+                        });
+                    }),
+                )
+            },
             // {
             //     let facade = facade.clone();
             //     let handle = handle.clone();

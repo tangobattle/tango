@@ -140,7 +140,6 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
         comm_menu_init_ret:                         0x0803e08a,
-        match_end_ret:                              0, // TODO
-
+        match_end_ret:                              0x0800683e,
     },
 };
