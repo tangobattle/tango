@@ -103,6 +103,7 @@ impl Replay {
                     break;
                 },
                 rx: vec![0u8; input_raw_size],
+                is_prediction: false,
             };
             if zr.read_exact(&mut p1_input.rx).is_err() {
                 break;
@@ -117,6 +118,7 @@ impl Replay {
                     break;
                 },
                 rx: vec![0u8; input_raw_size],
+                is_prediction: false,
             };
             if zr.read_exact(&mut p2_input.rx).is_err() {
                 break;

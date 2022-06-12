@@ -198,6 +198,7 @@ impl Fastforwarder {
                         remote_tick,
                         joyflags: local.joyflags,
                         rx: self.hooks.placeholder_rx(),
+                        is_prediction: true,
                     },
                     remote: input::Input {
                         local_tick,
@@ -217,6 +218,7 @@ impl Fastforwarder {
                             joyflags
                         },
                         rx: predicted_rx.clone(),
+                        is_prediction: true,
                     },
                 }
             }))
@@ -228,6 +230,12 @@ impl Fastforwarder {
 
         let commit_time = last_committed_tick + commit_pairs.len() as u32;
         let dirty_time = last_committed_tick + input_pairs.len() as u32 - 1;
+
+        // log::info!(
+        //     "fastforwarding to commit time = {}, dirty time = {}",
+        //     commit_time,
+        //     dirty_time
+        // );
 
         *self.state.0.lock() = Some(InnerState {
             current_tick: last_committed_tick,

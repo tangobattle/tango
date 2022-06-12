@@ -684,6 +684,7 @@ impl hooks::Hooks for BN5 {
                                     remote_tick: ip.remote.remote_tick,
                                     joyflags: ip.remote.joyflags,
                                     rx: munger.tx_packet(core).to_vec(),
+                                    is_prediction: false,
                                 },
                             });
 

@@ -4,6 +4,7 @@ pub struct Input {
     pub remote_tick: u32,
     pub joyflags: u16,
     pub rx: Vec<u8>,
+    pub is_prediction: bool,
 }
 
 #[derive(Clone, Debug)]

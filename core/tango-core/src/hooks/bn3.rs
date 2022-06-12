@@ -384,6 +384,7 @@ impl hooks::Hooks for BN3 {
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc();
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
                         munger.set_rx_packet(core, 0, &INIT_RX);
                         munger.set_rx_packet(core, 1, &INIT_RX);
                     }),
@@ -651,6 +652,7 @@ impl hooks::Hooks for BN3 {
                                     remote_tick: ip.remote.remote_tick,
                                     joyflags: ip.remote.joyflags,
                                     rx: munger.tx_packet(core).to_vec(),
+                                    is_prediction: false,
                                 },
                             });
 
@@ -687,6 +689,7 @@ impl hooks::Hooks for BN3 {
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc();
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        core.gba_mut().cpu_mut().set_gpr(0, 3);
                         munger.set_rx_packet(core, 0, &INIT_RX);
                         munger.set_rx_packet(core, 1, &INIT_RX);
                     }),
@@ -893,8 +896,8 @@ impl hooks::Hooks for BN3 {
     }
 
     fn predict_rx(&self, rx: &mut Vec<u8>) {
-        let tick = byteorder::LittleEndian::read_u16(&rx[4..6]);
-        byteorder::LittleEndian::write_u16(&mut rx[4..6], tick + 1);
+        let tick = byteorder::LittleEndian::read_u16(&rx[0x4..0x6]);
+        byteorder::LittleEndian::write_u16(&mut rx[0x4..0x6], tick.wrapping_add(1));
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {

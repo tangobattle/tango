@@ -379,6 +379,7 @@ impl Match {
                 remote_tick: 0,
                 joyflags: 0,
                 rx: self.hooks.placeholder_rx(),
+                is_prediction: false,
             },
             last_input: None,
             first_state_committed_tx: Some(first_state_committed_tx),
@@ -475,8 +476,6 @@ impl Round {
     ) -> bool {
         let local_tick = self.current_tick + self.local_delay();
         let remote_tick = self.last_committed_remote_input().local_tick;
-
-        log::info!("local tick being added: {}", local_tick);
 
         // We do it in this order such that:
         // 1. We make sure that the input buffer does not overflow if we were to add an input.
@@ -608,6 +607,7 @@ impl Round {
                         remote_tick: pair.local.remote_tick,
                         joyflags: pair.local.joyflags,
                         rx: tx.tx,
+                        is_prediction: false,
                     },
                     remote: pair.remote,
                 })
@@ -625,13 +625,6 @@ impl Round {
         }
 
         for ip in &input_pairs {
-            log::info!(
-                "t = {}\n    {:02x?}\n    {:02x?}",
-                ip.local.local_tick,
-                ip.local.rx,
-                ip.remote.rx
-            );
-
             self.replay_writer
                 .as_mut()
                 .unwrap()
