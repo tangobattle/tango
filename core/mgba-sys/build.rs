@@ -20,7 +20,7 @@ impl bindgen::callbacks::ParseCallbacks for IgnoreMacros {
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
-    let mgba_dst = cmake::Config::new("external/mgba")
+    let mgba_dst = cmake::Config::new("mgba")
         .define("LIBMGBA_ONLY", "on")
         .build();
 
@@ -82,7 +82,7 @@ fn main() {
 
     let bindings = bindgen::Builder::default()
         .header("wrapper.h")
-        .clang_args(&["-Iexternal/mgba/include", "-D__STDC_NO_THREADS__=1"])
+        .clang_args(&["-Imgba/include", "-D__STDC_NO_THREADS__=1"])
         .clang_args(&flags.unwrap())
         // .parse_callbacks(Box::new(bindgen::CargoCallbacks)) // TODO: support this again
         .parse_callbacks(Box::new(ignored_macros))
