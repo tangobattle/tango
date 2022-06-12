@@ -38,7 +38,8 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
 
-    let vf = mgba::vfile::VFile::open(&args.rom_path, mgba::vfile::flags::O_RDONLY)?;
+    let rom = std::fs::read(&args.rom_path)?;
+    let vf = mgba::vfile::VFile::open_memory(&rom);
     core.as_mut().load_rom(vf)?;
 
     core.enable_video_buffer();

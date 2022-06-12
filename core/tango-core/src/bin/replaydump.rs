@@ -87,7 +87,8 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let mut core = mgba::core::Core::new_gba("tango_core")?;
     core.enable_video_buffer();
 
-    let vf = mgba::vfile::VFile::open(&args.rom_path, mgba::vfile::flags::O_RDONLY)?;
+    let rom = std::fs::read(&args.rom_path)?;
+    let vf = mgba::vfile::VFile::open_memory(&rom);
     core.as_mut().load_rom(vf)?;
 
     core.as_mut().reset();
