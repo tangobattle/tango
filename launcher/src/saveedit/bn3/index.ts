@@ -60,7 +60,12 @@ export class Editor {
     if (gn != "ROCKMANEXE3 20021002" && gn != "BBN3 v0.5.0 20021002") {
       throw "unknown game name: " + gn;
     }
-    return ["MEGA_EXE3_BLA3XE"];
+    return [
+      "ROCKMAN_EXE3A6BJ",
+      "ROCK_EXE3_BKA3XJ",
+      "MEGA_EXE3_BLA3XE",
+      "MEGA_EXE3_WHA6BE",
+    ];
   }
 
   rebuild() {
