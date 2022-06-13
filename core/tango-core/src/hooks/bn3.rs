@@ -174,40 +174,11 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.round_run_unpaused_step_cmp_retval,
-            //         Box::new(move |core| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
-
-            //                 let mut round_state = match_.lock_round_state().await;
-
-            //                 match core.as_ref().gba().cpu().gpr(0) {
-            //                     1 => {
-            //                         round_state.set_won_last_round(true);
-            //                     }
-            //                     2 => {
-            //                         round_state.set_won_last_round(false);
-            //                     }
-            //                     _ => {}
-            //                 }
-            //             });
-            //         }),
-            //     )
-            // },
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_ending_ret1,
+                    self.offsets.rom.round_lose_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -218,6 +189,7 @@ impl hooks::Hooks for BN3 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
+                            round_state.set_won_last_round(false);
                             round_state.end_round().await.expect("end round");
                             match_
                                 .advance_shadow_until_round_end()
@@ -231,7 +203,7 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_ending_ret2,
+                    self.offsets.rom.round_win_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -242,6 +214,7 @@ impl hooks::Hooks for BN3 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
+                            round_state.set_won_last_round(true);
                             round_state.end_round().await.expect("end round");
                             match_
                                 .advance_shadow_until_round_end()
@@ -427,7 +400,7 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |mut core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -435,6 +408,9 @@ impl hooks::Hooks for BN3 {
                                     return;
                                 }
                             };
+
+                            // Must be 7 otherwise we skip the battle update routine, which would be bad.
+                            core.gba_mut().cpu_mut().set_gpr(0, 7);
 
                             let mut round_state = match_.lock_round_state().await;
 
@@ -554,29 +530,30 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     (
-            //         self.offsets.rom.round_run_unpaused_step_cmp_retval,
-            //         Box::new(move |core| {
-            //             match core.as_ref().gba().cpu().gpr(0) {
-            //                 1 => {
-            //                     shadow_state.set_won_last_round(false);
-            //                 }
-            //                 2 => {
-            //                     shadow_state.set_won_last_round(true);
-            //                 }
-            //                 _ => {}
-            //             };
-            //         }),
-            //     )
-            // },
             {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |_| {
                         shadow_state.start_round();
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_lose_ret,
+                    Box::new(move |_| {
+                        shadow_state.set_won_last_round(false);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_win_ret,
+                    Box::new(move |_| {
+                        shadow_state.set_won_last_round(true);
                     }),
                 )
             },
@@ -637,7 +614,7 @@ impl hooks::Hooks for BN3 {
                             }
                         };
 
-                        if !munger.is_linking(core) {
+                        if !munger.is_linking(core) && !round.has_first_committed_state() {
                             return;
                         }
 
@@ -732,7 +709,7 @@ impl hooks::Hooks for BN3 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |mut core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -829,15 +806,15 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let ff_state = ff_state.clone();
-            //     (
-            //         self.offsets.rom.round_end_entry,
-            //         Box::new(move |_core| {
-            //             ff_state.on_battle_ended();
-            //         }),
-            //     )
-            // },
+            {
+                let ff_state = ff_state.clone();
+                (
+                    self.offsets.rom.round_end_entry,
+                    Box::new(move |_core| {
+                        ff_state.on_battle_ended();
+                    }),
+                )
+            },
             {
                 let ff_state = ff_state.clone();
                 (

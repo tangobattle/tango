@@ -55,13 +55,6 @@ pub(super) struct ROMOffsets {
     pub(super) handle_input_post_call: u32,
     pub(super) check_link_status_ret: u32,
 
-    /// This hooks the point after the game determines who the winner is, returned in r0.
-    ///
-    /// If r0 = 1, the local player won the last round.
-    /// If r0 = 2, the remote player won the last round.
-    /// Otherwise, the battle hasn't ended.
-    pub(super) round_run_unpaused_step_cmp_retval: u32,
-
     /// This hooks the point after the battle start routine is complete.
     ///
     /// Tango initializes its own battle tracking state at this point.
@@ -70,12 +63,12 @@ pub(super) struct ROMOffsets {
     /// This hooks the point when the round is ending and the game will process no further input.
     ///
     /// At this point, Tango will clean up its round state and commit the replay.
-    pub(super) round_ending_ret1: u32,
+    pub(super) round_lose_ret: u32,
 
     /// This hooks the point when the round is ending and the game will process no further input.
     ///
     /// At this point, Tango will clean up its round state and commit the replay.
-    pub(super) round_ending_ret2: u32,
+    pub(super) round_win_ret: u32,
 
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
@@ -134,10 +127,9 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         handle_input_deinit_send_and_receive_call:  0x0800877e,
         handle_input_post_call:                     0x0800643e,
         check_link_status_ret:                      0x08008b32,
-        round_run_unpaused_step_cmp_retval:         0, // TODO
         round_start_ret:                            0x080059a8,
-        round_ending_ret1:                          0x0800952a,
-        round_ending_ret2:                          0x08009532,
+        round_lose_ret:                             0x080095da,
+        round_win_ret:                              0x08009532,
         round_end_entry:                            0x080068a0,
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
@@ -145,4 +137,3 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         match_end_ret:                              0x08006958,
     },
 };
-// 08034058
