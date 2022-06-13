@@ -909,7 +909,7 @@ impl hooks::Hooks for BN3 {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |core| {
+                    Box::new(move |_| {
                         ff_state.increment_current_tick();
                     }),
                 )
