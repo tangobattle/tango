@@ -397,14 +397,6 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                (
-                    self.offsets.rom.update_link_state_ret,
-                    Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 7);
-                    }),
-                )
-            },
-            {
                 let facade = facade.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
