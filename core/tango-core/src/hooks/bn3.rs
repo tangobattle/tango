@@ -372,6 +372,12 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
+            (
+                self.offsets.rom.check_link_status_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             {
                 let munger = self.munger.clone();
                 (
@@ -681,6 +687,12 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
+            (
+                self.offsets.rom.check_link_status_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             {
                 let munger = self.munger.clone();
                 (
@@ -707,7 +719,10 @@ impl hooks::Hooks for BN3 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |mut core| {
+                        // Must be 7 otherwise we skip the battle update routine, which would be bad.
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -885,7 +900,10 @@ impl hooks::Hooks for BN3 {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |mut core| {
+                        // Must be 7 otherwise we skip the battle update routine, which would be bad.
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+
                         ff_state.increment_current_tick();
                     }),
                 )
