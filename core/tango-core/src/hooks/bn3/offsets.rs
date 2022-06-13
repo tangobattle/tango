@@ -70,7 +70,12 @@ pub(super) struct ROMOffsets {
     /// This hooks the point when the round is ending and the game will process no further input.
     ///
     /// At this point, Tango will clean up its round state and commit the replay.
-    pub(super) round_ending_ret: u32,
+    pub(super) round_ending_ret1: u32,
+
+    /// This hooks the point when the round is ending and the game will process no further input.
+    ///
+    /// At this point, Tango will clean up its round state and commit the replay.
+    pub(super) round_ending_ret2: u32,
 
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
@@ -131,11 +136,13 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         check_link_status_ret:                      0x08008b32,
         round_run_unpaused_step_cmp_retval:         0, // TODO
         round_start_ret:                            0x080059a8,
-        round_ending_ret:                           0, // TODO
-        round_end_entry:                            0, // TODO
+        round_ending_ret1:                          0x0800952a,
+        round_ending_ret2:                          0x08009532,
+        round_end_entry:                            0x080068a0,
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
         comm_menu_init_ret:                         0x0803e08a,
-        match_end_ret:                              0x0800683e,
+        match_end_ret:                              0x08006958,
     },
 };
+// 08034058

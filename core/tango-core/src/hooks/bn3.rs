@@ -203,30 +203,54 @@ impl hooks::Hooks for BN3 {
             //         }),
             //     )
             // },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.round_ending_ret,
-            //         Box::new(move |_| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_ending_ret1,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let mut round_state = match_.lock_round_state().await;
-            //                 round_state.end_round().await.expect("end round");
-            //                 match_
-            //                     .advance_shadow_until_round_end()
-            //                     .await
-            //                     .expect("advance shadow");
-            //             });
-            //         }),
-            //     )
-            // },
+                            let mut round_state = match_.lock_round_state().await;
+                            round_state.end_round().await.expect("end round");
+                            match_
+                                .advance_shadow_until_round_end()
+                                .await
+                                .expect("advance shadow");
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_ending_ret2,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+                            round_state.end_round().await.expect("end round");
+                            match_
+                                .advance_shadow_until_round_end()
+                                .await
+                                .expect("advance shadow");
+                        });
+                    }),
+                )
+            },
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -556,16 +580,16 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     (
-            //         self.offsets.rom.round_end_entry,
-            //         Box::new(move |core| {
-            //             shadow_state.end_round();
-            //             shadow_state.set_applied_state(core.save_state().expect("save state"));
-            //         }),
-            //     )
-            // },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_end_entry,
+                    Box::new(move |core| {
+                        shadow_state.end_round();
+                        shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
+                    }),
+                )
+            },
             {
                 let shadow_state = shadow_state.clone();
                 (
