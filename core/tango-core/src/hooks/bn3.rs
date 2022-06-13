@@ -544,7 +544,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_lose_ret,
                     Box::new(move |_| {
-                        shadow_state.set_won_last_round(false);
+                        shadow_state.set_won_last_round(true);
                     }),
                 )
             },
@@ -553,7 +553,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_win_ret,
                     Box::new(move |_| {
-                        shadow_state.set_won_last_round(true);
+                        shadow_state.set_won_last_round(false);
                     }),
                 )
             },
