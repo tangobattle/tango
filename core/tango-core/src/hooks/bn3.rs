@@ -708,14 +708,6 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            // {
-            //     (
-            //         self.offsets.rom.update_link_state_ret,
-            //         Box::new(move |mut core| {
-            //             core.gba_mut().cpu_mut().set_gpr(0, 7);
-            //         }),
-            //     )
-            // },
             {
                 let shadow_state = shadow_state.clone();
                 (
