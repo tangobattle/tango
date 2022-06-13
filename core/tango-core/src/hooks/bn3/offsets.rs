@@ -26,9 +26,6 @@ pub(super) struct EWRAMOffsets {
 
 #[derive(Clone, Copy)]
 pub(super) struct ROMOffsets {
-    // This sets the IE.
-    pub(super) ie_toggle_hblank: u32,
-
     /// This is the entry point for the start screen, i.e. when the CAPCOM logo is displayed.
     ///
     /// It is expected that at this point, you may write to the start_screen_control EWRAM address to skip to the title screen.
@@ -121,7 +118,6 @@ pub struct Offsets {
 pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
-        ie_toggle_hblank:                           0x08000174,
         start_screen_jump_table_entry:              0x0802b32c,
         start_screen_sram_unmask_ret:               0x08022016,
         game_load_ret:                              0x08004510,
