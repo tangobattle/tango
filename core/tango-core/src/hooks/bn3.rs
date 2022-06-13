@@ -388,6 +388,12 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
+            (
+                self.offsets.rom.process_battle_input_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             {
                 let munger = self.munger.clone();
                 (
@@ -694,6 +700,12 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
+            (
+                self.offsets.rom.process_battle_input_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             {
                 let munger = self.munger.clone();
                 (
@@ -794,28 +806,6 @@ impl hooks::Hooks for BN3 {
         };
 
         vec![
-            // {
-            //     (
-            //         0x080088e6,
-            //         Box::new(move |mut core| {
-            //             let r6 = core.as_ref().gba().cpu().gpr(6);
-            //             log::info!(
-            //                 "counter:{}\n  {:02x?}\n  {:02x?}",
-            //                 core.as_ref().gba().cpu().gpr(4),
-            //                 core.raw_read_range::<0x10>(r6 as u32, -1),
-            //                 core.raw_read_range::<0x10>((r6 + 0x10) as u32, -1)
-            //             );
-            //         }),
-            //     )
-            // },
-            // {
-            //     (
-            //         0x0800890a,
-            //         Box::new(move |mut core| {
-            //             log::info!("ff hurr: {}", core.as_ref().gba().cpu().gpr(0));
-            //         }),
-            //     )
-            // },
             {
                 let ff_state = ff_state.clone();
                 (
@@ -909,11 +899,17 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
+            (
+                self.offsets.rom.process_battle_input_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |core| {
                         ff_state.increment_current_tick();
                     }),
                 )

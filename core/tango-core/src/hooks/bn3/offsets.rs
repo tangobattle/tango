@@ -52,6 +52,8 @@ pub(super) struct ROMOffsets {
     pub(super) handle_input_update_send_and_receive_call: u32,
     pub(super) handle_input_deinit_send_and_receive_call: u32,
 
+    pub(super) process_battle_input_ret: u32,
+
     pub(super) handle_input_post_call: u32,
 
     /// This hooks the point after the battle start routine is complete.
@@ -124,6 +126,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         handle_input_init_send_and_receive_call:    0x080085d2,
         handle_input_update_send_and_receive_call:  0x080086a8,
         handle_input_deinit_send_and_receive_call:  0x0800877e,
+        process_battle_input_ret:                   0x08008af0,
         handle_input_post_call:                     0x0800643e,
         round_start_ret:                            0x080059a8,
         round_lose_ret:                             0x080095da,
