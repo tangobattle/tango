@@ -1,8 +1,6 @@
 mod munger;
 mod offsets;
 
-use byteorder::ByteOrder;
-
 use crate::{facade, fastforwarder, hooks, input, shadow};
 
 #[derive(Clone)]
@@ -900,11 +898,6 @@ impl hooks::Hooks for BN3 {
             0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00,
         ]
-    }
-
-    fn predict_rx(&self, rx: &mut Vec<u8>) {
-        let tick = byteorder::LittleEndian::read_u16(&rx[0x4..0x6]);
-        byteorder::LittleEndian::write_u16(&mut rx[0x4..0x6], tick.wrapping_add(1));
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {

@@ -184,14 +184,12 @@ impl Fastforwarder {
         mgba::state::State,
         input::Pair<input::Input, input::Input>,
     )> {
-        let mut predicted_rx = last_committed_remote_input.rx.clone();
         let input_pairs = commit_pairs
             .iter()
             .cloned()
             .chain(local_player_inputs_left.iter().cloned().map(|local| {
                 let local_tick = local.local_tick;
                 let remote_tick = local.remote_tick;
-                self.hooks.predict_rx(&mut predicted_rx);
                 input::Pair {
                     local: input::Input {
                         local_tick,
@@ -217,7 +215,7 @@ impl Fastforwarder {
                             }
                             joyflags
                         },
-                        rx: predicted_rx.clone(),
+                        rx: last_committed_remote_input.rx.clone(),
                         is_prediction: true,
                     },
                 }
