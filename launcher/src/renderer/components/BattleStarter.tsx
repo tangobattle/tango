@@ -594,13 +594,15 @@ async function runCallback(
     const ownGameSettings = ref.current.pendingStates!.own!.settings;
     const ownGameInfo = ownGameSettings.gameInfo!;
 
+    const ownFullROMName = `${ownGameInfo.rom}${
+      ownGameInfo.patch != null
+        ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
+        : ""
+    }`;
+
     const outOwnROMPath = path.join(
       ref.current.tempDir,
-      `${ownGameInfo.rom}${
-        ownGameInfo.patch != null
-          ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
-          : ""
-      }.gba`
+      `${ownFullROMName}.gba`
     );
     await makeROM(
       ref.current.getROMPath(ownGameInfo.rom),
@@ -634,7 +636,9 @@ async function runCallback(
     const prefix = `${datefns.format(
       now,
       "yyyyMMddHHmmss"
-    )}-vs-${encodeURIComponent(opponentGameSettings.nickname)}-${linkCode}`;
+    )}-${ownFullROMName}-vs-${encodeURIComponent(
+      opponentGameSettings.nickname
+    )}-${linkCode}`;
 
     const shadowSavePath = path.join(ref.current.tempDir, prefix + ".sav");
     await writeFile(shadowSavePath, remoteState.saveData);
