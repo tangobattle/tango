@@ -58,5 +58,7 @@ pub trait Hooks {
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
+    fn predict_rx(&self, _rx: &mut Vec<u8>) {}
+
     fn replace_opponent_name(&self, _core: mgba::core::CoreMutRef, _name: &str) {}
 }
