@@ -372,12 +372,6 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
-            (
-                self.offsets.rom.check_link_status_ret,
-                Box::new(move |mut core| {
-                    core.gba_mut().cpu_mut().set_gpr(0, 0);
-                }),
-            ),
             {
                 let munger = self.munger.clone();
                 (
@@ -401,10 +395,18 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
+                (
+                    self.offsets.rom.update_link_state_ret,
+                    Box::new(move |mut core| {
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+                    }),
+                )
+            },
+            {
                 let facade = facade.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
+                    Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -412,9 +414,6 @@ impl hooks::Hooks for BN3 {
                                     return;
                                 }
                             };
-
-                            // Must be 7 otherwise we skip the battle update routine, which would be bad.
-                            core.gba_mut().cpu_mut().set_gpr(0, 7);
 
                             let mut round_state = match_.lock_round_state().await;
 
@@ -687,12 +686,6 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
-            (
-                self.offsets.rom.check_link_status_ret,
-                Box::new(move |mut core| {
-                    core.gba_mut().cpu_mut().set_gpr(0, 0);
-                }),
-            ),
             {
                 let munger = self.munger.clone();
                 (
@@ -716,13 +709,18 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
+                (
+                    self.offsets.rom.update_link_state_ret,
+                    Box::new(move |mut core| {
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+                    }),
+                )
+            },
+            {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
-                        // Must be 7 otherwise we skip the battle update routine, which would be bad.
-                        core.gba_mut().cpu_mut().set_gpr(0, 7);
-
+                    Box::new(move |_| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -734,7 +732,6 @@ impl hooks::Hooks for BN3 {
                         if !round.has_first_committed_state() {
                             return;
                         }
-
                         round.increment_current_tick();
                     }),
                 )
@@ -890,20 +887,19 @@ impl hooks::Hooks for BN3 {
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
-            (
-                self.offsets.rom.check_link_status_ret,
-                Box::new(move |mut core| {
-                    core.gba_mut().cpu_mut().set_gpr(0, 0);
-                }),
-            ),
+            {
+                (
+                    self.offsets.rom.update_link_state_ret,
+                    Box::new(move |mut core| {
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+                    }),
+                )
+            },
             {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
-                        // Must be 7 otherwise we skip the battle update routine, which would be bad.
-                        core.gba_mut().cpu_mut().set_gpr(0, 7);
-
+                    Box::new(move |_| {
                         ff_state.increment_current_tick();
                     }),
                 )
@@ -913,8 +909,8 @@ impl hooks::Hooks for BN3 {
 
     fn placeholder_rx(&self) -> Vec<u8> {
         vec![
-            0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00,
+            0x01, 0xff, 0x00, 0xff, 0x06, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+            0xff, 0xff,
         ]
     }
 
