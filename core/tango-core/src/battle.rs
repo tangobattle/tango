@@ -559,8 +559,8 @@ impl Round {
         self.committed_state.is_some()
     }
 
-    pub fn take_last_input(&mut self) -> Option<input::Pair<input::Input, input::Input>> {
-        self.last_input.take()
+    pub fn peek_last_input(&self) -> &Option<input::Pair<input::Input, input::Input>> {
+        &self.last_input
     }
 
     pub fn local_delay(&self) -> u32 {

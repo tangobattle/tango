@@ -118,6 +118,20 @@ impl hooks::Hooks for BN3 {
                     };
 
                     round.queue_tx(round.current_tick() + 1, munger.tx_packet(core).to_vec());
+
+                    let ip = round.peek_last_input().as_ref().unwrap();
+
+                    munger.set_rx_packet(
+                        core,
+                        round.local_player_index() as u32,
+                        &ip.local.rx.clone().try_into().unwrap(),
+                    );
+
+                    munger.set_rx_packet(
+                        core,
+                        round.remote_player_index() as u32,
+                        &ip.remote.rx.clone().try_into().unwrap(),
+                    );
                 });
             })
         };
@@ -780,6 +794,28 @@ impl hooks::Hooks for BN3 {
         };
 
         vec![
+            // {
+            //     (
+            //         0x080088e6,
+            //         Box::new(move |mut core| {
+            //             let r6 = core.as_ref().gba().cpu().gpr(6);
+            //             log::info!(
+            //                 "counter:{}\n  {:02x?}\n  {:02x?}",
+            //                 core.as_ref().gba().cpu().gpr(4),
+            //                 core.raw_read_range::<0x10>(r6 as u32, -1),
+            //                 core.raw_read_range::<0x10>((r6 + 0x10) as u32, -1)
+            //             );
+            //         }),
+            //     )
+            // },
+            // {
+            //     (
+            //         0x0800890a,
+            //         Box::new(move |mut core| {
+            //             log::info!("ff hurr: {}", core.as_ref().gba().cpu().gpr(0));
+            //         }),
+            //     )
+            // },
             {
                 let ff_state = ff_state.clone();
                 (
