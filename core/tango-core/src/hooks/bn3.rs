@@ -709,7 +709,7 @@ impl hooks::Hooks for BN3 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
+                    Box::new(move |_| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
