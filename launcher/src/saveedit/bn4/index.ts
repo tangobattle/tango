@@ -9,13 +9,6 @@ const MASK_OFFSET = 0x1554;
 const GAME_NAME_OFFSET = 0x2208;
 const CHECKSUM_OFFSET = 0x21e8;
 
-const ROM_NAMES_BY_CHECKSUM_GUESS: { [key: string]: string } = {
-  JPbluemoon: "ROCK_EXE4_BMB4BJ",
-  JPredsun: "ROCK_EXE4_RSB4WJ",
-  USbluemoon: "MEGAMANBN4BMB4BE",
-  USredsun: "MEGAMANBN4RSB4WE",
-};
-
 const GAME_INFOS: { [key: string]: GameInfo } = {
   // Japan
   ROCK_EXE4_BMB4BJ: {
@@ -218,7 +211,7 @@ export class Editor {
     return arr.buffer;
   }
 
-  static fromUnmaskedSRAM(buffer: ArrayBuffer) {
+  static sniffROMNames(buffer: ArrayBuffer) {
     if (buffer.byteLength != SRAM_SIZE) {
       throw (
         "invalid byte length of save file: expected " +
@@ -248,35 +241,29 @@ export class Editor {
     const rawChecksum = computeChecksumRaw(dv);
     const firstVal = new Uint8Array(buffer, 0, 1)[0];
 
-    let version;
-    let region;
-    switch (checksum) {
-      case rawChecksum + CHECKSUM_START.bluemoon: {
-        version = "bluemoon";
-        region = "JP";
-        break;
-      }
-      case rawChecksum + CHECKSUM_START.redsun: {
-        version = "redsun";
-        region = "JP";
-        break;
-      }
-      case rawChecksum + CHECKSUM_START.bluemoon + firstVal: {
-        version = "bluemoon";
-        region = "US";
-        break;
-      }
-      case rawChecksum + CHECKSUM_START.redsun + firstVal: {
-        version = "redsun";
-        region = "US";
-        break;
-      }
-      default:
-        throw "unknown game, no checksum formats match";
+    const romNames = [];
+
+    if (checksum == rawChecksum + CHECKSUM_START.bluemoon) {
+      romNames.push("ROCK_EXE4_BMB4BJ");
     }
 
-    const checksumGuess = region + version;
-    return new Editor(buffer, ROM_NAMES_BY_CHECKSUM_GUESS[checksumGuess]);
+    if (checksum == rawChecksum + CHECKSUM_START.redsun) {
+      romNames.push("ROCK_EXE4_RSB4WJ");
+    }
+
+    if (checksum == rawChecksum + CHECKSUM_START.bluemoon + firstVal) {
+      romNames.push("MEGAMANBN4BMB4BE");
+    }
+
+    if (checksum == rawChecksum + CHECKSUM_START.redsun + firstVal) {
+      romNames.push("MEGAMANBN4RSB4WE");
+    }
+
+    if (romNames.length == 0) {
+      throw "unknown game, no checksum formats match";
+    }
+
+    return romNames;
   }
 
   constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {

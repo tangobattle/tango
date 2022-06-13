@@ -77,7 +77,10 @@ export default function SavesPane({ active }: { active: boolean }) {
   const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
   const [battleReady, setBattleReady] = React.useState(false);
 
-  const [saveName_, setSaveName] = React.useState<string | null>(null);
+  const [selectedSave_, setSelectedSave] = React.useState<{
+    romName: string;
+    saveName: string;
+  } | null>(null);
   const [incarnation, setIncarnation] = React.useState(0);
   const [opponentSettings, setOpponentSettings] =
     React.useState<SetSettings | null>(null);
@@ -85,15 +88,19 @@ export default function SavesPane({ active }: { active: boolean }) {
 
   const getNetplayCompatibility = useGetNetplayCompatibility();
 
-  const saveName =
-    saveName_ != null && Object.prototype.hasOwnProperty.call(saves, saveName_)
-      ? saveName_
+  const selectedSave =
+    selectedSave_ != null &&
+    Object.prototype.hasOwnProperty.call(saves, selectedSave_.saveName) &&
+    Object.prototype.hasOwnProperty.call(roms, selectedSave_.romName)
+      ? selectedSave_
       : null;
 
   const groupedSaves: { [key: string]: string[] } = {};
   for (const k of Object.keys(saves)) {
-    groupedSaves[saves[k].romName] = groupedSaves[saves[k].romName] || [];
-    groupedSaves[saves[k].romName].push(k);
+    for (const romName of saves[k].romNames) {
+      groupedSaves[romName] = groupedSaves[romName] || [];
+      groupedSaves[romName].push(k);
+    }
   }
 
   const romNames = Object.keys(KNOWN_ROMS);
@@ -114,16 +121,16 @@ export default function SavesPane({ active }: { active: boolean }) {
       ? patchName_
       : null;
 
-  const save = saveName != null ? saves[saveName] : null;
-
   const eligiblePatchNames = React.useMemo(() => {
     const eligiblePatchNames =
-      save != null
-        ? Object.keys(patches).filter((p) => patches[p].forROM == save.romName)
+      selectedSave != null
+        ? Object.keys(patches).filter(
+            (p) => patches[p].forROM == selectedSave.romName
+          )
         : [];
     eligiblePatchNames.sort();
     return eligiblePatchNames;
-  }, [patches, save]);
+  }, [patches, selectedSave]);
 
   const patchInfo = patchName != null ? patches[patchName] : null;
 
@@ -188,28 +195,27 @@ export default function SavesPane({ active }: { active: boolean }) {
               <Select
                 labelId="select-save-label"
                 label={<Trans i18nKey="play:select-save" />}
-                value={saveName ?? ""}
+                value={selectedSave != null ? JSON.stringify(selectedSave) : ""}
                 disabled={battleReady}
                 renderValue={(v) => {
                   if (v == "") {
                     return null;
                   }
+
+                  const selection = JSON.parse(v);
+
                   return (
                     <>
-                      {saveName != null &&
-                      opponentSettings?.gameInfo != null &&
+                      {opponentSettings?.gameInfo != null &&
                       !Object.keys(patches)
-                        .filter(
-                          (p) => patches[p].forROM == saves[saveName].romName
-                        )
+                        .filter((p) => patches[p].forROM == selection.romName)
                         .flatMap((p) =>
                           Object.keys(patches[p].versions).map(
                             (v) => patches[p].versions[v].netplayCompatibility
                           )
                         )
                         .concat([
-                          KNOWN_ROMS[saves[saveName].romName]
-                            .netplayCompatibility,
+                          KNOWN_ROMS[selection.romName].netplayCompatibility,
                         ])
                         .some(
                           (nc) =>
@@ -230,7 +236,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                         </Tooltip>
                       ) : opponentAvailableGames.length > 0 &&
                         !opponentAvailableGames.some(
-                          (g) => g.rom == saves[v].romName
+                          (g) => g.rom == selection.romName
                         ) ? (
                         <Tooltip
                           title={<Trans i18nKey="play:no-remote-copy" />}
@@ -245,24 +251,25 @@ export default function SavesPane({ active }: { active: boolean }) {
                           />
                         </Tooltip>
                       ) : null}
-                      {v}{" "}
+                      {selection.saveName}{" "}
                       <small>
-                        {KNOWN_ROMS[saves[v].romName].title[
+                        {KNOWN_ROMS[selection.romName].title[
                           i18n.resolvedLanguage
-                        ] || KNOWN_ROMS[saves[v].romName].title[fallbackLng]}
+                        ] || KNOWN_ROMS[selection.romName].title[fallbackLng]}
                       </small>
                     </>
                   );
                 }}
                 onChange={(e) => {
+                  const v = JSON.parse(e.target.value);
                   if (
-                    saveName == null ||
-                    saves[e.target.value].romName != saves[saveName].romName
+                    selectedSave == null ||
+                    v.romName != selectedSave.romName
                   ) {
                     setPatchName(null);
                     setPatchVersion(null);
                   }
-                  setSaveName(e.target.value);
+                  setSelectedSave(v);
                 }}
               >
                 {romNames.flatMap((romName) => {
@@ -280,10 +287,11 @@ export default function SavesPane({ active }: { active: boolean }) {
                           KNOWN_ROMS[romName].title[fallbackLng]}
                       </ListSubheader>,
                       ...saveNames.map((v) => {
+                        const value = JSON.stringify({ romName, saveName: v });
                         return (
                           <MenuItem
-                            key={v}
-                            value={v}
+                            key={value}
+                            value={value}
                             disabled={
                               !Object.prototype.hasOwnProperty.call(
                                 roms,
@@ -293,9 +301,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                           >
                             {opponentSettings?.gameInfo != null &&
                             !Object.keys(patches)
-                              .filter(
-                                (p) => patches[p].forROM == saves[v].romName
-                              )
+                              .filter((p) => patches[p].forROM == romName)
                               .flatMap((p) =>
                                 Object.keys(patches[p].versions).map(
                                   (v) =>
@@ -303,8 +309,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                                 )
                               )
                               .concat([
-                                KNOWN_ROMS[saves[v].romName]
-                                  .netplayCompatibility,
+                                KNOWN_ROMS[romName].netplayCompatibility,
                               ])
                               .some(
                                 (nc) =>
@@ -356,11 +361,11 @@ export default function SavesPane({ active }: { active: boolean }) {
             <Tooltip title={<Trans i18nKey="play:open-dir" />}>
               <IconButton
                 onClick={() => {
-                  if (saveName == null) {
+                  if (selectedSave == null) {
                     shell.openPath(getBasePath(app));
                   } else {
                     shell.showItemInFolder(
-                      path.join(getSavesPath(app), saveName)
+                      path.join(getSavesPath(app), selectedSave.saveName)
                     );
                   }
                 }}
@@ -399,7 +404,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 </InputLabel>
                 <Select
                   labelId="game-label"
-                  disabled={saveName == null || battleReady}
+                  disabled={selectedSave == null || battleReady}
                   size="small"
                   value={JSON.stringify(patchName)}
                   label={<Trans i18nKey="play:patch-name" />}
@@ -413,8 +418,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                       return (
                         <>
                           {opponentSettings?.gameInfo != null &&
-                          saveName != null &&
-                          KNOWN_ROMS[saves[saveName].romName]
+                          selectedSave != null &&
+                          KNOWN_ROMS[selectedSave.romName]
                             .netplayCompatibility !=
                             getNetplayCompatibility(
                               opponentSettings.gameInfo
@@ -434,8 +439,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                           ) : opponentAvailableGames.length > 0 &&
                             !opponentAvailableGames.some(
                               (g) =>
-                                save != null &&
-                                g.rom == save.romName &&
+                                selectedSave != null &&
+                                g.rom == selectedSave.romName &&
                                 g.patch == null
                             ) ? (
                             <Tooltip
@@ -458,7 +463,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                     return (
                       <>
                         {opponentSettings?.gameInfo != null &&
-                        saveName != null &&
+                        selectedSave != null &&
                         !Object.keys(patches[patchName].versions)
                           .map(
                             (v) =>
@@ -487,8 +492,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                         ) : opponentAvailableGames.length > 0 &&
                           !opponentAvailableGames.some(
                             (g) =>
-                              save != null &&
-                              g.rom == save.romName &&
+                              selectedSave != null &&
+                              g.rom == selectedSave.romName &&
                               g.patch != null &&
                               g.patch.name == patchName
                           ) ? (
@@ -525,8 +530,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                 >
                   <MenuItem value="null">
                     {opponentSettings?.gameInfo != null &&
-                    saveName != null &&
-                    KNOWN_ROMS[saves[saveName].romName].netplayCompatibility !=
+                    selectedSave != null &&
+                    KNOWN_ROMS[selectedSave.romName].netplayCompatibility !=
                       getNetplayCompatibility(opponentSettings.gameInfo) ? (
                       <Tooltip
                         title={<Trans i18nKey="play:incompatible-game" />}
@@ -543,8 +548,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                     ) : opponentAvailableGames.length > 0 &&
                       !opponentAvailableGames.some(
                         (g) =>
-                          save != null &&
-                          g.rom == save.romName &&
+                          selectedSave != null &&
+                          g.rom == selectedSave.romName &&
                           g.patch == null
                       ) ? (
                       <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
@@ -598,8 +603,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                               ) : opponentAvailableGames.length > 0 &&
                                 !opponentAvailableGames.some(
                                   (g) =>
-                                    save != null &&
-                                    g.rom == save.romName &&
+                                    selectedSave != null &&
+                                    g.rom == selectedSave.romName &&
                                     g.patch != null &&
                                     g.patch.name == patchName
                                 ) ? (
@@ -646,7 +651,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 <Select
                   labelId="patch-version-label"
                   disabled={
-                    saveName == null || patchName == null || battleReady
+                    selectedSave == null || patchName == null || battleReady
                   }
                   size="small"
                   value={patchVersion || ""}
@@ -685,8 +690,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                             ) : opponentAvailableGames.length > 0 &&
                               !opponentAvailableGames.some(
                                 (g) =>
-                                  save != null &&
-                                  g.rom == save.romName &&
+                                  selectedSave != null &&
+                                  g.rom == selectedSave.romName &&
                                   g.patch != null &&
                                   g.patch.name == patchName &&
                                   g.patch.version == version
@@ -714,11 +719,11 @@ export default function SavesPane({ active }: { active: boolean }) {
             </Stack>
           </Collapse>
         </Box>
-        {saveName != null ? (
+        {selectedSave != null ? (
           <Stack direction="column" flexGrow={1}>
             <SaveViewerWrapper
-              romName={saves[saveName].romName}
-              filename={saveName}
+              romName={selectedSave.romName}
+              filename={selectedSave.saveName}
               incarnation={incarnation}
             />
           </Stack>
@@ -739,12 +744,18 @@ export default function SavesPane({ active }: { active: boolean }) {
           </Box>
         )}
         <BattleStarter
-          saveName={saveName}
-          patch={
-            patchVersion != null
+          saveName={selectedSave != null ? selectedSave.saveName : null}
+          gameInfo={
+            selectedSave != null
               ? {
-                  name: patchName!,
-                  version: patchVersion,
+                  rom: selectedSave.romName,
+                  patch:
+                    patchVersion != null
+                      ? {
+                          name: patchName!,
+                          version: patchVersion,
+                        }
+                      : undefined,
                 }
               : null
           }

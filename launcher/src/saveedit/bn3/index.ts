@@ -54,13 +54,13 @@ export class Editor {
     return "bn3";
   }
 
-  static fromUnmaskedSRAM(buffer: ArrayBuffer) {
+  static sniffROMNames(buffer: ArrayBuffer) {
     const decoder = new TextDecoder("ascii");
     const gn = decoder.decode(new Uint8Array(buffer, 0 + GAME_NAME_OFFSET, 20));
     if (gn != "ROCKMANEXE3 20021002" && gn != "BBN3 v0.5.0 20021002") {
       throw "unknown game name: " + gn;
     }
-    return new Editor(buffer, "MEGA_EXE3_BLA3XE");
+    return ["MEGA_EXE3_BLA3XE"];
   }
 
   rebuild() {

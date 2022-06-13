@@ -335,7 +335,7 @@ export class Editor {
     return arr.buffer;
   }
 
-  static fromUnmaskedSRAM(buffer: ArrayBuffer) {
+  static sniffROMNames(buffer: ArrayBuffer) {
     if (buffer.byteLength != SRAM_SIZE) {
       throw (
         "invalid byte length of save file: expected " +
@@ -359,7 +359,7 @@ export class Editor {
       throw "unknown game name: " + gn;
     }
 
-    return new Editor(buffer, ROM_NAMES_BY_SAVE_GAME_NAME[gn]);
+    return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
   constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {

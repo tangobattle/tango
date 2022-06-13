@@ -62,7 +62,6 @@ import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
-import { useSaves } from "./SavesContext";
 import SaveViewer from "./SaveViewer";
 import { useTempDir } from "./TempDirContext";
 
@@ -251,7 +250,7 @@ async function runCallback(
     setPendingStates: React.Dispatch<
       React.SetStateAction<PendingStates | null>
     >;
-    gameInfo: GameInfo | undefined;
+    gameInfo: GameInfo | null;
     tempDir: string;
     saveName: string | null;
     setState: React.Dispatch<
@@ -410,7 +409,7 @@ async function runCallback(
     const myPendingSettings = defaultMatchSettings(
       ref.current.config.nickname!
     );
-    myPendingSettings.gameInfo = ref.current.gameInfo;
+    myPendingSettings.gameInfo = ref.current.gameInfo ?? undefined;
     myPendingSettings.availableGames = ref.current.availableGames;
     ref.current.setPendingStates((pendingStates) => ({
       ...pendingStates!,
@@ -764,19 +763,17 @@ interface PendingStates {
 
 export default function BattleStarter({
   saveName,
-  patch,
+  gameInfo,
   onExit,
   onReadyChange,
   onOpponentSettingsChange,
 }: {
   saveName: string | null;
-  patch: { name: string; version: string } | null;
+  gameInfo: GameInfo | null;
   onExit: () => void;
   onReadyChange: (ready: boolean) => void;
   onOpponentSettingsChange: (settings: SetSettings | null) => void;
 }) {
-  const { saves } = useSaves();
-
   const { config } = useConfig();
   const { tempDir } = useTempDir();
   const getROMPath = useGetROMPath();
@@ -806,17 +803,6 @@ export default function BattleStarter({
 
   const [revealedSetupEditor, setRevealedSetupEditor] =
     React.useState<Editor | null>(null);
-
-  const gameInfo = React.useMemo(
-    () =>
-      saveName != null
-        ? {
-            rom: saves[saveName].romName,
-            patch: patch ?? undefined,
-          }
-        : null ?? undefined,
-    [saveName, saves, patch]
-  );
 
   const previousGameInfo = usePrevious(gameInfo);
   const previousAvailableGames = usePrevious(availableGames);
@@ -872,7 +858,7 @@ export default function BattleStarter({
     if (pendingStates != null && pendingStates.own != null) {
       changeLocalPendingState({
         ...pendingStates.own.settings,
-        gameInfo,
+        gameInfo: gameInfo ?? undefined,
         availableGames,
       });
     }

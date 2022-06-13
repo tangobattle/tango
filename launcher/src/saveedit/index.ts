@@ -57,7 +57,7 @@ export interface Modcard {
 export interface EditorClass {
   new (buffer: ArrayBuffer, romName: string, verifyChecksum: boolean): Editor;
   sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
-  fromUnmaskedSRAM(buffer: ArrayBuffer): Editor;
+  sniffROMNames(buffer: ArrayBuffer): string[];
 }
 
 export interface Editor {
@@ -112,12 +112,18 @@ export const EDITORS_BY_GAME_FAMILY: { [key: string]: EditorClass } = {
   bn6: bn6.Editor,
 };
 
-export function sniff(buffer: ArrayBuffer): Editor {
+export function sniff(buffer: ArrayBuffer): {
+  gameFamily: string;
+  romNames: string[];
+} {
   const errors: { [key: string]: any } = {};
   for (const k of Object.keys(EDITORS_BY_GAME_FAMILY)) {
     const Editor = EDITORS_BY_GAME_FAMILY[k];
     try {
-      return Editor.fromUnmaskedSRAM(Editor.sramDumpToRaw(buffer));
+      return {
+        gameFamily: k,
+        romNames: Editor.sniffROMNames(Editor.sramDumpToRaw(buffer)),
+      };
     } catch (e) {
       errors[k] = e;
     }

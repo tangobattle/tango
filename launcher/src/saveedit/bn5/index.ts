@@ -86,7 +86,7 @@ export class Editor {
   getGameFamily() {
     return "bn5";
   }
-  static fromUnmaskedSRAM(buffer: ArrayBuffer) {
+  static sniffROMNames(buffer: ArrayBuffer) {
     if (buffer.byteLength != SRAM_SIZE) {
       throw (
         "invalid byte length of save file: expected " +
@@ -110,7 +110,7 @@ export class Editor {
       throw "unknown game name: " + gn;
     }
 
-    return new Editor(buffer, ROM_NAMES_BY_SAVE_GAME_NAME[gn]);
+    return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
   computeChecksum() {

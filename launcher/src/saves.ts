@@ -2,11 +2,11 @@ import { readdir, readFile } from "fs/promises";
 import mkdirp from "mkdirp";
 import path from "path";
 
-import { Editor, sniff } from "./saveedit";
+import { sniff } from "./saveedit";
 
 export interface SaveInfo {
   gameFamily: string;
-  romName: string;
+  romNames: string[];
 }
 
 export async function scan(dir: string) {
@@ -26,17 +26,14 @@ export async function scan(dir: string) {
 
   for (const result of await Promise.allSettled(
     saveNames.map(async (saveName) => {
-      let editor: Editor;
+      let sniffed: SaveInfo;
       try {
-        editor = sniff((await readFile(path.join(dir, saveName))).buffer);
+        sniffed = sniff((await readFile(path.join(dir, saveName))).buffer);
       } catch (e) {
         console.warn("failed to sniff", saveName, e);
         return;
       }
-      saves[saveName] = {
-        gameFamily: editor.getGameFamily(),
-        romName: editor.getROMName(),
-      };
+      saves[saveName] = sniffed;
     })
   )) {
     if (result.status == "rejected") {
