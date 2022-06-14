@@ -159,7 +159,6 @@
     gameFamily: "bn3",
     netplayCompatibility: "bn3",
   },
-
   MEGA_EXE3_WHA6BE: {
     title: {
       en: "Mega Man Battle Network 3: White",
@@ -171,5 +170,29 @@
     },
     gameFamily: "bn3",
     netplayCompatibility: "bn3",
+  },
+  ROCKMAN_EXE3A6BJ: {
+    title: {
+      en: "Battle Network Rockman EXE 3",
+      ja: "バトルネットワーク ロックマンエグゼ3",
+      "zh-Hans": "洛克人EXE3",
+    },
+    versions: {
+      "1.1": { crc32: 0xe48e6bc9 },
+    },
+    gameFamily: "bn3",
+    netplayCompatibility: "exe3",
+  },
+  ROCK_EXE3_BKA3XJ: {
+    title: {
+      en: "Battle Network Rockman EXE 3: Black",
+      ja: "バトルネットワーク ロックマンエグゼ3 BLACK",
+      "zh-Hans": "洛克人EXE3 黑",
+    },
+    versions: {
+      "1.1": { crc32: 0xfd57493b },
+    },
+    gameFamily: "bn3",
+    netplayCompatibility: "exe3",
   },
 }
