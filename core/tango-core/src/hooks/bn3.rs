@@ -138,6 +138,28 @@ impl hooks::Hooks for BN3 {
             })
         };
 
+        let make_round_end_hook = || {
+            let facade = facade.clone();
+            let handle = handle.clone();
+            Box::new(move |_: mgba::core::CoreMutRef| {
+                handle.block_on(async {
+                    let match_ = match facade.match_().await {
+                        Some(match_) => match_,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    let mut round_state = match_.lock_round_state().await;
+                    round_state.end_round().await.expect("end round");
+                    match_
+                        .advance_shadow_until_round_end()
+                        .await
+                        .expect("advance shadow");
+                });
+            })
+        };
+
         vec![
             {
                 let facade = facade.clone();
@@ -222,78 +244,11 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.round_tie_ret,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-                            round_state.end_round().await.expect("end round");
-                            match_
-                                .advance_shadow_until_round_end()
-                                .await
-                                .expect("advance shadow");
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.round_lose_ret,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-                            round_state.end_round().await.expect("end round");
-                            match_
-                                .advance_shadow_until_round_end()
-                                .await
-                                .expect("advance shadow");
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.round_win_ret,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-                            round_state.end_round().await.expect("end round");
-                            match_
-                                .advance_shadow_until_round_end()
-                                .await
-                                .expect("advance shadow");
-                        });
-                    }),
-                )
-            },
+            (self.offsets.rom.round_win_ret, make_round_end_hook()),
+            (self.offsets.rom.round_win_ret2, make_round_end_hook()),
+            (self.offsets.rom.round_lose_ret, make_round_end_hook()),
+            (self.offsets.rom.round_lose_ret2, make_round_end_hook()),
+            (self.offsets.rom.round_tie_ret, make_round_end_hook()),
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
