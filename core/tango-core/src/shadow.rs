@@ -127,19 +127,24 @@ impl State {
 
     pub fn start_round(&self) {
         let mut round_state = self.0.round_state.lock();
+        let local_player_index = match round_state.last_result.take().unwrap() {
+            battle::BattleResult::Win => 0,
+            battle::BattleResult::Loss => 1,
+            battle::BattleResult::Draw => {
+                if self.0.is_offerer {
+                    1
+                } else {
+                    0
+                }
+            }
+        };
+        log::info!(
+            "starting shadow round: local_player_index = {}",
+            local_player_index
+        );
         round_state.round = Some(Round {
             current_tick: 0,
-            local_player_index: match round_state.last_result.take().unwrap() {
-                battle::BattleResult::Win => 0,
-                battle::BattleResult::Loss => 1,
-                battle::BattleResult::Draw => {
-                    if self.0.is_offerer {
-                        1
-                    } else {
-                        0
-                    }
-                }
-            },
+            local_player_index,
             first_committed_state: None,
             pending_in_input: None,
             pending_out_input: None,
