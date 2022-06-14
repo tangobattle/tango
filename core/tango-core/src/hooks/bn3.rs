@@ -31,6 +31,11 @@ impl BN3 {
     }
 }
 
+fn random_background(rng: &mut impl rand::Rng) -> u8 {
+    const BATTLE_BACKGROUNDS: &[u8] = &[0x00, 0x04, 0x05, 0x06, 0x17, 0x10, 0x02, 0x0a];
+    BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())]
+}
+
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
     (((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1))
@@ -55,7 +60,7 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
 }
 
 const INIT_RX: [u8; 16] = [
-    0x01, 0x00, 0x00, 0xff, 0x06, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 impl hooks::Hooks for BN3 {
@@ -198,7 +203,7 @@ impl hooks::Hooks for BN3 {
                             // rng2 is the shared rng, it must be synced.
                             munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-                            munger.start_battle_from_comm_menu(core);
+                            munger.start_battle_from_comm_menu(core, match_.match_type());
                         });
                     }),
                 )
@@ -410,15 +415,29 @@ impl hooks::Hooks for BN3 {
                 }),
             ),
             {
+                let facade = facade.clone();
                 let munger = self.munger.clone();
+                let handle = handle.clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
                     Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc();
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                        core.gba_mut().cpu_mut().set_gpr(0, 3);
-                        munger.set_rx_packet(core, 0, &INIT_RX);
-                        munger.set_rx_packet(core, 1, &INIT_RX);
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let pc = core.as_ref().gba().cpu().thumb_pc();
+                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                            core.gba_mut().cpu_mut().set_gpr(0, 3);
+                            let mut rng = match_.lock_rng().await;
+                            let mut rx = INIT_RX.clone();
+                            rx[4] = random_background(&mut *rng);
+                            munger.set_rx_packet(core, 0, &rx);
+                            munger.set_rx_packet(core, 1, &rx);
+                        });
                     }),
                 )
             },
@@ -558,7 +577,7 @@ impl hooks::Hooks for BN3 {
                         // rng2 is the shared rng, it must be synced.
                         munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-                        munger.start_battle_from_comm_menu(core);
+                        munger.start_battle_from_comm_menu(core, shadow_state.match_type());
                     }),
                 )
             },
@@ -724,6 +743,7 @@ impl hooks::Hooks for BN3 {
                 }),
             ),
             {
+                let shadow_state = shadow_state.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
@@ -731,8 +751,11 @@ impl hooks::Hooks for BN3 {
                         let pc = core.as_ref().gba().cpu().thumb_pc();
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                         core.gba_mut().cpu_mut().set_gpr(0, 3);
-                        munger.set_rx_packet(core, 0, &INIT_RX);
-                        munger.set_rx_packet(core, 1, &INIT_RX);
+                        let mut rng = shadow_state.lock_rng();
+                        let mut rx = INIT_RX.clone();
+                        rx[4] = random_background(&mut *rng);
+                        munger.set_rx_packet(core, 0, &rx);
+                        munger.set_rx_packet(core, 1, &rx);
                     }),
                 )
             },
