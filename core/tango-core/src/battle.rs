@@ -332,7 +332,7 @@ impl Match {
         );
         let mut replay_filename = self.settings.replays_path.clone().as_os_str().to_owned();
         replay_filename.push(format!(
-            "-p{}-round{}.tangoreplay",
+            "-round{}-p{}.tangoreplay",
             local_player_index + 1,
             round_state.number
         ));
