@@ -1,4 +1,4 @@
-use crate::{hooks, input};
+use crate::{battle, hooks, input};
 
 pub struct Round {
     current_tick: u32,
@@ -63,7 +63,7 @@ impl Round {
 
 pub struct RoundState {
     pub round: Option<Round>,
-    pub won_last_round: Option<bool>,
+    pub last_battle_result: Option<battle::BattleResult>,
 }
 
 struct AppliedState {
@@ -94,7 +94,7 @@ impl State {
         match_type: u8,
         is_offerer: bool,
         rng: rand_pcg::Mcg128Xsl64,
-        won_last_round: bool,
+        last_battle_result: battle::BattleResult,
     ) -> State {
         State(std::sync::Arc::new(InnerState {
             match_type,
@@ -102,7 +102,7 @@ impl State {
             rng: parking_lot::Mutex::new(rng),
             round_state: parking_lot::Mutex::new(RoundState {
                 round: None,
-                won_last_round: Some(won_last_round),
+                last_battle_result: Some(last_battle_result),
             }),
             applied_state: parking_lot::Mutex::new(None),
             error: parking_lot::Mutex::new(None),
@@ -129,7 +129,9 @@ impl State {
         let mut round_state = self.0.round_state.lock();
         round_state.round = Some(Round {
             current_tick: 0,
-            local_player_index: if round_state.won_last_round.take().unwrap() {
+            local_player_index: if round_state.last_battle_result.take().unwrap()
+                == battle::BattleResult::Win
+            {
                 0
             } else {
                 1
@@ -147,8 +149,8 @@ impl State {
         round_state.round = None;
     }
 
-    pub fn set_won_last_round(&self, did_win: bool) {
-        self.0.round_state.lock().won_last_round = Some(did_win);
+    pub fn set_last_battle_result(&self, last_battle_result: battle::BattleResult) {
+        self.0.round_state.lock().last_battle_result = Some(last_battle_result);
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
@@ -166,7 +168,7 @@ impl Shadow {
         save_path: &std::path::Path,
         match_type: u8,
         is_offerer: bool,
-        won_last_round: bool,
+        battle_result: battle::BattleResult,
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
@@ -185,7 +187,7 @@ impl Shadow {
         )?;
         core.as_mut().load_save(save_vf)?;
 
-        let state = State::new(match_type, is_offerer, rng, won_last_round);
+        let state = State::new(match_type, is_offerer, rng, battle_result);
 
         let hooks = hooks::get(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());

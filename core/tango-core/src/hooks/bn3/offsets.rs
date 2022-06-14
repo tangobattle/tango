@@ -61,6 +61,8 @@ pub(super) struct ROMOffsets {
     /// Tango initializes its own battle tracking state at this point.
     pub(super) round_start_ret: u32,
 
+    pub(super) round_end_cmp: u32,
+
     /// This hooks the point when the round is ending and the game will process no further input.
     ///
     /// At this point, Tango will clean up its round state and commit the replay.
@@ -129,6 +131,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         process_battle_input_ret:                   0x08008af0,
         handle_input_post_call:                     0x0800643e,
         round_start_ret:                            0x080059a8,
+        round_end_cmp:                              0x08009466,
         round_lose_ret:                             0x080095da,
         round_win_ret:                              0x08009532,
         round_end_entry:                            0x080068a0,

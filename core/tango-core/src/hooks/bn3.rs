@@ -3,7 +3,7 @@ mod offsets;
 
 use byteorder::ByteOrder;
 
-use crate::{facade, fastforwarder, hooks, input, shadow};
+use crate::{battle, facade, fastforwarder, hooks, input, shadow};
 
 #[derive(Clone)]
 pub struct BN3 {
@@ -203,7 +203,7 @@ impl hooks::Hooks for BN3 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
-                            round_state.set_won_last_round(false);
+                            round_state.set_last_battle_result(battle::BattleResult::Loss);
                             round_state.end_round().await.expect("end round");
                             match_
                                 .advance_shadow_until_round_end()
@@ -228,7 +228,7 @@ impl hooks::Hooks for BN3 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
-                            round_state.set_won_last_round(true);
+                            round_state.set_last_battle_result(battle::BattleResult::Win);
                             round_state.end_round().await.expect("end round");
                             match_
                                 .advance_shadow_until_round_end()
@@ -559,18 +559,17 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_lose_ret,
-                    Box::new(move |_| {
-                        shadow_state.set_won_last_round(true);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_win_ret,
-                    Box::new(move |_| {
-                        shadow_state.set_won_last_round(false);
+                    self.offsets.rom.round_end_cmp,
+                    Box::new(move |core| {
+                        match core.as_ref().gba().cpu().gpr(0) {
+                            1 => {
+                                shadow_state.set_last_battle_result(battle::BattleResult::Loss);
+                            }
+                            2 => {
+                                shadow_state.set_last_battle_result(battle::BattleResult::Win);
+                            }
+                            _ => return,
+                        };
                     }),
                 )
             },
@@ -732,7 +731,7 @@ impl hooks::Hooks for BN3 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |mut core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -745,6 +744,10 @@ impl hooks::Hooks for BN3 {
                             return;
                         }
                         round.increment_current_tick();
+
+                        if round_state.last_battle_result.is_some() {
+                            core.gba_mut().cpu_mut().set_gpr(0, 7);
+                        }
                     }),
                 )
             },

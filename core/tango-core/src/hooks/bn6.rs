@@ -1,4 +1,4 @@
-use crate::{facade, fastforwarder, hooks, input, shadow};
+use crate::{battle, facade, fastforwarder, hooks, input, shadow};
 
 mod munger;
 mod offsets;
@@ -166,10 +166,10 @@ impl hooks::Hooks for BN6 {
 
                             match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
-                                    round_state.set_won_last_round(true);
+                                    round_state.set_last_battle_result(battle::BattleResult::Win);
                                 }
                                 2 => {
-                                    round_state.set_won_last_round(false);
+                                    round_state.set_last_battle_result(battle::BattleResult::Loss);
                                 }
                                 _ => {}
                             }
@@ -542,10 +542,10 @@ impl hooks::Hooks for BN6 {
                     Box::new(move |core| {
                         match core.as_ref().gba().cpu().gpr(0) {
                             1 => {
-                                shadow_state.set_won_last_round(false);
+                                shadow_state.set_last_battle_result(battle::BattleResult::Loss);
                             }
                             2 => {
-                                shadow_state.set_won_last_round(true);
+                                shadow_state.set_last_battle_result(battle::BattleResult::Win);
                             }
                             _ => {}
                         };

@@ -1,7 +1,7 @@
 mod munger;
 mod offsets;
 
-use crate::{facade, fastforwarder, hooks, input, shadow};
+use crate::{battle, facade, fastforwarder, hooks, input, shadow};
 
 #[derive(Clone)]
 pub struct BN4 {
@@ -196,10 +196,10 @@ impl hooks::Hooks for BN4 {
 
                             match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
-                                    round_state.set_won_last_round(true);
+                                    round_state.set_last_battle_result(battle::BattleResult::Win);
                                 }
                                 2 => {
-                                    round_state.set_won_last_round(false);
+                                    round_state.set_last_battle_result(battle::BattleResult::Loss);
                                 }
                                 _ => {}
                             }
@@ -505,16 +505,14 @@ impl hooks::Hooks for BN4 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.round_run_unpaused_step_cmp_retval,
-                    Box::new(move |core| {
-                        match core.as_ref().gba().cpu().gpr(0) {
-                            1 => {
-                                shadow_state.set_won_last_round(false);
-                            }
-                            2 => {
-                                shadow_state.set_won_last_round(true);
-                            }
-                            _ => {}
-                        };
+                    Box::new(move |core| match core.as_ref().gba().cpu().gpr(0) {
+                        1 => {
+                            shadow_state.set_last_battle_result(battle::BattleResult::Loss);
+                        }
+                        2 => {
+                            shadow_state.set_last_battle_result(battle::BattleResult::Win);
+                        }
+                        _ => {}
                     }),
                 )
             },
