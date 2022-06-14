@@ -36,14 +36,6 @@ fn random_background(rng: &mut impl rand::Rng) -> u8 {
     BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())]
 }
 
-fn match_type_to_rx_const(match_type: u8) -> u8 {
-    match match_type {
-        0 => 0x00,
-        // 1 => 0x06, // This doesn't work :(
-        _ => 0x00,
-    }
-}
-
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
     (((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1))
@@ -68,7 +60,7 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
 }
 
 const INIT_RX: [u8; 16] = [
-    0x01, 0x00, 0x00, 0xff, 0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 ];
 
 impl hooks::Hooks for BN3 {
@@ -211,7 +203,11 @@ impl hooks::Hooks for BN3 {
                             // rng2 is the shared rng, it must be synced.
                             munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-                            munger.start_battle_from_comm_menu(core, match_.match_type());
+                            munger.start_battle_from_comm_menu(
+                                core,
+                                match_.match_type(),
+                                random_background(&mut *rng),
+                            );
                         });
                     }),
                 )
@@ -423,33 +419,17 @@ impl hooks::Hooks for BN3 {
                 }),
             ),
             {
-                let facade = facade.clone();
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
                     Box::new(move |mut core| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let match_const = match_type_to_rx_const(match_.match_type());
                             let pc = core.as_ref().gba().cpu().thumb_pc();
                             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                             core.gba_mut().cpu_mut().set_gpr(0, 3);
-                            let mut rng = match_.lock_rng().await;
-                            let mut rx = INIT_RX.clone();
-                            rx[2] = match_const;
-                            rx[4] = random_background(&mut *rng);
-                            for ptr in &mut rx[0x08..0x10] {
-                                *ptr = match_const;
-                            }
-                            munger.set_rx_packet(core, 0, &rx);
-                            munger.set_rx_packet(core, 1, &rx);
+                            munger.set_rx_packet(core, 0, &INIT_RX);
+                            munger.set_rx_packet(core, 1, &INIT_RX);
                         });
                     }),
                 )
@@ -590,7 +570,11 @@ impl hooks::Hooks for BN3 {
                         // rng2 is the shared rng, it must be synced.
                         munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
-                        munger.start_battle_from_comm_menu(core, shadow_state.match_type());
+                        munger.start_battle_from_comm_menu(
+                            core,
+                            shadow_state.match_type(),
+                            random_background(&mut *rng),
+                        );
                     }),
                 )
             },
@@ -756,24 +740,15 @@ impl hooks::Hooks for BN3 {
                 }),
             ),
             {
-                let shadow_state = shadow_state.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
                     Box::new(move |mut core| {
-                        let match_const = match_type_to_rx_const(shadow_state.match_type());
                         let pc = core.as_ref().gba().cpu().thumb_pc();
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                         core.gba_mut().cpu_mut().set_gpr(0, 3);
-                        let mut rng = shadow_state.lock_rng();
-                        let mut rx = INIT_RX.clone();
-                        rx[2] = match_const;
-                        rx[4] = random_background(&mut *rng);
-                        for ptr in &mut rx[0x08..0x10] {
-                            *ptr = match_const;
-                        }
-                        munger.set_rx_packet(core, 0, &rx);
-                        munger.set_rx_packet(core, 1, &rx);
+                        munger.set_rx_packet(core, 0, &INIT_RX);
+                        munger.set_rx_packet(core, 1, &INIT_RX);
                     }),
                 )
             },

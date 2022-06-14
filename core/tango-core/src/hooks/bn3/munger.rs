@@ -28,11 +28,24 @@ impl Munger {
     pub(super) fn start_battle_from_comm_menu(
         &self,
         mut core: mgba::core::CoreMutRef,
-        _match_type: u8,
+        match_type: u8,
+        background: u8,
     ) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x2c);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x30);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
+        let t = match match_type {
+            0 => 0x00,
+            // 1 => 0x06, // This doesn't work :(
+            _ => 0x00,
+        };
+        core.raw_write_range(
+            self.offsets.ewram.tx_packet,
+            -1,
+            &[
+                0x01, t, 0x00, 0xff, background, 0xff, 0xff, 0xff, t, t, t, t, t, t, t, t,
+            ],
+        );
         // core.raw_write_8(
         //     self.offsets.ewram.submenu_control + 0x1c,
         //     -1,
