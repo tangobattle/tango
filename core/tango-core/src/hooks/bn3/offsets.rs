@@ -63,6 +63,8 @@ pub(super) struct ROMOffsets {
 
     pub(super) round_end_cmp: u32,
 
+    pub(super) round_tie_ret: u32,
+
     /// This hooks the point when the round is ending and the game will process no further input.
     ///
     /// At this point, Tango will clean up its round state and commit the replay.
@@ -132,7 +134,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         handle_input_post_call:                     0x0800643e,
         round_start_ret:                            0x080059a8,
         round_end_cmp:                              0x08009466,
-        // TODO: round_tie_ret
+        round_tie_ret:                              0x08009968,
         round_lose_ret:                             0x080095da,
         round_win_ret:                              0x08009532,
         round_end_entry:                            0x080068a0,
