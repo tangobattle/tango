@@ -779,6 +779,7 @@ impl hooks::Hooks for BN3 {
                         round.increment_current_tick();
 
                         if round_state.last_result.is_some() {
+                            // We have no real inputs left but the round has ended. Just fudge them until we get to the next round.
                             core.gba_mut().cpu_mut().set_gpr(0, 7);
                         }
                     }),

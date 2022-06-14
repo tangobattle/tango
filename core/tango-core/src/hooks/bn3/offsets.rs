@@ -132,6 +132,7 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         handle_input_post_call:                     0x0800643e,
         round_start_ret:                            0x080059a8,
         round_end_cmp:                              0x08009466,
+        // TODO: round_tie_ret
         round_lose_ret:                             0x080095da,
         round_win_ret:                              0x08009532,
         round_end_entry:                            0x080068a0,
