@@ -3,7 +3,9 @@ export interface GameInfo {
   version: "white" | "blue";
 }
 
+const SRAM_SIZE = 0x57b0;
 const GAME_NAME_OFFSET = 0x1e00;
+const CHECKSUM_OFFSET = 0x1dd8;
 
 const GAME_INFOS: { [key: string]: GameInfo } = {
   // Japan
@@ -27,6 +29,29 @@ const GAME_INFOS: { [key: string]: GameInfo } = {
   },
 };
 
+const CHECKSUM_START: { [key: string]: number } = {
+  white: 0x16,
+  blue: 0x22,
+};
+
+function getChecksum(dv: DataView) {
+  return dv.getUint32(CHECKSUM_OFFSET, true);
+}
+
+function computeChecksum(dv: DataView) {
+  let checksum = 0;
+  const arr = new Uint8Array(dv.buffer, 0, dv.buffer.byteLength);
+  for (let i = 0; i < dv.buffer.byteLength; ++i) {
+    if (i == CHECKSUM_OFFSET + dv.byteOffset) {
+      // Don't include the checksum itself in the checksum.
+      i += 3;
+      continue;
+    }
+    checksum += arr[i];
+  }
+  return checksum;
+}
+
 export class Editor {
   dv: DataView;
   private romName: string;
@@ -37,13 +62,14 @@ export class Editor {
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    // TODO
+    buffer = buffer.slice(0, SRAM_SIZE);
     return buffer;
   }
 
   static rawToSRAMDump(buffer: ArrayBuffer) {
-    // TODO
-    return buffer;
+    const arr = new Uint8Array(0x10000);
+    arr.set(new Uint8Array(buffer));
+    return arr.buffer;
   }
 
   getROMName() {
@@ -55,17 +81,47 @@ export class Editor {
   }
 
   static sniffROMNames(buffer: ArrayBuffer) {
+    if (buffer.byteLength != SRAM_SIZE) {
+      throw (
+        "invalid byte length of save file: expected " +
+        SRAM_SIZE +
+        " but got " +
+        buffer.byteLength
+      );
+    }
+
+    buffer = buffer.slice(0);
+
+    const dv = new DataView(buffer);
+
     const decoder = new TextDecoder("ascii");
-    const gn = decoder.decode(new Uint8Array(buffer, 0 + GAME_NAME_OFFSET, 20));
+    const gn = decoder.decode(
+      new Uint8Array(dv.buffer, dv.byteOffset + GAME_NAME_OFFSET, 20)
+    );
     if (gn != "ROCKMANEXE3 20021002" && gn != "BBN3 v0.5.0 20021002") {
       throw "unknown game name: " + gn;
     }
-    return [
-      // "ROCKMAN_EXE3A6BJ",
-      "ROCK_EXE3_BKA3XJ",
-      "MEGA_EXE3_BLA3XE",
-      // "MEGA_EXE3_WHA6BE",
-    ];
+
+    const checksum = getChecksum(dv);
+    const computedChecksum = computeChecksum(dv);
+
+    console.log(checksum, computedChecksum);
+
+    const romNames = [];
+
+    if (checksum == computedChecksum + CHECKSUM_START.white) {
+      romNames.push("ROCKMAN_EXE3A6BJ", "MEGA_EXE3_WHA6BE");
+    }
+
+    if (checksum == computedChecksum + CHECKSUM_START.blue) {
+      romNames.push("ROCK_EXE3_BKA3XJ", "MEGA_EXE3_BLA3XE");
+    }
+
+    if (romNames.length == 0) {
+      throw "unknown game, no checksum formats match";
+    }
+
+    return romNames;
   }
 
   rebuild() {
