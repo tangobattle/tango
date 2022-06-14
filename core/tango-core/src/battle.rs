@@ -36,7 +36,7 @@ pub struct Settings {
 pub struct RoundState {
     pub number: u8,
     pub round: Option<Round>,
-    pub won_last_round: bool,
+    pub won_last_round: Option<bool>,
 }
 
 impl RoundState {
@@ -60,7 +60,7 @@ impl RoundState {
     }
 
     pub fn set_won_last_round(&mut self, did_win: bool) {
-        self.won_last_round = did_win;
+        self.won_last_round = Some(did_win);
     }
 }
 
@@ -188,7 +188,7 @@ impl Match {
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
                 round: None,
-                won_last_round,
+                won_last_round: Some(won_last_round),
             }),
             is_offerer,
             primary_thread_handle,
@@ -325,7 +325,11 @@ impl Match {
     pub async fn start_round(self: &std::sync::Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
-        let local_player_index = if round_state.won_last_round { 0 } else { 1 };
+        let local_player_index = if round_state.won_last_round.take().unwrap() {
+            0
+        } else {
+            1
+        };
         log::info!(
             "starting round: local_player_index = {}",
             local_player_index

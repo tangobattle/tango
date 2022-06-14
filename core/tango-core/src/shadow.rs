@@ -63,7 +63,7 @@ impl Round {
 
 pub struct RoundState {
     pub round: Option<Round>,
-    pub won_last_round: bool,
+    pub won_last_round: Option<bool>,
 }
 
 struct AppliedState {
@@ -102,7 +102,7 @@ impl State {
             rng: parking_lot::Mutex::new(rng),
             round_state: parking_lot::Mutex::new(RoundState {
                 round: None,
-                won_last_round,
+                won_last_round: Some(won_last_round),
             }),
             applied_state: parking_lot::Mutex::new(None),
             error: parking_lot::Mutex::new(None),
@@ -129,7 +129,11 @@ impl State {
         let mut round_state = self.0.round_state.lock();
         round_state.round = Some(Round {
             current_tick: 0,
-            local_player_index: if round_state.won_last_round { 0 } else { 1 },
+            local_player_index: if round_state.won_last_round.take().unwrap() {
+                0
+            } else {
+                1
+            },
             first_committed_state: None,
             pending_in_input: None,
             pending_out_input: None,
@@ -144,7 +148,7 @@ impl State {
     }
 
     pub fn set_won_last_round(&self, did_win: bool) {
-        self.0.round_state.lock().won_last_round = did_win;
+        self.0.round_state.lock().won_last_round = Some(did_win);
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
