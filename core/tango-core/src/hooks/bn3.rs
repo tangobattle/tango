@@ -16,6 +16,10 @@ lazy_static! {
         BN3::new(offsets::MEGA_EXE3_BLA3XE);
     pub static ref MEGA_EXE3_WHA6BE: Box<dyn hooks::Hooks + Send + Sync> =
         BN3::new(offsets::MEGA_EXE3_WHA6BE);
+    pub static ref ROCK_EXE3_BKA3XJ_01: Box<dyn hooks::Hooks + Send + Sync> =
+        BN3::new(offsets::ROCK_EXE3_BKA3XJ_01);
+    pub static ref ROCKMAN_EXE3A6BJ_01: Box<dyn hooks::Hooks + Send + Sync> =
+        BN3::new(offsets::ROCKMAN_EXE3A6BJ_01);
 }
 
 impl BN3 {

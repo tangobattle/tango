@@ -105,8 +105,6 @@ export class Editor {
     const checksum = getChecksum(dv);
     const computedChecksum = computeChecksum(dv);
 
-    console.log(checksum, computedChecksum);
-
     const romNames = [];
 
     if (checksum == computedChecksum + CHECKSUM_START.white) {

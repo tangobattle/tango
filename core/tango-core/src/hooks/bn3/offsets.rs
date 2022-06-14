@@ -178,3 +178,63 @@ pub static MEGA_EXE3_WHA6BE: Offsets = Offsets {
         match_end_ret:                              0x08006958,
     },
 };
+
+#[rustfmt::skip]
+pub static ROCK_EXE3_BKA3XJ_01: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:              0x0802b81c,
+        start_screen_sram_unmask_ret:               0x08021f90,
+        game_load_ret:                              0x080044a4,
+        main_read_joyflags:                         0x08000392,
+        init_sio_call:                              0x0803ee1e,
+        comm_menu_send_and_receive_call:            0x0803ee3e,
+        handle_input_init_send_and_receive_call:    0x08008566,
+        handle_input_update_send_and_receive_call:  0x0800863c,
+        handle_input_deinit_send_and_receive_call:  0x08008712,
+        process_battle_input_ret:                   0x08008a84,
+        handle_input_post_call:                     0x080063d2,
+        round_start_ret:                            0x0800593c,
+        round_end_cmp:                              0x080093e2,
+        round_tie_ret:                              0x080098e4,
+        round_lose_ret:                             0x08009556,
+        round_lose_ret2:                            0x08009560,
+        round_win_ret:                              0x080094ac,
+        round_win_ret2:                             0x080094a4,
+        round_end_entry:                            0x08006834,
+        battle_is_p2_ret:                           0x08008bfe,
+        link_is_p2_ret:                             0x080034e0,
+        comm_menu_init_ret:                         0x0803e532,
+        match_end_ret:                              0x080068ec,
+    },
+};
+
+#[rustfmt::skip]
+pub static ROCKMAN_EXE3A6BJ_01: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:              0x0802b834,
+        start_screen_sram_unmask_ret:               0x08021fa8,
+        game_load_ret:                              0x080044a4,
+        main_read_joyflags:                         0x08000392,
+        init_sio_call:                              0x0803ee36,
+        comm_menu_send_and_receive_call:            0x0803ee56,
+        handle_input_init_send_and_receive_call:    0x08008566,
+        handle_input_update_send_and_receive_call:  0x0800863c,
+        handle_input_deinit_send_and_receive_call:  0x08008712,
+        process_battle_input_ret:                   0x08008a84,
+        handle_input_post_call:                     0x080063d2,
+        round_start_ret:                            0x0800593c,
+        round_end_cmp:                              0x080093e2,
+        round_tie_ret:                              0x080098e4,
+        round_lose_ret:                             0x08009556,
+        round_lose_ret2:                            0x08009560,
+        round_win_ret:                              0x080094ac,
+        round_win_ret2:                             0x080094a4,
+        round_end_entry:                            0x08006834,
+        battle_is_p2_ret:                           0x08008bfe,
+        link_is_p2_ret:                             0x080034e0,
+        comm_menu_init_ret:                         0x0803e54a,
+        match_end_ret:                              0x080068ec,
+    },
+};
