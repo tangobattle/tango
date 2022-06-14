@@ -196,10 +196,13 @@ impl hooks::Hooks for BN4 {
 
                             match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
-                                    round_state.set_last_battle_result(battle::BattleResult::Win);
+                                    round_state.set_last_result(battle::BattleResult::Win);
                                 }
                                 2 => {
-                                    round_state.set_last_battle_result(battle::BattleResult::Loss);
+                                    round_state.set_last_result(battle::BattleResult::Loss);
+                                }
+                                7 => {
+                                    round_state.set_last_result(battle::BattleResult::Draw);
                                 }
                                 _ => {}
                             }
@@ -507,10 +510,13 @@ impl hooks::Hooks for BN4 {
                     self.offsets.rom.round_run_unpaused_step_cmp_retval,
                     Box::new(move |core| match core.as_ref().gba().cpu().gpr(0) {
                         1 => {
-                            shadow_state.set_last_battle_result(battle::BattleResult::Loss);
+                            shadow_state.set_last_result(battle::BattleResult::Loss);
                         }
                         2 => {
-                            shadow_state.set_last_battle_result(battle::BattleResult::Win);
+                            shadow_state.set_last_result(battle::BattleResult::Win);
+                        }
+                        7 => {
+                            shadow_state.set_last_result(battle::BattleResult::Draw);
                         }
                         _ => {}
                     }),

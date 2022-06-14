@@ -63,7 +63,7 @@ impl Round {
 
 pub struct RoundState {
     pub round: Option<Round>,
-    pub last_battle_result: Option<battle::BattleResult>,
+    pub last_result: Option<battle::BattleResult>,
 }
 
 struct AppliedState {
@@ -94,7 +94,7 @@ impl State {
         match_type: u8,
         is_offerer: bool,
         rng: rand_pcg::Mcg128Xsl64,
-        last_battle_result: battle::BattleResult,
+        last_result: battle::BattleResult,
     ) -> State {
         State(std::sync::Arc::new(InnerState {
             match_type,
@@ -102,7 +102,7 @@ impl State {
             rng: parking_lot::Mutex::new(rng),
             round_state: parking_lot::Mutex::new(RoundState {
                 round: None,
-                last_battle_result: Some(last_battle_result),
+                last_result: Some(last_result),
             }),
             applied_state: parking_lot::Mutex::new(None),
             error: parking_lot::Mutex::new(None),
@@ -129,12 +129,16 @@ impl State {
         let mut round_state = self.0.round_state.lock();
         round_state.round = Some(Round {
             current_tick: 0,
-            local_player_index: if round_state.last_battle_result.take().unwrap()
-                == battle::BattleResult::Win
-            {
-                0
-            } else {
-                1
+            local_player_index: match round_state.last_result.take().unwrap() {
+                battle::BattleResult::Win => 0,
+                battle::BattleResult::Loss => 1,
+                battle::BattleResult::Draw => {
+                    if self.0.is_offerer {
+                        1
+                    } else {
+                        0
+                    }
+                }
             },
             first_committed_state: None,
             pending_in_input: None,
@@ -149,8 +153,8 @@ impl State {
         round_state.round = None;
     }
 
-    pub fn set_last_battle_result(&self, last_battle_result: battle::BattleResult) {
-        self.0.round_state.lock().last_battle_result = Some(last_battle_result);
+    pub fn set_last_result(&self, last_result: battle::BattleResult) {
+        self.0.round_state.lock().last_result = Some(last_result);
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {

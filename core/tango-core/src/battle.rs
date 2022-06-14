@@ -13,7 +13,7 @@ use crate::transport;
 pub enum BattleResult {
     Win,
     Loss,
-    Tie,
+    Draw,
 }
 
 #[derive(Clone)]
@@ -43,7 +43,7 @@ pub struct Settings {
 pub struct RoundState {
     pub number: u8,
     pub round: Option<Round>,
-    pub last_battle_result: Option<BattleResult>,
+    pub last_result: Option<BattleResult>,
 }
 
 impl RoundState {
@@ -66,8 +66,8 @@ impl RoundState {
         Ok(())
     }
 
-    pub fn set_last_battle_result(&mut self, last_battle_result: BattleResult) {
-        self.last_battle_result = Some(last_battle_result);
+    pub fn set_last_result(&mut self, last_result: BattleResult) {
+        self.last_result = Some(last_result);
     }
 }
 
@@ -172,7 +172,7 @@ impl Match {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let (transport_rendezvous_tx, transport_rendezvous_rx) = tokio::sync::oneshot::channel();
         let did_polite_win_last_round = rng.gen::<bool>();
-        let last_battle_result = if did_polite_win_last_round == is_offerer {
+        let last_result = if did_polite_win_last_round == is_offerer {
             BattleResult::Win
         } else {
             BattleResult::Loss
@@ -183,7 +183,7 @@ impl Match {
                 &settings.shadow_save_path,
                 settings.match_type,
                 is_offerer,
-                last_battle_result,
+                last_result,
                 rng.clone(),
             )?)),
             rom,
@@ -199,7 +199,7 @@ impl Match {
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
                 round: None,
-                last_battle_result: Some(last_battle_result),
+                last_result: Some(last_result),
             }),
             is_offerer,
             primary_thread_handle,
@@ -336,12 +336,17 @@ impl Match {
     pub async fn start_round(self: &std::sync::Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
-        let local_player_index =
-            if round_state.last_battle_result.take().unwrap() == BattleResult::Win {
-                0
-            } else {
-                1
-            };
+        let local_player_index = match round_state.last_result.take().unwrap() {
+            BattleResult::Win => 0,
+            BattleResult::Loss => 1,
+            BattleResult::Draw => {
+                if self.is_offerer {
+                    0
+                } else {
+                    1
+                }
+            }
+        };
         log::info!(
             "starting round: local_player_index = {}",
             local_player_index
