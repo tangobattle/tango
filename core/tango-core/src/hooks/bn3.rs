@@ -14,6 +14,8 @@ pub struct BN3 {
 lazy_static! {
     pub static ref MEGA_EXE3_BLA3XE: Box<dyn hooks::Hooks + Send + Sync> =
         BN3::new(offsets::MEGA_EXE3_BLA3XE);
+    pub static ref MEGA_EXE3_WHA6BE: Box<dyn hooks::Hooks + Send + Sync> =
+        BN3::new(offsets::MEGA_EXE3_WHA6BE);
 }
 
 impl BN3 {

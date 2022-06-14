@@ -159,4 +159,17 @@
     gameFamily: "bn3",
     netplayCompatibility: "bn3",
   },
+
+  MEGA_EXE3_WHA6BE: {
+    title: {
+      en: "Mega Man Battle Network 3: White",
+      ja: "バトルネットワーク ロックマンエグゼ3（英語版）",
+      "zh-Hans": "洛克人EXE3 白",
+    },
+    versions: {
+      "1.0": { crc32: 0x0be4410a },
+    },
+    gameFamily: "bn3",
+    netplayCompatibility: "bn3",
+  },
 }

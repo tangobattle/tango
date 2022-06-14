@@ -61,10 +61,10 @@ export class Editor {
       throw "unknown game name: " + gn;
     }
     return [
-      "ROCKMAN_EXE3A6BJ",
+      // "ROCKMAN_EXE3A6BJ",
       "ROCK_EXE3_BKA3XJ",
       "MEGA_EXE3_BLA3XE",
-      "MEGA_EXE3_WHA6BE",
+      // "MEGA_EXE3_WHA6BE",
     ];
   }
 

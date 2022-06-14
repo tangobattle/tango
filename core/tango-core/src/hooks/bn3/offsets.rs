@@ -144,3 +144,31 @@ pub static MEGA_EXE3_BLA3XE: Offsets = Offsets {
         match_end_ret:                              0x08006958,
     },
 };
+
+#[rustfmt::skip]
+pub static MEGA_EXE3_WHA6BE: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:              0x0802b344,
+        start_screen_sram_unmask_ret:               0x0802202e,
+        game_load_ret:                              0x08004510,
+        main_read_joyflags:                         0x08000392,
+        init_sio_call:                              0x0803e98e,
+        comm_menu_send_and_receive_call:            0x0803e9ae,
+        handle_input_init_send_and_receive_call:    0x080085d2,
+        handle_input_update_send_and_receive_call:  0x080086a8,
+        handle_input_deinit_send_and_receive_call:  0x0800877e,
+        process_battle_input_ret:                   0x08008af0,
+        handle_input_post_call:                     0x0800643e,
+        round_start_ret:                            0x080059a8,
+        round_end_cmp:                              0x08009466,
+        round_tie_ret:                              0x08009968,
+        round_lose_ret:                             0x080095da,
+        round_win_ret:                              0x08009532,
+        round_end_entry:                            0x080068a0,
+        battle_is_p2_ret:                           0x08008c6a,
+        link_is_p2_ret:                             0x0800354c,
+        comm_menu_init_ret:                         0x0803e0a2,
+        match_end_ret:                              0x08006958,
+    },
+};

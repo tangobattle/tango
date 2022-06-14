@@ -28,6 +28,7 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
             _ => None,
         },
         b"MEGA_EXE3_BLA3XE" => Some(&bn3::MEGA_EXE3_BLA3XE),
+        b"MEGA_EXE3_WHA6BE" => Some(&bn3::MEGA_EXE3_WHA6BE),
         _ => None,
     }
 }
