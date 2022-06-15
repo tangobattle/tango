@@ -54,8 +54,8 @@ import {
 import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/generated/lobby";
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
-import { KNOWN_ROMS } from "../../rom";
-import { Editor, EDITORS_BY_GAME_FAMILY } from "../../saveedit";
+import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
+import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { fallbackLng } from "../i18n";
 import { useConfig } from "./ConfigContext";
@@ -99,15 +99,17 @@ function useGetPatchName() {
   );
 }
 
-function useGetGameTitle() {
+function useGetGameFamilyTitle() {
   const getPatchName = useGetPatchName();
   const { i18n } = useTranslation();
 
   return React.useCallback(
     (gameInfo: GameInfo) =>
       `${
-        KNOWN_ROMS[gameInfo.rom].title[i18n.resolvedLanguage] ||
-        KNOWN_ROMS[gameInfo.rom].title[fallbackLng]
+        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].title[
+          i18n.resolvedLanguage
+        ] ||
+        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].title[fallbackLng]
       }${gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""}`,
     [i18n, getPatchName]
   );
@@ -137,7 +139,7 @@ export function useGetNetplayCompatibility() {
   const { patches } = usePatches();
   return React.useCallback(
     (gameInfo: GameInfo) => {
-      let netplayCompatibility = KNOWN_ROMS[gameInfo.rom].netplayCompatibility;
+      let netplayCompatibility = FAMILY_BY_ROM_NAME[gameInfo.rom];
       if (gameInfo.patch != null) {
         if (
           !Object.prototype.hasOwnProperty.call(patches, gameInfo.patch.name) ||
@@ -194,14 +196,13 @@ function useAvailableGames() {
 
         for (const patchName of Object.keys(patches)) {
           const patch = patches[patchName];
-          if (!Object.prototype.hasOwnProperty.call(roms, patch.forROM)) {
-            continue;
-          }
           for (const version of Object.keys(patch.versions)) {
-            yield {
-              rom: patch.forROM,
-              patch: { name: patchName, version },
-            };
+            for (const r of patch.versions[version].forROMs) {
+              yield {
+                rom: r.name,
+                patch: { name: patchName, version },
+              };
+            }
           }
         }
       })()
@@ -247,7 +248,10 @@ async function runCallback(
     coreRef: React.MutableRefObject<ipc.Core | null>;
     availableGames: SetSettings["availableGames"];
     getGameTitle: (gameInfo: GameInfo) => string;
-    getPatchPath: (path: { name: string; version: string }) => string;
+    getPatchPath: (
+      rom: string,
+      patch: { name: string; version: string }
+    ) => string;
     getROMPath: (romName: string) => string;
     onOpponentSettingsChange: (settings: SetSettings | null) => void;
     pendingStates: PendingStates | null;
@@ -394,7 +398,10 @@ async function runCallback(
     await makeROM(
       ref.current.getROMPath(ref.current.gameInfo!.rom),
       ref.current.gameInfo!.patch != null
-        ? ref.current.getPatchPath(ref.current.gameInfo!.patch)
+        ? ref.current.getPatchPath(
+            ref.current.gameInfo!.rom,
+            ref.current.gameInfo!.patch
+          )
         : null,
       outROMPath
     );
@@ -500,13 +507,20 @@ async function runCallback(
 
       ref.current.setPendingStates((pendingStates) => ({
         ...pendingStates!,
-        opponent: {
-          commitment: null,
-          settings: lobbyMsg.setSettings!,
-        },
         own: {
           ...pendingStates!.own!,
-          negotiatedState: null,
+          negotiatedState:
+            pendingStates!.opponent != null &&
+            isSettingsChangeTrivial(
+              pendingStates!.opponent!.settings,
+              lobbyMsg.setSettings!
+            )
+              ? pendingStates!.own!.negotiatedState
+              : null,
+        },
+        opponent: {
+          settings: lobbyMsg.setSettings!,
+          commitment: null,
         },
       }));
 
@@ -610,7 +624,7 @@ async function runCallback(
     await makeROM(
       ref.current.getROMPath(ownGameInfo.rom),
       ownGameInfo.patch != null
-        ? ref.current.getPatchPath(ownGameInfo.patch)
+        ? ref.current.getPatchPath(ownGameInfo.rom, ownGameInfo.patch)
         : null,
       outOwnROMPath
     );
@@ -629,7 +643,7 @@ async function runCallback(
     await makeROM(
       ref.current.getROMPath(opponentGameInfo.rom),
       opponentGameInfo.patch != null
-        ? ref.current.getPatchPath(opponentGameInfo.patch)
+        ? ref.current.getPatchPath(opponentGameInfo.rom, opponentGameInfo.patch)
         : null,
       outOpponentROMPath
     );
@@ -647,8 +661,9 @@ async function runCallback(
     await writeFile(shadowSavePath, remoteState.saveData);
 
     if (opponentGameSettings.revealSetup) {
-      const Editor =
-        EDITORS_BY_GAME_FAMILY[KNOWN_ROMS[opponentGameInfo.rom]!.gameFamily]!;
+      const Editor = editorClassForGameFamily(
+        FAMILY_BY_ROM_NAME[opponentGameInfo.rom]
+      );
       ref.current.setRevealedSetupEditor(
         new Editor(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
@@ -765,6 +780,18 @@ interface PendingStates {
   } | null;
 }
 
+function isSettingsChangeTrivial(
+  previousSettings: SetSettings,
+  settings: SetSettings
+) {
+  return (
+    previousSettings.gameInfo != null &&
+    settings.gameInfo != null &&
+    FAMILY_BY_ROM_NAME[previousSettings.gameInfo.rom] ==
+      FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
+  );
+}
+
 export default function BattleStarter({
   saveName,
   gameInfo,
@@ -811,7 +838,7 @@ export default function BattleStarter({
   const previousGameInfo = usePrevious(gameInfo);
   const previousAvailableGames = usePrevious(availableGames);
 
-  const getGameTitle = useGetGameTitle();
+  const getGameTitle = useGetGameFamilyTitle();
 
   const changeLocalPendingState = React.useCallback((settings: SetSettings) => {
     setPendingStates((pendingStates) => ({
@@ -822,7 +849,12 @@ export default function BattleStarter({
       },
       opponent: {
         ...pendingStates!.opponent!,
-        commitment: null,
+        commitment: isSettingsChangeTrivial(
+          pendingStates!.own!.settings,
+          settings
+        )
+          ? pendingStates!.opponent!.commitment
+          : null,
       },
     }));
 

@@ -44,5 +44,6 @@
   "auto-input-delay": "Auto",
   "reveal-setup-title": "{{opponentNickname}}'s setup",
   "missing-patch": "Unknown patch \"{{name}}\"",
-  "save-viewer-unsupported": "Save viewer is unsupported for this game"
+  "save-viewer-unsupported": "Save viewer is unsupported for this game",
+  "rom-name": "{{familyName}}: {{versionName}}"
 }

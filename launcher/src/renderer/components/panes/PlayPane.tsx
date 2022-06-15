@@ -1,4 +1,5 @@
 import { readFile } from "fs/promises";
+import { sortBy } from "lodash-es";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -26,8 +27,8 @@ import Typography from "@mui/material/Typography";
 
 import { getBasePath, getSavesPath } from "../../../paths";
 import { SetSettings } from "../../../protos/generated/lobby";
-import { KNOWN_ROMS } from "../../../rom";
-import { Editor, EDITORS_BY_GAME_FAMILY } from "../../../saveedit";
+import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../../rom";
+import { Editor, editorClassForGameFamily } from "../../../saveedit";
 import { fallbackLng } from "../../i18n";
 import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
 import { usePatches } from "../PatchesContext";
@@ -48,7 +49,7 @@ function SaveViewerWrapper({
 
   React.useEffect(() => {
     (async () => {
-      const Editor = EDITORS_BY_GAME_FAMILY[KNOWN_ROMS[romName]!.gameFamily]!;
+      const Editor = editorClassForGameFamily(FAMILY_BY_ROM_NAME[romName]);
       setEditor(
         new Editor(
           Editor.sramDumpToRaw(
@@ -97,22 +98,23 @@ export default function SavesPane({ active }: { active: boolean }) {
 
   const groupedSaves: { [key: string]: string[] } = {};
   for (const k of Object.keys(saves)) {
-    for (const romName of saves[k].romNames) {
+    for (const romName of saves[k]) {
       groupedSaves[romName] = groupedSaves[romName] || [];
       groupedSaves[romName].push(k);
     }
   }
 
-  const romNames = Object.keys(KNOWN_ROMS);
-  romNames.sort((k1, k2) => {
-    const title1 =
-      KNOWN_ROMS[k1].title[i18n.resolvedLanguage] ||
-      KNOWN_ROMS[k1].title[fallbackLng];
-    const title2 =
-      KNOWN_ROMS[k2].title[i18n.resolvedLanguage] ||
-      KNOWN_ROMS[k2].title[fallbackLng];
-    return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
-  });
+  const romNames = sortBy(
+    Object.values(KNOWN_ROM_FAMILIES).flatMap((f) => Object.keys(f.versions)),
+    (k) => {
+      const family = KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[k]];
+      const romInfo = family.versions[k];
+      return [
+        family.title[i18n.resolvedLanguage] || family.title[fallbackLng],
+        romInfo.title[i18n.resolvedLanguage] || romInfo.title[fallbackLng],
+      ];
+    }
+  );
 
   const [patchName_, setPatchName] = React.useState<string | null>(null);
   const patchName =
@@ -124,8 +126,10 @@ export default function SavesPane({ active }: { active: boolean }) {
   const eligiblePatchNames = React.useMemo(() => {
     const eligiblePatchNames =
       selectedSave != null
-        ? Object.keys(patches).filter(
-            (p) => patches[p].forROM == selectedSave.romName
+        ? Object.keys(patches).filter((p) =>
+            Object.values(patches[p].versions).some((v) =>
+              v.forROMs.some((r) => r.name == selectedSave.romName)
+            )
           )
         : [];
     eligiblePatchNames.sort();
@@ -207,16 +211,15 @@ export default function SavesPane({ active }: { active: boolean }) {
                   return (
                     <>
                       {opponentSettings?.gameInfo != null &&
-                      !Object.keys(patches)
-                        .filter((p) => patches[p].forROM == selection.romName)
+                      !Object.values(patches)
                         .flatMap((p) =>
-                          Object.keys(patches[p].versions).map(
-                            (v) => patches[p].versions[v].netplayCompatibility
+                          Object.values(p.versions).flatMap((v) =>
+                            v.forROMs.some((r) => r == selection.romName)
+                              ? [v.netplayCompatibility]
+                              : []
                           )
                         )
-                        .concat([
-                          KNOWN_ROMS[selection.romName].netplayCompatibility,
-                        ])
+                        .concat([FAMILY_BY_ROM_NAME[selection.romName]])
                         .some(
                           (nc) =>
                             nc ==
@@ -253,9 +256,27 @@ export default function SavesPane({ active }: { active: boolean }) {
                       ) : null}
                       {selection.saveName}{" "}
                       <small>
-                        {KNOWN_ROMS[selection.romName].title[
-                          i18n.resolvedLanguage
-                        ] || KNOWN_ROMS[selection.romName].title[fallbackLng]}
+                        <Trans
+                          i18nKey="play:rom-name"
+                          values={{
+                            familyName:
+                              KNOWN_ROM_FAMILIES[
+                                FAMILY_BY_ROM_NAME[selection.romName]
+                              ].title[i18n.resolvedLanguage] ||
+                              KNOWN_ROM_FAMILIES[
+                                FAMILY_BY_ROM_NAME[selection.romName]
+                              ].title[fallbackLng],
+                            versionName:
+                              KNOWN_ROM_FAMILIES[
+                                FAMILY_BY_ROM_NAME[selection.romName]
+                              ].versions[selection.romName].title[
+                                i18n.resolvedLanguage
+                              ] ||
+                              KNOWN_ROM_FAMILIES[
+                                FAMILY_BY_ROM_NAME[selection.romName]
+                              ].versions[selection.romName].title[fallbackLng],
+                          }}
+                        />
                       </small>
                     </>
                   );
@@ -283,8 +304,23 @@ export default function SavesPane({ active }: { active: boolean }) {
                   return [
                     [
                       <ListSubheader key="title" sx={{ userSelect: "none" }}>
-                        {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
-                          KNOWN_ROMS[romName].title[fallbackLng]}
+                        <Trans
+                          i18nKey="play:rom-name"
+                          values={{
+                            familyName:
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .title[i18n.resolvedLanguage] ||
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .title[fallbackLng],
+                            versionName:
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .versions[romName].title[
+                                i18n.resolvedLanguage
+                              ] ||
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .versions[romName].title[fallbackLng],
+                          }}
+                        />
                       </ListSubheader>,
                       ...saveNames.map((v) => {
                         const value = JSON.stringify({ romName, saveName: v });
@@ -300,17 +336,15 @@ export default function SavesPane({ active }: { active: boolean }) {
                             }
                           >
                             {opponentSettings?.gameInfo != null &&
-                            !Object.keys(patches)
-                              .filter((p) => patches[p].forROM == romName)
+                            !Object.values(patches)
                               .flatMap((p) =>
-                                Object.keys(patches[p].versions).map(
-                                  (v) =>
-                                    patches[p].versions[v].netplayCompatibility
+                                Object.values(p.versions).flatMap((v) =>
+                                  v.forROMs.some((r) => r.name == romName)
+                                    ? [v.netplayCompatibility]
+                                    : []
                                 )
                               )
-                              .concat([
-                                KNOWN_ROMS[romName].netplayCompatibility,
-                              ])
+                              .concat([FAMILY_BY_ROM_NAME[romName]])
                               .some(
                                 (nc) =>
                                   nc ==
@@ -419,8 +453,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                         <>
                           {opponentSettings?.gameInfo != null &&
                           selectedSave != null &&
-                          KNOWN_ROMS[selectedSave.romName]
-                            .netplayCompatibility !=
+                          FAMILY_BY_ROM_NAME[selectedSave.romName] !=
                             getNetplayCompatibility(
                               opponentSettings.gameInfo
                             ) ? (
@@ -531,7 +564,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                   <MenuItem value="null">
                     {opponentSettings?.gameInfo != null &&
                     selectedSave != null &&
-                    KNOWN_ROMS[selectedSave.romName].netplayCompatibility !=
+                    FAMILY_BY_ROM_NAME[selectedSave.romName] !=
                       getNetplayCompatibility(opponentSettings.gameInfo) ? (
                       <Tooltip
                         title={<Trans i18nKey="play:incompatible-game" />}

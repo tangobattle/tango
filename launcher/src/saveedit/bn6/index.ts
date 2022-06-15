@@ -335,7 +335,7 @@ export class Editor {
     return arr.buffer;
   }
 
-  static sniffROMNames(buffer: ArrayBuffer) {
+  static sniff(buffer: ArrayBuffer) {
     if (buffer.byteLength != SRAM_SIZE) {
       throw (
         "invalid byte length of save file: expected " +
@@ -376,10 +376,6 @@ export class Editor {
 
   getROMName() {
     return this.romName;
-  }
-
-  getGameFamily() {
-    return "bn6";
   }
 
   getRawBufferForSave() {

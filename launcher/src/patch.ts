@@ -1,14 +1,12 @@
 import { parseOneAddress } from "email-addresses";
-import { constants, default as fs } from "fs";
-import { access, readdir, readFile, stat } from "fs/promises";
+import fs from "fs";
+import { readdir, readFile, stat } from "fs/promises";
 import * as git from "isomorphic-git";
 import * as http from "isomorphic-git/http/node";
 import mkdirp from "mkdirp";
 import path from "path";
 import semver from "semver";
 import toml from "toml";
-
-import { KNOWN_ROMS } from "./rom";
 
 const decoder = new TextDecoder("utf-8");
 
@@ -18,6 +16,10 @@ export interface PatchInfos {
 
 export interface PatchVersionInfo {
   netplayCompatibility: string;
+  forROMs: {
+    name: string;
+    revision: number;
+  }[];
 }
 
 export interface PatchInfo {
@@ -25,7 +27,6 @@ export interface PatchInfo {
   authors: { name: string | null; email: string }[];
   source?: string;
   license?: string;
-  forROM: string;
   versions: {
     [version: string]: PatchVersionInfo;
   };
@@ -37,7 +38,6 @@ interface RawPatchInfo {
     authors: string[];
     source?: string;
     license?: string;
-    for_rom: string;
   };
   versions: {
     [version: string]: {
@@ -113,12 +113,6 @@ export async function scan(dir: string) {
           throw `could not parse patch info for ${patchName}: ${e}`;
         }
 
-        if (
-          !Object.prototype.hasOwnProperty.call(KNOWN_ROMS, info.patch.for_rom)
-        ) {
-          throw `patch is for unknown ROM: ${info.patch.for_rom}`;
-        }
-
         for (const versionName of Object.keys(info.versions)) {
           const version = info.versions[versionName];
 
@@ -137,17 +131,32 @@ export async function scan(dir: string) {
             )}`;
           }
 
+          let patchFiles: string[];
           try {
-            await access(
-              path.join(patchPath, `v${versionName}.bps`),
-              constants.R_OK
-            );
+            patchFiles = await readdir(path.join(patchPath, `v${versionName}`));
           } catch (e) {
-            throw `could not find patch file for ${patchName} at version ${versionName}`;
+            throw `could not find patch folder for ${patchName} at version ${versionName}`;
           }
 
           versions[versionName] = {
             netplayCompatibility: version.netplay_compatibility,
+            forROMs: patchFiles.flatMap((pf) => {
+              if (path.extname(pf) != ".bps") {
+                return [];
+              }
+              const fullRomName = path.basename(pf, ".bps");
+              const delimIdx = fullRomName.lastIndexOf("_");
+              const revision = parseInt(
+                fullRomName.substring(delimIdx + 1),
+                10
+              );
+              return [
+                {
+                  name: fullRomName.substring(0, delimIdx),
+                  revision,
+                },
+              ];
+            }),
           };
         }
 
@@ -165,7 +174,6 @@ export async function scan(dir: string) {
               : [],
           source: info.patch.source,
           license: info.patch.license,
-          forROM: info.patch.for_rom,
           versions,
         };
       } catch (e) {

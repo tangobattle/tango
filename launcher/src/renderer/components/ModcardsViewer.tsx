@@ -16,13 +16,23 @@ const DEBUFF_COLOR = "#b55ade";
 const BUFF_COLOR = "#ffbd18";
 const OFF_COLOR = "#bdbdbd";
 
+function gameVersion(romName: string) {
+  switch (romName) {
+    case "ROCKEXE6_RXXBR6J":
+      return "falzar";
+    case "ROCKEXE6_GXXBR5J":
+      return "gregar";
+  }
+  throw `unknown rom name: ${romName}`;
+}
+
 export default function ModcardsViewer({
   editor,
-  gameVersion,
+  romName,
   active,
 }: {
   editor: ModcardsEditor;
-  gameVersion: string | null;
+  romName: string;
   active: boolean;
 }) {
   const { i18n } = useTranslation();
@@ -59,7 +69,7 @@ export default function ModcardsViewer({
                 <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                   <Stack spacing={0.5}>
                     {modcard.parameters.flatMap((l, i) =>
-                      l.version == null || l.version == gameVersion
+                      l.version == null || l.version == gameVersion(romName)
                         ? [
                             <Chip
                               key={i}
@@ -88,7 +98,7 @@ export default function ModcardsViewer({
                 <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                   <Stack spacing={0.5}>
                     {modcard.abilities.flatMap((l, i) =>
-                      l.version == null || l.version == gameVersion
+                      l.version == null || l.version == gameVersion(romName)
                         ? [
                             <Chip
                               key={i}

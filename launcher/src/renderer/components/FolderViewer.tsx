@@ -23,9 +23,25 @@ const GIGA_BG = {
   light: "#f7cee7",
 };
 
+function romNameToAssetFolder(romName: string) {
+  switch (romName) {
+    case "MEGAMAN6_FXXBR6E":
+    case "MEGAMAN6_GXXBR5E":
+    case "ROCKEXE6_RXXBR6J":
+    case "ROCKEXE6_GXXBR5J":
+      return "bn6";
+    case "MEGAMANBN4BMB4BE":
+    case "MEGAMANBN4RSB4WE":
+    case "ROCK_EXE4_BMB4BJ":
+    case "ROCK_EXE4_RSB4WJ":
+      return "bn4";
+  }
+  throw `unknown rom name: ${romName}`;
+}
+
 function FolderChipRow({
   groupedChip,
-  gameFamily,
+  romName,
   chipData,
 }: {
   groupedChip: {
@@ -36,7 +52,7 @@ function FolderChipRow({
     isTag2: boolean;
     count: number;
   };
-  gameFamily: string;
+  romName: string;
   chipData: (ChipInfo | null)[];
 }) {
   const { id, code, isRegular, isTag1, isTag2, count } = groupedChip;
@@ -67,7 +83,9 @@ function FolderChipRow({
           width="28"
           src={(() => {
             try {
-              return require(`../../../static/images/games/${gameFamily}/chipicons/${id}.png`);
+              return require(`../../../static/images/games/${romNameToAssetFolder(
+                romName
+              )}/chipicons/${id}.png`);
             } catch (e) {
               return "";
             }
@@ -120,9 +138,9 @@ function FolderChipRow({
         <img
           height="28"
           width="28"
-          src={require(`../../../static/images/games/${gameFamily}/elements/${
-            chipInfo.element ?? "null"
-          }.png`)}
+          src={require(`../../../static/images/games/${romNameToAssetFolder(
+            romName
+          )}/elements/${chipInfo.element ?? "null"}.png`)}
           style={{ imageRendering: "pixelated" }}
         />
       </TableCell>
@@ -137,11 +155,11 @@ function FolderChipRow({
 }
 
 export default function FolderViewer({
-  gameFamily,
+  romName,
   editor,
   active,
 }: {
-  gameFamily: string;
+  romName: string;
   editor: FolderEditor;
   active: boolean;
 }) {
@@ -231,7 +249,7 @@ export default function FolderViewer({
             <FolderChipRow
               key={i}
               groupedChip={groupedChip}
-              gameFamily={gameFamily}
+              romName={romName}
               chipData={editor.getChipData()}
             />
           ))}

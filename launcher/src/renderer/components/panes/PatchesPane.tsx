@@ -13,13 +13,10 @@ import Fab from "@mui/material/Fab";
 import List from "@mui/material/List";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
-import ListSubheader from "@mui/material/ListSubheader";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { KNOWN_ROMS } from "../../../rom";
-import { fallbackLng } from "../../i18n";
 import { usePatches } from "../PatchesContext";
 
 export default function PatchesPane({ active }: { active: boolean }) {
@@ -27,22 +24,8 @@ export default function PatchesPane({ active }: { active: boolean }) {
 
   const { patches, update, updating } = usePatches();
 
-  const groupedPatches: { [key: string]: string[] } = {};
-  for (const k of Object.keys(patches)) {
-    groupedPatches[patches[k].forROM] = groupedPatches[patches[k].forROM] || [];
-    groupedPatches[patches[k].forROM].push(k);
-  }
-
-  const romNames = Object.keys(groupedPatches);
-  romNames.sort((k1, k2) => {
-    const title1 =
-      KNOWN_ROMS[k1].title[i18n.resolvedLanguage] ||
-      KNOWN_ROMS[k1].title[fallbackLng];
-    const title2 =
-      KNOWN_ROMS[k2].title[i18n.resolvedLanguage] ||
-      KNOWN_ROMS[k2].title[fallbackLng];
-    return title1 < title2 ? -1 : title1 > title2 ? 1 : 0;
-  });
+  const patchNames = Object.keys(patches);
+  patchNames.sort();
 
   const listFormatter = new Intl.ListFormat(i18n.resolvedLanguage, {
     style: "long",
@@ -59,67 +42,56 @@ export default function PatchesPane({ active }: { active: boolean }) {
         overflow: "auto",
       }}
     >
-      {romNames.length > 0 ? (
+      {patchNames.length > 0 ? (
         <>
           <List dense disablePadding sx={{ flexGrow: 1 }}>
             <TransitionGroup>
-              {romNames.map((romName) => (
-                <Collapse key={romName}>
-                  <ListSubheader sx={{ userSelect: "none" }}>
-                    {KNOWN_ROMS[romName].title[i18n.resolvedLanguage] ||
-                      KNOWN_ROMS[romName].title[fallbackLng]}
-                  </ListSubheader>
-                  <TransitionGroup>
-                    {groupedPatches[romName].sort().map((patchName) => {
-                      const version = semver.maxSatisfying(
-                        Object.keys(patches[patchName].versions),
-                        "*"
-                      );
-                      return (
-                        <Collapse key={`${patchName} ${version}`}>
-                          <ListItem sx={{ userSelect: "none" }}>
-                            <ListItemText
-                              primary={
-                                <>
-                                  {patches[patchName].title}{" "}
-                                  <small>v{version}</small>
-                                </>
-                              }
-                              primaryTypographyProps={{
-                                sx: {
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                },
-                              }}
-                              secondary={
-                                <Trans
-                                  i18nKey="patches:byline"
-                                  values={{
-                                    authors: listFormatter.format(
-                                      patches[patchName].authors.flatMap(
-                                        ({ name }) =>
-                                          name != null ? [name] : []
-                                      )
-                                    ),
-                                  }}
-                                />
-                              }
-                              secondaryTypographyProps={{
-                                sx: {
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                },
-                              }}
-                            />
-                          </ListItem>
-                        </Collapse>
-                      );
-                    })}
-                  </TransitionGroup>
-                </Collapse>
-              ))}
+              {patchNames.map((patchName) => {
+                const version = semver.maxSatisfying(
+                  Object.keys(patches[patchName].versions),
+                  "*"
+                );
+
+                return (
+                  <Collapse key={`${patchName} ${version}`}>
+                    <ListItem sx={{ userSelect: "none" }}>
+                      <ListItemText
+                        primary={
+                          <>
+                            {patches[patchName].title} <small>v{version}</small>
+                          </>
+                        }
+                        primaryTypographyProps={{
+                          sx: {
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          },
+                        }}
+                        secondary={
+                          <Trans
+                            i18nKey="patches:byline"
+                            values={{
+                              authors: listFormatter.format(
+                                patches[patchName].authors.flatMap(({ name }) =>
+                                  name != null ? [name] : []
+                                )
+                              ),
+                            }}
+                          />
+                        }
+                        secondaryTypographyProps={{
+                          sx: {
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          },
+                        }}
+                      />
+                    </ListItem>
+                  </Collapse>
+                );
+              })}
             </TransitionGroup>
           </List>
           <Tooltip title={<Trans i18nKey="patches:update" />}>

@@ -4,13 +4,8 @@ import path from "path";
 
 import { sniff } from "./saveedit";
 
-export interface SaveInfo {
-  gameFamily: string;
-  romNames: string[];
-}
-
 export async function scan(dir: string) {
-  const saves = {} as { [fn: string]: SaveInfo };
+  const saves = {} as { [fn: string]: string[] };
 
   let saveNames: string[];
   try {
@@ -26,7 +21,7 @@ export async function scan(dir: string) {
 
   for (const result of await Promise.allSettled(
     saveNames.map(async (saveName) => {
-      let sniffed: SaveInfo;
+      let sniffed: string[];
       try {
         sniffed = sniff((await readFile(path.join(dir, saveName))).buffer);
       } catch (e) {

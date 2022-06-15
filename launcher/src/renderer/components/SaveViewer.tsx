@@ -64,22 +64,21 @@ export default function SaveViewer({ editor }: { editor: Editor }) {
           </Tabs>
           {navicustEditor != null ? (
             <NavicustViewer
-              gameFamily={editor.getGameFamily()}
-              gameVersion={editor.getGameInfo().version}
+              romName={editor.getROMName()}
               editor={navicustEditor}
               active={tab == "navicust"}
             />
           ) : null}
           {folderEditor != null ? (
             <FolderViewer
-              gameFamily={editor.getGameFamily()}
+              romName={editor.getROMName()}
               editor={folderEditor}
               active={tab == "folder"}
             />
           ) : null}
           {modcardsEditor != null ? (
             <ModcardsViewer
-              gameVersion={editor.getGameInfo().version}
+              romName={editor.getROMName()}
               editor={modcardsEditor}
               active={tab == "modcards"}
             />

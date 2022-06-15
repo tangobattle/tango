@@ -1,198 +1,246 @@
 {
-  MEGAMAN6_FXXBR6E: {
+  bn6: {
     title: {
-      en: "Mega Man Battle Network 6: Cybeast Falzar",
-      ja: "ロックマンエグゼ6 電脳獣ファルザー（英語版）",
-      "zh-Hans": "洛克人EXE6 电脑兽凤凰（英文版）",
+      en: "Mega Man Battle Network 6",
+      ja: "ロックマンエグゼ6（英語版）",
+      "zh-Hans": "洛克人EXE6（英文版）",
     },
-    revisions: {
-      "0": { crc32: 0xdee6f2a9 },
+
+    versions: {
+      MEGAMAN6_FXXBR6E: {
+        title: {
+          en: "Cybeast Falzar",
+          ja: "電脳獣ファルザー",
+          "zh-Hans": "电脑兽凤凰",
+        },
+        revisions: {
+          "0": { crc32: 0xdee6f2a9 },
+        },
+      },
+      MEGAMAN6_GXXBR5E: {
+        title: {
+          en: "Cybeast Gregar",
+          ja: "電脳獣グレイガ",
+          "zh-Hans": "电脑兽麒麟",
+        },
+        revisions: {
+          "0": { crc32: 0x79452182 },
+        },
+      },
     },
-    gameFamily: "bn6",
-    netplayCompatibility: "bn6",
   },
-  MEGAMAN6_GXXBR5E: {
+  exe6: {
     title: {
-      en: "Mega Man Battle Network 6: Cybeast Gregar",
-      ja: "ロックマンエグゼ6 電脳獣グレイガ（英語版）",
-      "zh-Hans": "洛克人EXE6 电脑兽麒麟（英文版）",
+      en: "Rockman EXE 6",
+      ja: "ロックマンエグゼ6",
+      "zh-Hans": "洛克人EXE6（日文版）",
     },
-    revisions: {
-      "0": { crc32: 0x79452182 },
+
+    versions: {
+      ROCKEXE6_RXXBR6J: {
+        title: {
+          en: "Dennoujuu Falzer",
+          ja: "電脳獣ファルザー",
+          "zh-Hans": "电脑兽凤凰",
+        },
+        revisions: {
+          "0": { crc32: 0x2dfb603e },
+        },
+      },
+      ROCKEXE6_GXXBR5J: {
+        title: {
+          en: "Dennoujuu Glaga",
+          ja: "電脳獣グレイガ",
+          "zh-Hans": "电脑兽麒麟",
+        },
+        revisions: {
+          "0": { crc32: 0x6285918a },
+        },
+      },
     },
-    gameFamily: "bn6",
-    netplayCompatibility: "bn6",
-  },
-  ROCKEXE6_RXXBR6J: {
-    title: {
-      en: "Rockman EXE 6: Dennoujuu Falzer",
-      ja: "ロックマンエグゼ6 電脳獣ファルザー",
-      "zh-Hans": "洛克人EXE6 电脑兽凤凰（日文版）",
-    },
-    revisions: {
-      "0": { crc32: 0x2dfb603e },
-    },
-    gameFamily: "bn6",
-    netplayCompatibility: "exe6",
-  },
-  ROCKEXE6_GXXBR5J: {
-    title: {
-      en: "Rockman EXE 6: Dennoujuu Glaga",
-      ja: "ロックマンエグゼ6 電脳獣グレイガ",
-      "zh-Hans": "洛克人EXE6 电脑兽麒麟（日文版）",
-    },
-    revisions: {
-      "0": { crc32: 0x6285918a },
-    },
-    gameFamily: "bn6",
-    netplayCompatibility: "exe6",
   },
 
-  MEGAMAN5_TP_BRBE: {
+  bn5: {
     title: {
-      en: "Mega Man Battle Network 5: Team Protoman",
-      ja: "ロックマンエグゼ5 チーム オブ ブルース（英語版）",
-      "zh-Hans": "洛克人EXE5 布鲁斯小队（英文版）",
+      en: "Mega Man Battle Network 5",
+      ja: "ロックマンエグゼ5（英語版）",
+      "zh-Hans": "洛克人EXE5（英文版）",
     },
-    revisions: {
-      "0": { crc32: 0xa73e83a4 },
+
+    versions: {
+      MEGAMAN5_TP_BRBE: {
+        title: {
+          en: "Team Protoman",
+          ja: "チーム オブ ブルース",
+          "zh-Hans": "布鲁斯小队",
+        },
+        revisions: {
+          "0": { crc32: 0xa73e83a4 },
+        },
+      },
+      MEGAMAN5_TC_BRKE: {
+        title: {
+          en: "Team Colonel",
+          ja: "チーム オブ カーネル",
+          "zh-Hans": "卡尼路小队",
+        },
+        revisions: {
+          "0": { crc32: 0xa552f683 },
+        },
+      },
     },
-    gameFamily: "bn5",
-    netplayCompatibility: "bn5",
   },
-  MEGAMAN5_TC_BRKE: {
+  exe5: {
     title: {
-      en: "Mega Man Battle Network 5: Team Colonel",
-      ja: "ロックマンエグゼ5 チーム オブ カーネル（英語版）",
-      "zh-Hans": "洛克人EXE5 卡尼路小队（英文版）",
+      en: "Rockman EXE 5",
+      ja: "ロックマンエグゼ5",
+      "zh-Hans": "洛克人EXE5（日文版）",
     },
-    revisions: {
-      "0": { crc32: 0xa552f683 },
+
+    versions: {
+      ROCKEXE5_TOBBRBJ: {
+        title: {
+          en: "Rockman EXE 5: Team of Blues",
+          ja: "チーム オブ ブルース",
+          "zh-Hans": "布鲁斯小队",
+        },
+        revisions: {
+          "0": { crc32: 0xc73f23c0 },
+        },
+      },
+      ROCKEXE5_TOCBRKJ: {
+        title: {
+          en: "Rockman EXE 5: Team of Colonel",
+          ja: "チーム オブ カーネル",
+          "zh-Hans": "卡尼路小队",
+        },
+        revisions: {
+          "0": { crc32: 0x16842635 },
+        },
+      },
     },
-    gameFamily: "bn5",
-    netplayCompatibility: "bn5",
-  },
-  ROCKEXE5_TOBBRBJ: {
-    title: {
-      en: "Rockman EXE 5: Team of Blues",
-      ja: "ロックマンエグゼ5 チーム オブ ブルース",
-      "zh-Hans": "洛克人EXE5 布鲁斯小队",
-    },
-    revisions: {
-      "0": { crc32: 0xc73f23c0 },
-    },
-    gameFamily: "bn5",
-    netplayCompatibility: "exe5",
-  },
-  ROCKEXE5_TOCBRKJ: {
-    title: {
-      en: "Rockman EXE 5: Team of Colonel",
-      ja: "ロックマンエグゼ5 チーム オブ カーネル",
-      "zh-Hans": "洛克人EXE5 卡尼路小队",
-    },
-    revisions: {
-      "0": { crc32: 0x16842635 },
-    },
-    gameFamily: "bn5",
-    netplayCompatibility: "exe5",
   },
 
-  MEGAMANBN4BMB4BE: {
+  bn4: {
     title: {
-      en: "Mega Man Battle Network 4: Blue Moon",
-      ja: "ロックマンエグゼ4 トーナメント ブルームーン（英語版）",
-      "zh-Hans": "洛克人EXE4 蓝月锦标赛（英文版）",
+      en: "Mega Man Battle Network 4",
+      ja: "ロックマンエグゼ4（英語版）",
+      "zh-Hans": "洛克人EXE4（英文版）",
     },
-    revisions: {
-      "0": { crc32: 0x758a46e9 },
+
+    versions: {
+      MEGAMANBN4BMB4BE: {
+        title: {
+          en: "Blue Moon",
+          ja: "トーナメント ブルームーン",
+          "zh-Hans": "蓝月锦标赛",
+        },
+        revisions: {
+          "0": { crc32: 0x758a46e9 },
+        },
+      },
+      MEGAMANBN4RSB4WE: {
+        title: {
+          en: "Red Sun",
+          ja: "トーナメント レッドサン",
+          "zh-Hans": "红日锦标赛",
+        },
+        revisions: {
+          "0": { crc32: 0x2120695c },
+        },
+      },
     },
-    gameFamily: "bn4",
-    netplayCompatibility: "bn4",
   },
-  MEGAMANBN4RSB4WE: {
+  exe4: {
     title: {
-      en: "Mega Man Battle Network 4: Red Sun",
-      ja: "ロックマンエグゼ4 トーナメント レッドサン（英語版）",
-      "zh-Hans": "洛克人EXE4 红日锦标赛（英文版）",
+      en: "Rockman EXE 4",
+      ja: "ロックマンエグゼ4",
+      "zh-Hans": "洛克人EXE4（日文版）",
     },
-    revisions: {
-      "0": { crc32: 0x2120695c },
+
+    versions: {
+      ROCK_EXE4_BMB4BJ: {
+        title: {
+          en: "Tournament Blue Moon",
+          ja: "トーナメント ブルームーン",
+          "zh-Hans": "蓝月锦标赛",
+        },
+        revisions: {
+          "0": { crc32: 0xed7c5b50 },
+        },
+      },
+      ROCK_EXE4_RSB4WJ: {
+        title: {
+          en: "Tournament Red Sun",
+          ja: "トーナメント レッドサン",
+          "zh-Hans": "红日锦标赛",
+        },
+        revisions: {
+          "0": { crc32: 0x6a51907d },
+          "1": { crc32: 0xcf0e8b05 },
+        },
+      },
     },
-    gameFamily: "bn4",
-    netplayCompatibility: "bn4",
-  },
-  ROCK_EXE4_BMB4BJ: {
-    title: {
-      en: "Rockman EXE 4: Tournament Blue Moon",
-      ja: "ロックマンエグゼ4 トーナメント ブルームーン",
-      "zh-Hans": "洛克人EXE4 蓝月锦标赛",
-    },
-    revisions: {
-      "0": { crc32: 0xed7c5b50 },
-    },
-    gameFamily: "bn4",
-    netplayCompatibility: "exe4",
-  },
-  ROCK_EXE4_RSB4WJ: {
-    title: {
-      en: "Rockman EXE 4: Tournament Red Sun",
-      ja: "ロックマンエグゼ4 トーナメント レッドサン",
-      "zh-Hans": "洛克人EXE4 红日锦标赛",
-    },
-    revisions: {
-      "0": { crc32: 0x6a51907d },
-      "1": { crc32: 0xcf0e8b05 },
-    },
-    gameFamily: "bn4",
-    netplayCompatibility: "exe4",
   },
 
-  MEGA_EXE3_BLA3XE: {
+  bn3: {
     title: {
-      en: "Mega Man Battle Network 3: Blue",
-      ja: "バトルネットワーク ロックマンエグゼ3 BLACK（英語版）",
-      "zh-Hans": "洛克人EXE3 BLX",
+      en: "Mega Man Battle Network 3",
+      ja: "ロックマンエグゼ3（英語版）",
+      "zh-Hans": "洛克人EXE3（英文版）",
     },
-    revisions: {
-      "0": { crc32: 0xc0c780f9 },
+
+    versions: {
+      MEGA_EXE3_WHA6BE: {
+        title: {
+          en: "White",
+          ja: "WHITE",
+          "zh-Hans": "白",
+        },
+        revisions: {
+          "0": { crc32: 0x0be4410a },
+        },
+      },
+      MEGA_EXE3_BLA3XE: {
+        title: {
+          en: "Blue",
+          ja: "BLACK",
+          "zh-Hans": "BLX",
+        },
+        revisions: {
+          "0": { crc32: 0xc0c780f9 },
+        },
+      },
     },
-    gameFamily: "bn3",
-    netplayCompatibility: "bn3",
   },
-  MEGA_EXE3_WHA6BE: {
-    title: {
-      en: "Mega Man Battle Network 3: White",
-      ja: "バトルネットワーク ロックマンエグゼ3（英語版）",
-      "zh-Hans": "洛克人EXE3 白",
-    },
-    revisions: {
-      "0": { crc32: 0x0be4410a },
-    },
-    gameFamily: "bn3",
-    netplayCompatibility: "bn3",
-  },
-  ROCKMAN_EXE3A6BJ: {
+  exe3: {
     title: {
       en: "Battle Network Rockman EXE 3",
       ja: "バトルネットワーク ロックマンエグゼ3",
-      "zh-Hans": "洛克人EXE3",
+      "zh-Hans": "洛克人EXE3（日文版）",
     },
-    revisions: {
-      "1": { crc32: 0xe48e6bc9 },
+
+    versions: {
+      ROCKMAN_EXE3A6BJ: {
+        title: {
+          en: "White",
+          ja: "WHITE",
+          "zh-Hans": "无印",
+        },
+        revisions: {
+          "1": { crc32: 0xe48e6bc9 },
+        },
+      },
+      ROCK_EXE3_BKA3XJ: {
+        title: {
+          en: "Black",
+          ja: "BLACK",
+          "zh-Hans": "黑",
+        },
+        revisions: {
+          "1": { crc32: 0xfd57493b },
+        },
+      },
     },
-    gameFamily: "bn3",
-    netplayCompatibility: "exe3",
-  },
-  ROCK_EXE3_BKA3XJ: {
-    title: {
-      en: "Battle Network Rockman EXE 3: Black",
-      ja: "バトルネットワーク ロックマンエグゼ3 BLACK",
-      "zh-Hans": "洛克人EXE3 黑",
-    },
-    revisions: {
-      "1": { crc32: 0xfd57493b },
-    },
-    gameFamily: "bn3",
-    netplayCompatibility: "exe3",
   },
 }

@@ -87,11 +87,22 @@ const commandLine = 3;
 const borderColor = "#29314a";
 const emptyColor = "#105284";
 
+function navicustBackground(romName: string) {
+  switch (romName) {
+    case "MEGAMAN6_FXXBR6E":
+    case "ROCKEXE6_RXXBR6J":
+      return "#E78C39";
+    case "MEGAMAN6_GXXBR5E":
+    case "ROCKEXE6_GXXBR5J":
+      return "#08BD73";
+  }
+  throw `unknown rom name: ${romName}`;
+}
+
 function NavicustGrid({
   ncps,
   placements,
-  gameFamily,
-  gameVersion,
+  romName,
 }: {
   ncps: (NavicustProgram | null)[];
   placements: {
@@ -102,8 +113,7 @@ function NavicustGrid({
     col: number;
     compressed: boolean;
   }[];
-  gameFamily: string;
-  gameVersion: string | null;
+  romName: string;
 }) {
   const grid = React.useMemo(() => {
     const grid = [];
@@ -135,15 +145,7 @@ function NavicustGrid({
     <div
       style={{
         padding: "20px",
-        background:
-          gameVersion != null
-            ? ({
-                bn6: {
-                  falzar: "#E78C39",
-                  gregar: "#08BD73",
-                },
-              }[gameFamily] ?? ({} as { [key: string]: string }))[gameVersion]
-            : undefined,
+        background: navicustBackground(romName),
         display: "inline-block",
         borderRadius: "4px",
         textAlign: "left",
@@ -427,13 +429,11 @@ function NavicustGrid({
 
 export default function NavicustViewer({
   editor,
-  gameFamily,
-  gameVersion,
+  romName,
   active,
 }: {
   editor: NavicustEditor;
-  gameFamily: string;
-  gameVersion: string | null;
+  romName: string;
   active: boolean;
 }) {
   const { i18n } = useTranslation();
@@ -470,12 +470,7 @@ export default function NavicustViewer({
             justifyContent: "center",
           }}
         >
-          <NavicustGrid
-            ncps={ncps}
-            placements={placements}
-            gameFamily={gameFamily}
-            gameVersion={gameVersion}
-          />
+          <NavicustGrid ncps={ncps} placements={placements} romName={romName} />
         </Box>
         <Table
           size="small"

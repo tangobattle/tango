@@ -7,7 +7,12 @@ import { scan } from "../../rom";
 
 export interface ROMsValue {
   rescan(): Promise<void>;
-  roms: { [name: string]: string };
+  roms: {
+    [name: string]: {
+      filename: string;
+      revision: number;
+    };
+  };
 }
 
 const Context = React.createContext(null! as ROMsValue);

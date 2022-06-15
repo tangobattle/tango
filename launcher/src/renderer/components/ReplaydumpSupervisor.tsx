@@ -43,7 +43,7 @@ export default function ReplaydumpSupervisor({
   const getPatchPath = useGetPatchPath();
 
   const romPath = getROMPath(romName);
-  const patchPath = patch != null ? getPatchPath(patch) : null;
+  const patchPath = patch != null ? getPatchPath(romName, patch) : null;
 
   const outROMPath = path.join(
     tempDir,

@@ -3,11 +3,11 @@ import React, { useContext } from "react";
 import { app } from "@electron/remote";
 
 import { getSavesPath } from "../../paths";
-import { SaveInfo, scan } from "../../saves";
+import { scan } from "../../saves";
 
 export interface SavesValue {
   rescan(): Promise<void>;
-  saves: { [filename: string]: SaveInfo };
+  saves: { [filename: string]: string[] };
 }
 
 const Context = React.createContext(null! as SavesValue);

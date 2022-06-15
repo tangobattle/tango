@@ -15,8 +15,8 @@ import Typography from "@mui/material/Typography";
 import { getReplaysPath } from "../../paths";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
-import { KNOWN_ROMS } from "../../rom";
-import { Editor, EDITORS_BY_GAME_FAMILY } from "../../saveedit";
+import { FAMILY_BY_ROM_NAME } from "../../rom";
+import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useConfig } from "./ConfigContext";
 import SaveViewer from "./SaveViewer";
 
@@ -65,10 +65,12 @@ export default function ReplayInfoDialog({
       }
 
       const buf = Buffer.concat(bufs);
+      const Editor = editorClassForGameFamily(
+        FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
+      );
+
       setEditor(
-        new EDITORS_BY_GAME_FAMILY[
-          KNOWN_ROMS[replayInfo.metadata.localSide!.gameInfo!.rom]!.gameFamily
-        ]!(
+        new Editor(
           new Uint8Array(buf).buffer,
           replayInfo.metadata.localSide!.gameInfo!.rom,
           false
