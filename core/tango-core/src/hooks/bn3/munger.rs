@@ -34,45 +34,23 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x30);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
-        let t = match match_type {
-            0 => 0x00,
-            // 1 => 0x06, // This doesn't work :(
-            _ => 0x00,
-        };
         core.raw_write_range(
             self.offsets.ewram.tx_packet,
             -1,
             &[
-                0x01, t, 0x00, 0xff, background, 0xff, 0xff, 0xff, t, t, t, t, t, t, t, t,
+                0x01, 0x00, 0x00, 0xff, background, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00,
             ],
         );
-        // core.raw_write_8(
-        //     self.offsets.ewram.submenu_control + 0x1c,
-        //     -1,
-        //     match match_type {
-        //         0 => 0,
-        //         1 => 3,
-        //         _ => 0,
-        //     },
-        // );
-        // core.raw_write_8(
-        //     self.offsets.ewram.submenu_control + 0x2e,
-        //     -1,
-        //     match match_type {
-        //         0 => 3,
-        //         1 => 2,
-        //         _ => 0,
-        //     },
-        // );
-        // core.raw_write_8(
-        //     self.offsets.ewram.submenu_control + 0x9,
-        //     -1,
-        //     0x6f + match match_type {
-        //         0 => 0,
-        //         1 => 3,
-        //         _ => 0,
-        //     },
-        // );
+        core.raw_write_8(
+            self.offsets.ewram.submenu_control + 0x1c,
+            -1,
+            match match_type {
+                0 => 0,
+                1 => 3,
+                _ => 0,
+            },
+        );
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
