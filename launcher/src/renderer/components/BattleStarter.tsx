@@ -67,6 +67,10 @@ import { useTempDir } from "./TempDirContext";
 
 const MATCH_TYPES = ["single", "triple"];
 
+function removeBadPathCharacters(s: string): string {
+  return s.replace(/[/\\?%*:|"<>. ]/g, "_");
+}
+
 function defaultMatchSettings(nickname: string): SetSettings {
   return {
     nickname,
@@ -635,7 +639,7 @@ async function runCallback(
     const prefix = `${datefns.format(
       now,
       "yyyyMMddHHmmss"
-    )}-${ownFullROMName}-vs-${encodeURIComponent(
+    )}-${ownFullROMName}-vs-${removeBadPathCharacters(
       opponentGameSettings.nickname
     )}-${linkCode}`;
 
