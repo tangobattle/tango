@@ -21,7 +21,7 @@ export function getROMInfo(buffer: ArrayBuffer) {
 
 export interface KnownROM {
   title: { [language: string]: string };
-  versions: { [key: string]: { crc32: number } };
+  revisions: { [key: string]: { crc32: number } };
   gameFamily: string;
   netplayCompatibility: string;
 }
@@ -51,8 +51,8 @@ export async function scan(dir: string) {
         if (knownROM == null) {
           throw `unknown rom name: ${romInfo.name}`;
         }
-        const crc32s = Object.values(knownROM.versions).map(
-          (version) => version.crc32
+        const crc32s = Object.values(knownROM.revisions).map(
+          (revision) => revision.crc32
         );
 
         if (crc32s.indexOf(romInfo.crc32) == -1) {

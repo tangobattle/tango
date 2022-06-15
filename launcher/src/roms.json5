@@ -5,7 +5,7 @@
       ja: "ロックマンエグゼ6 電脳獣ファルザー（英語版）",
       "zh-Hans": "洛克人EXE6 电脑兽凤凰（英文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0xdee6f2a9 },
     },
     gameFamily: "bn6",
@@ -17,7 +17,7 @@
       ja: "ロックマンエグゼ6 電脳獣グレイガ（英語版）",
       "zh-Hans": "洛克人EXE6 电脑兽麒麟（英文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x79452182 },
     },
     gameFamily: "bn6",
@@ -29,7 +29,7 @@
       ja: "ロックマンエグゼ6 電脳獣ファルザー",
       "zh-Hans": "洛克人EXE6 电脑兽凤凰（日文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x2dfb603e },
     },
     gameFamily: "bn6",
@@ -41,7 +41,7 @@
       ja: "ロックマンエグゼ6 電脳獣グレイガ",
       "zh-Hans": "洛克人EXE6 电脑兽麒麟（日文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x6285918a },
     },
     gameFamily: "bn6",
@@ -54,7 +54,7 @@
       ja: "ロックマンエグゼ5 チーム オブ ブルース（英語版）",
       "zh-Hans": "洛克人EXE5 布鲁斯小队（英文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0xa73e83a4 },
     },
     gameFamily: "bn5",
@@ -66,7 +66,7 @@
       ja: "ロックマンエグゼ5 チーム オブ カーネル（英語版）",
       "zh-Hans": "洛克人EXE5 卡尼路小队（英文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0xa552f683 },
     },
     gameFamily: "bn5",
@@ -78,7 +78,7 @@
       ja: "ロックマンエグゼ5 チーム オブ ブルース",
       "zh-Hans": "洛克人EXE5 布鲁斯小队",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0xc73f23c0 },
     },
     gameFamily: "bn5",
@@ -90,7 +90,7 @@
       ja: "ロックマンエグゼ5 チーム オブ カーネル",
       "zh-Hans": "洛克人EXE5 卡尼路小队",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x16842635 },
     },
     gameFamily: "bn5",
@@ -103,7 +103,7 @@
       ja: "ロックマンエグゼ4 トーナメント ブルームーン（英語版）",
       "zh-Hans": "洛克人EXE4 蓝月锦标赛（英文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x758a46e9 },
     },
     gameFamily: "bn4",
@@ -115,7 +115,7 @@
       ja: "ロックマンエグゼ4 トーナメント レッドサン（英語版）",
       "zh-Hans": "洛克人EXE4 红日锦标赛（英文版）",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x2120695c },
     },
     gameFamily: "bn4",
@@ -127,7 +127,7 @@
       ja: "ロックマンエグゼ4 トーナメント ブルームーン",
       "zh-Hans": "洛克人EXE4 蓝月锦标赛",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0xed7c5b50 },
     },
     gameFamily: "bn4",
@@ -139,7 +139,7 @@
       ja: "ロックマンエグゼ4 トーナメント レッドサン",
       "zh-Hans": "洛克人EXE4 红日锦标赛",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x6a51907d },
       "01": { crc32: 0xcf0e8b05 },
     },
@@ -153,7 +153,7 @@
       ja: "バトルネットワーク ロックマンエグゼ3 BLACK（英語版）",
       "zh-Hans": "洛克人EXE3 BLX",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0xc0c780f9 },
     },
     gameFamily: "bn3",
@@ -165,7 +165,7 @@
       ja: "バトルネットワーク ロックマンエグゼ3（英語版）",
       "zh-Hans": "洛克人EXE3 白",
     },
-    versions: {
+    revisions: {
       "00": { crc32: 0x0be4410a },
     },
     gameFamily: "bn3",
@@ -177,7 +177,7 @@
       ja: "バトルネットワーク ロックマンエグゼ3",
       "zh-Hans": "洛克人EXE3",
     },
-    versions: {
+    revisions: {
       "01": { crc32: 0xe48e6bc9 },
     },
     gameFamily: "bn3",
@@ -189,7 +189,7 @@
       ja: "バトルネットワーク ロックマンエグゼ3 BLACK",
       "zh-Hans": "洛克人EXE3 黑",
     },
-    versions: {
+    revisions: {
       "01": { crc32: 0xfd57493b },
     },
     gameFamily: "bn3",
