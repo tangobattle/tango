@@ -45,6 +45,7 @@ impl Munger {
         core.raw_write_8(
             self.offsets.ewram.submenu_control + 0x1c,
             -1,
+            // 0 = lightweight, 1 = mediumweight, 2 = heavyweight, 3 = tri-battle
             match match_type {
                 0 => 0,
                 1 => 3,
