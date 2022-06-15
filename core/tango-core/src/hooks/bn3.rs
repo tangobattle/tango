@@ -2,7 +2,6 @@ mod munger;
 mod offsets;
 
 use byteorder::ByteOrder;
-use rand::Rng;
 
 use crate::{battle, facade, fastforwarder, hooks, input, shadow};
 
@@ -29,6 +28,14 @@ impl BN3 {
             offsets,
             munger: munger::Munger { offsets },
         })
+    }
+}
+
+fn bn3_match_type(match_type: u8, rng: &mut impl rand::Rng) -> u8 {
+    match match_type {
+        0 => rng.gen_range(0..=2),
+        1 => 3,
+        _ => 0,
     }
 }
 
@@ -206,11 +213,7 @@ impl hooks::Hooks for BN3 {
 
                             munger.start_battle_from_comm_menu(
                                 core,
-                                match match_.match_type() {
-                                    0 => rng.gen_range(0..=2),
-                                    1 => 3,
-                                    _ => 0,
-                                },
+                                bn3_match_type(match_.match_type(), &mut *rng),
                                 random_background(&mut *rng),
                             );
                         });
@@ -577,11 +580,7 @@ impl hooks::Hooks for BN3 {
 
                         munger.start_battle_from_comm_menu(
                             core,
-                            match shadow_state.match_type() {
-                                0 => rng.gen_range(0..=2),
-                                1 => 3,
-                                _ => 0,
-                            },
+                            bn3_match_type(shadow_state.match_type(), &mut *rng),
                             random_background(&mut *rng),
                         );
                     }),
