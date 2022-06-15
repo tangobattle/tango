@@ -153,7 +153,7 @@ pub struct Offsets {
 }
 
 #[rustfmt::skip]
-pub static MEGAMAN6_FXXBR6E: Offsets = Offsets {
+pub static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS_US,
     rom: ROMOffsets {
         start_screen_jump_table_entry:                              0x0803d1ca,
@@ -179,7 +179,7 @@ pub static MEGAMAN6_FXXBR6E: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static MEGAMAN6_GXXBR5E: Offsets = Offsets {
+pub static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS_US,
     rom: ROMOffsets {
         start_screen_jump_table_entry:                              0x0803d19e,
@@ -205,7 +205,7 @@ pub static MEGAMAN6_GXXBR5E: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCKEXE6_RXXBR6J: Offsets = Offsets {
+pub static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS_JP,
     rom: ROMOffsets {
         start_screen_jump_table_entry:                              0x0803e23a,
@@ -231,7 +231,7 @@ pub static ROCKEXE6_RXXBR6J: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCKEXE6_GXXBR5J: Offsets = Offsets {
+pub static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS_JP,
     rom: ROMOffsets {
         start_screen_jump_table_entry:                              0x0803e20e,

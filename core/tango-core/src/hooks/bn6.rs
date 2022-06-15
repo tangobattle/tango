@@ -10,14 +10,14 @@ pub struct BN6 {
 }
 
 lazy_static! {
-    pub static ref MEGAMAN6_FXXBR6E: Box<dyn hooks::Hooks + Send + Sync> =
-        BN6::new(offsets::MEGAMAN6_FXXBR6E);
-    pub static ref MEGAMAN6_GXXBR5E: Box<dyn hooks::Hooks + Send + Sync> =
-        BN6::new(offsets::MEGAMAN6_GXXBR5E);
-    pub static ref ROCKEXE6_RXXBR6J: Box<dyn hooks::Hooks + Send + Sync> =
-        BN6::new(offsets::ROCKEXE6_RXXBR6J);
-    pub static ref ROCKEXE6_GXXBR5J: Box<dyn hooks::Hooks + Send + Sync> =
-        BN6::new(offsets::ROCKEXE6_GXXBR5J);
+    pub static ref MEGAMAN6_FXXBR6E_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN6::new(offsets::MEGAMAN6_FXXBR6E_00);
+    pub static ref MEGAMAN6_GXXBR5E_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN6::new(offsets::MEGAMAN6_GXXBR5E_00);
+    pub static ref ROCKEXE6_RXXBR6J_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN6::new(offsets::ROCKEXE6_RXXBR6J_00);
+    pub static ref ROCKEXE6_GXXBR5J_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN6::new(offsets::ROCKEXE6_GXXBR5J_00);
 }
 
 impl BN6 {

@@ -134,7 +134,7 @@ pub struct Offsets {
 }
 
 #[rustfmt::skip]
-pub static MEGAMANBN4BMB4BE: Offsets = Offsets {
+pub static MEGAMANBN4BMB4BE_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d786,
@@ -159,7 +159,7 @@ pub static MEGAMANBN4BMB4BE: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static MEGAMANBN4RSB4WE: Offsets = Offsets {
+pub static MEGAMANBN4RSB4WE_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x0802d786,

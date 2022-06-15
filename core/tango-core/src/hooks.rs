@@ -6,39 +6,29 @@ mod bn5;
 mod bn6;
 
 pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + Send + Sync>> {
-    match &core.full_rom_name() {
-        b"MEGAMAN6_FXXBR6E" => Some(&bn6::MEGAMAN6_FXXBR6E),
-        b"MEGAMAN6_GXXBR5E" => Some(&bn6::MEGAMAN6_GXXBR5E),
-        b"ROCKEXE6_RXXBR6J" => Some(&bn6::ROCKEXE6_RXXBR6J),
-        b"ROCKEXE6_GXXBR5J" => Some(&bn6::ROCKEXE6_GXXBR5J),
-        b"MEGAMAN5_TP_BRBE" => Some(&bn5::MEGAMAN5_TP_BRBE),
-        b"MEGAMAN5_TC_BRKE" => Some(&bn5::MEGAMAN5_TC_BRKE),
-        b"ROCKEXE5_TOBBRBJ" => Some(&bn5::ROCKEXE5_TOBBRBJ),
-        b"ROCKEXE5_TOCBRKJ" => Some(&bn5::ROCKEXE5_TOCBRKJ),
-        b"MEGAMANBN4BMB4BE" => Some(&bn4::MEGAMANBN4BMB4BE),
-        b"MEGAMANBN4RSB4WE" => Some(&bn4::MEGAMANBN4RSB4WE),
-        b"ROCK_EXE4_BMB4BJ" => match core.rom_revision() {
-            0x00 => Some(&bn4::ROCK_EXE4_BMB4BJ_00),
-            0x01 => Some(&bn4::ROCK_EXE4_BMB4BJ_01),
-            _ => None,
-        },
-        b"ROCK_EXE4_RSB4WJ" => match core.rom_revision() {
-            0x00 => Some(&bn4::ROCK_EXE4_RSB4WJ_00),
-            0x01 => Some(&bn4::ROCK_EXE4_RSB4WJ_01),
-            _ => None,
-        },
-        b"MEGA_EXE3_BLA3XE" => Some(&bn3::MEGA_EXE3_BLA3XE),
-        b"MEGA_EXE3_WHA6BE" => Some(&bn3::MEGA_EXE3_WHA6BE),
-        b"ROCK_EXE3_BKA3XJ" => match core.rom_revision() {
-            0x01 => Some(&bn3::ROCK_EXE3_BKA3XJ_01),
-            _ => None,
-        },
-        b"ROCKMAN_EXE3A6BJ" => match core.rom_revision() {
-            0x01 => Some(&bn3::ROCKMAN_EXE3A6BJ_01),
-            _ => None,
-        },
-        _ => None,
-    }
+    Some(match (&core.full_rom_name(), core.rom_revision()) {
+        (b"MEGAMAN6_FXXBR6E", 0x00) => &bn6::MEGAMAN6_FXXBR6E_00,
+        (b"MEGAMAN6_GXXBR5E", 0x00) => &bn6::MEGAMAN6_GXXBR5E_00,
+        (b"ROCKEXE6_RXXBR6J", 0x00) => &bn6::ROCKEXE6_RXXBR6J_00,
+        (b"ROCKEXE6_GXXBR5J", 0x00) => &bn6::ROCKEXE6_GXXBR5J_00,
+        (b"MEGAMAN5_TP_BRBE", 0x00) => &bn5::MEGAMAN5_TP_BRBE_00,
+        (b"MEGAMAN5_TC_BRKE", 0x00) => &bn5::MEGAMAN5_TC_BRKE_00,
+        (b"ROCKEXE5_TOBBRBJ", 0x00) => &bn5::ROCKEXE5_TOBBRBJ_00,
+        (b"ROCKEXE5_TOCBRKJ", 0x00) => &bn5::ROCKEXE5_TOCBRKJ_00,
+        (b"MEGAMANBN4BMB4BE", 0x00) => &bn4::MEGAMANBN4BMB4BE_00,
+        (b"MEGAMANBN4RSB4WE", 0x00) => &bn4::MEGAMANBN4RSB4WE_00,
+        (b"ROCK_EXE4_BMB4BJ", 0x00) => &bn4::ROCK_EXE4_BMB4BJ_00,
+        (b"ROCK_EXE4_BMB4BJ", 0x01) => &bn4::ROCK_EXE4_BMB4BJ_01,
+        (b"ROCK_EXE4_RSB4WJ", 0x00) => &bn4::ROCK_EXE4_RSB4WJ_00,
+        (b"ROCK_EXE4_RSB4WJ", 0x01) => &bn4::ROCK_EXE4_RSB4WJ_01,
+        (b"MEGA_EXE3_BLA3XE", 0x00) => &bn3::MEGA_EXE3_BLA3XE_00,
+        (b"MEGA_EXE3_WHA6BE", 0x00) => &bn3::MEGA_EXE3_WHA6BE_00,
+        (b"ROCK_EXE3_BKA3XJ", 0x01) => &bn3::ROCK_EXE3_BKA3XJ_01,
+        (b"ROCKMAN_EXE3A6BJ", 0x01) => &bn3::ROCKMAN_EXE3A6BJ_01,
+        _ => {
+            return None;
+        }
+    })
 }
 
 pub trait Hooks {

@@ -12,10 +12,10 @@ pub struct BN3 {
 }
 
 lazy_static! {
-    pub static ref MEGA_EXE3_BLA3XE: Box<dyn hooks::Hooks + Send + Sync> =
-        BN3::new(offsets::MEGA_EXE3_BLA3XE);
-    pub static ref MEGA_EXE3_WHA6BE: Box<dyn hooks::Hooks + Send + Sync> =
-        BN3::new(offsets::MEGA_EXE3_WHA6BE);
+    pub static ref MEGA_EXE3_BLA3XE_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN3::new(offsets::MEGA_EXE3_BLA3XE_00);
+    pub static ref MEGA_EXE3_WHA6BE_00: Box<dyn hooks::Hooks + Send + Sync> =
+        BN3::new(offsets::MEGA_EXE3_WHA6BE_00);
     pub static ref ROCK_EXE3_BKA3XJ_01: Box<dyn hooks::Hooks + Send + Sync> =
         BN3::new(offsets::ROCK_EXE3_BKA3XJ_01);
     pub static ref ROCKMAN_EXE3A6BJ_01: Box<dyn hooks::Hooks + Send + Sync> =

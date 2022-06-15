@@ -6,7 +6,7 @@
       "zh-Hans": "洛克人EXE6 电脑兽凤凰（英文版）",
     },
     versions: {
-      "1.0": { crc32: 0xdee6f2a9 },
+      "00": { crc32: 0xdee6f2a9 },
     },
     gameFamily: "bn6",
     netplayCompatibility: "bn6",
@@ -18,7 +18,7 @@
       "zh-Hans": "洛克人EXE6 电脑兽麒麟（英文版）",
     },
     versions: {
-      "1.0": { crc32: 0x79452182 },
+      "00": { crc32: 0x79452182 },
     },
     gameFamily: "bn6",
     netplayCompatibility: "bn6",
@@ -30,7 +30,7 @@
       "zh-Hans": "洛克人EXE6 电脑兽凤凰（日文版）",
     },
     versions: {
-      "1.0": { crc32: 0x2dfb603e },
+      "00": { crc32: 0x2dfb603e },
     },
     gameFamily: "bn6",
     netplayCompatibility: "exe6",
@@ -42,7 +42,7 @@
       "zh-Hans": "洛克人EXE6 电脑兽麒麟（日文版）",
     },
     versions: {
-      "1.0": { crc32: 0x6285918a },
+      "00": { crc32: 0x6285918a },
     },
     gameFamily: "bn6",
     netplayCompatibility: "exe6",
@@ -55,7 +55,7 @@
       "zh-Hans": "洛克人EXE5 布鲁斯小队（英文版）",
     },
     versions: {
-      "1.0": { crc32: 0xa73e83a4 },
+      "00": { crc32: 0xa73e83a4 },
     },
     gameFamily: "bn5",
     netplayCompatibility: "bn5",
@@ -67,7 +67,7 @@
       "zh-Hans": "洛克人EXE5 卡尼路小队（英文版）",
     },
     versions: {
-      "1.0": { crc32: 0xa552f683 },
+      "00": { crc32: 0xa552f683 },
     },
     gameFamily: "bn5",
     netplayCompatibility: "bn5",
@@ -79,7 +79,7 @@
       "zh-Hans": "洛克人EXE5 布鲁斯小队",
     },
     versions: {
-      "1.0": { crc32: 0xc73f23c0 },
+      "00": { crc32: 0xc73f23c0 },
     },
     gameFamily: "bn5",
     netplayCompatibility: "exe5",
@@ -91,7 +91,7 @@
       "zh-Hans": "洛克人EXE5 卡尼路小队",
     },
     versions: {
-      "1.0": { crc32: 0x16842635 },
+      "00": { crc32: 0x16842635 },
     },
     gameFamily: "bn5",
     netplayCompatibility: "exe5",
@@ -104,7 +104,7 @@
       "zh-Hans": "洛克人EXE4 蓝月锦标赛（英文版）",
     },
     versions: {
-      "1.0": { crc32: 0x758a46e9 },
+      "00": { crc32: 0x758a46e9 },
     },
     gameFamily: "bn4",
     netplayCompatibility: "bn4",
@@ -116,7 +116,7 @@
       "zh-Hans": "洛克人EXE4 红日锦标赛（英文版）",
     },
     versions: {
-      "1.0": { crc32: 0x2120695c },
+      "00": { crc32: 0x2120695c },
     },
     gameFamily: "bn4",
     netplayCompatibility: "bn4",
@@ -128,7 +128,7 @@
       "zh-Hans": "洛克人EXE4 蓝月锦标赛",
     },
     versions: {
-      "1.0": { crc32: 0xed7c5b50 },
+      "00": { crc32: 0xed7c5b50 },
     },
     gameFamily: "bn4",
     netplayCompatibility: "exe4",
@@ -140,8 +140,8 @@
       "zh-Hans": "洛克人EXE4 红日锦标赛",
     },
     versions: {
-      "1.0": { crc32: 0x6a51907d },
-      "1.1": { crc32: 0xcf0e8b05 },
+      "00": { crc32: 0x6a51907d },
+      "01": { crc32: 0xcf0e8b05 },
     },
     gameFamily: "bn4",
     netplayCompatibility: "exe4",
@@ -154,7 +154,7 @@
       "zh-Hans": "洛克人EXE3 BLX",
     },
     versions: {
-      "1.0": { crc32: 0xc0c780f9 },
+      "00": { crc32: 0xc0c780f9 },
     },
     gameFamily: "bn3",
     netplayCompatibility: "bn3",
@@ -166,7 +166,7 @@
       "zh-Hans": "洛克人EXE3 白",
     },
     versions: {
-      "1.0": { crc32: 0x0be4410a },
+      "00": { crc32: 0x0be4410a },
     },
     gameFamily: "bn3",
     netplayCompatibility: "bn3",
@@ -178,7 +178,7 @@
       "zh-Hans": "洛克人EXE3",
     },
     versions: {
-      "1.1": { crc32: 0xe48e6bc9 },
+      "01": { crc32: 0xe48e6bc9 },
     },
     gameFamily: "bn3",
     netplayCompatibility: "exe3",
@@ -190,7 +190,7 @@
       "zh-Hans": "洛克人EXE3 黑",
     },
     versions: {
-      "1.1": { crc32: 0xfd57493b },
+      "01": { crc32: 0xfd57493b },
     },
     gameFamily: "bn3",
     netplayCompatibility: "exe3",
