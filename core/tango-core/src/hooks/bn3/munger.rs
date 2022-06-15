@@ -42,16 +42,8 @@ impl Munger {
                 0x00, 0x00, 0x00,
             ],
         );
-        core.raw_write_8(
-            self.offsets.ewram.submenu_control + 0x1c,
-            -1,
-            // 0 = lightweight, 1 = mediumweight, 2 = heavyweight, 3 = tri-battle
-            match match_type {
-                0 => 0,
-                1 => 3,
-                _ => 0,
-            },
-        );
+        // 0 = lightweight, 1 = mediumweight, 2 = heavyweight, 3 = tri-battle
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, match_type);
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
