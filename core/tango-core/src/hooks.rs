@@ -38,7 +38,7 @@ pub trait Hooks {
 
     fn replayer_traps(
         &self,
-        ff_state: replayer::State,
+        replayer_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn shadow_traps(

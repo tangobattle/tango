@@ -79,7 +79,7 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let ff_state = tango_core::replayer::State::new(
+    let replayer_state = tango_core::replayer::State::new(
         local_player_index,
         input_pairs,
         {
@@ -98,7 +98,7 @@ fn main() -> Result<(), anyhow::Error> {
         },
     );
     let mut traps = hooks.common_traps();
-    traps.extend(hooks.replayer_traps(ff_state.clone()));
+    traps.extend(hooks.replayer_traps(replayer_state.clone()));
     core.set_traps(traps);
 
     let thread = mgba::thread::Thread::new(core);
@@ -171,7 +171,7 @@ fn main() -> Result<(), anyhow::Error> {
                     _ => {}
                 }
             }
-            if let Some(err) = ff_state.take_error() {
+            if let Some(err) = replayer_state.take_error() {
                 Err(err)?;
             }
 

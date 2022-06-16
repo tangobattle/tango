@@ -802,28 +802,28 @@ impl hooks::Hooks for BN5 {
 
     fn replayer_traps(
         &self,
-        ff_state: replayer::State,
+        replayer_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
-                let ff_state = ff_state.clone();
+                let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.battle_is_p2_tst,
                     Box::new(move |mut core| {
                         core.gba_mut()
                             .cpu_mut()
-                            .set_gpr(0, ff_state.local_player_index() as i32);
+                            .set_gpr(0, replayer_state.local_player_index() as i32);
                     }),
                 )
             },
             {
-                let ff_state = ff_state.clone();
+                let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         core.gba_mut()
                             .cpu_mut()
-                            .set_gpr(0, ff_state.local_player_index() as i32);
+                            .set_gpr(0, replayer_state.local_player_index() as i32);
                     }),
                 )
             },
@@ -839,21 +839,21 @@ impl hooks::Hooks for BN5 {
                 )
             },
             {
-                let ff_state = ff_state.clone();
+                let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        ff_state.on_round_ended();
+                        replayer_state.on_round_ended();
                     }),
                 )
             },
             {
                 let munger = self.munger.clone();
-                let ff_state = ff_state.clone();
+                let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
-                        let current_tick = ff_state.current_tick();
+                        let current_tick = replayer_state.current_tick();
 
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != current_tick {
@@ -863,22 +863,22 @@ impl hooks::Hooks for BN5 {
                             );
                         }
 
-                        if current_tick == ff_state.commit_time() {
-                            ff_state.set_committed_state(
+                        if current_tick == replayer_state.commit_time() {
+                            replayer_state.set_committed_state(
                                 core.save_state().expect("save committed state"),
                             );
                         }
 
-                        let ip = match ff_state.peek_input_pair() {
+                        let ip = match replayer_state.peek_input_pair() {
                             Some(ip) => ip,
                             None => {
-                                ff_state.on_inputs_exhausted();
+                                replayer_state.on_inputs_exhausted();
                                 return;
                             }
                         };
 
                         if ip.local.local_tick != ip.remote.local_tick {
-                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
                                 "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
                                 current_tick,
                                 ip.local.local_tick,
@@ -888,7 +888,7 @@ impl hooks::Hooks for BN5 {
                         }
 
                         if ip.local.local_tick != current_tick {
-                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
                                 "read joyflags: input tick != in battle tick: {} != {}",
                                 ip.local.local_tick,
                                 current_tick,
@@ -900,19 +900,20 @@ impl hooks::Hooks for BN5 {
                             .cpu_mut()
                             .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                        if current_tick == ff_state.dirty_time() {
-                            ff_state.set_dirty_state(core.save_state().expect("save dirty state"));
+                        if current_tick == replayer_state.dirty_time() {
+                            replayer_state
+                                .set_dirty_state(core.save_state().expect("save dirty state"));
                         }
                     }),
                 )
             },
             {
                 let munger = self.munger.clone();
-                let ff_state = ff_state.clone();
+                let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
-                        let current_tick = ff_state.current_tick();
+                        let current_tick = replayer_state.current_tick();
 
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != current_tick {
@@ -922,7 +923,7 @@ impl hooks::Hooks for BN5 {
                             );
                         }
 
-                        let ip = match ff_state.pop_input_pair() {
+                        let ip = match replayer_state.pop_input_pair() {
                             Some(ip) => ip,
                             None => {
                                 return;
@@ -930,7 +931,7 @@ impl hooks::Hooks for BN5 {
                         };
 
                         if ip.local.local_tick != ip.remote.local_tick {
-                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
                                 "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
                                 current_tick,
                                 ip.local.local_tick,
@@ -940,7 +941,7 @@ impl hooks::Hooks for BN5 {
                         }
 
                         if ip.local.local_tick != current_tick {
-                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
                                 "copy input data: input tick != in battle tick: {} != {}",
                                 ip.local.local_tick,
                                 current_tick,
@@ -950,30 +951,30 @@ impl hooks::Hooks for BN5 {
 
                         munger.set_rx_packet(
                             core,
-                            ff_state.local_player_index() as u32,
+                            replayer_state.local_player_index() as u32,
                             &ip.local.rx.try_into().unwrap(),
                         );
 
                         munger.set_rx_packet(
                             core,
-                            ff_state.remote_player_index() as u32,
+                            replayer_state.remote_player_index() as u32,
                             &ip.remote.rx.try_into().unwrap(),
                         );
                     }),
                 )
             },
             {
-                let ff_state = ff_state.clone();
+                let replayer_state = replayer_state.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.round_post_increment_tick,
                     Box::new(move |core| {
-                        ff_state.increment_current_tick();
-                        let current_tick = ff_state.current_tick();
+                        replayer_state.increment_current_tick();
+                        let current_tick = replayer_state.current_tick();
 
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != current_tick {
-                            ff_state.set_anyhow_error(anyhow::anyhow!(
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
                                 "post increment tick: round tick = {} but game tick = {}",
                                 current_tick,
                                 game_current_tick

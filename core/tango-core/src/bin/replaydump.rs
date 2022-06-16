@@ -97,7 +97,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
 
     let input_pairs = replay.input_pairs.clone();
 
-    let ff_state = {
+    let replayer_state = {
         tango_core::replayer::State::new(
             replay.local_player_index,
             input_pairs,
@@ -120,9 +120,9 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
-        let ff_state = ff_state.clone();
+        let replayer_state = replayer_state.clone();
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.replayer_traps(ff_state.clone()));
+        traps.extend(hooks.replayer_traps(replayer_state.clone()));
         core.set_traps(traps);
     }
     core.as_mut().load_state(&replay.local_state.unwrap())?;
@@ -174,13 +174,13 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
+    writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
     loop {
         if done.load(std::sync::atomic::Ordering::Relaxed) {
             break;
         }
 
-        if let Some(err) = ff_state.take_error() {
+        if let Some(err) = replayer_state.take_error() {
             Err(err)?;
         }
 
@@ -219,7 +219,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
-        writeln!(std::io::stdout(), "{}", ff_state.inputs_pairs_left())?;
+        writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
     }
 
     video_child.stdin = None;
