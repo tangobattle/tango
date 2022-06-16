@@ -12,6 +12,7 @@ struct InnerState {
     on_inputs_exhausted: Box<dyn Fn() + Send>,
     on_round_ended: Box<dyn Fn() + Send>,
     error: Option<anyhow::Error>,
+    round_ending: bool,
 }
 
 pub struct Fastforwarder {
@@ -43,6 +44,7 @@ impl State {
                 on_inputs_exhausted,
                 on_round_ended,
                 error: None,
+                round_ending: false,
             },
         ))))
     }
@@ -61,6 +63,14 @@ impl State {
             .as_mut()
             .expect("committed state")
             .committed_state = Some(state);
+    }
+
+    pub fn set_round_ending(&self) {
+        self.0.lock().as_mut().expect("round ending").round_ending = true;
+    }
+
+    pub fn is_round_ending(&self) -> bool {
+        self.0.lock().as_ref().expect("round ending").round_ending
     }
 
     pub fn dirty_time(&self) -> u32 {
@@ -242,6 +252,7 @@ impl Fastforwarder {
             on_inputs_exhausted: Box::new(|| {}),
             on_round_ended: Box::new(|| {}),
             error: None,
+            round_ending: false,
         });
 
         loop {

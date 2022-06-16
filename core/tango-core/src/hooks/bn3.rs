@@ -155,7 +155,7 @@ impl hooks::Hooks for BN3 {
             })
         };
 
-        let make_round_end_hook = || {
+        let make_round_ending_hook = || {
             let facade = facade.clone();
             let handle = handle.clone();
             Box::new(move |_: mgba::core::CoreMutRef| {
@@ -265,11 +265,11 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            (self.offsets.rom.round_win_ret, make_round_end_hook()),
-            (self.offsets.rom.round_win_ret2, make_round_end_hook()),
-            (self.offsets.rom.round_lose_ret, make_round_end_hook()),
-            (self.offsets.rom.round_lose_ret2, make_round_end_hook()),
-            (self.offsets.rom.round_tie_ret, make_round_end_hook()),
+            (self.offsets.rom.round_win_ret, make_round_ending_hook()),
+            (self.offsets.rom.round_win_ret2, make_round_ending_hook()),
+            (self.offsets.rom.round_lose_ret, make_round_ending_hook()),
+            (self.offsets.rom.round_lose_ret2, make_round_ending_hook()),
+            (self.offsets.rom.round_tie_ret, make_round_ending_hook()),
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -886,6 +886,15 @@ impl hooks::Hooks for BN3 {
             {
                 let ff_state = ff_state.clone();
                 (
+                    self.offsets.rom.round_end_cmp,
+                    Box::new(move |_| {
+                        ff_state.set_round_ending();
+                    }),
+                )
+            },
+            {
+                let ff_state = ff_state.clone();
+                (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
                         let current_tick = ff_state.current_tick();
@@ -955,8 +964,12 @@ impl hooks::Hooks for BN3 {
                 let ff_state = ff_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |_| {
+                    Box::new(move |mut core| {
                         ff_state.increment_current_tick();
+                        if ff_state.is_round_ending() {
+                            // We have no real inputs left but the round has ended. Just fudge them until we get to the next round.
+                            core.gba_mut().cpu_mut().set_gpr(0, 7);
+                        }
                     }),
                 )
             },
