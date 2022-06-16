@@ -3,7 +3,7 @@ mod offsets;
 
 use byteorder::ByteOrder;
 
-use crate::{battle, facade, fastforwarder, hooks, input, shadow};
+use crate::{battle, facade, hooks, input, replayer, shadow};
 
 #[derive(Clone)]
 pub struct BN3 {
@@ -797,9 +797,9 @@ impl hooks::Hooks for BN3 {
         ]
     }
 
-    fn fastforwarder_traps(
+    fn replayer_traps(
         &self,
-        ff_state: fastforwarder::State,
+        ff_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let munger = self.munger.clone();

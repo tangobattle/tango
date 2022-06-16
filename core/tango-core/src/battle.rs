@@ -1,11 +1,11 @@
 use rand::Rng;
 
-use crate::fastforwarder;
 use crate::game;
 use crate::hooks;
 use crate::input;
 use crate::protocol;
 use crate::replay;
+use crate::replayer;
 use crate::shadow;
 use crate::transport;
 
@@ -416,7 +416,7 @@ impl Match {
                 local_player_index,
                 self.hooks.placeholder_rx().len() as u8,
             )?),
-            fastforwarder: fastforwarder::Fastforwarder::new(
+            replayer: replayer::Fastforwarder::new(
                 &self.rom,
                 self.hooks,
                 local_player_index,
@@ -450,7 +450,7 @@ pub struct Round {
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
     replay_writer: Option<replay::Writer>,
-    fastforwarder: fastforwarder::Fastforwarder,
+    replayer: replayer::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
@@ -546,7 +546,7 @@ impl Round {
         let last_committed_state = self.committed_state.take().expect("committed state");
         let last_committed_remote_input = self.last_committed_remote_input();
 
-        let (committed_state, dirty_state, last_input) = match self.fastforwarder.fastforward(
+        let (committed_state, dirty_state, last_input) = match self.replayer.fastforward(
             &last_committed_state.state,
             last_committed_state.tick,
             &input_pairs,
@@ -555,7 +555,7 @@ impl Round {
         ) {
             Ok(t) => t,
             Err(e) => {
-                log::error!("fastforwarder failed with error: {}", e);
+                log::error!("replayer failed with error: {}", e);
                 return false;
             }
         };

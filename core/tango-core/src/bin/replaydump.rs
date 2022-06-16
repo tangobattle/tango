@@ -98,7 +98,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let input_pairs = replay.input_pairs.clone();
 
     let ff_state = {
-        tango_core::fastforwarder::State::new(
+        tango_core::replayer::State::new(
             replay.local_player_index,
             input_pairs,
             {
@@ -122,7 +122,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     {
         let ff_state = ff_state.clone();
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.fastforwarder_traps(ff_state.clone()));
+        traps.extend(hooks.replayer_traps(ff_state.clone()));
         core.set_traps(traps);
     }
     core.as_mut().load_state(&replay.local_state.unwrap())?;

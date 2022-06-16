@@ -167,7 +167,7 @@ impl Fastforwarder {
         let state = State(std::sync::Arc::new(parking_lot::Mutex::new(None)));
 
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.fastforwarder_traps(state.clone()));
+        traps.extend(hooks.replayer_traps(state.clone()));
         core.set_traps(traps);
         if let Some(opponent_nickname) = opponent_nickname.as_ref() {
             hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
@@ -274,7 +274,7 @@ impl Fastforwarder {
             if let Some(_) = inner_state.as_ref().expect("state").error {
                 let state = inner_state.take().expect("state");
                 return Err(anyhow::format_err!(
-                    "fastforwarder: {}",
+                    "replayer: {}",
                     state.error.expect("error")
                 ));
             }

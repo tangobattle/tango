@@ -1,4 +1,4 @@
-use crate::{facade, fastforwarder, shadow};
+use crate::{facade, replayer, shadow};
 
 mod bn3;
 mod bn4;
@@ -36,9 +36,9 @@ pub trait Hooks {
 
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
-    fn fastforwarder_traps(
+    fn replayer_traps(
         &self,
-        ff_state: fastforwarder::State,
+        ff_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn shadow_traps(

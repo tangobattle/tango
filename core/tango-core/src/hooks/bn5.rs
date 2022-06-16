@@ -1,4 +1,4 @@
-use crate::{battle, facade, fastforwarder, hooks, input, shadow};
+use crate::{battle, facade, hooks, input, replayer, shadow};
 
 mod munger;
 mod offsets;
@@ -800,9 +800,9 @@ impl hooks::Hooks for BN5 {
         ]
     }
 
-    fn fastforwarder_traps(
+    fn replayer_traps(
         &self,
-        ff_state: fastforwarder::State,
+        ff_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
