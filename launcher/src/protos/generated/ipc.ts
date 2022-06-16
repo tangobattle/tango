@@ -135,6 +135,7 @@ export interface ToCoreMessage_StartRequest {
   windowTitle: string;
   romPath: string;
   savePath: string;
+  windowScale: number;
   settings: ToCoreMessage_StartRequest_MatchSettings | undefined;
 }
 
@@ -551,7 +552,13 @@ export const ToCoreMessage = {
 };
 
 function createBaseToCoreMessage_StartRequest(): ToCoreMessage_StartRequest {
-  return { windowTitle: "", romPath: "", savePath: "", settings: undefined };
+  return {
+    windowTitle: "",
+    romPath: "",
+    savePath: "",
+    windowScale: 0,
+    settings: undefined,
+  };
 }
 
 export const ToCoreMessage_StartRequest = {
@@ -568,10 +575,13 @@ export const ToCoreMessage_StartRequest = {
     if (message.savePath !== "") {
       writer.uint32(26).string(message.savePath);
     }
+    if (message.windowScale !== 0) {
+      writer.uint32(32).uint32(message.windowScale);
+    }
     if (message.settings !== undefined) {
       ToCoreMessage_StartRequest_MatchSettings.encode(
         message.settings,
-        writer.uint32(34).fork()
+        writer.uint32(42).fork()
       ).ldelim();
     }
     return writer;
@@ -597,6 +607,9 @@ export const ToCoreMessage_StartRequest = {
           message.savePath = reader.string();
           break;
         case 4:
+          message.windowScale = reader.uint32();
+          break;
+        case 5:
           message.settings = ToCoreMessage_StartRequest_MatchSettings.decode(
             reader,
             reader.uint32()
@@ -615,6 +628,7 @@ export const ToCoreMessage_StartRequest = {
       windowTitle: isSet(object.windowTitle) ? String(object.windowTitle) : "",
       romPath: isSet(object.romPath) ? String(object.romPath) : "",
       savePath: isSet(object.savePath) ? String(object.savePath) : "",
+      windowScale: isSet(object.windowScale) ? Number(object.windowScale) : 0,
       settings: isSet(object.settings)
         ? ToCoreMessage_StartRequest_MatchSettings.fromJSON(object.settings)
         : undefined,
@@ -627,6 +641,8 @@ export const ToCoreMessage_StartRequest = {
       (obj.windowTitle = message.windowTitle);
     message.romPath !== undefined && (obj.romPath = message.romPath);
     message.savePath !== undefined && (obj.savePath = message.savePath);
+    message.windowScale !== undefined &&
+      (obj.windowScale = Math.round(message.windowScale));
     message.settings !== undefined &&
       (obj.settings = message.settings
         ? ToCoreMessage_StartRequest_MatchSettings.toJSON(message.settings)
@@ -641,6 +657,7 @@ export const ToCoreMessage_StartRequest = {
     message.windowTitle = object.windowTitle ?? "";
     message.romPath = object.romPath ?? "";
     message.savePath = object.savePath ?? "";
+    message.windowScale = object.windowScale ?? 0;
     message.settings =
       object.settings !== undefined && object.settings !== null
         ? ToCoreMessage_StartRequest_MatchSettings.fromPartial(object.settings)

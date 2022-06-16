@@ -135,7 +135,9 @@ fn main() -> Result<(), anyhow::Error> {
     let mut ipc_sender = tango_core::ipc::Sender::new_from_stdout();
     let mut ipc_receiver = tango_core::ipc::Receiver::new_from_stdin();
 
-    let (window_title, rom_path, save_path, pvp_init) = if let Some(session_id) = &args.session_id {
+    let (window_title, rom_path, save_path, window_scale, pvp_init) = if let Some(session_id) =
+        &args.session_id
+    {
         rt.block_on(async {
             let (dc, peer_conn) = match tango_core::negotiation::negotiate(
                 &mut ipc_sender,
@@ -268,7 +270,13 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
 
-            Ok((start_req.window_title, start_req.rom_path, start_req.save_path, Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))))
+            Ok((
+                start_req.window_title,
+                start_req.rom_path,
+                start_req.save_path,
+                start_req.window_scale,
+                Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))
+            ))
         })?
     } else {
         rt.block_on(async {
@@ -291,6 +299,7 @@ fn main() -> Result<(), anyhow::Error> {
                         start_req.window_title,
                         start_req.rom_path,
                         start_req.save_path,
+                        start_req.window_scale,
                         None,
                     ))
                 }
@@ -313,6 +322,7 @@ fn main() -> Result<(), anyhow::Error> {
         input_mapping,
         rom_path.into(),
         save_path.into(),
+        window_scale,
         match pvp_init {
             None => None,
             Some((peer_conn, dc, settings)) => Some(tango_core::battle::MatchInit {

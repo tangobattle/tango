@@ -12,6 +12,7 @@ export interface Config {
   language: string | null;
   updateChannel: string;
   rustLogFilter: string;
+  windowScale: number;
   inputMapping: {
     up: PhysicalInput[];
     down: PhysicalInput[];
@@ -36,6 +37,7 @@ export const DEFAULT: Config = {
   language: null,
   updateChannel: "latest",
   rustLogFilter: "",
+  windowScale: 3,
   inputMapping: {
     up: [{ Key: "Up" }, { Button: "dpup" }, { Axis: ["lefty", -1] }],
     down: [{ Key: "Down" }, { Button: "dpdown" }, { Axis: ["lefty", 1] }],

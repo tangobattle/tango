@@ -287,6 +287,36 @@ function GeneralTab({ active }: { active: boolean }) {
               ))}
             </Select>
           </FormControl>
+          <TextField
+            variant="outlined"
+            size="small"
+            type="number"
+            label={<Trans i18nKey="settings:window-scale" />}
+            value={config.windowScale}
+            onChange={(e) => {
+              (async () => {
+                let v = parseInt(e.target.value);
+                if (isNaN(v)) {
+                  v = 0;
+                }
+                saveConfig((config) => ({
+                  ...config,
+                  windowScale: Math.min(Math.max(v, 1), 10),
+                }));
+              })();
+            }}
+            InputProps={{
+              inputProps: {
+                min: 1,
+                max: 10,
+              },
+              endAdornment: (
+                <>
+                  <Trans i18nKey="settings:window-scale-suffix" />
+                </>
+              ),
+            }}
+          />
           <FormControl fullWidth size="small">
             <InputLabel id="theme-label">
               <Trans i18nKey="settings:theme" />

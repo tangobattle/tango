@@ -107,6 +107,7 @@ impl Game {
         input_mapping: InputMapping,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
+        window_scale: u32,
         match_init: Option<battle::MatchInit>,
     ) -> Result<Game, anyhow::Error> {
         let handle = rt.handle().clone();
@@ -127,8 +128,8 @@ impl Game {
         let window = video
             .window(
                 &format!("Tango: {}", window_title),
-                mgba::gba::SCREEN_WIDTH * 3,
-                mgba::gba::SCREEN_HEIGHT * 3,
+                mgba::gba::SCREEN_WIDTH * window_scale,
+                mgba::gba::SCREEN_HEIGHT * window_scale,
             )
             .opengl()
             .resizable()

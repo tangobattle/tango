@@ -273,6 +273,7 @@ async function runCallback(
   ref: React.MutableRefObject<{
     coreRef: React.MutableRefObject<ipc.Core | null>;
     availableGames: SetSettings["availableGames"];
+    getGameTitle: (gameInfo: GameInfo) => string;
     getGameFamilyTitle: (gameInfo: GameInfo) => string;
     getPatchPath: (
       rom: string,
@@ -437,7 +438,8 @@ async function runCallback(
       startReq: {
         romPath: outROMPath,
         savePath: path.join(getSavesPath(app), ref.current.saveName!),
-        windowTitle: ref.current.getGameFamilyTitle(ref.current.gameInfo!),
+        windowTitle: ref.current.getGameTitle(ref.current.gameInfo!),
+        windowScale: ref.current.config.windowScale,
         settings: undefined,
       },
     });
@@ -702,7 +704,8 @@ async function runCallback(
     const startReq = {
       romPath: outOwnROMPath,
       savePath: path.join(getSavesPath(app), ref.current.saveName!),
-      windowTitle: ref.current.getGameFamilyTitle(ownGameInfo),
+      windowTitle: ref.current.getGameTitle(ownGameInfo),
+      windowScale: config.windowScale,
       settings: {
         shadowSavePath,
         shadowRomPath: outOpponentROMPath,
@@ -945,6 +948,7 @@ export default function BattleStarter({
   const runCallbackData = {
     coreRef,
     availableGames,
+    getGameTitle,
     getGameFamilyTitle,
     getPatchPath,
     getROMPath,

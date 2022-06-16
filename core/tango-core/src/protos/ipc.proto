@@ -36,6 +36,7 @@ message ToCoreMessage {
     string window_title = 1;
     string rom_path = 2;
     string save_path = 3;
+    uint32 window_scale = 4;
 
     message MatchSettings {
       string shadow_save_path = 1;
@@ -49,7 +50,7 @@ message ToCoreMessage {
       optional string opponent_nickname = 9;
     }
 
-    MatchSettings settings = 4;
+    MatchSettings settings = 5;
   }
 
   message SmuggleRequest { bytes data = 1; }
