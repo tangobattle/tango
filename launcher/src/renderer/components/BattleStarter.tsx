@@ -247,7 +247,7 @@ async function runCallback(
   ref: React.MutableRefObject<{
     coreRef: React.MutableRefObject<ipc.Core | null>;
     availableGames: SetSettings["availableGames"];
-    getGameTitle: (gameInfo: GameInfo) => string;
+    getGameFamilyTitle: (gameInfo: GameInfo) => string;
     getPatchPath: (
       rom: string,
       patch: { name: string; version: string }
@@ -353,8 +353,8 @@ async function runCallback(
       linkCode,
       ref.current.gameInfo != null
         ? {
-            title: ref.current.getGameTitle(ref.current.gameInfo),
-            romName: ref.current.gameInfo.rom,
+            title: ref.current.getGameFamilyTitle(ref.current.gameInfo),
+            family: FAMILY_BY_ROM_NAME[ref.current.gameInfo.rom],
           }
         : null
     );
@@ -362,8 +362,8 @@ async function runCallback(
     discord.setSinglePlayer(
       ref.current.gameInfo != null
         ? {
-            title: ref.current.getGameTitle(ref.current.gameInfo),
-            romName: ref.current.gameInfo.rom,
+            title: ref.current.getGameFamilyTitle(ref.current.gameInfo),
+            family: FAMILY_BY_ROM_NAME[ref.current.gameInfo.rom],
           }
         : null
     );
@@ -411,7 +411,7 @@ async function runCallback(
       startReq: {
         romPath: outROMPath,
         savePath: path.join(getSavesPath(app), ref.current.saveName!),
-        windowTitle: ref.current.getGameTitle(ref.current.gameInfo!),
+        windowTitle: ref.current.getGameFamilyTitle(ref.current.gameInfo!),
         settings: undefined,
       },
     });
@@ -432,8 +432,8 @@ async function runCallback(
       linkCode,
       myPendingSettings.gameInfo != null
         ? {
-            title: ref.current.getGameTitle(myPendingSettings.gameInfo),
-            romName: myPendingSettings.gameInfo.rom,
+            title: ref.current.getGameFamilyTitle(myPendingSettings.gameInfo),
+            family: FAMILY_BY_ROM_NAME[myPendingSettings.gameInfo.rom],
           }
         : null
     );
@@ -676,7 +676,7 @@ async function runCallback(
     const startReq = {
       romPath: outOwnROMPath,
       savePath: path.join(getSavesPath(app), ref.current.saveName!),
-      windowTitle: ref.current.getGameTitle(ownGameInfo),
+      windowTitle: ref.current.getGameFamilyTitle(ownGameInfo),
       settings: {
         shadowSavePath,
         shadowRomPath: outOpponentROMPath,
@@ -717,8 +717,8 @@ async function runCallback(
 
     ref.current.setRtt(null);
     discord.setInProgress(linkCode, new Date(), {
-      title: ref.current.getGameTitle(ownGameInfo),
-      romName: ownGameInfo.rom,
+      title: ref.current.getGameFamilyTitle(ownGameInfo),
+      family: FAMILY_BY_ROM_NAME[ownGameInfo.rom],
     });
   }
 
@@ -838,7 +838,7 @@ export default function BattleStarter({
   const previousGameInfo = usePrevious(gameInfo);
   const previousAvailableGames = usePrevious(availableGames);
 
-  const getGameTitle = useGetGameFamilyTitle();
+  const getGameFamilyTitle = useGetGameFamilyTitle();
 
   const changeLocalPendingState = React.useCallback((settings: SetSettings) => {
     setPendingStates((pendingStates) => ({
@@ -885,8 +885,8 @@ export default function BattleStarter({
       linkCode,
       gameInfo != null
         ? {
-            title: getGameTitle(gameInfo),
-            romName: gameInfo.rom,
+            title: getGameFamilyTitle(gameInfo),
+            family: FAMILY_BY_ROM_NAME[gameInfo.rom],
           }
         : null
     );
@@ -900,7 +900,7 @@ export default function BattleStarter({
     }
   }, [
     linkCode,
-    getGameTitle,
+    getGameFamilyTitle,
     gameInfo,
     previousGameInfo,
     availableGames,
@@ -918,7 +918,7 @@ export default function BattleStarter({
   const runCallbackData = {
     coreRef,
     availableGames,
-    getGameTitle,
+    getGameFamilyTitle,
     getPatchPath,
     getROMPath,
     onOpponentSettingsChange,
@@ -1053,7 +1053,7 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell>
                     {gameInfo != null ? (
-                      getGameTitle(gameInfo)
+                      getGameFamilyTitle(gameInfo)
                     ) : (
                       <Trans i18nKey="play:no-game-selected" />
                     )}{" "}
@@ -1092,7 +1092,9 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell>
                     {pendingStates?.opponent?.settings.gameInfo != null ? (
-                      getGameTitle(pendingStates?.opponent?.settings.gameInfo)
+                      getGameFamilyTitle(
+                        pendingStates?.opponent?.settings.gameInfo
+                      )
                     ) : (
                       <Trans i18nKey="play:no-game-selected" />
                     )}{" "}

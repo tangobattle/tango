@@ -13,7 +13,7 @@ const ACTIVITY_TEMPLATE = {
 
 export interface RichPresenceGameInfo {
   title: string;
-  romName: string;
+  family: string;
 }
 
 export function setLinkCode(
@@ -28,7 +28,7 @@ export function setLinkCode(
     partyId: `party:${linkCode}`,
     partySize: 1,
     partyMax: 2,
-    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageKey: info != null ? info.family.toLowerCase() : undefined,
     largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
@@ -39,7 +39,7 @@ export function setSinglePlayer(info: RichPresenceGameInfo | null) {
     ...ACTIVITY_TEMPLATE,
     state: "In single player",
     details: info != null ? info.title : undefined,
-    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageKey: info != null ? info.family.toLowerCase() : undefined,
     largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
@@ -56,7 +56,7 @@ export function setInLobby(
     partyId: `party:${linkCode}`,
     partySize: 2,
     partyMax: 2,
-    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageKey: info != null ? info.family.toLowerCase() : undefined,
     largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
@@ -75,7 +75,7 @@ export function setInProgress(
     partySize: 2,
     partyMax: 2,
     startTimestamp: startTime.valueOf(),
-    largeImageKey: info != null ? info.romName.toLowerCase() : undefined,
+    largeImageKey: info != null ? info.family.toLowerCase() : undefined,
     largeImageText: info != null ? info.title : undefined,
   };
   updateActivity();
