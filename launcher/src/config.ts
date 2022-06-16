@@ -29,6 +29,10 @@ export interface Config {
   iceconfigEndpoint: string;
   iceServers: string[];
   patchRepo: string;
+  defaultMatchSettings: {
+    inputDelay: number;
+    matchType: number;
+  };
 }
 
 export const DEFAULT: Config = {
@@ -60,6 +64,10 @@ export const DEFAULT: Config = {
     "stun://stun4.l.google.com:19302",
   ],
   patchRepo: "https://github.com/tangobattle/patches",
+  defaultMatchSettings: {
+    inputDelay: 2,
+    matchType: 1,
+  },
 };
 
 export function ensureSync(path: string) {

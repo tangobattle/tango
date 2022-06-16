@@ -259,12 +259,10 @@ function GeneralTab({ active }: { active: boolean }) {
             fullWidth
             value={config.nickname}
             onChange={(e) => {
-              (async () => {
-                saveConfig((config) => ({
-                  ...config,
-                  nickname: e.target.value.substring(0, 32),
-                }));
-              })();
+              saveConfig((config) => ({
+                ...config,
+                nickname: e.target.value.substring(0, 32),
+              }));
             }}
             label={<Trans i18nKey="settings:nickname" />}
           />
@@ -294,16 +292,14 @@ function GeneralTab({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:window-scale" />}
             value={config.windowScale}
             onChange={(e) => {
-              (async () => {
-                let v = parseInt(e.target.value);
-                if (isNaN(v)) {
-                  v = 0;
-                }
-                saveConfig((config) => ({
-                  ...config,
-                  windowScale: Math.min(Math.max(v, 1), 10),
-                }));
-              })();
+              let v = parseInt(e.target.value);
+              if (isNaN(v)) {
+                v = 0;
+              }
+              saveConfig((config) => ({
+                ...config,
+                windowScale: Math.min(Math.max(v, 1), 10),
+              }));
             }}
             InputProps={{
               inputProps: {
@@ -325,12 +321,10 @@ function GeneralTab({ active }: { active: boolean }) {
               labelId="theme-label"
               value={config.theme}
               onChange={(e) => {
-                (async () => {
-                  saveConfig((config) => ({
-                    ...config,
-                    theme: e.target.value as "light" | "dark",
-                  }));
-                })();
+                saveConfig((config) => ({
+                  ...config,
+                  theme: e.target.value as "light" | "dark",
+                }));
               }}
               label={<Trans i18nKey="settings:theme" />}
             >
@@ -376,12 +370,10 @@ function AdvancedTab({ active }: { active: boolean }) {
             fullWidth
             value={config.rustLogFilter}
             onChange={(e) => {
-              (async () => {
-                saveConfig((config) => ({
-                  ...config,
-                  rustLogFilter: e.target.value,
-                }));
-              })();
+              saveConfig((config) => ({
+                ...config,
+                rustLogFilter: e.target.value,
+              }));
             }}
             label={<Trans i18nKey="settings:rust-log-filter" />}
           />
@@ -390,12 +382,10 @@ function AdvancedTab({ active }: { active: boolean }) {
             fullWidth
             value={config.signalingEndpoint}
             onChange={(e) => {
-              (async () => {
-                saveConfig((config) => ({
-                  ...config,
-                  signalingEndpoint: e.target.value,
-                }));
-              })();
+              saveConfig((config) => ({
+                ...config,
+                signalingEndpoint: e.target.value,
+              }));
             }}
             label={<Trans i18nKey="settings:signaling-endpoint" />}
           />
@@ -404,12 +394,10 @@ function AdvancedTab({ active }: { active: boolean }) {
             fullWidth
             value={config.iceconfigEndpoint}
             onChange={(e) => {
-              (async () => {
-                saveConfig((config) => ({
-                  ...config,
-                  iceconfigEndpoint: e.target.value,
-                }));
-              })();
+              saveConfig((config) => ({
+                ...config,
+                iceconfigEndpoint: e.target.value,
+              }));
             }}
             label={<Trans i18nKey="settings:iceconfig-endpoint" />}
           />
@@ -418,12 +406,10 @@ function AdvancedTab({ active }: { active: boolean }) {
             fullWidth
             value={config.patchRepo}
             onChange={(e) => {
-              (async () => {
-                saveConfig((config) => ({
-                  ...config,
-                  patchRepo: e.target.value,
-                }));
-              })();
+              saveConfig((config) => ({
+                ...config,
+                patchRepo: e.target.value,
+              }));
             }}
             label={<Trans i18nKey="settings:patch-repo" />}
           />
@@ -436,12 +422,10 @@ function AdvancedTab({ active }: { active: boolean }) {
               labelId="update-channel-label"
               value={config.updateChannel}
               onChange={(e) => {
-                (async () => {
-                  saveConfig((config) => ({
-                    ...config,
-                    updateChannel: e.target.value,
-                  }));
-                })();
+                saveConfig((config) => ({
+                  ...config,
+                  updateChannel: e.target.value,
+                }));
               }}
               label={<Trans i18nKey="settings:update-channel" />}
             >

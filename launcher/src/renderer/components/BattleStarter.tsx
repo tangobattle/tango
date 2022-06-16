@@ -71,17 +71,6 @@ function removeBadPathCharacters(s: string): string {
   return s.replace(/[/\\?%*:|"<>. ]/g, "_");
 }
 
-function defaultMatchSettings(nickname: string): SetSettings {
-  return {
-    nickname,
-    inputDelay: 2,
-    matchType: 1,
-    gameInfo: undefined,
-    availableGames: [],
-    revealSetup: false,
-  };
-}
-
 function useGetPatchName() {
   const { patches } = usePatches();
   const { t } = useTranslation();
@@ -445,9 +434,14 @@ async function runCallback(
     });
   } else {
     // Need to negotiate settings with the opponent.
-    const myPendingSettings = defaultMatchSettings(
-      ref.current.config.nickname!
-    );
+    const myPendingSettings: SetSettings = {
+      nickname: ref.current.config.nickname!,
+      inputDelay: ref.current.config.defaultMatchSettings.inputDelay,
+      matchType: ref.current.config.defaultMatchSettings.matchType,
+      gameInfo: undefined,
+      availableGames: [],
+      revealSetup: false,
+    };
     myPendingSettings.gameInfo = ref.current.gameInfo ?? undefined;
     myPendingSettings.availableGames = ref.current.availableGames;
     ref.current.setPendingStates((pendingStates) => ({
@@ -834,7 +828,7 @@ export default function BattleStarter({
   onReadyChange: (ready: boolean) => void;
   onOpponentSettingsChange: (settings: SetSettings | null) => void;
 }) {
-  const { config } = useConfig();
+  const { config, save: saveConfig } = useConfig();
   const { tempDir } = useTempDir();
   const getROMPath = useGetROMPath();
   const getPatchPath = useGetPatchPath();
@@ -870,38 +864,48 @@ export default function BattleStarter({
   const getGameTitle = useGetGameTitle();
   const getGameFamilyTitle = useGetGameFamilyTitle();
 
-  const changeLocalPendingState = React.useCallback((settings: SetSettings) => {
-    setPendingStates((pendingStates) => ({
-      ...pendingStates!,
-      own: {
-        ...pendingStates!.own!,
-        settings,
-      },
-      opponent: {
-        ...pendingStates!.opponent!,
-        commitment: isSettingsChangeTrivial(
-          pendingStates!.own!.settings,
-          settings
-        )
-          ? pendingStates!.opponent!.commitment
-          : null,
-      },
-    }));
+  const changeLocalPendingState = React.useCallback(
+    (settings: SetSettings) => {
+      setPendingStates((pendingStates) => ({
+        ...pendingStates!,
+        own: {
+          ...pendingStates!.own!,
+          settings,
+        },
+        opponent: {
+          ...pendingStates!.opponent!,
+          commitment: isSettingsChangeTrivial(
+            pendingStates!.own!.settings,
+            settings
+          )
+            ? pendingStates!.opponent!.commitment
+            : null,
+        },
+      }));
 
-    // eslint-disable-next-line no-console
-    console.info("local pending state changed", settings);
-    coreRef.current!.send({
-      smuggleReq: {
-        data: Message.encode({
-          setSettings: settings,
-          commit: undefined,
-          uncommit: undefined,
-          chunk: undefined,
-        }).finish(),
-      },
-      startReq: undefined,
-    });
-  }, []);
+      // eslint-disable-next-line no-console
+      console.info("local pending state changed", settings);
+      saveConfig((config) => ({
+        ...config,
+        defaultMatchSettings: {
+          inputDelay: settings.inputDelay,
+          matchType: settings.matchType,
+        },
+      }));
+      coreRef.current!.send({
+        smuggleReq: {
+          data: Message.encode({
+            setSettings: settings,
+            commit: undefined,
+            uncommit: undefined,
+            chunk: undefined,
+          }).finish(),
+        },
+        startReq: undefined,
+      });
+    },
+    [saveConfig]
+  );
 
   React.useEffect(() => {
     if (
