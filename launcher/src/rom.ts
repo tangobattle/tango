@@ -1,7 +1,9 @@
 import * as crc32 from "crc-32";
-import { readdir, readFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import mkdirp from "mkdirp";
 import path from "path";
+
+import { walk } from "./fsutil";
 
 export const KNOWN_ROM_FAMILIES = require("./roms.json5").default as {
   [family: string]: {
@@ -52,13 +54,14 @@ export async function scan(dir: string) {
     };
   };
 
-  let filenames: string[];
+  const filenames: string[] = [];
   try {
-    filenames = await readdir(dir);
+    for await (const fn of walk(dir)) {
+      filenames.push(fn);
+    }
   } catch (e) {
     if ((e as any).code == "ENOENT") {
       await mkdirp(dir);
-      filenames = [];
     } else {
       throw e;
     }

@@ -97,7 +97,9 @@ export default function SavesPane({ active }: { active: boolean }) {
       : null;
 
   const groupedSaves: { [key: string]: string[] } = {};
-  for (const k of Object.keys(saves)) {
+  const saveNames = Object.keys(saves);
+  saveNames.sort();
+  for (const k of saveNames) {
     for (const romName of saves[k]) {
       groupedSaves[romName] = groupedSaves[romName] || [];
       groupedSaves[romName].push(k);

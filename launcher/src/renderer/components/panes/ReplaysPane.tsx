@@ -1,4 +1,3 @@
-import { opendir } from "fs/promises";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -29,6 +28,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { walk } from "../../../fsutil";
 import { findPatchVersion } from "../../../patch";
 import { getReplaysPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
@@ -37,20 +37,6 @@ import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
 import ReplayInfoDialog from "../ReplayInfoDialog";
 import ReplayviewSupervisor from "../ReplayviewSupervisor";
 import { useROMs } from "../ROMsContext";
-
-async function* walk(dir: string, root?: string): AsyncIterable<string> {
-  if (root == null) {
-    root = dir;
-  }
-  for await (const d of await opendir(dir)) {
-    const entry = path.join(dir, d.name);
-    if (d.isDirectory()) {
-      yield* walk(entry, root);
-    } else if (d.isFile()) {
-      yield path.relative(root, entry);
-    }
-  }
-}
 
 function ReplayItem({
   ListChildProps: { style },

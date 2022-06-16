@@ -1,19 +1,21 @@
-import { readdir, readFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import mkdirp from "mkdirp";
 import path from "path";
 
+import { walk } from "./fsutil";
 import { sniff } from "./saveedit";
 
 export async function scan(dir: string) {
   const saves = {} as { [fn: string]: string[] };
 
-  let saveNames: string[];
+  const saveNames: string[] = [];
   try {
-    saveNames = await readdir(dir);
+    for await (const fn of walk(dir)) {
+      saveNames.push(fn);
+    }
   } catch (e) {
     if ((e as any).code == "ENOENT") {
       await mkdirp(dir);
-      saveNames = [];
     } else {
       throw e;
     }
