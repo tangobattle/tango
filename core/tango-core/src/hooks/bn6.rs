@@ -984,6 +984,15 @@ impl hooks::Hooks for BN6 {
             },
             {
                 let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_ending_ret,
+                    Box::new(move |_core| {
+                        replayer_state.set_round_ending();
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.round_post_increment_tick,
