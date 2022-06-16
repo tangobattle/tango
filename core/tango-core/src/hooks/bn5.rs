@@ -843,7 +843,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        ff_state.on_battle_ended();
+                        ff_state.on_round_ended();
                     }),
                 )
             },

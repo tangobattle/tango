@@ -10,7 +10,7 @@ struct InnerState {
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
     on_inputs_exhausted: Box<dyn Fn() + Send>,
-    on_battle_ended: Box<dyn Fn() + Send>,
+    on_round_ended: Box<dyn Fn() + Send>,
     error: Option<anyhow::Error>,
 }
 
@@ -29,7 +29,7 @@ impl State {
         local_player_index: u8,
         input_pairs: Vec<input::Pair<input::Input, input::Input>>,
         on_inputs_exhausted: Box<dyn Fn() + Send>,
-        on_battle_ended: Box<dyn Fn() + Send>,
+        on_round_ended: Box<dyn Fn() + Send>,
     ) -> State {
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
             InnerState {
@@ -41,7 +41,7 @@ impl State {
                 dirty_time: 0,
                 dirty_state: None,
                 on_inputs_exhausted,
-                on_battle_ended,
+                on_round_ended,
                 error: None,
             },
         ))))
@@ -115,13 +115,13 @@ impl State {
             .on_inputs_exhausted)();
     }
 
-    pub fn on_battle_ended(&self) {
+    pub fn on_round_ended(&self) {
         (self
             .0
             .lock()
             .as_mut()
             .expect("on battle ended")
-            .on_battle_ended)();
+            .on_round_ended)();
     }
 
     pub fn inputs_pairs_left(&self) -> usize {
@@ -240,7 +240,7 @@ impl Fastforwarder {
             dirty_time,
             dirty_state: None,
             on_inputs_exhausted: Box::new(|| {}),
-            on_battle_ended: Box::new(|| {}),
+            on_round_ended: Box::new(|| {}),
             error: None,
         });
 
