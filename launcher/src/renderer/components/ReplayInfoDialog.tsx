@@ -105,30 +105,22 @@ export default function ReplayInfoDialog({
         >
           <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
             <Box>
-              {replayInfo.metadata.linkCode != null ? (
-                <>
-                  <Typography variant="h6" component="h2" sx={{ px: 1 }}>
-                    <Trans
-                      i18nKey="replays:replay-title"
-                      values={{
-                        formattedDate: dateFormat.format(
-                          new Date(replayInfo.metadata.ts)
-                        ),
-                        nickname: replayInfo.metadata.remoteSide!.nickname,
-                        linkCode: replayInfo.metadata.linkCode,
-                      }}
-                    />
-                    <br />
-                    <small>
-                      {dateFormat.format(new Date(replayInfo.metadata.ts))}
-                    </small>
-                  </Typography>
-                </>
-              ) : (
-                <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+              <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+                <Trans
+                  i18nKey="replays:replay-title"
+                  values={{
+                    formattedDate: dateFormat.format(
+                      new Date(replayInfo.metadata.ts)
+                    ),
+                    nickname: replayInfo.metadata.remoteSide!.nickname,
+                    linkCode: replayInfo.metadata.linkCode,
+                  }}
+                />
+                <br />
+                <small>
                   {dateFormat.format(new Date(replayInfo.metadata.ts))}
-                </Typography>
-              )}
+                </small>
+              </Typography>
             </Box>
             <Tooltip title={<Trans i18nKey="common:close" />}>
               <IconButton

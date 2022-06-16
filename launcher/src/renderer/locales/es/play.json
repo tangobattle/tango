@@ -40,7 +40,7 @@
   "no-local-copy": "No tienes copia de este juego.",
   "mismatching-match-type": "No encajan los tipos de pelea con el del oponente.",
   "generate-random-code": "Generar código aleatorio",
-  "connection-quality": " ({{rtt}}ms)",
+  "connection-quality": "{{rtt}} ms",
   "auto-input-delay": "Auto",
   "reveal-setup-title": "Build de {{opponentNickname}}",
   "missing-patch": "Parche desconocido \"{{name}}\""

@@ -115,6 +115,32 @@ function useGetGameFamilyTitle() {
   );
 }
 
+function useGetGameTitle() {
+  const getPatchName = useGetPatchName();
+  const { i18n, t } = useTranslation();
+
+  return React.useCallback(
+    (gameInfo: GameInfo) =>
+      `${t("play:rom-name", {
+        familyName:
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].title[
+            i18n.resolvedLanguage
+          ] ||
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].title[
+            fallbackLng
+          ],
+        versionName:
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].versions[
+            gameInfo.rom
+          ].title[i18n.resolvedLanguage] ||
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].versions[
+            gameInfo.rom
+          ].title[fallbackLng],
+      })}${gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""}`,
+    [i18n, t, getPatchName]
+  );
+}
+
 function gameInfoMatches(g: GameInfo | null, h: GameInfo) {
   if (g == null) {
     return false;
@@ -838,6 +864,7 @@ export default function BattleStarter({
   const previousGameInfo = usePrevious(gameInfo);
   const previousAvailableGames = usePrevious(availableGames);
 
+  const getGameTitle = useGetGameTitle();
   const getGameFamilyTitle = useGetGameFamilyTitle();
 
   const changeLocalPendingState = React.useCallback((settings: SetSettings) => {
@@ -1026,12 +1053,14 @@ export default function BattleStarter({
                     ) : null}
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
-                    {pendingStates?.opponent?.settings.nickname ?? ""}
+                    {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
                     {rtt != null ? (
-                      <Trans
-                        i18nKey="play:connection-quality"
-                        values={{ rtt: Math.round(rtt / 1000 / 1000) }}
-                      />
+                      <small>
+                        <Trans
+                          i18nKey="play:connection-quality"
+                          values={{ rtt: Math.round(rtt / 1000 / 1000) }}
+                        />
+                      </small>
                     ) : null}
                     {pendingStates?.opponent?.commitment != null ? (
                       <CheckCircleIcon
@@ -1099,8 +1128,19 @@ export default function BattleStarter({
                       <Trans i18nKey="play:no-game-selected" />
                     )}{" "}
                     {pendingStates?.opponent?.settings.gameInfo != null &&
-                    !hasGame(pendingStates?.opponent?.settings.gameInfo) ? (
-                      <Tooltip title={<Trans i18nKey="play:no-local-copy" />}>
+                    !hasGame(pendingStates.opponent.settings.gameInfo) ? (
+                      <Tooltip
+                        title={
+                          <Trans
+                            i18nKey="play:no-local-copy"
+                            values={{
+                              gameTitle: getGameTitle(
+                                pendingStates.opponent.settings.gameInfo
+                              ),
+                            }}
+                          />
+                        }
+                      >
                         <WarningIcon
                           color="warning"
                           sx={{
