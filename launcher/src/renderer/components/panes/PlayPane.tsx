@@ -209,14 +209,13 @@ export default function SavesPane({ active }: { active: boolean }) {
                   }
 
                   const selection = JSON.parse(v);
-
                   return (
                     <>
                       {opponentSettings?.gameInfo != null &&
                       !Object.values(patches)
                         .flatMap((p) =>
                           Object.values(p.versions).flatMap((v) =>
-                            v.forROMs.some((r) => r == selection.romName)
+                            v.forROMs.some((r) => r.name == selection.romName)
                               ? [v.netplayCompatibility]
                               : []
                           )
