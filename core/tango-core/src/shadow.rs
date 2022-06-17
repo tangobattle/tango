@@ -130,13 +130,6 @@ impl State {
         let local_player_index = match round_state.last_result.take().unwrap() {
             battle::BattleResult::Win => 0,
             battle::BattleResult::Loss => 1,
-            battle::BattleResult::Draw => {
-                if self.0.is_offerer {
-                    0
-                } else {
-                    1
-                }
-            }
         };
         log::info!(
             "starting shadow round: local_player_index = {}",

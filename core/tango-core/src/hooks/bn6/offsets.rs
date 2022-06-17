@@ -63,12 +63,8 @@ pub(super) struct ROMOffsets {
     /// Packets to transmit should be injected here into tx_packet.
     pub(super) copy_input_data_ret: u32,
 
-    /// This hooks the point after the game determines who the winner is, returned in r0.
-    ///
-    /// If r0 = 1, the local player won the last round.
-    /// If r0 = 2, the remote player won the last round.
-    /// Otherwise, the battle hasn't ended.
-    pub(super) round_run_unpaused_step_cmp_retval: u32,
+    pub(super) round_on_win_entry: u32,
+    pub(super) round_on_loss_entry: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -162,7 +158,8 @@ pub static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         main_read_joyflags:                                         0x080003fa,
         copy_input_data_entry:                                      0x0801ff18,
         copy_input_data_ret:                                        0x0801ffd4,
-        round_run_unpaused_step_cmp_retval:                         0x08008102,
+        round_on_win_entry:                                         0x080081a4,
+        round_on_loss_entry:                                        0x0800825a,
         round_start_ret:                                            0x08007304,
         round_end_entry:                                            0x08007ca0,
         round_ending_ret:                                           0x0800951a,
@@ -188,7 +185,8 @@ pub static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         main_read_joyflags:                                         0x080003fa,
         copy_input_data_entry:                                      0x0801ff18,
         copy_input_data_ret:                                        0x0801ffd4,
-        round_run_unpaused_step_cmp_retval:                         0x08008102,
+        round_on_win_entry:                                         0x080081a4,
+        round_on_loss_entry:                                        0x0800825a,
         round_start_ret:                                            0x08007304,
         round_end_entry:                                            0x08007ca0,
         round_ending_ret:                                           0x0800951a,
@@ -214,7 +212,8 @@ pub static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         main_read_joyflags:                                         0x080003fa,
         copy_input_data_entry:                                      0x0802032c,
         copy_input_data_ret:                                        0x080203e8,
-        round_run_unpaused_step_cmp_retval:                         0x0800811a,
+        round_on_win_entry:                                         0x080081d4,
+        round_on_loss_entry:                                        0x0800828a,
         round_start_ret:                                            0x080072f8,
         round_end_entry:                                            0x08007c9c,
         round_ending_ret:                                           0x080096ea,
@@ -240,7 +239,8 @@ pub static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         main_read_joyflags:                                         0x080003fa,
         copy_input_data_entry:                                      0x0802032c,
         copy_input_data_ret:                                        0x080203e8,
-        round_run_unpaused_step_cmp_retval:                         0x0800811a,
+        round_on_win_entry:                                         0x080081d4,
+        round_on_loss_entry:                                        0x0800828a,
         round_start_ret:                                            0x080072f8,
         round_end_entry:                                            0x08007c9c,
         round_ending_ret:                                           0x080096ea,

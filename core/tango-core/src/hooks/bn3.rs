@@ -237,7 +237,7 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_end_cmp,
+                    self.offsets.rom.round_on_win_entry,
                     Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -248,19 +248,27 @@ impl hooks::Hooks for BN3 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
+                            round_state.set_last_result(battle::BattleResult::Win);
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_on_loss_entry,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-                            match core.as_ref().gba().cpu().gpr(0) {
-                                1 => {
-                                    round_state.set_last_result(battle::BattleResult::Win);
-                                }
-                                2 => {
-                                    round_state.set_last_result(battle::BattleResult::Loss);
-                                }
-                                5 => {
-                                    round_state.set_last_result(battle::BattleResult::Draw);
-                                }
-                                _ => {}
-                            }
+                            let mut round_state = match_.lock_round_state().await;
+                            round_state.set_last_result(battle::BattleResult::Loss);
                         });
                     }),
                 )
@@ -598,20 +606,18 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_end_cmp,
+                    self.offsets.rom.round_on_win_entry,
                     Box::new(move |core| {
-                        match core.as_ref().gba().cpu().gpr(0) {
-                            1 => {
-                                shadow_state.set_last_result(battle::BattleResult::Loss);
-                            }
-                            2 => {
-                                shadow_state.set_last_result(battle::BattleResult::Win);
-                            }
-                            5 => {
-                                shadow_state.set_last_result(battle::BattleResult::Draw);
-                            }
-                            _ => return,
-                        };
+                        shadow_state.set_last_result(battle::BattleResult::Loss);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_on_loss_entry,
+                    Box::new(move |core| {
+                        shadow_state.set_last_result(battle::BattleResult::Win);
                     }),
                 )
             },
@@ -801,6 +807,13 @@ impl hooks::Hooks for BN3 {
         &self,
         replayer_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+        let make_round_ending_hook = || {
+            let replayer_state = replayer_state.clone();
+            Box::new(move |_: mgba::core::CoreMutRef| {
+                replayer_state.set_round_ending();
+            })
+        };
+
         let make_send_and_receive_call_hook = || {
             let munger = self.munger.clone();
             let replayer_state = replayer_state.clone();
@@ -883,15 +896,11 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_cmp,
-                    Box::new(move |_| {
-                        replayer_state.set_round_ending();
-                    }),
-                )
-            },
+            (self.offsets.rom.round_win_ret, make_round_ending_hook()),
+            (self.offsets.rom.round_win_ret2, make_round_ending_hook()),
+            (self.offsets.rom.round_lose_ret, make_round_ending_hook()),
+            (self.offsets.rom.round_lose_ret2, make_round_ending_hook()),
+            (self.offsets.rom.round_tie_ret, make_round_ending_hook()),
             {
                 let replayer_state = replayer_state.clone();
                 (

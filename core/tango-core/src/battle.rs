@@ -13,7 +13,6 @@ use crate::transport;
 pub enum BattleResult {
     Win,
     Loss,
-    Draw,
 }
 
 #[derive(Clone)]
@@ -339,13 +338,6 @@ impl Match {
         let local_player_index = match round_state.last_result.take().unwrap() {
             BattleResult::Win => 0,
             BattleResult::Loss => 1,
-            BattleResult::Draw => {
-                if self.is_offerer {
-                    0
-                } else {
-                    1
-                }
-            }
         };
         log::info!(
             "starting round: local_player_index = {}",
