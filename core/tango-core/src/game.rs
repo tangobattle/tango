@@ -93,7 +93,7 @@ pub struct Game {
     ipc_sender: ipc::Sender,
     fps_counter: Arc<Mutex<tps::Counter>>,
     emu_tps_counter: Arc<Mutex<tps::Counter>>,
-    match_: std::sync::Weak<tokio::sync::Mutex<Option<Arc<battle::Match>>>>,
+    match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<Arc<battle::Match>>>>>,
     event_loop: sdl2::EventPump,
     game_controller: sdl2::GameControllerSubsystem,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
@@ -170,14 +170,14 @@ impl Game {
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
 
-        let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let inner_match = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         if let Some(match_init) = match_init.as_ref() {
             let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
             let mut traps = hooks.common_traps();
             traps.extend(hooks.primary_traps(
                 handle.clone(),
                 joyflags.clone(),
-                facade::Facade::new(match_.clone(), cancellation_token.clone()),
+                facade::Facade::new(inner_match.clone(), cancellation_token.clone()),
             ));
             core.set_traps(traps);
             if let Some(opponent_nickname) = match_init.settings.opponent_nickname.as_ref() {
@@ -187,48 +187,57 @@ impl Game {
 
         let thread = mgba::thread::Thread::new(core);
 
-        if let Some(match_init) = match_init {
+        let match_ = if let Some(match_init) = match_init {
             let (dc_rx, dc_tx) = match_init.dc.split();
 
-            let match_ = match_.clone();
-            handle.block_on(async {
-                let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
-                    == datachannel_wrapper::SdpType::Offer;
-                let rng_seed = match_init
-                    .settings
-                    .rng_seed
-                    .clone()
-                    .try_into()
-                    .expect("rng seed");
-                *match_.lock().await = Some(
-                    battle::Match::new(
-                        rom,
-                        hooks,
-                        match_init.peer_conn,
-                        dc_tx,
-                        rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
-                        is_offerer,
-                        thread.handle(),
-                        match_init.settings,
-                    )
-                    .expect("new match"),
-                );
-            });
+            {
+                let inner_match = inner_match.clone();
+                handle.block_on(async {
+                    let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
+                        == datachannel_wrapper::SdpType::Offer;
+                    let rng_seed = match_init
+                        .settings
+                        .rng_seed
+                        .clone()
+                        .try_into()
+                        .expect("rng seed");
+                    *inner_match.lock().await = Some(
+                        battle::Match::new(
+                            rom,
+                            hooks,
+                            match_init.peer_conn,
+                            dc_tx,
+                            rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
+                            is_offerer,
+                            thread.handle(),
+                            match_init.settings,
+                        )
+                        .expect("new match"),
+                    );
+                });
+            }
 
-            handle.spawn(async move {
-                {
-                    let match_ = match_.lock().await.clone().unwrap();
-                    tokio::select! {
-                        Err(e) = match_.run(dc_rx) => {
-                            log::info!("match thread ending: {:?}", e);
-                        }
-                        _ = cancellation_token.cancelled() => {
+            {
+                let inner_match = inner_match.clone();
+                handle.spawn(async move {
+                    {
+                        let inner_match = inner_match.lock().await.clone().unwrap();
+                        tokio::select! {
+                            Err(e) = inner_match.run(dc_rx) => {
+                                log::info!("match thread ending: {:?}", e);
+                            }
+                            _ = cancellation_token.cancelled() => {
+                            }
                         }
                     }
-                }
-                *match_.lock().await = None;
-            });
-        }
+                    *inner_match.lock().await = None;
+                });
+            }
+
+            Some(inner_match)
+        } else {
+            None
+        };
 
         thread.start()?;
         thread
@@ -292,7 +301,7 @@ impl Game {
             canvas,
             vbuf,
             joyflags,
-            match_: Arc::downgrade(&match_),
+            match_,
             thread,
         })
     }
@@ -384,9 +393,7 @@ impl Game {
                 }
             }
 
-            let match_ = self.match_.upgrade();
-
-            if match_.is_none() {
+            if self.match_.is_none() {
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
                     if self
@@ -429,7 +436,7 @@ impl Game {
                     1.0 / self.fps_counter.lock().mean_duration().as_secs_f32()
                 )];
 
-                let tps_adjustment = if let Some(match_) = match_ {
+                let tps_adjustment = if let Some(match_) = self.match_.as_ref() {
                     self.rt.block_on(async {
                         if let Some(match_) = &*match_.lock().await {
                             lines.push("match active".to_string());
