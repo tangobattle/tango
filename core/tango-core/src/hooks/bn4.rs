@@ -183,7 +183,7 @@ impl hooks::Hooks for BN4 {
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_on_win_entry,
-                    Box::new(move |core| {
+                    Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -203,7 +203,7 @@ impl hooks::Hooks for BN4 {
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_on_loss_entry,
-                    Box::new(move |core| {
+                    Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -516,7 +516,7 @@ impl hooks::Hooks for BN4 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.round_on_win_entry,
-                    Box::new(move |core| {
+                    Box::new(move |_| {
                         shadow_state.set_last_result(battle::BattleResult::Loss);
                     }),
                 )
@@ -525,7 +525,7 @@ impl hooks::Hooks for BN4 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.round_on_loss_entry,
-                    Box::new(move |core| {
+                    Box::new(move |_| {
                         shadow_state.set_last_result(battle::BattleResult::Win);
                     }),
                 )
