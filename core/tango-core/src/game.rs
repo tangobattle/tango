@@ -12,6 +12,21 @@ pub enum PhysicalInput {
     Axis(sdl2::controller::Axis, i16),
 }
 
+impl PhysicalInput {
+    fn is_active(&self, input: &sdl2_input_helper::State) -> bool {
+        match *self {
+            PhysicalInput::Key(key) => input.is_key_pressed(key),
+            PhysicalInput::Button(button) => input
+                .iter_controllers()
+                .any(|(_, c)| c.is_button_pressed(button)),
+            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
+                (threshold > 0 && c.axis(axis) >= threshold)
+                    || (threshold < 0 && c.axis(axis) <= threshold)
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct InputMapping {
     pub up: Vec<PhysicalInput>,
@@ -24,58 +39,48 @@ pub struct InputMapping {
     pub r: Vec<PhysicalInput>,
     pub select: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
+    pub speed_up: Vec<PhysicalInput>,
 }
 
 impl InputMapping {
     fn to_mgba_keys(&self, input: &sdl2_input_helper::State) -> u32 {
-        let pred = |c: &PhysicalInput| match *c {
-            PhysicalInput::Key(key) => input.is_key_pressed(key),
-            PhysicalInput::Button(button) => input
-                .iter_controllers()
-                .any(|(_, c)| c.is_button_pressed(button)),
-            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
-                (threshold > 0 && c.axis(axis) >= threshold)
-                    || (threshold < 0 && c.axis(axis) <= threshold)
-            }),
-        };
-
-        (if self.left.iter().any(pred) {
+        (if self.left.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::LEFT
         } else {
             0
-        }) | (if self.right.iter().any(pred) {
+        }) | (if self.right.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::RIGHT
         } else {
             0
-        }) | (if self.up.iter().any(pred) {
+        }) | (if self.up.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::UP
         } else {
             0
-        }) | (if self.down.iter().any(pred) {
+        }) | (if self.down.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::DOWN
         } else {
             0
-        }) | (if self.a.iter().any(pred) {
+        }) | (if self.a.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::A
         } else {
             0
-        }) | (if self.b.iter().any(pred) {
+        }) | (if self.b.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::B
         } else {
             0
-        }) | (if self.l.iter().any(pred) {
+        }) | (if self.l.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::L
         } else {
             0
-        }) | (if self.r.iter().any(pred) {
+        }) | (if self.r.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::R
         } else {
             0
-        }) | (if self.select.iter().any(pred) {
+        }) | (if self.select.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::SELECT
         } else {
             0
-        }) | (if self.start.iter().any(pred) {
+        }) | (if self.start.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::START
         } else {
             0
@@ -379,6 +384,24 @@ impl Game {
                 }
             }
 
+            let match_ = self.match_.upgrade();
+
+            if match_.is_none() {
+                let audio_guard = thread_handle.lock_audio();
+                audio_guard.sync_mut().set_fps_target(
+                    if self
+                        .input_mapping
+                        .speed_up
+                        .iter()
+                        .any(|c| c.is_active(&input_state))
+                    {
+                        EXPECTED_FPS * 2.0
+                    } else {
+                        EXPECTED_FPS
+                    },
+                );
+            }
+
             if thread_handle.has_crashed() {
                 // HACK: No better way to lock the core.
                 let audio_guard = thread_handle.lock_audio();
@@ -406,7 +429,7 @@ impl Game {
                     1.0 / self.fps_counter.lock().mean_duration().as_secs_f32()
                 )];
 
-                let tps_adjustment = if let Some(match_) = self.match_.upgrade() {
+                let tps_adjustment = if let Some(match_) = match_ {
                     self.rt.block_on(async {
                         if let Some(match_) = &*match_.lock().await {
                             lines.push("match active".to_string());

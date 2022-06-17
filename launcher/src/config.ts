@@ -24,6 +24,7 @@ export interface Config {
     r: PhysicalInput[];
     select: PhysicalInput[];
     start: PhysicalInput[];
+    speedUp: PhysicalInput[];
   };
   signalingEndpoint: string;
   iceconfigEndpoint: string;
@@ -32,6 +33,14 @@ export interface Config {
   defaultMatchSettings: {
     inputDelay: number;
     matchType: number;
+  };
+}
+
+function fillWithDefaults(config: Partial<Config>): Config {
+  return {
+    ...DEFAULT,
+    ...config,
+    inputMapping: { ...DEFAULT.inputMapping, ...config.inputMapping },
   };
 }
 
@@ -53,6 +62,7 @@ export const DEFAULT: Config = {
     r: [{ Key: "S" }, { Button: "rightshoulder" }],
     select: [{ Key: "Backspace" }, { Button: "back" }],
     start: [{ Key: "Return" }, { Button: "start" }],
+    speedUp: [],
   },
   signalingEndpoint: "wss://lets.tangobattle.com/signaling",
   iceconfigEndpoint: "https://lets.tangobattle.com/iceconfig",
@@ -76,22 +86,24 @@ export function ensureSync(path: string) {
     data = readFileSync(path);
   } catch (e) {
     if ((e as any).code == "ENOENT") {
-      writeFileSync(path, JSON.stringify(DEFAULT, null, 4) + "\n");
-      return DEFAULT;
+      const config = fillWithDefaults({});
+      writeFileSync(path, JSON.stringify(config, null, 4) + "\n");
+      return config;
     }
     throw e;
   }
   try {
-    return { ...DEFAULT, ...JSON.parse(data.toString()) } as Config;
+    return fillWithDefaults(JSON.parse(data.toString()));
   } catch {
-    writeFileSync(path, JSON.stringify(DEFAULT, null, 4) + "\n");
-    return DEFAULT;
+    const config = fillWithDefaults({});
+    writeFileSync(path, JSON.stringify(config, null, 4) + "\n");
+    return config;
   }
 }
 
 export async function load(path: string) {
   const data = await readFile(path);
-  return { ...DEFAULT, ...JSON.parse(data.toString()) } as Config;
+  return fillWithDefaults(JSON.parse(data.toString()));
 }
 
 export async function save(config: Config, path: string) {

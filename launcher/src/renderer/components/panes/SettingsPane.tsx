@@ -49,6 +49,7 @@ const KEYS = [
   "r",
   "select",
   "start",
+  "speedUp",
 ] as (keyof Config["inputMapping"])[];
 
 function AboutTab({ active }: { active: boolean }) {

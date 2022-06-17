@@ -22,6 +22,8 @@ pub struct InputMapping {
     pub r: Vec<PhysicalInput>,
     pub select: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
+    #[serde(rename = "speedUp")]
+    pub speed_up: Vec<PhysicalInput>,
 }
 
 fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::game::PhysicalInput> {
@@ -121,6 +123,11 @@ fn main() -> Result<(), anyhow::Error> {
             .collect(),
         start: raw_input_mapping
             .start
+            .iter()
+            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
+            .collect(),
+        speed_up: raw_input_mapping
+            .speed_up
             .iter()
             .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
             .collect(),
