@@ -65,6 +65,7 @@ pub(super) struct ROMOffsets {
 
     pub(super) round_on_win_entry: u32,
     pub(super) round_on_loss_entry: u32,
+    pub(super) round_on_draw_entry: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -160,6 +161,7 @@ pub static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         copy_input_data_ret:                                        0x0801ffd4,
         round_on_win_entry:                                         0x080081a4,
         round_on_loss_entry:                                        0x0800825a,
+        round_on_draw_entry:                                        0x080082dc,
         round_start_ret:                                            0x08007304,
         round_end_entry:                                            0x08007ca0,
         round_ending_ret:                                           0x0800951a,
@@ -187,6 +189,7 @@ pub static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         copy_input_data_ret:                                        0x0801ffd4,
         round_on_win_entry:                                         0x080081a4,
         round_on_loss_entry:                                        0x0800825a,
+        round_on_draw_entry:                                        0x080082dc,
         round_start_ret:                                            0x08007304,
         round_end_entry:                                            0x08007ca0,
         round_ending_ret:                                           0x0800951a,
@@ -214,6 +217,7 @@ pub static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         copy_input_data_ret:                                        0x080203e8,
         round_on_win_entry:                                         0x080081d4,
         round_on_loss_entry:                                        0x0800828a,
+        round_on_draw_entry:                                        0x0800830c,
         round_start_ret:                                            0x080072f8,
         round_end_entry:                                            0x08007c9c,
         round_ending_ret:                                           0x080096ea,
@@ -241,6 +245,7 @@ pub static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         copy_input_data_ret:                                        0x080203e8,
         round_on_win_entry:                                         0x080081d4,
         round_on_loss_entry:                                        0x0800828a,
+        round_on_draw_entry:                                        0x0800830c,
         round_start_ret:                                            0x080072f8,
         round_end_entry:                                            0x08007c9c,
         round_ending_ret:                                           0x080096ea,

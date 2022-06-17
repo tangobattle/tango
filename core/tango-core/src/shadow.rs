@@ -10,6 +10,14 @@ pub struct Round {
 }
 
 impl Round {
+    pub fn on_draw_result(&self) -> battle::BattleResult {
+        match self.local_player_index {
+            0 => battle::BattleResult::Win,
+            1 => battle::BattleResult::Loss,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn current_tick(&self) -> u32 {
         self.current_tick
     }
