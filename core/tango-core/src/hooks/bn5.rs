@@ -153,10 +153,10 @@ impl hooks::Hooks for BN5 {
 
                             match core.as_ref().gba().cpu().gpr(0) {
                                 1 => {
-                                    round_state.set_last_result(battle::BattleResult::Loss);
+                                    round_state.set_last_result(battle::BattleResult::Win);
                                 }
                                 2 => {
-                                    round_state.set_last_result(battle::BattleResult::Win);
+                                    round_state.set_last_result(battle::BattleResult::Loss);
                                 }
                                 7 => {
                                     round_state.set_last_result(battle::BattleResult::Draw);
@@ -530,10 +530,10 @@ impl hooks::Hooks for BN5 {
                     Box::new(move |core| {
                         match core.as_ref().gba().cpu().gpr(0) {
                             1 => {
-                                shadow_state.set_last_result(battle::BattleResult::Win);
+                                shadow_state.set_last_result(battle::BattleResult::Loss);
                             }
                             2 => {
-                                shadow_state.set_last_result(battle::BattleResult::Loss);
+                                shadow_state.set_last_result(battle::BattleResult::Win);
                             }
                             7 => {
                                 shadow_state.set_last_result(battle::BattleResult::Draw);

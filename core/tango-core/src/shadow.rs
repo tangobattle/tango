@@ -132,9 +132,9 @@ impl State {
             battle::BattleResult::Loss => 1,
             battle::BattleResult::Draw => {
                 if self.0.is_offerer {
-                    1
-                } else {
                     0
+                } else {
+                    1
                 }
             }
         };
