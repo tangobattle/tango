@@ -100,7 +100,7 @@
     versions: {
       ROCKEXE5_TOBBRBJ: {
         title: {
-          en: "Rockman EXE 5: Team of Blues",
+          en: "Team of Blues",
           ja: "チーム オブ ブルース",
           "zh-Hans": "布鲁斯小队",
         },
@@ -110,7 +110,7 @@
       },
       ROCKEXE5_TOCBRKJ: {
         title: {
-          en: "Rockman EXE 5: Team of Colonel",
+          en: "Team of Colonel",
           ja: "チーム オブ カーネル",
           "zh-Hans": "卡尼路小队",
         },
