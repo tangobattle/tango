@@ -237,7 +237,7 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_on_win_entry,
+                    self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -257,7 +257,7 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_on_loss_entry,
+                    self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -277,7 +277,47 @@ impl hooks::Hooks for BN3 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_on_draw_entry,
+                    self.offsets.rom.round_end_damage_judge_set_win,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+                            round_state.set_last_result(battle::BattleResult::Win);
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_loss,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+                            round_state.set_last_result(battle::BattleResult::Loss);
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_draw,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -630,7 +670,7 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_on_win_entry,
+                    self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
                         let mut round_state = shadow_state.lock_round_state();
                         round_state.set_last_result(battle::BattleResult::Loss);
@@ -640,7 +680,7 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_on_loss_entry,
+                    self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
                         let mut round_state = shadow_state.lock_round_state();
                         round_state.set_last_result(battle::BattleResult::Win);
@@ -650,7 +690,27 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.round_on_draw_entry,
+                    self.offsets.rom.round_end_damage_judge_set_win,
+                    Box::new(move |_| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        round_state.set_last_result(battle::BattleResult::Loss);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_loss,
+                    Box::new(move |_| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        round_state.set_last_result(battle::BattleResult::Win);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_draw,
                     Box::new(move |_| {
                         let mut round_state = shadow_state.lock_round_state();
                         let result = {
