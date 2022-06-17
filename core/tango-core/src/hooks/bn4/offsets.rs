@@ -64,6 +64,7 @@ pub(super) struct ROMOffsets {
 
     pub(super) round_on_win_entry: u32,
     pub(super) round_on_loss_entry: u32,
+    pub(super) round_on_draw_entry: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -142,6 +143,7 @@ pub static MEGAMANBN4BMB4BE_00: Offsets = Offsets {
         copy_input_data_ret:                    0x08017c56,
         round_on_win_entry:                     0x0800719c,
         round_on_loss_entry:                    0x08007252,
+        round_on_draw_entry:                    0x080072f0,
         round_start_ret:                        0x08006710,
         round_ending_ret:                       0x080077da,
         round_end_entry:                        0x08006e1e,
@@ -168,6 +170,7 @@ pub static MEGAMANBN4RSB4WE_00: Offsets = Offsets {
         copy_input_data_ret:                    0x08017c56,
         round_on_win_entry:                     0x0800719c,
         round_on_loss_entry:                    0x08007252,
+        round_on_draw_entry:                    0x080072f0,
         round_start_ret:                        0x08006710,
         round_ending_ret:                       0x080077da,
         round_end_entry:                        0x08006e1e,
@@ -194,6 +197,7 @@ pub static ROCK_EXE4_BMB4BJ_00: Offsets = Offsets {
         copy_input_data_ret:                    0x08017b62,
         round_on_win_entry:                     0x08007170,
         round_on_loss_entry:                    0x08007226,
+        round_on_draw_entry:                    0x080072c4,
         round_start_ret:                        0x080066ec,
         round_ending_ret:                       0x080077ae,
         round_end_entry:                        0x08006dfa,
@@ -202,6 +206,33 @@ pub static ROCK_EXE4_BMB4BJ_00: Offsets = Offsets {
         link_is_p2_ret:                         0x080480e2,
         comm_menu_init_ret:                     0x08039442,
         handle_sio_entry:                       0x080481b8,
+        in_battle_call_handle_link_cable_input: 0x08006af2,
+        match_end_ret:                          0x08004f48,
+    },
+};
+
+#[rustfmt::skip]
+pub static ROCK_EXE4_RSB4WJ_00: Offsets = Offsets {
+    ewram: EWRAM_OFFSETS,
+    rom: ROMOffsets {
+        start_screen_jump_table_entry:          0x0802d696,
+        start_screen_sram_unmask_ret:           0x080252ce,
+        ngplus_menu_init_ret:                   0x080254ae,
+        game_load_ret:                          0x08004976,
+        main_read_joyflags:                     0x080003c6,
+        copy_input_data_entry:                  0x08017a9a,
+        copy_input_data_ret:                    0x08017b62,
+        round_on_win_entry:                     0x08007170,
+        round_on_loss_entry:                    0x08007226,
+        round_on_draw_entry:                    0x080072c4,
+        round_start_ret:                        0x080066ec,
+        round_ending_ret:                       0x080077ae,
+        round_end_entry:                        0x08006dfa,
+        round_call_jump_table_ret:              0x08006b04,
+        battle_is_p2_tst:                       0x080480bc,
+        link_is_p2_ret:                         0x080480da,
+        comm_menu_init_ret:                     0x0803943a,
+        handle_sio_entry:                       0x080481b0,
         in_battle_call_handle_link_cable_input: 0x08006af2,
         match_end_ret:                          0x08004f48,
     },
@@ -220,6 +251,7 @@ pub static ROCK_EXE4_BMB4BJ_01: Offsets = Offsets {
         copy_input_data_ret:                    0x08017b96,
         round_on_win_entry:                     0x08007174,
         round_on_loss_entry:                    0x0800722a,
+        round_on_draw_entry:                    0x080072c8,
         round_start_ret:                        0x080066f0,
         round_ending_ret:                       0x080077b2,
         round_end_entry:                        0x08006dfe,
@@ -229,32 +261,6 @@ pub static ROCK_EXE4_BMB4BJ_01: Offsets = Offsets {
         comm_menu_init_ret:                     0x0803947e,
         handle_sio_entry:                       0x080481f4,
         in_battle_call_handle_link_cable_input: 0x08006af6,
-        match_end_ret:                          0x08004f48,
-    },
-};
-
-#[rustfmt::skip]
-pub static ROCK_EXE4_RSB4WJ_00: Offsets = Offsets {
-    ewram: EWRAM_OFFSETS,
-    rom: ROMOffsets {
-        start_screen_jump_table_entry:          0x0802d696,
-        start_screen_sram_unmask_ret:           0x080252ce,
-        ngplus_menu_init_ret:                   0x080254ae,
-        game_load_ret:                          0x08004976,
-        main_read_joyflags:                     0x080003c6,
-        copy_input_data_entry:                  0x08017a9a,
-        copy_input_data_ret:                    0x08017b62,
-        round_on_win_entry:                     0x08007170,
-        round_on_loss_entry:                    0x08007226,
-        round_start_ret:                        0x080066ec,
-        round_ending_ret:                       0x080077ae,
-        round_end_entry:                        0x08006dfa,
-        round_call_jump_table_ret:              0x08006b04,
-        battle_is_p2_tst:                       0x080480bc,
-        link_is_p2_ret:                         0x080480da,
-        comm_menu_init_ret:                     0x0803943a,
-        handle_sio_entry:                       0x080481b0,
-        in_battle_call_handle_link_cable_input: 0x08006af2,
         match_end_ret:                          0x08004f48,
     },
 };
@@ -272,6 +278,7 @@ pub static ROCK_EXE4_RSB4WJ_01: Offsets = Offsets {
         copy_input_data_ret:                    0x08017b96,
         round_on_win_entry:                     0x08007174,
         round_on_loss_entry:                    0x0800722a,
+        round_on_draw_entry:                    0x080072c8,
         round_start_ret:                        0x080066f0,
         round_ending_ret:                       0x080077b2,
         round_end_entry:                        0x08006dfe,

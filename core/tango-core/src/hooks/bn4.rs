@@ -218,30 +218,30 @@ impl hooks::Hooks for BN4 {
                     }),
                 )
             },
-            // {
-            //     let facade = facade.clone();
-            //     let handle = handle.clone();
-            //     (
-            //         self.offsets.rom.round_on_draw_entry,
-            //         Box::new(move |_| {
-            //             handle.block_on(async {
-            //                 let match_ = match facade.match_().await {
-            //                     Some(match_) => match_,
-            //                     None => {
-            //                         return;
-            //                     }
-            //                 };
+            {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.round_on_draw_entry,
+                    Box::new(move |_| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
 
-            //                 let mut round_state = match_.lock_round_state().await;
-            //                 let result = {
-            //                     let round = round_state.round.as_ref().expect("round");
-            //                     round.on_draw_result()
-            //                 };
-            //                 round_state.set_last_result(result);
-            //             });
-            //         }),
-            //     )
-            // },
+                            let mut round_state = match_.lock_round_state().await;
+                            let result = {
+                                let round = round_state.round.as_ref().expect("round");
+                                round.on_draw_result()
+                            };
+                            round_state.set_last_result(result);
+                        });
+                    }),
+                )
+            },
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -556,20 +556,20 @@ impl hooks::Hooks for BN4 {
                     }),
                 )
             },
-            // {
-            //     let shadow_state = shadow_state.clone();
-            //     (
-            //         self.offsets.rom.round_on_draw_entry,
-            //         Box::new(move |_| {
-            //             let mut round_state = shadow_state.lock_round_state();
-            //             let result = {
-            //                 let round = round_state.round.as_mut().expect("round");
-            //                 round.on_draw_result()
-            //             };
-            //             round_state.set_last_result(result);
-            //         }),
-            //     )
-            // },
+            {
+                let shadow_state = shadow_state.clone();
+                (
+                    self.offsets.rom.round_on_draw_entry,
+                    Box::new(move |_| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let result = {
+                            let round = round_state.round.as_mut().expect("round");
+                            round.on_draw_result()
+                        };
+                        round_state.set_last_result(result);
+                    }),
+                )
+            },
             {
                 let shadow_state = shadow_state.clone();
                 (

@@ -69,6 +69,7 @@ pub(super) struct ROMOffsets {
 
     pub(super) round_on_win_entry: u32,
     pub(super) round_on_loss_entry: u32,
+    pub(super) round_on_draw_entry: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -154,6 +155,7 @@ pub static MEGAMAN5_TP_BRBE_00: Offsets = Offsets {
         copy_input_data_ret:                    0x0801c8c8,
         round_on_win_entry:                     0x080074d2,
         round_on_loss_entry:                    0x0800758a,
+        round_on_draw_entry:                    0x0800760c,
         round_start_ret:                        0x0800673e,
         round_ending_ret:                       0x0800812c,
         round_end_entry:                        0x0800702e,
@@ -180,6 +182,7 @@ pub static MEGAMAN5_TC_BRKE_00: Offsets = Offsets {
         copy_input_data_ret:                    0x0801c8c4,
         round_on_win_entry:                     0x080074d2,
         round_on_loss_entry:                    0x0800758a,
+        round_on_draw_entry:                    0x0800760c,
         round_start_ret:                        0x0800673e,
         round_ending_ret:                       0x0800812c,
         round_end_entry:                        0x0800702e,
@@ -206,6 +209,7 @@ pub static ROCKEXE5_TOBBRBJ_00: Offsets = Offsets {
         copy_input_data_ret:                    0x0801c884,
         round_on_win_entry:                     0x080074d2,
         round_on_loss_entry:                    0x0800758a,
+        round_on_draw_entry:                    0x0800760c,
         round_start_ret:                        0x0800673e,
         round_ending_ret:                       0x0800812c,
         round_end_entry:                        0x0800702e,
@@ -232,6 +236,7 @@ pub static ROCKEXE5_TOCBRKJ_00: Offsets = Offsets {
         copy_input_data_ret:                    0x0801c880,
         round_on_win_entry:                     0x080074d2,
         round_on_loss_entry:                    0x0800758a,
+        round_on_draw_entry:                    0x0800760c,
         round_start_ret:                        0x0800673e,
         round_ending_ret:                       0x0800812c,
         round_end_entry:                        0x0800702e,
