@@ -292,6 +292,7 @@ async function runCallback(
       const rawResp = await fetch(config.iceconfigEndpoint, {
         method: "POST",
         headers: {
+          "User-Agent": `tango-launcher/${app.getVersion()}`,
           "Content-Type": "application/x-protobuf",
         },
         body: Buffer.from(

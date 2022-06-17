@@ -1,6 +1,7 @@
 use futures_util::SinkExt;
 use futures_util::TryStreamExt;
 use prost::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 pub async fn connect(
     addr: &str,
@@ -10,7 +11,15 @@ pub async fn connect(
 ) -> Result<(), anyhow::Error>
 where
 {
-    let (mut stream, _) = tokio_tungstenite::connect_async(addr).await?;
+    let mut req = addr.into_client_request()?;
+    req.headers_mut().append(
+        "User-Agent",
+        tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!(
+            "tango-core/{}",
+            git_version::git_version!()
+        ))?,
+    );
+    let (mut stream, _) = tokio_tungstenite::connect_async(req).await?;
 
     log::info!("negotiation started");
 
