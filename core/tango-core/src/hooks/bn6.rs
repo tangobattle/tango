@@ -575,7 +575,8 @@ impl hooks::Hooks for BN6 {
                 (
                     self.offsets.rom.round_on_win_entry,
                     Box::new(move |_| {
-                        shadow_state.set_last_result(battle::BattleResult::Loss);
+                        let mut round_state = shadow_state.lock_round_state();
+                        round_state.set_last_result(battle::BattleResult::Loss);
                     }),
                 )
             },
@@ -584,7 +585,8 @@ impl hooks::Hooks for BN6 {
                 (
                     self.offsets.rom.round_on_loss_entry,
                     Box::new(move |_| {
-                        shadow_state.set_last_result(battle::BattleResult::Win);
+                        let mut round_state = shadow_state.lock_round_state();
+                        round_state.set_last_result(battle::BattleResult::Win);
                     }),
                 )
             },
@@ -594,9 +596,11 @@ impl hooks::Hooks for BN6 {
                     self.offsets.rom.round_on_draw_entry,
                     Box::new(move |_| {
                         let mut round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_mut().expect("round");
-
-                        shadow_state.set_last_result(round.on_draw_result());
+                        let result = {
+                            let round = round_state.round.as_mut().expect("round");
+                            round.on_draw_result()
+                        };
+                        round_state.set_last_result(result);
                     }),
                 )
             },

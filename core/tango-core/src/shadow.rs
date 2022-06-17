@@ -74,6 +74,12 @@ pub struct RoundState {
     pub last_result: Option<battle::BattleResult>,
 }
 
+impl RoundState {
+    pub fn set_last_result(&mut self, last_result: battle::BattleResult) {
+        self.last_result = Some(last_result);
+    }
+}
+
 struct AppliedState {
     tick: u32,
     state: mgba::state::State,
@@ -157,10 +163,6 @@ impl State {
         log::info!("shadow round ended");
         let mut round_state = self.0.round_state.lock();
         round_state.round = None;
-    }
-
-    pub fn set_last_result(&self, last_result: battle::BattleResult) {
-        self.0.round_state.lock().last_result = Some(last_result);
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {

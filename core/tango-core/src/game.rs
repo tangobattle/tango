@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
 
-pub const EXPECTED_FPS: f32 = 60.0;
+pub const EXPECTED_FPS: f32 = 60.0 * 100.0;
 
 #[derive(Clone, Debug)]
 pub enum PhysicalInput {
