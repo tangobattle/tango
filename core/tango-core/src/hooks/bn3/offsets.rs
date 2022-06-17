@@ -63,6 +63,7 @@ pub(super) struct ROMOffsets {
 
     pub(super) round_on_win_entry: u32,
     pub(super) round_on_loss_entry: u32,
+    pub(super) round_on_draw_entry: u32,
 
     pub(super) round_tie_ret: u32,
 
@@ -138,6 +139,7 @@ pub static MEGA_EXE3_BLA3XE_00: Offsets = Offsets {
         round_start_ret:                            0x080059a8,
         round_on_win_entry:                         0x080094a0,
         round_on_loss_entry:                        0x0800953c,
+        round_on_draw_entry:                        0x08009664,
         round_tie_ret:                              0x08009968,
         round_lose_ret:                             0x080095da,
         round_lose_ret2:                            0x080095e4,
@@ -169,6 +171,7 @@ pub static MEGA_EXE3_WHA6BE_00: Offsets = Offsets {
         round_start_ret:                            0x080059a8,
         round_on_win_entry:                         0x080094a0,
         round_on_loss_entry:                        0x0800953c,
+        round_on_draw_entry:                        0x08009664,
         round_tie_ret:                              0x08009968,
         round_lose_ret:                             0x080095da,
         round_lose_ret2:                            0x080095e4,
@@ -200,6 +203,7 @@ pub static ROCK_EXE3_BKA3XJ_01: Offsets = Offsets {
         round_start_ret:                            0x0800593c,
         round_on_win_entry:                         0x0800941c,
         round_on_loss_entry:                        0x080094b8,
+        round_on_draw_entry:                        0x080095e0,
         round_tie_ret:                              0x080098e4,
         round_lose_ret:                             0x08009556,
         round_lose_ret2:                            0x08009560,
@@ -231,6 +235,7 @@ pub static ROCKMAN_EXE3A6BJ_01: Offsets = Offsets {
         round_start_ret:                            0x0800593c,
         round_on_win_entry:                         0x0800941c,
         round_on_loss_entry:                        0x080094b8,
+        round_on_draw_entry:                        0x080095e0,
         round_tie_ret:                              0x080098e4,
         round_lose_ret:                             0x08009556,
         round_lose_ret2:                            0x08009560,
