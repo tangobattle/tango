@@ -154,29 +154,6 @@ impl hooks::Hooks for BN3 {
                 });
             })
         };
-
-        let make_round_ending_hook = || {
-            let facade = facade.clone();
-            let handle = handle.clone();
-            Box::new(move |_: mgba::core::CoreMutRef| {
-                handle.block_on(async {
-                    let match_ = match facade.match_().await {
-                        Some(match_) => match_,
-                        None => {
-                            return;
-                        }
-                    };
-
-                    let mut round_state = match_.lock_round_state().await;
-                    round_state.end_round().await.expect("end round");
-                    match_
-                        .advance_shadow_until_round_end()
-                        .await
-                        .expect("advance shadow");
-                });
-            })
-        };
-
         vec![
             {
                 let facade = facade.clone();
@@ -337,16 +314,32 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            (self.offsets.rom.round_win_ret, make_round_ending_hook()),
-            (self.offsets.rom.round_win_ret2, make_round_ending_hook()),
-            (self.offsets.rom.round_lose_ret, make_round_ending_hook()),
-            (self.offsets.rom.round_lose_ret2, make_round_ending_hook()),
-            (self.offsets.rom.round_lose_ret3, make_round_ending_hook()),
-            (self.offsets.rom.round_draw_ret, make_round_ending_hook()),
-            (
-                self.offsets.rom.round_damage_judge_end_ret,
-                make_round_ending_hook(),
-            ),
+            (self.offsets.rom.round_ending_entry, {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                Box::new(move |_| {
+                    handle.block_on(async {
+                        let match_ = match facade.match_().await {
+                            Some(match_) => match_,
+                            None => {
+                                return;
+                            }
+                        };
+
+                        // This is level-triggered because otherwise it's a massive pain to deal with.
+                        let mut round_state = match_.lock_round_state().await;
+                        if round_state.round.is_none() {
+                            return;
+                        }
+
+                        round_state.end_round().await.expect("end round");
+                        match_
+                            .advance_shadow_until_round_end()
+                            .await
+                            .expect("advance shadow");
+                    });
+                })
+            }),
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
@@ -912,13 +905,6 @@ impl hooks::Hooks for BN3 {
         &self,
         replayer_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
-        let make_round_ending_hook = || {
-            let replayer_state = replayer_state.clone();
-            Box::new(move |_: mgba::core::CoreMutRef| {
-                replayer_state.set_round_ending();
-            })
-        };
-
         let make_send_and_receive_call_hook = || {
             let munger = self.munger.clone();
             let replayer_state = replayer_state.clone();
@@ -1001,16 +987,12 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            (self.offsets.rom.round_win_ret, make_round_ending_hook()),
-            (self.offsets.rom.round_win_ret2, make_round_ending_hook()),
-            (self.offsets.rom.round_lose_ret, make_round_ending_hook()),
-            (self.offsets.rom.round_lose_ret2, make_round_ending_hook()),
-            (self.offsets.rom.round_lose_ret3, make_round_ending_hook()),
-            (self.offsets.rom.round_draw_ret, make_round_ending_hook()),
-            (
-                self.offsets.rom.round_damage_judge_end_ret,
-                make_round_ending_hook(),
-            ),
+            (self.offsets.rom.round_ending_entry, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |_| {
+                    replayer_state.set_round_ending();
+                })
+            }),
             {
                 let replayer_state = replayer_state.clone();
                 (
