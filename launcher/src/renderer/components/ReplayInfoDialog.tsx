@@ -86,72 +86,62 @@ export default function ReplayInfoDialog({
         onClose();
       }}
     >
-      <Box
+      <Stack
         sx={{
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
+          width: "100%",
+          height: "100%",
+          bgcolor: "background.paper",
         }}
+        direction="column"
       >
-        <Stack
-          sx={{
-            width: 600,
-            height: 600,
-            bgcolor: "background.paper",
-            boxShadow: 24,
-          }}
-          direction="column"
-        >
-          <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
-            <Box>
-              <Typography variant="h6" component="h2" sx={{ px: 1 }}>
-                <Trans
-                  i18nKey="replays:replay-title"
-                  values={{
-                    formattedDate: dateFormat.format(
-                      new Date(replayInfo.metadata.ts)
-                    ),
-                    nickname: replayInfo.metadata.remoteSide!.nickname,
-                    linkCode: replayInfo.metadata.linkCode,
-                  }}
-                />
-                <br />
-                <small>
-                  {dateFormat.format(new Date(replayInfo.metadata.ts))}
-                </small>
-              </Typography>
-            </Box>
-            <Tooltip title={<Trans i18nKey="common:close" />}>
-              <IconButton
-                sx={{ ml: "auto" }}
-                onClick={() => {
-                  onClose();
+        <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
+          <Box>
+            <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+              <Trans
+                i18nKey="replays:replay-title"
+                values={{
+                  formattedDate: dateFormat.format(
+                    new Date(replayInfo.metadata.ts)
+                  ),
+                  nickname: replayInfo.metadata.remoteSide!.nickname,
+                  linkCode: replayInfo.metadata.linkCode,
                 }}
-              >
-                <CloseIcon />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-          <Box flexGrow={1} sx={{ display: "flex" }}>
-            {editor != null ? (
-              <SaveViewer editor={editor} />
-            ) : (
-              <Box
-                sx={{
-                  display: "flex",
-                  width: "100%",
-                  height: "100%",
-                  justifyContent: "center",
-                  alignItems: "center",
-                }}
-              >
-                <CircularProgress />
-              </Box>
-            )}
+              />
+              <br />
+              <small>
+                {dateFormat.format(new Date(replayInfo.metadata.ts))}
+              </small>
+            </Typography>
           </Box>
+          <Tooltip title={<Trans i18nKey="common:close" />}>
+            <IconButton
+              sx={{ ml: "auto" }}
+              onClick={() => {
+                onClose();
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Tooltip>
         </Stack>
-      </Box>
+        <Box flexGrow={1} sx={{ display: "flex" }}>
+          {editor != null ? (
+            <SaveViewer editor={editor} />
+          ) : (
+            <Box
+              sx={{
+                display: "flex",
+                width: "100%",
+                height: "100%",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <CircularProgress />
+            </Box>
+          )}
+        </Box>
+      </Stack>
     </Modal>
   );
 }

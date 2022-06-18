@@ -1522,48 +1522,35 @@ export default function BattleStarter({
             return;
           }}
         >
-          <Box
+          <Stack
             sx={{
-              position: "absolute",
-              top: "50%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
+              width: "100%",
+              height: "100%",
+              bgcolor: "background.paper",
             }}
+            direction="column"
           >
-            <Stack
-              sx={{
-                width: 600,
-                height: 600,
-                bgcolor: "background.paper",
-                boxShadow: 24,
-              }}
-              direction="column"
-            >
-              <Stack
-                direction="row"
-                sx={{ pt: 1, px: 1, alignItems: "center" }}
+            <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
+              <Typography
+                variant="h6"
+                component="h2"
+                flexGrow={0}
+                flexShrink={0}
+                sx={{ px: 1 }}
               >
-                <Typography
-                  variant="h6"
-                  component="h2"
-                  flexGrow={0}
-                  flexShrink={0}
-                  sx={{ px: 1 }}
-                >
-                  <Trans
-                    i18nKey="play:reveal-setup-title"
-                    values={{
-                      opponentNickname:
-                        pendingStates!.opponent!.settings.nickname,
-                    }}
-                  />
-                </Typography>
-              </Stack>
-              <Box flexGrow={1} sx={{ display: "flex" }}>
-                <SaveViewer editor={revealedSetupEditor} />
-              </Box>
+                <Trans
+                  i18nKey="play:reveal-setup-title"
+                  values={{
+                    opponentNickname:
+                      pendingStates!.opponent!.settings.nickname,
+                  }}
+                />
+              </Typography>
             </Stack>
-          </Box>
+            <Box flexGrow={1} sx={{ display: "flex" }}>
+              <SaveViewer editor={revealedSetupEditor} />
+            </Box>
+          </Stack>
         </Modal>
       ) : null}
       {exitDialogState != null ? (
