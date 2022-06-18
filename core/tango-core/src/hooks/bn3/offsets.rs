@@ -67,7 +67,20 @@ pub(super) struct ROMOffsets {
     pub(super) round_end_damage_judge_set_loss: u32,
     pub(super) round_end_damage_judge_set_draw: u32,
 
-    pub(super) round_restarting_ret: u32,
+    pub(super) round_draw_ret: u32,
+
+    /// This hooks the point when the round is ending and the game will process no further input.
+    ///
+    /// At this point, Tango will clean up its round state and commit the replay.
+    pub(super) round_lose_ret: u32,
+    pub(super) round_lose_ret2: u32,
+    pub(super) round_lose_ret3: u32,
+
+    /// This hooks the point when the round is ending and the game will process no further input.
+    ///
+    /// At this point, Tango will clean up its round state and commit the replay.
+    pub(super) round_win_ret: u32,
+    pub(super) round_win_ret2: u32,
 
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
@@ -132,7 +145,12 @@ pub static MEGA_EXE3_BLA3XE_00: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x080096b0,
         round_end_damage_judge_set_loss:            0x080096c4,
         round_end_damage_judge_set_draw:            0x080096c8,
-        round_restarting_ret:                       0x080068be,
+        round_draw_ret:                             0x08009968,
+        round_lose_ret:                             0x080095da,
+        round_lose_ret2:                            0x080095e4,
+        round_lose_ret3:                            0x080095be,
+        round_win_ret:                              0x08009530,
+        round_win_ret2:                             0x08009528,
         round_end_entry:                            0x080068a0,
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
@@ -162,7 +180,12 @@ pub static MEGA_EXE3_WHA6BE_00: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x080096b0,
         round_end_damage_judge_set_loss:            0x080096c4,
         round_end_damage_judge_set_draw:            0x080096c8,
-        round_restarting_ret:                       0x080068be,
+        round_draw_ret:                             0x08009968,
+        round_lose_ret:                             0x080095da,
+        round_lose_ret2:                            0x080095e4,
+        round_lose_ret3:                            0x080095be,
+        round_win_ret:                              0x08009530,
+        round_win_ret2:                             0x08009528,
         round_end_entry:                            0x080068a0,
         battle_is_p2_ret:                           0x08008c6a,
         link_is_p2_ret:                             0x0800354c,
@@ -192,7 +215,12 @@ pub static ROCK_EXE3_BKA3XJ_01: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x0800962c,
         round_end_damage_judge_set_loss:            0x08009640,
         round_end_damage_judge_set_draw:            0x08009644,
-        round_restarting_ret:                       0x08006852,
+        round_draw_ret:                             0x080098e4,
+        round_lose_ret:                             0x08009556,
+        round_lose_ret2:                            0x08009560,
+        round_lose_ret3:                            0x0800953a,
+        round_win_ret:                              0x080094ac,
+        round_win_ret2:                             0x080094a4,
         round_end_entry:                            0x08006834,
         battle_is_p2_ret:                           0x08008bfe,
         link_is_p2_ret:                             0x080034e0,
@@ -222,7 +250,12 @@ pub static ROCKMAN_EXE3A6BJ_01: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x0800962c,
         round_end_damage_judge_set_loss:            0x08009640,
         round_end_damage_judge_set_draw:            0x08009644,
-        round_restarting_ret:                       0x08006852,
+        round_draw_ret:                             0x080098e4,
+        round_lose_ret:                             0x08009556,
+        round_lose_ret2:                            0x08009560,
+        round_lose_ret3:                            0x0800953a,
+        round_win_ret:                              0x080094ac,
+        round_win_ret2:                             0x080094a4,
         round_end_entry:                            0x08006834,
         battle_is_p2_ret:                           0x08008bfe,
         link_is_p2_ret:                             0x080034e0,
