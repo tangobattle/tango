@@ -74,6 +74,7 @@ pub(super) struct ROMOffsets {
     /// At this point, Tango will clean up its round state and commit the replay.
     pub(super) round_lose_ret: u32,
     pub(super) round_lose_ret2: u32,
+    pub(super) round_lose_ret3: u32,
 
     /// This hooks the point when the round is ending and the game will process no further input.
     ///
@@ -147,6 +148,7 @@ pub static MEGA_EXE3_BLA3XE_00: Offsets = Offsets {
         round_draw_ret:                             0x08009968,
         round_lose_ret:                             0x080095da,
         round_lose_ret2:                            0x080095e4,
+        round_lose_ret3:                            0x080095be,
         round_win_ret:                              0x08009530,
         round_win_ret2:                             0x08009528,
         round_end_entry:                            0x080068a0,
@@ -181,6 +183,7 @@ pub static MEGA_EXE3_WHA6BE_00: Offsets = Offsets {
         round_draw_ret:                             0x08009968,
         round_lose_ret:                             0x080095da,
         round_lose_ret2:                            0x080095e4,
+        round_lose_ret3:                            0x080095be,
         round_win_ret:                              0x08009530,
         round_win_ret2:                             0x08009528,
         round_end_entry:                            0x080068a0,
@@ -215,6 +218,7 @@ pub static ROCK_EXE3_BKA3XJ_01: Offsets = Offsets {
         round_draw_ret:                             0x080098e4,
         round_lose_ret:                             0x08009556,
         round_lose_ret2:                            0x08009560,
+        round_lose_ret3:                            0x0800953a,
         round_win_ret:                              0x080094ac,
         round_win_ret2:                             0x080094a4,
         round_end_entry:                            0x08006834,
@@ -249,6 +253,7 @@ pub static ROCKMAN_EXE3A6BJ_01: Offsets = Offsets {
         round_draw_ret:                             0x080098e4,
         round_lose_ret:                             0x08009556,
         round_lose_ret2:                            0x08009560,
+        round_lose_ret3:                            0x0800953a,
         round_win_ret:                              0x080094ac,
         round_win_ret2:                             0x080094a4,
         round_end_entry:                            0x08006834,

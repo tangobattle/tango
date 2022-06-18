@@ -341,6 +341,7 @@ impl hooks::Hooks for BN3 {
             (self.offsets.rom.round_win_ret2, make_round_ending_hook()),
             (self.offsets.rom.round_lose_ret, make_round_ending_hook()),
             (self.offsets.rom.round_lose_ret2, make_round_ending_hook()),
+            (self.offsets.rom.round_lose_ret3, make_round_ending_hook()),
             (self.offsets.rom.round_draw_ret, make_round_ending_hook()),
             {
                 let facade = facade.clone();
@@ -1000,6 +1001,7 @@ impl hooks::Hooks for BN3 {
             (self.offsets.rom.round_win_ret2, make_round_ending_hook()),
             (self.offsets.rom.round_lose_ret, make_round_ending_hook()),
             (self.offsets.rom.round_lose_ret2, make_round_ending_hook()),
+            (self.offsets.rom.round_lose_ret3, make_round_ending_hook()),
             (self.offsets.rom.round_draw_ret, make_round_ending_hook()),
             {
                 let replayer_state = replayer_state.clone();
