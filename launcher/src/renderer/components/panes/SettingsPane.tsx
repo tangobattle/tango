@@ -2,14 +2,16 @@ import { isEqual, sortBy } from "lodash-es";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
-import { app, shell } from "@electron/remote";
+import { app, BrowserWindow, dialog, shell } from "@electron/remote";
 import AddIcon from "@mui/icons-material/Add";
+import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
+import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
@@ -23,12 +25,16 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { Config } from "../../../config";
 import { captureInput } from "../../../input";
 import { LANGUAGES } from "../../i18n";
 import { useConfig } from "../ConfigContext";
+import { usePatches } from "../PatchesContext";
+import { useROMs } from "../ROMsContext";
+import { useSaves } from "../SavesContext";
 
 const AddChip = styled(Chip)(() => ({
   "&": {
@@ -460,6 +466,187 @@ function AdvancedTab({ active }: { active: boolean }) {
   );
 }
 
+function PathsTab({ active }: { active: boolean }) {
+  const { config, save: saveConfig } = useConfig();
+  const { rescan: rescanPatches } = usePatches();
+  const { rescan: rescanSaves } = useSaves();
+  const { rescan: rescanROMs } = useROMs();
+
+  React.useEffect(() => {
+    rescanROMs();
+  }, [config.paths.roms, rescanROMs]);
+
+  React.useEffect(() => {
+    rescanSaves();
+  }, [config.paths.roms, rescanSaves]);
+
+  React.useEffect(() => {
+    rescanPatches();
+  }, [config.paths.roms, rescanPatches]);
+
+  return (
+    <Box
+      flexGrow={1}
+      display={active ? "block" : "none"}
+      overflow="auto"
+      sx={{ px: 1, height: 0 }}
+    >
+      <Box
+        sx={{
+          display: "flex",
+          py: 4,
+          width: "100%",
+          justifyContent: "center",
+        }}
+      >
+        <Stack
+          spacing={2}
+          sx={{
+            width: "500px",
+          }}
+        >
+          <TextField
+            size="small"
+            fullWidth
+            InputProps={{
+              readOnly: true,
+              endAdornment: (
+                <Tooltip title={<Trans i18nKey="settings:browse" />}>
+                  <IconButton
+                    onClick={() => {
+                      const fn =
+                        dialog.showOpenDialogSync(
+                          BrowserWindow.getFocusedWindow()!,
+                          {
+                            defaultPath: config.paths.roms,
+                            properties: ["openDirectory"],
+                          }
+                        ) || [];
+                      saveConfig((config) => ({
+                        ...config,
+                        paths: {
+                          ...config.paths,
+                          roms: fn.length > 0 ? fn[0] : config.paths.roms,
+                        },
+                      }));
+                    }}
+                  >
+                    <FolderOpenOutlinedIcon />
+                  </IconButton>
+                </Tooltip>
+              ),
+            }}
+            value={config.paths.roms}
+            label={<Trans i18nKey="settings:paths.roms" />}
+          />
+          <TextField
+            size="small"
+            fullWidth
+            InputProps={{
+              readOnly: true,
+              endAdornment: (
+                <Tooltip title={<Trans i18nKey="settings:browse" />}>
+                  <IconButton
+                    onClick={() => {
+                      const fn =
+                        dialog.showOpenDialogSync(
+                          BrowserWindow.getFocusedWindow()!,
+                          {
+                            defaultPath: config.paths.saves,
+                            properties: ["openDirectory"],
+                          }
+                        ) || [];
+                      saveConfig((config) => ({
+                        ...config,
+                        paths: {
+                          ...config.paths,
+                          saves: fn.length > 0 ? fn[0] : config.paths.saves,
+                        },
+                      }));
+                    }}
+                  >
+                    <FolderOpenOutlinedIcon />
+                  </IconButton>
+                </Tooltip>
+              ),
+            }}
+            value={config.paths.saves}
+            label={<Trans i18nKey="settings:paths.saves" />}
+          />
+          <TextField
+            size="small"
+            fullWidth
+            InputProps={{
+              readOnly: true,
+              endAdornment: (
+                <Tooltip title={<Trans i18nKey="settings:browse" />}>
+                  <IconButton
+                    onClick={() => {
+                      const fn =
+                        dialog.showOpenDialogSync(
+                          BrowserWindow.getFocusedWindow()!,
+                          {
+                            defaultPath: config.paths.replays,
+                            properties: ["openDirectory"],
+                          }
+                        ) || [];
+                      saveConfig((config) => ({
+                        ...config,
+                        paths: {
+                          ...config.paths,
+                          replays: fn.length > 0 ? fn[0] : config.paths.replays,
+                        },
+                      }));
+                    }}
+                  >
+                    <FolderOpenOutlinedIcon />
+                  </IconButton>
+                </Tooltip>
+              ),
+            }}
+            value={config.paths.replays}
+            label={<Trans i18nKey="settings:paths.replays" />}
+          />
+          <TextField
+            size="small"
+            fullWidth
+            InputProps={{
+              readOnly: true,
+              endAdornment: (
+                <Tooltip title={<Trans i18nKey="settings:browse" />}>
+                  <IconButton
+                    onClick={() => {
+                      const fn =
+                        dialog.showOpenDialogSync(
+                          BrowserWindow.getFocusedWindow()!,
+                          {
+                            defaultPath: config.paths.patches,
+                            properties: ["openDirectory"],
+                          }
+                        ) || [];
+                      saveConfig((config) => ({
+                        ...config,
+                        paths: {
+                          ...config.paths,
+                          patches: fn.length > 0 ? fn[0] : config.paths.patches,
+                        },
+                      }));
+                    }}
+                  >
+                    <FolderOpenOutlinedIcon />
+                  </IconButton>
+                </Tooltip>
+              ),
+            }}
+            value={config.paths.patches}
+            label={<Trans i18nKey="settings:paths.patches" />}
+          />
+        </Stack>
+      </Box>
+    </Box>
+  );
+}
+
 function InputTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { i18n, t } = useTranslation();
@@ -616,10 +803,8 @@ export default function SettingsPane({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:tab.general" />}
             value="general"
           />
-          <Tab
-            label={<Trans i18nKey="settings:tab.controls" />}
-            value="input"
-          />
+          <Tab label={<Trans i18nKey="settings:tab.input" />} value="input" />
+          <Tab label={<Trans i18nKey="settings:tab.paths" />} value="paths" />
           <Tab
             label={<Trans i18nKey="settings:tab.advanced" />}
             value="advanced"
@@ -628,6 +813,7 @@ export default function SettingsPane({ active }: { active: boolean }) {
         </Tabs>
         <GeneralTab active={tab == "general"} />
         <InputTab active={tab == "input"} />
+        <PathsTab active={tab == "paths"} />
         <AdvancedTab active={tab == "advanced"} />
         <AboutTab active={tab == "about"} />
       </Stack>

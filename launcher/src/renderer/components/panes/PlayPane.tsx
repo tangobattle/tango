@@ -116,7 +116,7 @@ function SaveSelector({
             </InputLabel>
             <Select
               label={<Trans i18nKey="play:select-game" />}
-              value={selectedROM}
+              value={selectedROM ?? ""}
               onChange={(e) => {
                 setSelectedROM(e.target.value);
               }}

@@ -243,7 +243,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
       replays.reverse();
       setReplays(replays);
     })();
-  }, [active, patches]);
+  }, [active, patches, config.paths.replays]);
 
   return (
     <Box
