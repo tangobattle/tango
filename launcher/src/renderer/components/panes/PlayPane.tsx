@@ -693,7 +693,7 @@ export default function SavesPane({ active }: { active: boolean }) {
             spacing={1}
             sx={{ mt: 1 }}
           >
-            <FormControl fullWidth size="small" sx={{ width: "250%" }}>
+            <FormControl fullWidth size="small">
               <InputLabel id="game-label">
                 <Trans i18nKey="play:patch-name" />
               </InputLabel>
@@ -929,7 +929,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 })}
               </Select>
             </FormControl>
-            <FormControl fullWidth size="small">
+            <FormControl fullWidth size="small" sx={{ width: "200px" }}>
               <InputLabel id="patch-version-label">
                 <Trans i18nKey="play:patch-version" />
               </InputLabel>
