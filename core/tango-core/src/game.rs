@@ -157,10 +157,15 @@ impl Game {
             core.as_mut().rom_revision(),
         );
 
-        let save_vf = mgba::vfile::VFile::open(
-            &save_path,
-            mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
-        )?;
+        let save_vf = if match_init.is_none() {
+            mgba::vfile::VFile::open(
+                &save_path,
+                mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
+            )?
+        } else {
+            mgba::vfile::VFile::open_memory(&std::fs::read(save_path)?)
+        };
+
         core.as_mut().load_save(save_vf)?;
 
         let hooks = hooks::get(core.as_mut()).unwrap();
