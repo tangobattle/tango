@@ -88,6 +88,7 @@ function SaveSelector({
       const family = KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[k]];
       const romInfo = family.versions[k];
       return [
+        Object.prototype.hasOwnProperty.call(roms, k) ? 0 : 1,
         family.lang == i18n.resolvedLanguage ? 0 : 1,
         family.lang,
         FAMILY_BY_ROM_NAME[k],
