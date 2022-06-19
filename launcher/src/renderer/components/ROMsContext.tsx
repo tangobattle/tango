@@ -53,17 +53,18 @@ export const ROMsProvider = ({
     scanROMs = makeScanROMs(config.paths.roms);
   }
   const [currentROMs, setCurrentROMs] = React.useState(scanROMs());
+  const rescan = React.useCallback(async () => {
+    try {
+      setCurrentROMs(await scan(config.paths.roms));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [config.paths.roms]);
 
   return (
     <Context.Provider
       value={{
-        async rescan() {
-          try {
-            setCurrentROMs(await scan(config.paths.roms));
-          } catch (e) {
-            console.error(e);
-          }
-        },
+        rescan,
         roms: currentROMs,
       }}
     >

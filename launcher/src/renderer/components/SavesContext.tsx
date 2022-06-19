@@ -48,17 +48,18 @@ export const SavesProvider = ({
     scanSaves = makeSaveScans(config.paths.saves);
   }
   const [currentSaves, setCurrentSaves] = React.useState(scanSaves());
+  const rescan = React.useCallback(async () => {
+    try {
+      setCurrentSaves(await scan(config.paths.saves));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [config.paths.saves]);
 
   return (
     <Context.Provider
       value={{
-        async rescan() {
-          try {
-            setCurrentSaves(await scan(config.paths.saves));
-          } catch (e) {
-            console.error(e);
-          }
-        },
+        rescan,
         saves: currentSaves,
       }}
     >
