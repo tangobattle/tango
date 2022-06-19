@@ -20,6 +20,7 @@ import InputAdornment from "@mui/material/InputAdornment";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Modal from "@mui/material/Modal";
+import Slide from "@mui/material/Slide";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -197,6 +198,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
 
   const [infoDialogReplay, setInfoDialogReplay] =
     React.useState<LoadedReplay | null>(null);
+  const [infoDialogOpen, setInfoDialogOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!active) {
@@ -270,6 +272,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                     replay={replays[props.index]}
                     onInfoClick={() => {
                       setInfoDialogReplay(replays[props.index]);
+                      setInfoDialogOpen(true);
                     }}
                     onDumpClick={() => {
                       const replay = replays[props.index];
@@ -491,15 +494,33 @@ export default function ReplaysPane({ active }: { active: boolean }) {
           />
         ) : null
       ) : null}
-      {infoDialogReplay != null ? (
-        <ReplayInfoDialog
-          filename={infoDialogReplay.filename}
-          replayInfo={infoDialogReplay.info}
-          onClose={() => {
+      <Modal
+        open={infoDialogOpen}
+        onClose={(_e, _reason) => {
+          setInfoDialogOpen(false);
+        }}
+      >
+        <Slide
+          in={infoDialogOpen}
+          direction="up"
+          unmountOnExit
+          onExited={() => {
             setInfoDialogReplay(null);
           }}
-        />
-      ) : null}
+        >
+          <Box>
+            {infoDialogReplay != null ? (
+              <ReplayInfoDialog
+                filename={infoDialogReplay.filename}
+                replayInfo={infoDialogReplay.info}
+                onClose={() => {
+                  setInfoDialogOpen(false);
+                }}
+              />
+            ) : null}
+          </Box>
+        </Slide>
+      </Modal>
     </Box>
   );
 }

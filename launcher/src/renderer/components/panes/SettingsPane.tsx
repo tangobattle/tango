@@ -473,7 +473,7 @@ function DirectoryField(
     onPathChange: (path: string) => void;
   }
 ) {
-  const { value, onPathChange } = props;
+  const { value, onPathChange, ...rest } = props;
   const onClick = React.useCallback(() => {
     const fn =
       dialog.showOpenDialogSync(BrowserWindow.getFocusedWindow()!, {
@@ -489,7 +489,8 @@ function DirectoryField(
   return (
     <TextField
       onClick={onClick}
-      {...props}
+      value={value}
+      {...rest}
       InputProps={{
         ...props.InputProps,
         readOnly: true,

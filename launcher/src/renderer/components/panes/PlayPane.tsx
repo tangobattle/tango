@@ -575,104 +575,109 @@ export default function SavesPane({ active }: { active: boolean }) {
                 label={<Trans i18nKey="play:select-save" />}
                 readOnly
                 value={selectedSave != null ? JSON.stringify(selectedSave) : ""}
-                inputComponent={({ value, className }) => (
-                  <Box
-                    sx={{
-                      height: "auto",
-                      minHeight: "1.4375em",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                    }}
-                    className={className}
-                  >
-                    {(() => {
-                      if (value == "") {
-                        return null;
-                      }
+                inputComponent={React.forwardRef(
+                  ({ value, className }, ref) => (
+                    <Box
+                      ref={ref}
+                      sx={{
+                        height: "auto",
+                        minHeight: "1.4375em",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                      }}
+                      className={className}
+                    >
+                      {(() => {
+                        if (value == "") {
+                          return null;
+                        }
 
-                      const selection = JSON.parse(value);
+                        const selection = JSON.parse(value);
 
-                      return (
-                        <>
-                          {opponentSettings?.gameInfo != null &&
-                          !Object.values(patches)
-                            .flatMap((p) =>
-                              Object.values(p.versions).flatMap((v) =>
-                                v.forROMs.some(
-                                  (r) => r.name == selection.romName
+                        return (
+                          <>
+                            {opponentSettings?.gameInfo != null &&
+                            !Object.values(patches)
+                              .flatMap((p) =>
+                                Object.values(p.versions).flatMap((v) =>
+                                  v.forROMs.some(
+                                    (r) => r.name == selection.romName
+                                  )
+                                    ? [v.netplayCompatibility]
+                                    : []
                                 )
-                                  ? [v.netplayCompatibility]
-                                  : []
                               )
-                            )
-                            .concat([FAMILY_BY_ROM_NAME[selection.romName]])
-                            .some(
-                              (nc) =>
-                                nc ==
-                                getNetplayCompatibility(
-                                  opponentSettings!.gameInfo!
-                                )
-                            ) ? (
-                            <Tooltip
-                              title={<Trans i18nKey="play:incompatible-game" />}
-                            >
-                              <WarningIcon
-                                color="warning"
-                                sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
-                                  verticalAlign: "middle",
+                              .concat([FAMILY_BY_ROM_NAME[selection.romName]])
+                              .some(
+                                (nc) =>
+                                  nc ==
+                                  getNetplayCompatibility(
+                                    opponentSettings!.gameInfo!
+                                  )
+                              ) ? (
+                              <Tooltip
+                                title={
+                                  <Trans i18nKey="play:incompatible-game" />
+                                }
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : opponentAvailableGames.length > 0 &&
+                              !opponentAvailableGames.some(
+                                (g) => g.rom == selection.romName
+                              ) ? (
+                              <Tooltip
+                                title={<Trans i18nKey="play:no-remote-copy" />}
+                              >
+                                <WarningIcon
+                                  color="warning"
+                                  sx={{
+                                    fontSize: "1em",
+                                    marginRight: "8px",
+                                    verticalAlign: "middle",
+                                  }}
+                                />
+                              </Tooltip>
+                            ) : null}
+                            {selection.saveName}{" "}
+                            <small>
+                              <Trans
+                                i18nKey="play:rom-name"
+                                values={{
+                                  familyName:
+                                    KNOWN_ROM_FAMILIES[
+                                      FAMILY_BY_ROM_NAME[selection.romName]
+                                    ].title[i18n.resolvedLanguage] ||
+                                    KNOWN_ROM_FAMILIES[
+                                      FAMILY_BY_ROM_NAME[selection.romName]
+                                    ].title[fallbackLng],
+                                  versionName:
+                                    KNOWN_ROM_FAMILIES[
+                                      FAMILY_BY_ROM_NAME[selection.romName]
+                                    ].versions[selection.romName].title[
+                                      i18n.resolvedLanguage
+                                    ] ||
+                                    KNOWN_ROM_FAMILIES[
+                                      FAMILY_BY_ROM_NAME[selection.romName]
+                                    ].versions[selection.romName].title[
+                                      fallbackLng
+                                    ],
                                 }}
                               />
-                            </Tooltip>
-                          ) : opponentAvailableGames.length > 0 &&
-                            !opponentAvailableGames.some(
-                              (g) => g.rom == selection.romName
-                            ) ? (
-                            <Tooltip
-                              title={<Trans i18nKey="play:no-remote-copy" />}
-                            >
-                              <WarningIcon
-                                color="warning"
-                                sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
-                                  verticalAlign: "middle",
-                                }}
-                              />
-                            </Tooltip>
-                          ) : null}
-                          {selection.saveName}{" "}
-                          <small>
-                            <Trans
-                              i18nKey="play:rom-name"
-                              values={{
-                                familyName:
-                                  KNOWN_ROM_FAMILIES[
-                                    FAMILY_BY_ROM_NAME[selection.romName]
-                                  ].title[i18n.resolvedLanguage] ||
-                                  KNOWN_ROM_FAMILIES[
-                                    FAMILY_BY_ROM_NAME[selection.romName]
-                                  ].title[fallbackLng],
-                                versionName:
-                                  KNOWN_ROM_FAMILIES[
-                                    FAMILY_BY_ROM_NAME[selection.romName]
-                                  ].versions[selection.romName].title[
-                                    i18n.resolvedLanguage
-                                  ] ||
-                                  KNOWN_ROM_FAMILIES[
-                                    FAMILY_BY_ROM_NAME[selection.romName]
-                                  ].versions[selection.romName].title[
-                                    fallbackLng
-                                  ],
-                              }}
-                            />
-                          </small>
-                        </>
-                      );
-                    })()}
-                  </Box>
+                            </small>
+                          </>
+                        );
+                      })()}
+                    </Box>
+                  )
                 )}
                 onClick={() => {
                   setSaveSelectorOpen(true);

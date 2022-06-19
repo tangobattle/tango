@@ -7,7 +7,6 @@ import CloseIcon from "@mui/icons-material/Close";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
-import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
@@ -79,68 +78,59 @@ export default function ReplayInfoDialog({
   }, [config, filename, replayInfo]);
 
   return (
-    <Modal
-      open={true}
-      onClose={(_e, _reason) => {
-        onClose();
+    <Stack
+      sx={{
+        width: "100%",
+        height: "100%",
+        bgcolor: "background.paper",
       }}
+      direction="column"
     >
-      <Stack
-        sx={{
-          width: "100%",
-          height: "100%",
-          bgcolor: "background.paper",
-        }}
-        direction="column"
-      >
-        <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "center" }}>
-          <Box>
-            <Typography variant="h6" component="h2" sx={{ px: 1 }}>
-              <Trans
-                i18nKey="replays:replay-title"
-                values={{
-                  formattedDate: dateFormat.format(
-                    new Date(replayInfo.metadata.ts)
-                  ),
-                  nickname: replayInfo.metadata.remoteSide!.nickname,
-                  linkCode: replayInfo.metadata.linkCode,
-                }}
-              />
-              <br />
-              <small>
-                {dateFormat.format(new Date(replayInfo.metadata.ts))}
-              </small>
-            </Typography>
-          </Box>
-          <Tooltip title={<Trans i18nKey="common:close" />}>
-            <IconButton
-              sx={{ ml: "auto" }}
-              onClick={() => {
-                onClose();
+      <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "start" }}>
+        <Box>
+          <Typography variant="h6" component="h2" sx={{ px: 1 }}>
+            <Trans
+              i18nKey="replays:replay-title"
+              values={{
+                formattedDate: dateFormat.format(
+                  new Date(replayInfo.metadata.ts)
+                ),
+                nickname: replayInfo.metadata.remoteSide!.nickname,
+                linkCode: replayInfo.metadata.linkCode,
               }}
-            >
-              <CloseIcon />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-        <Box flexGrow={1} sx={{ display: "flex" }}>
-          {editor != null ? (
-            <SaveViewer editor={editor} />
-          ) : (
-            <Box
-              sx={{
-                display: "flex",
-                width: "100%",
-                height: "100%",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <CircularProgress />
-            </Box>
-          )}
+            />
+            <br />
+            <small>{dateFormat.format(new Date(replayInfo.metadata.ts))}</small>
+          </Typography>
         </Box>
+        <Tooltip title={<Trans i18nKey="common:close" />}>
+          <IconButton
+            sx={{ ml: "auto" }}
+            onClick={() => {
+              onClose();
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </Tooltip>
       </Stack>
-    </Modal>
+      <Box flexGrow={1} sx={{ display: "flex" }}>
+        {editor != null ? (
+          <SaveViewer editor={editor} />
+        ) : (
+          <Box
+            sx={{
+              display: "flex",
+              width: "100%",
+              height: "100%",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <CircularProgress />
+          </Box>
+        )}
+      </Box>
+    </Stack>
   );
 }
