@@ -17,6 +17,7 @@ import Button from "@mui/material/Button";
 import Collapse from "@mui/material/Collapse";
 import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import InputLabel from "@mui/material/InputLabel";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
@@ -216,9 +217,9 @@ function SaveSelector({
             </IconButton>
           </Tooltip>
         </Stack>
-        <Box flexGrow={1} overflow="auto" sx={{ height: 0 }}>
+        <Box display="flex" flexGrow={1} overflow="auto" sx={{ height: 0 }}>
           {selectedROM != null ? (
-            <List disablePadding dense key={selectedROM}>
+            <List disablePadding dense key={selectedROM} sx={{ flexGrow: 1 }}>
               <TransitionGroup>
                 {(groupedSaves[selectedROM] || []).map((saveName) => (
                   <Collapse key={saveName}>
@@ -287,7 +288,22 @@ function SaveSelector({
                 ))}
               </TransitionGroup>
             </List>
-          ) : null}
+          ) : (
+            <Box
+              flexGrow={1}
+              display="flex"
+              justifyContent="center"
+              alignItems="center"
+              sx={{ userSelect: "none", color: "text.disabled" }}
+            >
+              <Stack alignItems="center" spacing={1}>
+                <SportsEsportsOutlinedIcon sx={{ fontSize: "4rem" }} />
+                <Typography variant="h6">
+                  <Trans i18nKey="play:select-a-game" />
+                </Typography>
+              </Stack>
+            </Box>
+          )}
         </Box>
       </Stack>
     </Stack>
@@ -369,20 +385,6 @@ export default function SavesPane({ active }: { active: boolean }) {
   for (const saves of Object.values(groupedSaves)) {
     saves.sort();
   }
-
-  const romNames = sortBy(
-    Object.values(KNOWN_ROM_FAMILIES).flatMap((f) => Object.keys(f.versions)),
-    (k) => {
-      const family = KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[k]];
-      const romInfo = family.versions[k];
-      return [
-        family.lang == i18n.resolvedLanguage ? 0 : 1,
-        family.lang,
-        FAMILY_BY_ROM_NAME[k],
-        romInfo.title[i18n.resolvedLanguage] || romInfo.title[fallbackLng],
-      ];
-    }
-  );
 
   const [patchName_, setPatchName] = React.useState<string | null>(null);
   const patchName =
@@ -492,7 +494,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                 label={<Trans i18nKey="play:select-save" />}
                 readOnly
                 value={selectedSave != null ? JSON.stringify(selectedSave) : ""}
-                inputComponent={({ value }) => (
+                inputComponent={({ value, className }) => (
                   <Box
                     sx={{
                       height: "auto",
@@ -501,6 +503,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                     }}
+                    className={className}
                   >
                     {(() => {
                       if (value == "") {
@@ -594,16 +597,19 @@ export default function SavesPane({ active }: { active: boolean }) {
                   setSaveSelectorOpen(true);
                 }}
                 endAdornment={
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSaveSelectorOpen(true);
-                    }}
-                  >
-                    <Trans i18nKey="play:select-save-button" />
-                  </Button>
+                  <InputAdornment position="end">
+                    <Button
+                      sx={{ marginRight: "-10px" }}
+                      size="small"
+                      variant="contained"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSaveSelectorOpen(true);
+                      }}
+                    >
+                      <Trans i18nKey="play:select-save-button" />
+                    </Button>
+                  </InputAdornment>
                 }
               />
             </FormControl>

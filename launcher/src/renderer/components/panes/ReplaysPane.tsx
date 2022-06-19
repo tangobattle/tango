@@ -16,6 +16,7 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
 import Modal from "@mui/material/Modal";
@@ -445,9 +446,9 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                                 style: { textAlign: "right" },
                               },
                               endAdornment: (
-                                <>
+                                <InputAdornment position="end">
                                   <Trans i18nKey="replays:scale-factor-suffix" />
-                                </>
+                                </InputAdornment>
                               ),
                             }}
                           />

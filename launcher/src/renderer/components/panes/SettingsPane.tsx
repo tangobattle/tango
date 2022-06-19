@@ -12,6 +12,7 @@ import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import InputLabel from "@mui/material/InputLabel";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
@@ -314,9 +315,9 @@ function GeneralTab({ active }: { active: boolean }) {
                 max: 10,
               },
               endAdornment: (
-                <>
+                <InputAdornment position="end">
                   <Trans i18nKey="settings:window-scale-suffix" />
-                </>
+                </InputAdornment>
               ),
             }}
           />
@@ -493,16 +494,19 @@ function DirectoryField(
         ...props.InputProps,
         readOnly: true,
         endAdornment: (
-          <Tooltip title={<Trans i18nKey="settings:browse" />}>
-            <IconButton
-              onClick={(e) => {
-                e.stopPropagation();
-                onClick();
-              }}
-            >
-              <FolderOpenOutlinedIcon />
-            </IconButton>
-          </Tooltip>
+          <InputAdornment position="end">
+            <Tooltip title={<Trans i18nKey="settings:browse" />}>
+              <IconButton
+                edge="end"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick();
+                }}
+              >
+                <FolderOpenOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+          </InputAdornment>
         ),
       }}
     />

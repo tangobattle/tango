@@ -28,6 +28,7 @@ import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import FormGroup from "@mui/material/FormGroup";
 import IconButton from "@mui/material/IconButton";
+import InputAdornment from "@mui/material/InputAdornment";
 import MenuItem from "@mui/material/MenuItem";
 import Modal from "@mui/material/Modal";
 import Select from "@mui/material/Select";
@@ -782,6 +783,7 @@ function GenerateRandomCodeButton({
       }
     >
       <IconButton
+        edge="end"
         onClick={(e) => {
           const code = randomCode();
           clipboard.writeText(code);
@@ -1329,40 +1331,43 @@ export default function BattleStarter({
                 );
               }}
               InputProps={{
-                endAdornment:
-                  pendingStates != null ? (
-                    <Stack
-                      spacing={1}
-                      direction="row"
-                      sx={{ alignItems: "center" }}
-                    >
-                      <Typography sx={{ whiteSpace: "nowrap" }}>
-                        {state == FromCoreMessage_StateEvent_State.RUNNING ? (
-                          <Trans i18nKey="supervisor:status.running" />
-                        ) : state ==
-                          FromCoreMessage_StateEvent_State.WAITING ? (
-                          <Trans i18nKey="supervisor:status.waiting" />
-                        ) : state ==
-                          FromCoreMessage_StateEvent_State.CONNECTING ? (
-                          <Trans i18nKey="supervisor:status.connecting" />
-                        ) : state ==
-                          FromCoreMessage_StateEvent_State.STARTING ? (
-                          pendingStates.own != null ? null : (
-                            <Trans i18nKey="supervisor:status.starting" />
-                          )
-                        ) : (
-                          <Trans i18nKey="supervisor:status.unknown" />
-                        )}
-                      </Typography>
-                      <CircularProgress size="1rem" color="inherit" />
-                    </Stack>
-                  ) : (
-                    <GenerateRandomCodeButton
-                      onClick={(_e, code) => {
-                        setLinkCode(code);
-                      }}
-                    />
-                  ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    {pendingStates != null ? (
+                      <Stack
+                        spacing={1}
+                        direction="row"
+                        sx={{ alignItems: "center" }}
+                      >
+                        <Typography sx={{ whiteSpace: "nowrap" }}>
+                          {state == FromCoreMessage_StateEvent_State.RUNNING ? (
+                            <Trans i18nKey="supervisor:status.running" />
+                          ) : state ==
+                            FromCoreMessage_StateEvent_State.WAITING ? (
+                            <Trans i18nKey="supervisor:status.waiting" />
+                          ) : state ==
+                            FromCoreMessage_StateEvent_State.CONNECTING ? (
+                            <Trans i18nKey="supervisor:status.connecting" />
+                          ) : state ==
+                            FromCoreMessage_StateEvent_State.STARTING ? (
+                            pendingStates.own != null ? null : (
+                              <Trans i18nKey="supervisor:status.starting" />
+                            )
+                          ) : (
+                            <Trans i18nKey="supervisor:status.unknown" />
+                          )}
+                        </Typography>
+                        <CircularProgress size="1rem" color="inherit" />
+                      </Stack>
+                    ) : (
+                      <GenerateRandomCodeButton
+                        onClick={(_e, code) => {
+                          setLinkCode(code);
+                        }}
+                      />
+                    )}
+                  </InputAdornment>
+                ),
               }}
               fullWidth
             />
