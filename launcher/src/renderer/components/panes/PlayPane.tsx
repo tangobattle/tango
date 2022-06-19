@@ -459,20 +459,6 @@ export default function SavesPane({ active }: { active: boolean }) {
       ? selectedSave_
       : null;
 
-  const groupedSaves: { [key: string]: string[] } = {};
-  const saveNames = Object.keys(saves);
-  saveNames.sort();
-  for (const k of saveNames) {
-    for (const romName of saves[k]) {
-      groupedSaves[romName] = groupedSaves[romName] || [];
-      groupedSaves[romName].push(k);
-    }
-  }
-
-  for (const saves of Object.values(groupedSaves)) {
-    saves.sort();
-  }
-
   const [patchName_, setPatchName] = React.useState<string | null>(null);
   const patchName =
     patchName_ != null &&
