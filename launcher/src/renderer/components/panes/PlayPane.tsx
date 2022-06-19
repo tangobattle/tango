@@ -6,7 +6,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 import semver from "semver";
 
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
@@ -21,6 +21,7 @@ import InputLabel from "@mui/material/InputLabel";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
+import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
 import Modal from "@mui/material/Modal";
 import OutlinedInput from "@mui/material/OutlinedInput";
@@ -151,9 +152,9 @@ function SaveSelector({
                     <Tooltip title={<Trans i18nKey="play:incompatible-game" />}>
                       <WarningIcon
                         color="warning"
+                        fontSize="inherit"
                         sx={{
-                          fontSize: "1em",
-                          marginRight: "8px",
+                          mr: 0.5,
                           verticalAlign: "middle",
                         }}
                       />
@@ -163,9 +164,9 @@ function SaveSelector({
                     <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
                       <WarningIcon
                         color="warning"
+                        fontSize="inherit"
                         sx={{
-                          fontSize: "1em",
-                          marginRight: "8px",
+                          mr: 0.5,
                           verticalAlign: "middle",
                         }}
                       />
@@ -220,17 +221,29 @@ function SaveSelector({
         <Box display="flex" flexGrow={1} overflow="auto" sx={{ height: 0 }}>
           {selectedROM != null ? (
             <List disablePadding dense key={selectedROM} sx={{ flexGrow: 1 }}>
-              <ListItemButton
-                color="primary"
-                onClick={() => {
-                  setSelectedROM(null);
-                }}
-              >
-                <ListItemText sx={{ color: "text.secondary" }}>
-                  <ArrowUpwardIcon fontSize="inherit" />{" "}
-                  <Trans i18nKey="play:return-to-games-list" />
-                </ListItemText>
-              </ListItemButton>
+              <ListSubheader disableGutters>
+                <ListItemButton
+                  color="primary"
+                  onClick={() => {
+                    setSelectedROM(null);
+                  }}
+                >
+                  <ListItemText
+                    primaryTypographyProps={{
+                      sx: {
+                        display: "inline-flex",
+                        alignItems: "center",
+                      },
+                    }}
+                    sx={{
+                      color: "text.secondary",
+                    }}
+                  >
+                    <ArrowBackIcon fontSize="inherit" sx={{ mr: 0.5 }} />{" "}
+                    <Trans i18nKey="play:return-to-games-list" />
+                  </ListItemText>
+                </ListItemButton>
+              </ListSubheader>
               <TransitionGroup>
                 {(groupedSaves[selectedROM] || []).map((saveName) => (
                   <Collapse key={saveName}>
@@ -268,9 +281,8 @@ function SaveSelector({
                           >
                             <WarningIcon
                               color="warning"
+                              fontSize="inherit"
                               sx={{
-                                fontSize: "1em",
-                                marginRight: "8px",
                                 verticalAlign: "middle",
                               }}
                             />
@@ -284,9 +296,8 @@ function SaveSelector({
                           >
                             <WarningIcon
                               color="warning"
+                              fontSize="inherit"
                               sx={{
-                                fontSize: "1em",
-                                marginRight: "8px",
                                 verticalAlign: "middle",
                               }}
                             />
@@ -335,9 +346,8 @@ function SaveSelector({
                           >
                             <WarningIcon
                               color="warning"
+                              fontSize="inherit"
                               sx={{
-                                fontSize: "1em",
-                                marginRight: "8px",
                                 verticalAlign: "middle",
                               }}
                             />
@@ -351,9 +361,8 @@ function SaveSelector({
                           >
                             <WarningIcon
                               color="warning"
+                              fontSize="inherit"
                               sx={{
-                                fontSize: "1em",
-                                marginRight: "8px",
                                 verticalAlign: "middle",
                               }}
                             />
@@ -610,9 +619,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                               >
                                 <WarningIcon
                                   color="warning"
+                                  fontSize="inherit"
                                   sx={{
-                                    fontSize: "1em",
-                                    marginRight: "8px",
                                     verticalAlign: "middle",
                                   }}
                                 />
@@ -626,14 +634,13 @@ export default function SavesPane({ active }: { active: boolean }) {
                               >
                                 <WarningIcon
                                   color="warning"
+                                  fontSize="inherit"
                                   sx={{
-                                    fontSize: "1em",
-                                    marginRight: "8px",
                                     verticalAlign: "middle",
                                   }}
                                 />
                               </Tooltip>
-                            ) : null}
+                            ) : null}{" "}
                             {selection.saveName}{" "}
                             <small>
                               <Trans
@@ -723,9 +730,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                           >
                             <WarningIcon
                               color="warning"
+                              fontSize="inherit"
                               sx={{
-                                fontSize: "1em",
-                                marginRight: "8px",
                                 verticalAlign: "middle",
                               }}
                             />
@@ -742,9 +748,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                           >
                             <WarningIcon
                               color="warning"
+                              fontSize="inherit"
                               sx={{
-                                fontSize: "1em",
-                                marginRight: "8px",
                                 verticalAlign: "middle",
                               }}
                             />
@@ -773,9 +778,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                         >
                           <WarningIcon
                             color="warning"
+                            fontSize="inherit"
                             sx={{
-                              fontSize: "1em",
-                              marginRight: "8px",
                               verticalAlign: "middle",
                             }}
                           />
@@ -793,9 +797,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                         >
                           <WarningIcon
                             color="warning"
+                            fontSize="inherit"
                             sx={{
-                              fontSize: "1em",
-                              marginRight: "8px",
                               verticalAlign: "middle",
                             }}
                           />
@@ -827,9 +830,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                     <Tooltip title={<Trans i18nKey="play:incompatible-game" />}>
                       <WarningIcon
                         color="warning"
+                        fontSize="inherit"
                         sx={{
-                          fontSize: "1em",
-                          marginRight: "8px",
                           verticalAlign: "middle",
                         }}
                       />
@@ -844,9 +846,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                     <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
                       <WarningIcon
                         color="warning"
+                        fontSize="inherit"
                         sx={{
-                          fontSize: "1em",
-                          marginRight: "8px",
                           verticalAlign: "middle",
                         }}
                       />
@@ -882,9 +883,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                               >
                                 <WarningIcon
                                   color="warning"
+                                  fontSize="inherit"
                                   sx={{
-                                    fontSize: "1em",
-                                    marginRight: "8px",
                                     verticalAlign: "middle",
                                   }}
                                 />
@@ -902,9 +902,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                               >
                                 <WarningIcon
                                   color="warning"
+                                  fontSize="inherit"
                                   sx={{
-                                    fontSize: "1em",
-                                    marginRight: "8px",
                                     verticalAlign: "middle",
                                   }}
                                 />
@@ -965,9 +964,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                             >
                               <WarningIcon
                                 color="warning"
+                                fontSize="inherit"
                                 sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
                                   verticalAlign: "middle",
                                 }}
                               />
@@ -986,9 +984,8 @@ export default function SavesPane({ active }: { active: boolean }) {
                             >
                               <WarningIcon
                                 color="warning"
+                                fontSize="inherit"
                                 sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
                                   verticalAlign: "middle",
                                 }}
                               />

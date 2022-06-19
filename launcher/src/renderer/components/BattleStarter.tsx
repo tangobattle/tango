@@ -1062,7 +1062,6 @@ export default function BattleStarter({
                         color="success"
                         sx={{
                           fontSize: "1em",
-                          marginLeft: "4px",
                           verticalAlign: "middle",
                         }}
                       />
@@ -1077,13 +1076,12 @@ export default function BattleStarter({
                           values={{ rtt: Math.round(rtt / 1000 / 1000) }}
                         />
                       </small>
-                    ) : null}
+                    ) : null}{" "}
                     {pendingStates?.opponent?.commitment != null ? (
                       <CheckCircleIcon
                         color="success"
                         sx={{
                           fontSize: "1em",
-                          marginLeft: "4px",
                           verticalAlign: "middle",
                         }}
                       />
