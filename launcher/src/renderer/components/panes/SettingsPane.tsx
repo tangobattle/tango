@@ -466,6 +466,49 @@ function AdvancedTab({ active }: { active: boolean }) {
   );
 }
 
+function DirectoryField(
+  props: React.ComponentProps<typeof TextField> & {
+    value: string;
+    onPathChange: (path: string) => void;
+  }
+) {
+  const { value, onPathChange } = props;
+  const onClick = React.useCallback(() => {
+    const fn =
+      dialog.showOpenDialogSync(BrowserWindow.getFocusedWindow()!, {
+        defaultPath: value,
+        properties: ["openDirectory"],
+      }) || [];
+    if (fn.length == 0) {
+      return;
+    }
+    onPathChange(fn[0]);
+  }, [value, onPathChange]);
+
+  return (
+    <TextField
+      onClick={onClick}
+      {...props}
+      InputProps={{
+        ...props.InputProps,
+        readOnly: true,
+        endAdornment: (
+          <Tooltip title={<Trans i18nKey="settings:browse" />}>
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+              }}
+            >
+              <FolderOpenOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+        ),
+      }}
+    />
+  );
+}
+
 function PathsTab({ active }: { active: boolean }) {
   const { config, save: saveConfig } = useConfig();
   const { rescan: rescanPatches } = usePatches();
@@ -478,11 +521,11 @@ function PathsTab({ active }: { active: boolean }) {
 
   React.useEffect(() => {
     rescanSaves();
-  }, [config.paths.roms, rescanSaves]);
+  }, [config.paths.saves, rescanSaves]);
 
   React.useEffect(() => {
     rescanPatches();
-  }, [config.paths.roms, rescanPatches]);
+  }, [config.paths.patches, rescanPatches]);
 
   return (
     <Box
@@ -505,138 +548,62 @@ function PathsTab({ active }: { active: boolean }) {
             width: "500px",
           }}
         >
-          <TextField
+          <DirectoryField
             size="small"
             fullWidth
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <Tooltip title={<Trans i18nKey="settings:browse" />}>
-                  <IconButton
-                    onClick={() => {
-                      const fn =
-                        dialog.showOpenDialogSync(
-                          BrowserWindow.getFocusedWindow()!,
-                          {
-                            defaultPath: config.paths.roms,
-                            properties: ["openDirectory"],
-                          }
-                        ) || [];
-                      saveConfig((config) => ({
-                        ...config,
-                        paths: {
-                          ...config.paths,
-                          roms: fn.length > 0 ? fn[0] : config.paths.roms,
-                        },
-                      }));
-                    }}
-                  >
-                    <FolderOpenOutlinedIcon />
-                  </IconButton>
-                </Tooltip>
-              ),
+            onPathChange={(path) => {
+              saveConfig((config) => ({
+                ...config,
+                paths: {
+                  ...config.paths,
+                  roms: path,
+                },
+              }));
             }}
             value={config.paths.roms}
             label={<Trans i18nKey="settings:paths.roms" />}
           />
-          <TextField
+          <DirectoryField
             size="small"
             fullWidth
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <Tooltip title={<Trans i18nKey="settings:browse" />}>
-                  <IconButton
-                    onClick={() => {
-                      const fn =
-                        dialog.showOpenDialogSync(
-                          BrowserWindow.getFocusedWindow()!,
-                          {
-                            defaultPath: config.paths.saves,
-                            properties: ["openDirectory"],
-                          }
-                        ) || [];
-                      saveConfig((config) => ({
-                        ...config,
-                        paths: {
-                          ...config.paths,
-                          saves: fn.length > 0 ? fn[0] : config.paths.saves,
-                        },
-                      }));
-                    }}
-                  >
-                    <FolderOpenOutlinedIcon />
-                  </IconButton>
-                </Tooltip>
-              ),
+            onPathChange={(path) => {
+              saveConfig((config) => ({
+                ...config,
+                paths: {
+                  ...config.paths,
+                  saves: path,
+                },
+              }));
             }}
             value={config.paths.saves}
             label={<Trans i18nKey="settings:paths.saves" />}
           />
-          <TextField
+          <DirectoryField
             size="small"
             fullWidth
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <Tooltip title={<Trans i18nKey="settings:browse" />}>
-                  <IconButton
-                    onClick={() => {
-                      const fn =
-                        dialog.showOpenDialogSync(
-                          BrowserWindow.getFocusedWindow()!,
-                          {
-                            defaultPath: config.paths.replays,
-                            properties: ["openDirectory"],
-                          }
-                        ) || [];
-                      saveConfig((config) => ({
-                        ...config,
-                        paths: {
-                          ...config.paths,
-                          replays: fn.length > 0 ? fn[0] : config.paths.replays,
-                        },
-                      }));
-                    }}
-                  >
-                    <FolderOpenOutlinedIcon />
-                  </IconButton>
-                </Tooltip>
-              ),
+            onPathChange={(path) => {
+              saveConfig((config) => ({
+                ...config,
+                paths: {
+                  ...config.paths,
+                  replays: path,
+                },
+              }));
             }}
             value={config.paths.replays}
             label={<Trans i18nKey="settings:paths.replays" />}
           />
-          <TextField
+          <DirectoryField
             size="small"
             fullWidth
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <Tooltip title={<Trans i18nKey="settings:browse" />}>
-                  <IconButton
-                    onClick={() => {
-                      const fn =
-                        dialog.showOpenDialogSync(
-                          BrowserWindow.getFocusedWindow()!,
-                          {
-                            defaultPath: config.paths.patches,
-                            properties: ["openDirectory"],
-                          }
-                        ) || [];
-                      saveConfig((config) => ({
-                        ...config,
-                        paths: {
-                          ...config.paths,
-                          patches: fn.length > 0 ? fn[0] : config.paths.patches,
-                        },
-                      }));
-                    }}
-                  >
-                    <FolderOpenOutlinedIcon />
-                  </IconButton>
-                </Tooltip>
-              ),
+            onPathChange={(path) => {
+              saveConfig((config) => ({
+                ...config,
+                paths: {
+                  ...config.paths,
+                  patches: path,
+                },
+              }));
             }}
             value={config.paths.patches}
             label={<Trans i18nKey="settings:paths.patches" />}

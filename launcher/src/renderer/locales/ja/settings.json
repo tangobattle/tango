@@ -9,6 +9,7 @@
     "paths.saves": "セーブ",
     "paths.replays": "リプレイ",
     "paths.patches": "パッチ",
+    "browse": "参照",
     "input-key": "キー：{{key}}",
     "input-button": "ボタン：{{button}}",
     "input-axis": "軸：{{axis}}",

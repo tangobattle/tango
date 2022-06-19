@@ -9,6 +9,7 @@
     "paths.saves": "游戏存档",
     "paths.replays": "回放",
     "paths.patches": "补丁",
+    "browse": "浏览",
     "input-key": "键：{{key}}",
     "input-button": "按钮：{{button}}",
     "input-axis": "轴：{{axis}}",

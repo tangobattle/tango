@@ -9,6 +9,7 @@
     "paths.saves": "Saves",
     "paths.replays": "Replays",
     "paths.patches": "Patches",
+    "browse": "Browse",
     "input-key": "Key: {{key}}",
     "input-button": "Button: {{button}}",
     "input-axis": "Axis: {{axis}}",
