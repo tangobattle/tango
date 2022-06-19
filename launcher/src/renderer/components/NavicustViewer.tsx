@@ -83,7 +83,6 @@ function placementsToArray2D(
 }
 
 const borderWidth = 4;
-const commandLine = 3;
 const borderColor = "#29314a";
 const emptyColor = "#105284";
 
@@ -103,6 +102,8 @@ function NavicustGrid({
   ncps,
   placements,
   romName,
+  commandLine,
+  hasOutOfBounds,
 }: {
   ncps: (NavicustProgram | null)[];
   placements: {
@@ -113,6 +114,8 @@ function NavicustGrid({
     col: number;
     compressed: boolean;
   }[];
+  commandLine: number;
+  hasOutOfBounds: boolean;
   romName: string;
 }) {
   const grid = React.useMemo(() => {
@@ -273,23 +276,26 @@ function NavicustGrid({
                           ]
                         : null;
 
-                    const background =
+                    // prettier-ignore
+                    const isCorner = hasOutOfBounds && (
                       (i == 0 && j == 0) ||
                       (i == 0 && j == row.length - 1) ||
                       (i == grid.length - 1 && j == 0) ||
-                      (i == grid.length - 1 && j == row.length - 1)
-                        ? "transparent"
-                        : ncpColor != null
-                        ? ncp!.isSolid
-                          ? ncpColor.color
-                          : `conic-gradient(
-                                        from 90deg at ${borderWidth}px ${borderWidth}px,
-                                        ${ncpColor.color} 90deg,
-                                        ${ncpColor.plusColor} 0
-                                    )
-                                    calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
-                                    calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
-                        : emptyColor;
+                      (i == grid.length - 1 && j == row.length - 1));
+
+                    const background = isCorner
+                      ? "transparent"
+                      : ncpColor != null
+                      ? ncp!.isSolid
+                        ? ncpColor.color
+                        : `conic-gradient(
+                                          from 90deg at ${borderWidth}px ${borderWidth}px,
+                                          ${ncpColor.color} 90deg,
+                                          ${ncpColor.plusColor} 0
+                                      )
+                                      calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
+                                      calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
+                      : emptyColor;
 
                     const softBorders: string[] = [];
                     const hardBorders: string[] = [];
@@ -357,10 +363,11 @@ function NavicustGrid({
                           height: `${borderWidth * 9}px`,
                           padding: 0,
                           opacity:
-                            i == 0 ||
-                            i == grid.length - 1 ||
-                            j == 0 ||
-                            j == row.length - 1
+                            hasOutOfBounds &&
+                            (i == 0 ||
+                              i == grid.length - 1 ||
+                              j == 0 ||
+                              j == row.length - 1)
                               ? 0.25
                               : 1.0,
                         }}
@@ -470,7 +477,13 @@ export default function NavicustViewer({
             justifyContent: "center",
           }}
         >
-          <NavicustGrid ncps={ncps} placements={placements} romName={romName} />
+          <NavicustGrid
+            ncps={ncps}
+            placements={placements}
+            commandLine={editor.getCommandLine()}
+            hasOutOfBounds={editor.hasOutOfBounds()}
+            romName={romName}
+          />
         </Box>
         <Table
           size="small"

@@ -229,6 +229,14 @@ class NavicustEditor {
     return NCPS;
   }
 
+  getCommandLine() {
+    return 3;
+  }
+
+  hasOutOfBounds() {
+    return true;
+  }
+
   getNavicustBlock(i: number) {
     const offset = this.editor.getNaviCustOffset() + i * 8;
     const blockConstant = this.editor.dv.getUint8(offset);

@@ -85,6 +85,8 @@ export interface FolderEditor {
 }
 
 export interface NavicustEditor {
+  getCommandLine(): number;
+  hasOutOfBounds(): boolean;
   getNavicustProgramData(): (NavicustProgram | null)[];
   getNavicustBlock(i: number): {
     id: number;
