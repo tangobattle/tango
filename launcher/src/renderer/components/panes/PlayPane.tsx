@@ -133,6 +133,44 @@ function SaveSelector({
                   value={romName}
                   selected={romName === selectedROM}
                 >
+                  {opponentSettings?.gameInfo != null &&
+                  !Object.values(patches)
+                    .flatMap((p) =>
+                      Object.values(p.versions).flatMap((v) =>
+                        v.forROMs.some((r) => r.name == romName)
+                          ? [v.netplayCompatibility]
+                          : []
+                      )
+                    )
+                    .concat([FAMILY_BY_ROM_NAME[romName]])
+                    .some(
+                      (nc) =>
+                        nc ==
+                        getNetplayCompatibility(opponentSettings!.gameInfo!)
+                    ) ? (
+                    <Tooltip title={<Trans i18nKey="play:incompatible-game" />}>
+                      <WarningIcon
+                        color="warning"
+                        sx={{
+                          fontSize: "1em",
+                          marginRight: "8px",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    </Tooltip>
+                  ) : opponentAvailableGames.length > 0 &&
+                    !opponentAvailableGames.some((g) => g.rom == romName) ? (
+                    <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
+                      <WarningIcon
+                        color="warning"
+                        sx={{
+                          fontSize: "1em",
+                          marginRight: "8px",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    </Tooltip>
+                  ) : null}{" "}
                   <Trans
                     i18nKey="play:rom-name"
                     values={{

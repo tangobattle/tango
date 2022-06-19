@@ -11,7 +11,7 @@
       MEGAMAN6_GXXBR5E: {
         title: {
           en: "Cybeast Gregar",
-          ja: "電脳獣グレイガ",
+          ja: "電脳獣 グレイガ",
           "zh-Hans": "电脑兽麒麟",
         },
         order: 0,
@@ -22,7 +22,7 @@
       MEGAMAN6_FXXBR6E: {
         title: {
           en: "Cybeast Falzar",
-          ja: "電脳獣ファルザー",
+          ja: "電脳獣 ファルザー",
           "zh-Hans": "电脑兽凤凰",
         },
         order: 1,
@@ -44,7 +44,7 @@
       ROCKEXE6_GXXBR5J: {
         title: {
           en: "Dennoujuu Glaga",
-          ja: "電脳獣グレイガ",
+          ja: "電脳獣 グレイガ",
           "zh-Hans": "电脑兽麒麟",
         },
         order: 0,
@@ -55,7 +55,7 @@
       ROCKEXE6_RXXBR6J: {
         title: {
           en: "Dennoujuu Falzer",
-          ja: "電脳獣ファルザー",
+          ja: "電脳獣 ファルザー",
           "zh-Hans": "电脑兽凤凰",
         },
         order: 1,
