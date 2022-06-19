@@ -48,5 +48,6 @@
   "save-viewer-unsupported": "Save viewer is unsupported for this game",
   "rom-name": "{{familyName}}: {{versionName}}",
   "select-save-button": "Select",
-  "select-a-game": "Select a game"
+  "select-a-game": "Select a game",
+  "return-to-games-list": "Return to games list"
 }

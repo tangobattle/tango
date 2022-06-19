@@ -6,6 +6,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 import semver from "semver";
 
+import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import CloseIcon from "@mui/icons-material/Close";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -220,6 +221,17 @@ function SaveSelector({
         <Box display="flex" flexGrow={1} overflow="auto" sx={{ height: 0 }}>
           {selectedROM != null ? (
             <List disablePadding dense key={selectedROM} sx={{ flexGrow: 1 }}>
+              <ListItemButton
+                color="primary"
+                onClick={() => {
+                  setSelectedROM(null);
+                }}
+              >
+                <ListItemText sx={{ color: "text.secondary" }}>
+                  <ArrowUpwardIcon fontSize="inherit" />{" "}
+                  <Trans i18nKey="play:return-to-games-list" />
+                </ListItemText>
+              </ListItemButton>
               <TransitionGroup>
                 {(groupedSaves[selectedROM] || []).map((saveName) => (
                   <Collapse key={saveName}>
