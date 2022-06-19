@@ -8,8 +8,6 @@ import semver from "semver";
 
 import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward";
 import CloseIcon from "@mui/icons-material/Close";
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import WarningIcon from "@mui/icons-material/Warning";
@@ -469,7 +467,11 @@ export default function SavesPane({ active }: { active: boolean }) {
   const [patchName_, setPatchName] = React.useState<string | null>(null);
   const patchName =
     patchName_ != null &&
-    Object.prototype.hasOwnProperty.call(patches, patchName_)
+    Object.prototype.hasOwnProperty.call(patches, patchName_) &&
+    selectedSave != null &&
+    Object.values(patches[patchName_].versions).some((p) =>
+      p.forROMs.some((r) => r.name == selectedSave.romName)
+    )
       ? patchName_
       : null;
 
