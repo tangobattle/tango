@@ -10,6 +10,7 @@
     "paths.replays": "リプレイ",
     "paths.patches": "パッチ",
     "browse": "参照",
+    "open-directory": "ディレクトリを開く",
     "input-key": "キー：{{key}}",
     "input-button": "ボタン：{{button}}",
     "input-axis": "軸：{{axis}}",

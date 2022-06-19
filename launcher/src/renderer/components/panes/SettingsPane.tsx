@@ -6,6 +6,7 @@ import { app, BrowserWindow, dialog, shell } from "@electron/remote";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
+import OpenInNewOutlinedIcon from "@mui/icons-material/OpenInNewOutlined";
 import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -505,6 +506,17 @@ function DirectoryField(
                 }}
               >
                 <FolderOpenOutlinedIcon />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={<Trans i18nKey="settings:open-directory" />}>
+              <IconButton
+                edge="end"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  shell.openPath(value);
+                }}
+              >
+                <OpenInNewOutlinedIcon />
               </IconButton>
             </Tooltip>
           </InputAdornment>

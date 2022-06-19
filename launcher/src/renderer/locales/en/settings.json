@@ -10,6 +10,7 @@
     "paths.replays": "Replays",
     "paths.patches": "Patches",
     "browse": "Browse",
+    "open-directory": "Open directory",
     "input-key": "Key: {{key}}",
     "input-button": "Button: {{button}}",
     "input-axis": "Axis: {{axis}}",

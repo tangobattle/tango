@@ -10,6 +10,7 @@
     "paths.replays": "回放",
     "paths.patches": "补丁",
     "browse": "浏览",
+    "open-directory": "打开目录",
     "input-key": "键：{{key}}",
     "input-button": "按钮：{{button}}",
     "input-axis": "轴：{{axis}}",
