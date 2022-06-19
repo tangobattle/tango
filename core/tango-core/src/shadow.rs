@@ -193,10 +193,7 @@ impl Shadow {
             core.as_mut().rom_revision(),
         );
 
-        let save_vf = mgba::vfile::VFile::open(
-            save_path,
-            mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
-        )?;
+        let save_vf = mgba::vfile::VFile::open_memory(&std::fs::read(save_path)?);
         core.as_mut().load_save(save_vf)?;
 
         let state = State::new(match_type, is_offerer, rng, battle_result);

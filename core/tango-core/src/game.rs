@@ -163,6 +163,7 @@ impl Game {
                 mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
             )?
         } else {
+            log::info!("in pvp mode, save file will not be written back to disk");
             mgba::vfile::VFile::open_memory(&std::fs::read(save_path)?)
         };
 
