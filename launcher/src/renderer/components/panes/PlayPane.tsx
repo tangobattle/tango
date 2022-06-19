@@ -289,20 +289,88 @@ function SaveSelector({
               </TransitionGroup>
             </List>
           ) : (
-            <Box
-              flexGrow={1}
-              display="flex"
-              justifyContent="center"
-              alignItems="center"
-              sx={{ userSelect: "none", color: "text.disabled" }}
-            >
-              <Stack alignItems="center" spacing={1}>
-                <SportsEsportsOutlinedIcon sx={{ fontSize: "4rem" }} />
-                <Typography variant="h6">
-                  <Trans i18nKey="play:select-a-game" />
-                </Typography>
-              </Stack>
-            </Box>
+            <List disablePadding dense key={selectedROM} sx={{ flexGrow: 1 }}>
+              <TransitionGroup>
+                {romNames.map((romName) => (
+                  <Collapse key={romName}>
+                    <ListItemButton
+                      disabled={
+                        !Object.prototype.hasOwnProperty.call(roms, romName)
+                      }
+                      onClick={() => {
+                        setSelectedROM(romName);
+                      }}
+                    >
+                      <ListItemText>
+                        {opponentSettings?.gameInfo != null &&
+                        !Object.values(patches)
+                          .flatMap((p) =>
+                            Object.values(p.versions).flatMap((v) =>
+                              v.forROMs.some((r) => r.name == romName)
+                                ? [v.netplayCompatibility]
+                                : []
+                            )
+                          )
+                          .concat([FAMILY_BY_ROM_NAME[romName]])
+                          .some(
+                            (nc) =>
+                              nc ==
+                              getNetplayCompatibility(
+                                opponentSettings!.gameInfo!
+                              )
+                          ) ? (
+                          <Tooltip
+                            title={<Trans i18nKey="play:incompatible-game" />}
+                          >
+                            <WarningIcon
+                              color="warning"
+                              sx={{
+                                fontSize: "1em",
+                                marginRight: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            />
+                          </Tooltip>
+                        ) : opponentAvailableGames.length > 0 &&
+                          !opponentAvailableGames.some(
+                            (g) => g.rom == romName
+                          ) ? (
+                          <Tooltip
+                            title={<Trans i18nKey="play:no-remote-copy" />}
+                          >
+                            <WarningIcon
+                              color="warning"
+                              sx={{
+                                fontSize: "1em",
+                                marginRight: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            />
+                          </Tooltip>
+                        ) : null}{" "}
+                        <Trans
+                          i18nKey="play:rom-name"
+                          values={{
+                            familyName:
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .title[i18n.resolvedLanguage] ||
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .title[fallbackLng],
+                            versionName:
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .versions[romName].title[
+                                i18n.resolvedLanguage
+                              ] ||
+                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                                .versions[romName].title[fallbackLng],
+                          }}
+                        />
+                      </ListItemText>
+                    </ListItemButton>
+                  </Collapse>
+                ))}
+              </TransitionGroup>
+            </List>
           )}
         </Box>
       </Stack>
