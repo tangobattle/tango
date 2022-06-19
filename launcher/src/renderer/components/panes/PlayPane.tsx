@@ -3,9 +3,11 @@ import { sortBy } from "lodash-es";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { TransitionGroup } from "react-transition-group";
 import semver from "semver";
 
 import { app, shell } from "@electron/remote";
+import CloseIcon from "@mui/icons-material/Close";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
@@ -17,15 +19,19 @@ import Collapse from "@mui/material/Collapse";
 import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
 import InputLabel from "@mui/material/InputLabel";
+import List from "@mui/material/List";
+import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import ListSubheader from "@mui/material/ListSubheader";
 import MenuItem from "@mui/material/MenuItem";
+import Modal from "@mui/material/Modal";
 import Select from "@mui/material/Select";
+import Slide from "@mui/material/Slide";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { getBasePath, getSavesPath } from "../../../paths";
+import { getSavesPath } from "../../../paths";
 import { SetSettings } from "../../../protos/generated/lobby";
 import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../../rom";
 import { Editor, editorClassForGameFamily } from "../../../saveedit";
@@ -35,6 +41,221 @@ import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
 import { useSaves } from "../SavesContext";
 import SaveViewer from "../SaveViewer";
+
+function SaveSelector({
+  initialSelection,
+  opponentSettings,
+  onSelect,
+  onClose,
+}: {
+  initialSelection: { romName: string; saveName: string } | null;
+  opponentSettings: SetSettings | null;
+  onSelect: (v: { romName: string; saveName: string } | null) => void;
+  onClose: () => void;
+}) {
+  const { i18n } = useTranslation();
+
+  const getNetplayCompatibility = useGetNetplayCompatibility();
+  const opponentAvailableGames =
+    opponentSettings != null ? opponentSettings.availableGames : [];
+
+  const { patches, rescan: rescanPatches } = usePatches();
+  const { saves, rescan: rescanSaves } = useSaves();
+  const { roms, rescan: rescanROMs } = useROMs();
+
+  const [selectedROM, setSelectedROM] = React.useState<string | null>(
+    initialSelection != null ? initialSelection.romName : null
+  );
+
+  const groupedSaves: { [key: string]: string[] } = {};
+  const saveNames = Object.keys(saves);
+  saveNames.sort();
+  for (const k of saveNames) {
+    for (const romName of saves[k]) {
+      groupedSaves[romName] = groupedSaves[romName] || [];
+      groupedSaves[romName].push(k);
+    }
+  }
+
+  for (const saves of Object.values(groupedSaves)) {
+    saves.sort();
+  }
+
+  const romNames = sortBy(
+    Object.values(KNOWN_ROM_FAMILIES).flatMap((f) => Object.keys(f.versions)),
+    (k) => {
+      const family = KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[k]];
+      const romInfo = family.versions[k];
+      return [
+        family.lang == i18n.resolvedLanguage ? 0 : 1,
+        family.lang,
+        FAMILY_BY_ROM_NAME[k],
+        romInfo.order,
+      ];
+    }
+  );
+
+  return (
+    <Stack
+      sx={{
+        width: "100%",
+        height: "100%",
+        bgcolor: "background.paper",
+      }}
+      direction="column"
+    >
+      <Stack sx={{ flexGrow: 1 }}>
+        <Stack
+          spacing={1}
+          flexGrow={0}
+          flexShrink={0}
+          direction="row"
+          sx={{ p: 1 }}
+        >
+          <FormControl fullWidth size="small">
+            <InputLabel id="select-game-label">
+              <Trans i18nKey="play:select-game" />
+            </InputLabel>
+            <Select
+              label={<Trans i18nKey="play:select-game" />}
+              value={selectedROM}
+              onChange={(e) => {
+                setSelectedROM(e.target.value);
+              }}
+            >
+              {romNames.map((romName) => (
+                <MenuItem
+                  disabled={
+                    !Object.prototype.hasOwnProperty.call(roms, romName)
+                  }
+                  key={romName}
+                  sx={{ userSelect: "none" }}
+                  value={romName}
+                  selected={romName === selectedROM}
+                >
+                  <Trans
+                    i18nKey="play:rom-name"
+                    values={{
+                      familyName:
+                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].title[
+                          i18n.resolvedLanguage
+                        ] ||
+                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].title[
+                          fallbackLng
+                        ],
+                      versionName:
+                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                          .versions[romName].title[i18n.resolvedLanguage] ||
+                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
+                          .versions[romName].title[fallbackLng],
+                    }}
+                  />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <Tooltip title={<Trans i18nKey="play:rescan" />}>
+            <IconButton
+              onClick={() => {
+                (async () => {
+                  await Promise.allSettled([
+                    rescanROMs(),
+                    rescanSaves(),
+                    rescanPatches(),
+                  ]);
+                })();
+              }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title={<Trans i18nKey="common:close" />}>
+            <IconButton
+              onClick={() => {
+                onClose();
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+        <Box flexGrow={1} overflow="auto" sx={{ height: 0 }}>
+          {selectedROM != null ? (
+            <List disablePadding dense key={selectedROM}>
+              <TransitionGroup>
+                {(groupedSaves[selectedROM] || []).map((saveName) => (
+                  <Collapse key={saveName}>
+                    <ListItemButton
+                      selected={
+                        initialSelection != null
+                          ? selectedROM == initialSelection.romName &&
+                            saveName == initialSelection.saveName
+                          : false
+                      }
+                      onClick={() => {
+                        onSelect({ romName: selectedROM, saveName });
+                      }}
+                    >
+                      <ListItemText>
+                        {opponentSettings?.gameInfo != null &&
+                        !Object.values(patches)
+                          .flatMap((p) =>
+                            Object.values(p.versions).flatMap((v) =>
+                              v.forROMs.some((r) => r.name == selectedROM)
+                                ? [v.netplayCompatibility]
+                                : []
+                            )
+                          )
+                          .concat([FAMILY_BY_ROM_NAME[selectedROM]])
+                          .some(
+                            (nc) =>
+                              nc ==
+                              getNetplayCompatibility(
+                                opponentSettings!.gameInfo!
+                              )
+                          ) ? (
+                          <Tooltip
+                            title={<Trans i18nKey="play:incompatible-game" />}
+                          >
+                            <WarningIcon
+                              color="warning"
+                              sx={{
+                                fontSize: "1em",
+                                marginRight: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            />
+                          </Tooltip>
+                        ) : opponentAvailableGames.length > 0 &&
+                          !opponentAvailableGames.some(
+                            (g) => g.rom == selectedROM
+                          ) ? (
+                          <Tooltip
+                            title={<Trans i18nKey="play:no-remote-copy" />}
+                          >
+                            <WarningIcon
+                              color="warning"
+                              sx={{
+                                fontSize: "1em",
+                                marginRight: "8px",
+                                verticalAlign: "middle",
+                              }}
+                            />
+                          </Tooltip>
+                        ) : null}{" "}
+                        {saveName}
+                      </ListItemText>
+                    </ListItemButton>
+                  </Collapse>
+                ))}
+              </TransitionGroup>
+            </List>
+          ) : null}
+        </Box>
+      </Stack>
+    </Stack>
+  );
+}
 
 function SaveViewerWrapper({
   filename,
@@ -70,11 +291,12 @@ function SaveViewerWrapper({
 }
 
 export default function SavesPane({ active }: { active: boolean }) {
-  const { saves, rescan: rescanSaves } = useSaves();
-  const { patches, rescan: rescanPatches } = usePatches();
-  const { roms, rescan: rescanROMs } = useROMs();
+  const { saves } = useSaves();
+  const { patches } = usePatches();
+  const { roms } = useROMs();
   const { i18n } = useTranslation();
 
+  const [saveSelectorOpen, setSaveSelectorOpen] = React.useState(false);
   const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
   const [battleReady, setBattleReady] = React.useState(false);
 
@@ -106,13 +328,19 @@ export default function SavesPane({ active }: { active: boolean }) {
     }
   }
 
+  for (const saves of Object.values(groupedSaves)) {
+    saves.sort();
+  }
+
   const romNames = sortBy(
     Object.values(KNOWN_ROM_FAMILIES).flatMap((f) => Object.keys(f.versions)),
     (k) => {
       const family = KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[k]];
       const romInfo = family.versions[k];
       return [
-        family.title[i18n.resolvedLanguage] || family.title[fallbackLng],
+        family.lang == i18n.resolvedLanguage ? 0 : 1,
+        family.lang,
+        FAMILY_BY_ROM_NAME[k],
         romInfo.title[i18n.resolvedLanguage] || romInfo.title[fallbackLng],
       ];
     }
@@ -194,6 +422,30 @@ export default function SavesPane({ active }: { active: boolean }) {
                 )}
               </IconButton>
             </Tooltip>
+
+            <Modal
+              open={saveSelectorOpen}
+              onClose={(_e, _reason) => {
+                setSaveSelectorOpen(false);
+              }}
+            >
+              <Slide in={saveSelectorOpen} direction="up" unmountOnExit>
+                <Box>
+                  <SaveSelector
+                    initialSelection={selectedSave}
+                    opponentSettings={opponentSettings}
+                    onClose={() => {
+                      setSaveSelectorOpen(false);
+                    }}
+                    onSelect={(selected) => {
+                      setSelectedSave(selected);
+                      setSaveSelectorOpen(false);
+                    }}
+                  />
+                </Box>
+              </Slide>
+            </Modal>
+
             <FormControl fullWidth size="small">
               <InputLabel id="select-save-label">
                 <Trans i18nKey="play:select-save" />
@@ -281,6 +533,10 @@ export default function SavesPane({ active }: { active: boolean }) {
                       </small>
                     </>
                   );
+                }}
+                onOpen={(e) => {
+                  setSaveSelectorOpen(true);
+                  return false;
                 }}
                 onChange={(e) => {
                   const v = JSON.parse(e.target.value);
@@ -393,36 +649,6 @@ export default function SavesPane({ active }: { active: boolean }) {
                 })}
               </Select>
             </FormControl>
-            <Tooltip title={<Trans i18nKey="play:open-dir" />}>
-              <IconButton
-                onClick={() => {
-                  if (selectedSave == null) {
-                    shell.openPath(getBasePath(app));
-                  } else {
-                    shell.showItemInFolder(
-                      path.join(getSavesPath(app), selectedSave.saveName)
-                    );
-                  }
-                }}
-              >
-                <FolderOpenIcon />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={<Trans i18nKey="play:rescan" />}>
-              <IconButton
-                onClick={() => {
-                  (async () => {
-                    await Promise.allSettled([
-                      rescanROMs(),
-                      rescanPatches(),
-                      rescanSaves(),
-                    ]);
-                  })();
-                }}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </Tooltip>
           </Stack>
           <Collapse in={patchOptionsOpen}>
             <Stack

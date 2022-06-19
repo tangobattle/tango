@@ -81,6 +81,7 @@ function SetupAppBody() {
       sx={{
         width: "100%",
         height: "100%",
+        overflow: "auto",
       }}
     >
       <Box sx={{ width: "100%", textAlign: "right", px: 1, py: 1 }}>

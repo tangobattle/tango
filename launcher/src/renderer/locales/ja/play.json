@@ -14,6 +14,7 @@
   "match-type.triple": "トリプル",
   "rescan": "再スキャン",
   "select-save": "セーブファイル",
+  "select-game": "ゲーム",
   "no-save-selected": "セーブファイルが選択されていません",
   "tab.navicust": "ナビカス",
   "tab.folder": "フォルダー",

@@ -5,26 +5,29 @@
       ja: "ロックマンエグゼ6（英語版）",
       "zh-Hans": "洛克人EXE6（英文版）",
     },
+    lang: "en",
 
     versions: {
-      MEGAMAN6_FXXBR6E: {
-        title: {
-          en: "Cybeast Falzar",
-          ja: "電脳獣ファルザー",
-          "zh-Hans": "电脑兽凤凰",
-        },
-        revisions: {
-          "0": { crc32: 0xdee6f2a9 },
-        },
-      },
       MEGAMAN6_GXXBR5E: {
         title: {
           en: "Cybeast Gregar",
           ja: "電脳獣グレイガ",
           "zh-Hans": "电脑兽麒麟",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0x79452182 },
+        },
+      },
+      MEGAMAN6_FXXBR6E: {
+        title: {
+          en: "Cybeast Falzar",
+          ja: "電脳獣ファルザー",
+          "zh-Hans": "电脑兽凤凰",
+        },
+        order: 1,
+        revisions: {
+          "0": { crc32: 0xdee6f2a9 },
         },
       },
     },
@@ -35,26 +38,29 @@
       ja: "ロックマンエグゼ6",
       "zh-Hans": "洛克人EXE6（日文版）",
     },
+    lang: "ja",
 
     versions: {
-      ROCKEXE6_RXXBR6J: {
-        title: {
-          en: "Dennoujuu Falzer",
-          ja: "電脳獣ファルザー",
-          "zh-Hans": "电脑兽凤凰",
-        },
-        revisions: {
-          "0": { crc32: 0x2dfb603e },
-        },
-      },
       ROCKEXE6_GXXBR5J: {
         title: {
           en: "Dennoujuu Glaga",
           ja: "電脳獣グレイガ",
           "zh-Hans": "电脑兽麒麟",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0x6285918a },
+        },
+      },
+      ROCKEXE6_RXXBR6J: {
+        title: {
+          en: "Dennoujuu Falzer",
+          ja: "電脳獣ファルザー",
+          "zh-Hans": "电脑兽凤凰",
+        },
+        order: 1,
+        revisions: {
+          "0": { crc32: 0x2dfb603e },
         },
       },
     },
@@ -66,6 +72,7 @@
       ja: "ロックマンエグゼ5（英語版）",
       "zh-Hans": "洛克人EXE5（英文版）",
     },
+    lang: "en",
 
     versions: {
       MEGAMAN5_TP_BRBE: {
@@ -74,6 +81,7 @@
           ja: "チーム オブ ブルース",
           "zh-Hans": "布鲁斯小队",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0xa73e83a4 },
         },
@@ -84,6 +92,7 @@
           ja: "チーム オブ カーネル",
           "zh-Hans": "卡尼路小队",
         },
+        order: 1,
         revisions: {
           "0": { crc32: 0xa552f683 },
         },
@@ -96,6 +105,7 @@
       ja: "ロックマンエグゼ5",
       "zh-Hans": "洛克人EXE5（日文版）",
     },
+    lang: "ja",
 
     versions: {
       ROCKEXE5_TOBBRBJ: {
@@ -104,6 +114,7 @@
           ja: "チーム オブ ブルース",
           "zh-Hans": "布鲁斯小队",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0xc73f23c0 },
         },
@@ -114,6 +125,7 @@
           ja: "チーム オブ カーネル",
           "zh-Hans": "卡尼路小队",
         },
+        order: 1,
         revisions: {
           "0": { crc32: 0x16842635 },
         },
@@ -127,26 +139,29 @@
       ja: "ロックマンエグゼ4（英語版）",
       "zh-Hans": "洛克人EXE4（英文版）",
     },
+    lang: "en",
 
     versions: {
-      MEGAMANBN4BMB4BE: {
-        title: {
-          en: "Blue Moon",
-          ja: "トーナメント ブルームーン",
-          "zh-Hans": "蓝月锦标赛",
-        },
-        revisions: {
-          "0": { crc32: 0x758a46e9 },
-        },
-      },
       MEGAMANBN4RSB4WE: {
         title: {
           en: "Red Sun",
           ja: "トーナメント レッドサン",
           "zh-Hans": "红日锦标赛",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0x2120695c },
+        },
+      },
+      MEGAMANBN4BMB4BE: {
+        title: {
+          en: "Blue Moon",
+          ja: "トーナメント ブルームーン",
+          "zh-Hans": "蓝月锦标赛",
+        },
+        order: 1,
+        revisions: {
+          "0": { crc32: 0x758a46e9 },
         },
       },
     },
@@ -157,27 +172,30 @@
       ja: "ロックマンエグゼ4",
       "zh-Hans": "洛克人EXE4（日文版）",
     },
+    lang: "ja",
 
     versions: {
-      ROCK_EXE4_BMB4BJ: {
-        title: {
-          en: "Tournament Blue Moon",
-          ja: "トーナメント ブルームーン",
-          "zh-Hans": "蓝月锦标赛",
-        },
-        revisions: {
-          "0": { crc32: 0xed7c5b50 },
-        },
-      },
       ROCK_EXE4_RSB4WJ: {
         title: {
           en: "Tournament Red Sun",
           ja: "トーナメント レッドサン",
           "zh-Hans": "红日锦标赛",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0x6a51907d },
           "1": { crc32: 0xcf0e8b05 },
+        },
+      },
+      ROCK_EXE4_BMB4BJ: {
+        title: {
+          en: "Tournament Blue Moon",
+          ja: "トーナメント ブルームーン",
+          "zh-Hans": "蓝月锦标赛",
+        },
+        order: 1,
+        revisions: {
+          "0": { crc32: 0xed7c5b50 },
         },
       },
     },
@@ -189,6 +207,7 @@
       ja: "ロックマンエグゼ3（英語版）",
       "zh-Hans": "洛克人EXE3（英文版）",
     },
+    lang: "en",
 
     versions: {
       MEGA_EXE3_WHA6BE: {
@@ -197,6 +216,7 @@
           ja: "WHITE",
           "zh-Hans": "白",
         },
+        order: 0,
         revisions: {
           "0": { crc32: 0x0be4410a },
         },
@@ -207,6 +227,7 @@
           ja: "BLACK",
           "zh-Hans": "BLX",
         },
+        order: 1,
         revisions: {
           "0": { crc32: 0xc0c780f9 },
         },
@@ -215,10 +236,11 @@
   },
   exe3: {
     title: {
-      en: "Battle Network Rockman EXE 3",
-      ja: "バトルネットワーク ロックマンエグゼ3",
+      en: "Rockman EXE 3",
+      ja: "ロックマンエグゼ3",
       "zh-Hans": "洛克人EXE3（日文版）",
     },
+    lang: "ja",
 
     versions: {
       ROCKMAN_EXE3A6BJ: {
@@ -227,6 +249,7 @@
           ja: "WHITE",
           "zh-Hans": "无印",
         },
+        order: 0,
         revisions: {
           "1": { crc32: 0xe48e6bc9 },
         },
@@ -237,6 +260,7 @@
           ja: "BLACK",
           "zh-Hans": "黑",
         },
+        order: 1,
         revisions: {
           "1": { crc32: 0xfd57493b },
         },

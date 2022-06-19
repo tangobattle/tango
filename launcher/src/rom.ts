@@ -7,6 +7,7 @@ import { walk } from "./fsutil";
 
 export const KNOWN_ROM_FAMILIES = require("./roms.json5").default as {
   [family: string]: {
+    lang: string;
     title: { [language: string]: string };
     versions: { [name: string]: KnownROM };
   };
@@ -42,8 +43,8 @@ export function getROMInfo(buffer: ArrayBuffer) {
 
 export interface KnownROM {
   title: { [language: string]: string };
+  order: number;
   revisions: { [key: number]: { crc32: number } };
-  netplayCompatibility: string;
 }
 
 export async function scan(dir: string) {

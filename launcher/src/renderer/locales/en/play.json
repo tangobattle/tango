@@ -14,6 +14,7 @@
   "match-type.triple": "Triple",
   "rescan": "Rescan",
   "select-save": "Save file",
+  "select-game": "Game",
   "no-save-selected": "No save file selected",
   "tab.navicust": "NaviCust",
   "tab.folder": "Folder",
