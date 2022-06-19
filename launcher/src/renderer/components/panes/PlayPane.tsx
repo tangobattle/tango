@@ -432,7 +432,6 @@ export default function SavesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
 
   const [saveSelectorOpen, setSaveSelectorOpen] = React.useState(false);
-  const [patchOptionsOpen, setPatchOptionsOpen] = React.useState(false);
   const [battleReady, setBattleReady] = React.useState(false);
 
   const [selectedSave_, setSelectedSave] = React.useState<{
@@ -530,20 +529,6 @@ export default function SavesPane({ active }: { active: boolean }) {
       <Stack sx={{ flexGrow: 1, width: 0 }}>
         <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
           <Stack spacing={1} flexGrow={0} flexShrink={0} direction="row">
-            <Tooltip title={<Trans i18nKey="play:show-hide-extra-options" />}>
-              <IconButton
-                onClick={() => {
-                  setPatchOptionsOpen((o) => !o);
-                }}
-              >
-                {patchOptionsOpen ? (
-                  <KeyboardArrowUpIcon />
-                ) : (
-                  <KeyboardArrowDownIcon />
-                )}
-              </IconButton>
-            </Tooltip>
-
             <Modal
               open={saveSelectorOpen}
               onClose={(_e, _reason) => {
@@ -700,93 +685,37 @@ export default function SavesPane({ active }: { active: boolean }) {
               />
             </FormControl>
           </Stack>
-          <Collapse in={patchOptionsOpen}>
-            <Stack
-              flexGrow={0}
-              flexShrink={0}
-              justifyContent="flex-end"
-              direction="row"
-              spacing={1}
-              sx={{ px: 1, mt: 1 }}
-            >
-              <FormControl fullWidth size="small" sx={{ width: "250%" }}>
-                <InputLabel id="game-label">
-                  <Trans i18nKey="play:patch-name" />
-                </InputLabel>
-                <Select
-                  labelId="game-label"
-                  disabled={selectedSave == null || battleReady}
-                  size="small"
-                  value={JSON.stringify(patchName)}
-                  label={<Trans i18nKey="play:patch-name" />}
-                  onChange={(e) => {
-                    setPatchName(JSON.parse(e.target.value));
-                    setPatchVersion(null);
-                  }}
-                  renderValue={(v) => {
-                    const patchName = JSON.parse(v);
-                    if (patchName == null) {
-                      return (
-                        <>
-                          {opponentSettings?.gameInfo != null &&
-                          selectedSave != null &&
-                          FAMILY_BY_ROM_NAME[selectedSave.romName] !=
-                            getNetplayCompatibility(
-                              opponentSettings.gameInfo
-                            ) ? (
-                            <Tooltip
-                              title={<Trans i18nKey="play:incompatible-game" />}
-                            >
-                              <WarningIcon
-                                color="warning"
-                                sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
-                                  verticalAlign: "middle",
-                                }}
-                              />
-                            </Tooltip>
-                          ) : opponentAvailableGames.length > 0 &&
-                            !opponentAvailableGames.some(
-                              (g) =>
-                                selectedSave != null &&
-                                g.rom == selectedSave.romName &&
-                                g.patch == null
-                            ) ? (
-                            <Tooltip
-                              title={<Trans i18nKey="play:no-remote-copy" />}
-                            >
-                              <WarningIcon
-                                color="warning"
-                                sx={{
-                                  fontSize: "1em",
-                                  marginRight: "8px",
-                                  verticalAlign: "middle",
-                                }}
-                              />
-                            </Tooltip>
-                          ) : null}{" "}
-                          <Trans i18nKey="play:unpatched" />
-                        </>
-                      );
-                    }
+          <Stack
+            flexGrow={0}
+            flexShrink={0}
+            justifyContent="flex-end"
+            direction="row"
+            spacing={1}
+            sx={{ mt: 1 }}
+          >
+            <FormControl fullWidth size="small" sx={{ width: "250%" }}>
+              <InputLabel id="game-label">
+                <Trans i18nKey="play:patch-name" />
+              </InputLabel>
+              <Select
+                labelId="game-label"
+                disabled={selectedSave == null || battleReady}
+                size="small"
+                value={JSON.stringify(patchName)}
+                label={<Trans i18nKey="play:patch-name" />}
+                onChange={(e) => {
+                  setPatchName(JSON.parse(e.target.value));
+                  setPatchVersion(null);
+                }}
+                renderValue={(v) => {
+                  const patchName = JSON.parse(v);
+                  if (patchName == null) {
                     return (
                       <>
                         {opponentSettings?.gameInfo != null &&
                         selectedSave != null &&
-                        !Object.keys(patches[patchName].versions)
-                          .map(
-                            (v) =>
-                              patches[patchName].versions[v]
-                                .netplayCompatibility
-                          )
-                          .some(
-                            (nc) =>
-                              nc ==
-                              getNetplayCompatibility(
-                                opponentSettings!.gameInfo!
-                              )
-                          ) ? (
+                        FAMILY_BY_ROM_NAME[selectedSave.romName] !=
+                          getNetplayCompatibility(opponentSettings.gameInfo) ? (
                           <Tooltip
                             title={<Trans i18nKey="play:incompatible-game" />}
                           >
@@ -804,8 +733,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                             (g) =>
                               selectedSave != null &&
                               g.rom == selectedSave.romName &&
-                              g.patch != null &&
-                              g.patch.name == patchName
+                              g.patch == null
                           ) ? (
                           <Tooltip
                             title={<Trans i18nKey="play:no-remote-copy" />}
@@ -820,168 +748,130 @@ export default function SavesPane({ active }: { active: boolean }) {
                             />
                           </Tooltip>
                         ) : null}{" "}
-                        {patches[patchName].title}{" "}
-                        <small>
-                          <Trans
-                            i18nKey="play:patch-byline"
-                            values={{
-                              authors: listFormatter.format(
-                                patches[patchName].authors.flatMap(({ name }) =>
-                                  name != null ? [name] : []
-                                )
-                              ),
-                            }}
-                          />
-                        </small>
+                        <Trans i18nKey="play:unpatched" />
                       </>
                     );
-                  }}
-                  fullWidth
-                >
-                  <MenuItem value="null">
-                    {opponentSettings?.gameInfo != null &&
-                    selectedSave != null &&
-                    FAMILY_BY_ROM_NAME[selectedSave.romName] !=
-                      getNetplayCompatibility(opponentSettings.gameInfo) ? (
-                      <Tooltip
-                        title={<Trans i18nKey="play:incompatible-game" />}
-                      >
-                        <WarningIcon
-                          color="warning"
-                          sx={{
-                            fontSize: "1em",
-                            marginRight: "8px",
-                            verticalAlign: "middle",
-                          }}
-                        />
-                      </Tooltip>
-                    ) : opponentAvailableGames.length > 0 &&
-                      !opponentAvailableGames.some(
-                        (g) =>
-                          selectedSave != null &&
-                          g.rom == selectedSave.romName &&
-                          g.patch == null
-                      ) ? (
-                      <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
-                        <WarningIcon
-                          color="warning"
-                          sx={{
-                            fontSize: "1em",
-                            marginRight: "8px",
-                            verticalAlign: "middle",
-                          }}
-                        />
-                      </Tooltip>
-                    ) : null}{" "}
-                    <Trans i18nKey="play:unpatched" />
-                  </MenuItem>
-                  {eligiblePatchNames.map((patchName) => {
-                    const v = JSON.stringify(patchName);
-                    return (
-                      <MenuItem key={v} value={v}>
-                        <ListItemText
-                          primary={
-                            <>
-                              {opponentSettings?.gameInfo != null &&
-                              !Object.keys(patches[patchName].versions)
-                                .map(
-                                  (v) =>
-                                    patches[patchName].versions[v]
-                                      .netplayCompatibility
-                                )
-                                .some(
-                                  (nc) =>
-                                    nc ==
-                                    getNetplayCompatibility(
-                                      opponentSettings!.gameInfo!
-                                    )
-                                ) ? (
-                                <Tooltip
-                                  title={
-                                    <Trans i18nKey="play:incompatible-game" />
-                                  }
-                                >
-                                  <WarningIcon
-                                    color="warning"
-                                    sx={{
-                                      fontSize: "1em",
-                                      marginRight: "8px",
-                                      verticalAlign: "middle",
-                                    }}
-                                  />
-                                </Tooltip>
-                              ) : opponentAvailableGames.length > 0 &&
-                                !opponentAvailableGames.some(
-                                  (g) =>
-                                    selectedSave != null &&
-                                    g.rom == selectedSave.romName &&
-                                    g.patch != null &&
-                                    g.patch.name == patchName
-                                ) ? (
-                                <Tooltip
-                                  title={
-                                    <Trans i18nKey="play:no-remote-copy" />
-                                  }
-                                >
-                                  <WarningIcon
-                                    color="warning"
-                                    sx={{
-                                      fontSize: "1em",
-                                      marginRight: "8px",
-                                      verticalAlign: "middle",
-                                    }}
-                                  />
-                                </Tooltip>
-                              ) : null}{" "}
-                              {patches[patchName].title}
-                            </>
-                          }
-                          secondary={
-                            <Trans
-                              i18nKey="play:patch-byline"
-                              values={{
-                                authors: listFormatter.format(
-                                  patches[patchName].authors.flatMap(
-                                    ({ name }) => (name != null ? [name] : [])
-                                  )
-                                ),
-                              }}
-                            />
-                          }
-                        />
-                      </MenuItem>
-                    );
-                  })}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth size="small">
-                <InputLabel id="patch-version-label">
-                  <Trans i18nKey="play:patch-version" />
-                </InputLabel>
-                <Select
-                  labelId="patch-version-label"
-                  disabled={
-                    selectedSave == null || patchName == null || battleReady
                   }
-                  size="small"
-                  value={patchVersion || ""}
-                  label={<Trans i18nKey="play:patch-version" />}
-                  onChange={(e) => {
-                    setPatchVersion(e.target.value);
-                  }}
-                  fullWidth
-                >
-                  {patchVersions != null
-                    ? patchVersions.map((version) => {
-                        return (
-                          <MenuItem key={version} value={version}>
+                  return (
+                    <>
+                      {opponentSettings?.gameInfo != null &&
+                      selectedSave != null &&
+                      !Object.keys(patches[patchName].versions)
+                        .map(
+                          (v) =>
+                            patches[patchName].versions[v].netplayCompatibility
+                        )
+                        .some(
+                          (nc) =>
+                            nc ==
+                            getNetplayCompatibility(opponentSettings!.gameInfo!)
+                        ) ? (
+                        <Tooltip
+                          title={<Trans i18nKey="play:incompatible-game" />}
+                        >
+                          <WarningIcon
+                            color="warning"
+                            sx={{
+                              fontSize: "1em",
+                              marginRight: "8px",
+                              verticalAlign: "middle",
+                            }}
+                          />
+                        </Tooltip>
+                      ) : opponentAvailableGames.length > 0 &&
+                        !opponentAvailableGames.some(
+                          (g) =>
+                            selectedSave != null &&
+                            g.rom == selectedSave.romName &&
+                            g.patch != null &&
+                            g.patch.name == patchName
+                        ) ? (
+                        <Tooltip
+                          title={<Trans i18nKey="play:no-remote-copy" />}
+                        >
+                          <WarningIcon
+                            color="warning"
+                            sx={{
+                              fontSize: "1em",
+                              marginRight: "8px",
+                              verticalAlign: "middle",
+                            }}
+                          />
+                        </Tooltip>
+                      ) : null}{" "}
+                      {patches[patchName].title}{" "}
+                      <small>
+                        <Trans
+                          i18nKey="play:patch-byline"
+                          values={{
+                            authors: listFormatter.format(
+                              patches[patchName].authors.flatMap(({ name }) =>
+                                name != null ? [name] : []
+                              )
+                            ),
+                          }}
+                        />
+                      </small>
+                    </>
+                  );
+                }}
+                fullWidth
+              >
+                <MenuItem value="null">
+                  {opponentSettings?.gameInfo != null &&
+                  selectedSave != null &&
+                  FAMILY_BY_ROM_NAME[selectedSave.romName] !=
+                    getNetplayCompatibility(opponentSettings.gameInfo) ? (
+                    <Tooltip title={<Trans i18nKey="play:incompatible-game" />}>
+                      <WarningIcon
+                        color="warning"
+                        sx={{
+                          fontSize: "1em",
+                          marginRight: "8px",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    </Tooltip>
+                  ) : opponentAvailableGames.length > 0 &&
+                    !opponentAvailableGames.some(
+                      (g) =>
+                        selectedSave != null &&
+                        g.rom == selectedSave.romName &&
+                        g.patch == null
+                    ) ? (
+                    <Tooltip title={<Trans i18nKey="play:no-remote-copy" />}>
+                      <WarningIcon
+                        color="warning"
+                        sx={{
+                          fontSize: "1em",
+                          marginRight: "8px",
+                          verticalAlign: "middle",
+                        }}
+                      />
+                    </Tooltip>
+                  ) : null}{" "}
+                  <Trans i18nKey="play:unpatched" />
+                </MenuItem>
+                {eligiblePatchNames.map((patchName) => {
+                  const v = JSON.stringify(patchName);
+                  return (
+                    <MenuItem key={v} value={v}>
+                      <ListItemText
+                        primary={
+                          <>
                             {opponentSettings?.gameInfo != null &&
-                            patchName != null &&
-                            patchVersion != null &&
-                            patches[patchName].versions[patchVersion]
-                              .netplayCompatibility !=
-                              getNetplayCompatibility(
-                                opponentSettings!.gameInfo!
+                            !Object.keys(patches[patchName].versions)
+                              .map(
+                                (v) =>
+                                  patches[patchName].versions[v]
+                                    .netplayCompatibility
+                              )
+                              .some(
+                                (nc) =>
+                                  nc ==
+                                  getNetplayCompatibility(
+                                    opponentSettings!.gameInfo!
+                                  )
                               ) ? (
                               <Tooltip
                                 title={
@@ -1003,8 +893,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                                   selectedSave != null &&
                                   g.rom == selectedSave.romName &&
                                   g.patch != null &&
-                                  g.patch.name == patchName &&
-                                  g.patch.version == version
+                                  g.patch.name == patchName
                               ) ? (
                               <Tooltip
                                 title={<Trans i18nKey="play:no-remote-copy" />}
@@ -1019,15 +908,98 @@ export default function SavesPane({ active }: { active: boolean }) {
                                 />
                               </Tooltip>
                             ) : null}{" "}
-                            {version}
-                          </MenuItem>
-                        );
-                      })
-                    : []}
-                </Select>
-              </FormControl>
-            </Stack>
-          </Collapse>
+                            {patches[patchName].title}
+                          </>
+                        }
+                        secondary={
+                          <Trans
+                            i18nKey="play:patch-byline"
+                            values={{
+                              authors: listFormatter.format(
+                                patches[patchName].authors.flatMap(({ name }) =>
+                                  name != null ? [name] : []
+                                )
+                              ),
+                            }}
+                          />
+                        }
+                      />
+                    </MenuItem>
+                  );
+                })}
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small">
+              <InputLabel id="patch-version-label">
+                <Trans i18nKey="play:patch-version" />
+              </InputLabel>
+              <Select
+                labelId="patch-version-label"
+                disabled={
+                  selectedSave == null || patchName == null || battleReady
+                }
+                size="small"
+                value={patchVersion || ""}
+                label={<Trans i18nKey="play:patch-version" />}
+                onChange={(e) => {
+                  setPatchVersion(e.target.value);
+                }}
+                fullWidth
+              >
+                {patchVersions != null
+                  ? patchVersions.map((version) => {
+                      return (
+                        <MenuItem key={version} value={version}>
+                          {opponentSettings?.gameInfo != null &&
+                          patchName != null &&
+                          patchVersion != null &&
+                          patches[patchName].versions[patchVersion]
+                            .netplayCompatibility !=
+                            getNetplayCompatibility(
+                              opponentSettings!.gameInfo!
+                            ) ? (
+                            <Tooltip
+                              title={<Trans i18nKey="play:incompatible-game" />}
+                            >
+                              <WarningIcon
+                                color="warning"
+                                sx={{
+                                  fontSize: "1em",
+                                  marginRight: "8px",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </Tooltip>
+                          ) : opponentAvailableGames.length > 0 &&
+                            !opponentAvailableGames.some(
+                              (g) =>
+                                selectedSave != null &&
+                                g.rom == selectedSave.romName &&
+                                g.patch != null &&
+                                g.patch.name == patchName &&
+                                g.patch.version == version
+                            ) ? (
+                            <Tooltip
+                              title={<Trans i18nKey="play:no-remote-copy" />}
+                            >
+                              <WarningIcon
+                                color="warning"
+                                sx={{
+                                  fontSize: "1em",
+                                  marginRight: "8px",
+                                  verticalAlign: "middle",
+                                }}
+                              />
+                            </Tooltip>
+                          ) : null}{" "}
+                          {version}
+                        </MenuItem>
+                      );
+                    })
+                  : []}
+              </Select>
+            </FormControl>
+          </Stack>
         </Box>
         {selectedSave != null ? (
           <Stack direction="column" flexGrow={1}>
