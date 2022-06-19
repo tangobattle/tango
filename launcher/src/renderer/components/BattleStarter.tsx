@@ -46,7 +46,6 @@ import { Config } from "../../config";
 import * as discord from "../../discord";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
-import { getReplaysPath, getSavesPath } from "../../paths";
 import { GetRequest, GetResponse } from "../../protos/generated/iceconfig";
 import {
     FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest
@@ -427,7 +426,10 @@ async function runCallback(
       smuggleReq: undefined,
       startReq: {
         romPath: outROMPath,
-        savePath: path.join(getSavesPath(app), ref.current.saveName!),
+        savePath: path.join(
+          ref.current.config.paths.saves,
+          ref.current.saveName!
+        ),
         windowTitle: ref.current.getGameTitle(ref.current.gameInfo!),
         windowScale: ref.current.config.windowScale,
         settings: undefined,
@@ -698,7 +700,10 @@ async function runCallback(
 
     const startReq = {
       romPath: outOwnROMPath,
-      savePath: path.join(getSavesPath(app), ref.current.saveName!),
+      savePath: path.join(
+        ref.current.config.paths.saves,
+        ref.current.saveName!
+      ),
       windowTitle: ref.current.getGameTitle(ownGameInfo),
       windowScale: config.windowScale,
       settings: {
@@ -709,7 +714,7 @@ async function runCallback(
         matchType: ownGameSettings.matchType,
         opponentNickname:
           ownGameInfo.patch == null ? opponentGameSettings.nickname : undefined,
-        replaysPath: path.join(getReplaysPath(app), prefix),
+        replaysPath: path.join(ref.current.config.paths.replays, prefix),
         replayMetadata: ReplayMetadata.encode({
           ts: now.valueOf(),
           linkCode: linkCode,
@@ -1421,7 +1426,11 @@ export default function BattleStarter({
 
                                 if (v) {
                                   const saveData = await readFile(
-                                    path.join(getSavesPath(app), saveName!)
+                                    path.join(
+                                      runCallbackDataRef.current.config.paths
+                                        .saves,
+                                      saveName!
+                                    )
                                   );
                                   const nonce = crypto.getRandomValues(
                                     new Uint8Array(16)

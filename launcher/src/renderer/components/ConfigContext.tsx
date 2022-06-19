@@ -18,7 +18,7 @@ function makeLoadConfig() {
   let err: any;
   const promise = (async () => {
     try {
-      result = await config.load(getConfigPath(app));
+      result = await config.load(app, getConfigPath(app));
       await config.save(result, getConfigPath(app));
     } catch (e) {
       err = e;

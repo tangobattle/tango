@@ -1,9 +1,7 @@
 import React, { useContext } from "react";
 
-import { app } from "@electron/remote";
-
-import { getROMsPath } from "../../paths";
 import { scan } from "../../rom";
+import { useConfig } from "./ConfigContext";
 
 export interface ROMsValue {
   rescan(): Promise<void>;
@@ -17,13 +15,13 @@ export interface ROMsValue {
 
 const Context = React.createContext(null! as ROMsValue);
 
-function makeScanROMs() {
+function makeScanROMs(path: string) {
   let status: "pending" | "error" | "ok" = "pending";
   let result: ROMsValue["roms"];
   let err: any;
   const promise = (async () => {
     try {
-      result = await scan(getROMsPath(app));
+      result = await scan(path);
     } catch (e) {
       console.error(e);
       err = e;
@@ -43,13 +41,17 @@ function makeScanROMs() {
   };
 }
 
-const scanROMs = makeScanROMs();
+let scanROMs: (() => ROMsValue["roms"]) | null = null;
 
 export const ROMsProvider = ({
   children,
 }: {
   children?: React.ReactNode;
 } = {}) => {
+  const { config } = useConfig();
+  if (scanROMs == null) {
+    scanROMs = makeScanROMs(config.paths.roms);
+  }
   const [currentROMs, setCurrentROMs] = React.useState(scanROMs());
 
   return (
@@ -57,7 +59,7 @@ export const ROMsProvider = ({
       value={{
         async rescan() {
           try {
-            setCurrentROMs(await scan(getROMsPath(app)));
+            setCurrentROMs(await scan(config.paths.roms));
           } catch (e) {
             console.error(e);
           }

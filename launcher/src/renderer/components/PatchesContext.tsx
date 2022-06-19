@@ -1,9 +1,6 @@
 import React, { useContext } from "react";
 
-import { app } from "@electron/remote";
-
 import { PatchInfos, scan, update as updatePatches } from "../../patch";
-import { getPatchesPath } from "../../paths";
 import { useConfig } from "./ConfigContext";
 
 export interface PatchesValue {
@@ -15,13 +12,13 @@ export interface PatchesValue {
 
 const Context = React.createContext(null! as PatchesValue);
 
-function makeScanPatches() {
+function makeScanPatches(path: string) {
   let status: "pending" | "error" | "ok" = "pending";
   let result: PatchesValue["patches"];
   let err: any;
   const promise = (async () => {
     try {
-      result = await scan(getPatchesPath(app));
+      result = await scan(path);
     } catch (e) {
       console.error(e);
       err = e;
@@ -41,7 +38,7 @@ function makeScanPatches() {
   };
 }
 
-const scanPatches = makeScanPatches();
+let scanPatches: (() => PatchInfos) | null = null;
 
 export const PatchesProvider = ({
   children,
@@ -49,28 +46,31 @@ export const PatchesProvider = ({
   children?: React.ReactNode;
 } = {}) => {
   const { config } = useConfig();
+  if (scanPatches == null) {
+    scanPatches = makeScanPatches(config.paths.patches);
+  }
   const [currentPatches, setCurrentPatches] = React.useState(scanPatches());
   const [updating, setUpdating] = React.useState(false);
 
-  const rescan = async () => {
+  const rescan = React.useCallback(async () => {
     try {
-      setCurrentPatches(await scan(getPatchesPath(app)));
+      setCurrentPatches(await scan(config.paths.patches));
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [config.paths.patches]);
 
   const update = React.useCallback(async () => {
     try {
       setUpdating(true);
-      await updatePatches(getPatchesPath(app), config.patchRepo);
+      await updatePatches(config.paths.patches, config.patchRepo);
       await rescan();
     } catch (e) {
       console.error("failed to update patches", e);
     } finally {
       setUpdating(false);
     }
-  }, [config.patchRepo]);
+  }, [config.paths.patches, config.patchRepo, rescan]);
 
   React.useEffect(() => {
     update();

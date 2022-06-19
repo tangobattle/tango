@@ -4,7 +4,7 @@ import { Trans, useTranslation } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
-import { app, BrowserWindow, dialog, shell } from "@electron/remote";
+import { BrowserWindow, dialog, shell } from "@electron/remote";
 import CloseIcon from "@mui/icons-material/Close";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -30,8 +30,8 @@ import Typography from "@mui/material/Typography";
 
 import { walk } from "../../../fsutil";
 import { findPatchVersion } from "../../../patch";
-import { getReplaysPath } from "../../../paths";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
+import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
 import ReplayInfoDialog from "../ReplayInfoDialog";
@@ -57,6 +57,7 @@ function ReplayItem({
     timeStyle: "medium",
   });
 
+  const { config } = useConfig();
   const { roms } = useROMs();
 
   const unavailable =
@@ -85,7 +86,7 @@ function ReplayItem({
             <IconButton
               onClick={() => {
                 shell.showItemInFolder(
-                  path.join(getReplaysPath(app), replay.filename)
+                  path.join(config.paths.replays, replay.filename)
                 );
               }}
             >
@@ -178,6 +179,7 @@ interface LoadedReplay {
 
 export default function ReplaysPane({ active }: { active: boolean }) {
   const { patches } = usePatches();
+  const { config } = useConfig();
 
   const [replays, setReplays] = React.useState<LoadedReplay[] | null>(null);
 
@@ -204,11 +206,11 @@ export default function ReplaysPane({ active }: { active: boolean }) {
     (async () => {
       const replays = [];
       try {
-        for await (const filename of walk(getReplaysPath(app))) {
+        for await (const filename of walk(config.paths.replays)) {
           let replayInfo = null;
           try {
             replayInfo = await readReplayMetadata(
-              path.join(getReplaysPath(app), filename)
+              path.join(config.paths.replays, filename)
             );
           } catch (e) {
             console.error("failed to get replay data", filename, e);
@@ -274,7 +276,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                         BrowserWindow.getFocusedWindow()!,
                         {
                           defaultPath: path.join(
-                            getReplaysPath(app),
+                            config.paths.replays,
                             replay.filename.replace(/\.[^/.]+$/, "")
                           ),
                           filters: [{ name: "MP4", extensions: ["mp4"] }],
@@ -342,7 +344,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 }
               : undefined
           }
-          replayPath={path.join(getReplaysPath(app), viewingReplay.filename)}
+          replayPath={path.join(config.paths.replays, viewingReplay.filename)}
           onExit={() => {
             setViewingReplay(null);
           }}
@@ -477,7 +479,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                 : undefined
             }
             replayPath={path.join(
-              getReplaysPath(app),
+              config.paths.replays,
               dumpingReplay.replay.filename
             )}
             outPath={dumpingReplay.outPath}

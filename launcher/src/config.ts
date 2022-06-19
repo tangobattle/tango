@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "fs";
 import { readFile, writeFile } from "fs/promises";
+import path from "path";
 
 export type PhysicalInput =
   | { Key: string }
@@ -34,76 +35,93 @@ export interface Config {
     inputDelay: number;
     matchType: number;
   };
-}
-
-function fillWithDefaults(config: Partial<Config>): Config {
-  return {
-    ...DEFAULT,
-    ...config,
-    inputMapping: { ...DEFAULT.inputMapping, ...config.inputMapping },
+  paths: {
+    saves: string;
+    roms: string;
+    replays: string;
+    patches: string;
   };
 }
 
-export const DEFAULT: Config = {
-  nickname: null,
-  theme: "light",
-  language: null,
-  updateChannel: "latest",
-  rustLogFilter: "",
-  windowScale: 3,
-  inputMapping: {
-    up: [{ Key: "Up" }, { Button: "dpup" }, { Axis: ["lefty", -1] }],
-    down: [{ Key: "Down" }, { Button: "dpdown" }, { Axis: ["lefty", 1] }],
-    left: [{ Key: "Left" }, { Button: "dpleft" }, { Axis: ["leftx", -1] }],
-    right: [{ Key: "Right" }, { Button: "dpright" }, { Axis: ["leftx", 1] }],
-    a: [{ Key: "Z" }, { Button: "a" }],
-    b: [{ Key: "X" }, { Button: "b" }],
-    l: [{ Key: "A" }, { Button: "leftshoulder" }],
-    r: [{ Key: "S" }, { Button: "rightshoulder" }],
-    select: [{ Key: "Backspace" }, { Button: "back" }],
-    start: [{ Key: "Return" }, { Button: "start" }],
-    speedUp: [],
-  },
-  signalingEndpoint: "wss://lets.tangobattle.com/signaling",
-  iceconfigEndpoint: "https://lets.tangobattle.com/iceconfig",
-  iceServers: [
-    "stun://stun.l.google.com:19302",
-    "stun://stun1.l.google.com:19302",
-    "stun://stun2.l.google.com:19302",
-    "stun://stun3.l.google.com:19302",
-    "stun://stun4.l.google.com:19302",
-  ],
-  patchRepo: "https://github.com/tangobattle/patches",
-  defaultMatchSettings: {
-    inputDelay: 2,
-    matchType: 1,
-  },
-};
+function fillWithDefaults(app: Electron.App, config: Partial<Config>): Config {
+  const default_ = defaultConfig(app);
+  return {
+    ...default_,
+    ...config,
+    inputMapping: { ...default_.inputMapping, ...config.inputMapping },
+    paths: { ...default_.paths, ...config.paths },
+  };
+}
 
-export function ensureSync(path: string) {
+function defaultConfig(app: Electron.App): Config {
+  const basePath = path.join(app.getPath("documents"), "Tango");
+  return {
+    nickname: null,
+    theme: "light",
+    language: null,
+    updateChannel: "latest",
+    rustLogFilter: "",
+    windowScale: 3,
+    inputMapping: {
+      up: [{ Key: "Up" }, { Button: "dpup" }, { Axis: ["lefty", -1] }],
+      down: [{ Key: "Down" }, { Button: "dpdown" }, { Axis: ["lefty", 1] }],
+      left: [{ Key: "Left" }, { Button: "dpleft" }, { Axis: ["leftx", -1] }],
+      right: [{ Key: "Right" }, { Button: "dpright" }, { Axis: ["leftx", 1] }],
+      a: [{ Key: "Z" }, { Button: "a" }],
+      b: [{ Key: "X" }, { Button: "b" }],
+      l: [{ Key: "A" }, { Button: "leftshoulder" }],
+      r: [{ Key: "S" }, { Button: "rightshoulder" }],
+      select: [{ Key: "Backspace" }, { Button: "back" }],
+      start: [{ Key: "Return" }, { Button: "start" }],
+      speedUp: [],
+    },
+    signalingEndpoint: "wss://lets.tangobattle.com/signaling",
+    iceconfigEndpoint: "https://lets.tangobattle.com/iceconfig",
+    iceServers: [
+      "stun://stun.l.google.com:19302",
+      "stun://stun1.l.google.com:19302",
+      "stun://stun2.l.google.com:19302",
+      "stun://stun3.l.google.com:19302",
+      "stun://stun4.l.google.com:19302",
+    ],
+    patchRepo: "https://github.com/tangobattle/patches",
+    defaultMatchSettings: {
+      inputDelay: 2,
+      matchType: 1,
+    },
+    paths: {
+      roms: path.join(basePath, "roms"),
+      replays: path.join(basePath, "replays"),
+      patches: path.join(basePath, "patches"),
+      saves: path.join(basePath, "saves"),
+    },
+  };
+}
+
+export function ensureSync(app: Electron.App, path: string) {
   let data;
   try {
     data = readFileSync(path);
   } catch (e) {
     if ((e as any).code == "ENOENT") {
-      const config = fillWithDefaults({});
+      const config = fillWithDefaults(app, {});
       writeFileSync(path, JSON.stringify(config, null, 4) + "\n");
       return config;
     }
     throw e;
   }
   try {
-    return fillWithDefaults(JSON.parse(data.toString()));
+    return fillWithDefaults(app, JSON.parse(data.toString()));
   } catch {
-    const config = fillWithDefaults({});
+    const config = fillWithDefaults(app, {});
     writeFileSync(path, JSON.stringify(config, null, 4) + "\n");
     return config;
   }
 }
 
-export async function load(path: string) {
+export async function load(app: Electron.App, path: string) {
   const data = await readFile(path);
-  return fillWithDefaults(JSON.parse(data.toString()));
+  return fillWithDefaults(app, JSON.parse(data.toString()));
 }
 
 export async function save(config: Config, path: string) {

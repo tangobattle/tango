@@ -12,7 +12,6 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { getReplaysPath } from "../../paths";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
 import { FAMILY_BY_ROM_NAME } from "../../rom";
@@ -42,7 +41,7 @@ export default function ReplayInfoDialog({
       const proc = spawn(
         app,
         "replaydump",
-        [path.join(getReplaysPath(app), filename), "ewram"],
+        [path.join(config.paths.replays, filename), "ewram"],
         {
           env: {
             ...process.env,

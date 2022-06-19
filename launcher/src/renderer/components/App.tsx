@@ -1,7 +1,7 @@
 import React, { Suspense } from "react";
 import { Trans, useTranslation, withTranslation } from "react-i18next";
 
-import { app, shell } from "@electron/remote";
+import { shell } from "@electron/remote";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -18,7 +18,6 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import ThemeProvider from "@mui/system/ThemeProvider";
 
-import { getROMsPath, getSavesPath } from "../../paths";
 import { LANGUAGES } from "../i18n";
 import createTheme from "../theme";
 import { ConfigProvider, useConfig } from "./ConfigContext";
@@ -129,7 +128,7 @@ function SetupAppBody() {
             <StepLabel>
               <Trans
                 i18nKey="setup:roms-step-title"
-                values={{ path: getROMsPath(app) }}
+                values={{ path: config.paths.roms }}
               />
             </StepLabel>
             <StepContent>
@@ -146,7 +145,7 @@ function SetupAppBody() {
                   variant="outlined"
                   size="small"
                   onClick={() => {
-                    shell.openPath(getROMsPath(app));
+                    shell.openPath(config.paths.roms);
                   }}
                 >
                   <Trans i18nKey="setup:open-folder" />
@@ -172,7 +171,7 @@ function SetupAppBody() {
             <StepLabel>
               <Trans
                 i18nKey="setup:saves-step-title"
-                values={{ path: getSavesPath(app) }}
+                values={{ path: config.paths.saves }}
               />
             </StepLabel>
             <StepContent>
@@ -190,7 +189,7 @@ function SetupAppBody() {
                   size="small"
                   disabled={savesScanState == "pending"}
                   onClick={() => {
-                    shell.openPath(getSavesPath(app));
+                    shell.openPath(config.paths.saves);
                   }}
                 >
                   <Trans i18nKey="setup:open-folder" />

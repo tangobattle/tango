@@ -6,9 +6,7 @@ import { Trans, useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 import semver from "semver";
 
-import { app, shell } from "@electron/remote";
 import CloseIcon from "@mui/icons-material/Close";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -31,12 +29,12 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { getSavesPath } from "../../../paths";
 import { SetSettings } from "../../../protos/generated/lobby";
 import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../../rom";
 import { Editor, editorClassForGameFamily } from "../../../saveedit";
 import { fallbackLng } from "../../i18n";
 import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
+import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
 import { useSaves } from "../SavesContext";
@@ -304,6 +302,7 @@ function SaveViewerWrapper({
   romName: string;
   incarnation: number;
 }) {
+  const { config } = useConfig();
   const [editor, setEditor] = React.useState<Editor | null>(null);
 
   React.useEffect(() => {
@@ -312,14 +311,14 @@ function SaveViewerWrapper({
       setEditor(
         new Editor(
           Editor.sramDumpToRaw(
-            (await readFile(path.join(getSavesPath(app), filename))).buffer
+            (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
           romName,
           false
         )
       );
     })();
-  }, [filename, romName, incarnation]);
+  }, [config.paths.saves, filename, romName, incarnation]);
 
   if (editor == null) {
     return null;

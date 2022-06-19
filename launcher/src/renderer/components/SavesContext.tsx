@@ -1,9 +1,7 @@
 import React, { useContext } from "react";
 
-import { app } from "@electron/remote";
-
-import { getSavesPath } from "../../paths";
 import { scan } from "../../saves";
+import { useConfig } from "./ConfigContext";
 
 export interface SavesValue {
   rescan(): Promise<void>;
@@ -12,13 +10,13 @@ export interface SavesValue {
 
 const Context = React.createContext(null! as SavesValue);
 
-function makeSaveScans() {
+function makeSaveScans(path: string) {
   let status: "pending" | "error" | "ok" = "pending";
   let result: SavesValue["saves"];
   let err: any;
   const promise = (async () => {
     try {
-      result = await scan(getSavesPath(app));
+      result = await scan(path);
     } catch (e) {
       console.error(e);
       err = e;
@@ -38,13 +36,17 @@ function makeSaveScans() {
   };
 }
 
-const scanSaves = makeSaveScans();
+let scanSaves: (() => SavesValue["saves"]) | null = null;
 
 export const SavesProvider = ({
   children,
 }: {
   children?: React.ReactNode;
 } = {}) => {
+  const { config } = useConfig();
+  if (scanSaves == null) {
+    scanSaves = makeSaveScans(config.paths.saves);
+  }
   const [currentSaves, setCurrentSaves] = React.useState(scanSaves());
 
   return (
@@ -52,7 +54,7 @@ export const SavesProvider = ({
       value={{
         async rescan() {
           try {
-            setCurrentSaves(await scan(getSavesPath(app)));
+            setCurrentSaves(await scan(config.paths.saves));
           } catch (e) {
             console.error(e);
           }

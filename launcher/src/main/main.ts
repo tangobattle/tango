@@ -13,7 +13,7 @@ import { getBasePath, getConfigPath } from "../paths";
 app.commandLine.appendSwitch("in-process-gpu");
 
 mkdirp.sync(getBasePath(app));
-const cfg = config.ensureSync(getConfigPath(app));
+const cfg = config.ensureSync(app, getConfigPath(app));
 
 remoteMain.initialize();
 
