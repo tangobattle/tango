@@ -172,23 +172,32 @@ function SaveSelector({
                       />
                     </Tooltip>
                   ) : null}{" "}
-                  <Trans
-                    i18nKey="play:rom-name"
-                    values={{
-                      familyName:
-                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].title[
-                          i18n.resolvedLanguage
-                        ] ||
-                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].title[
-                          fallbackLng
-                        ],
-                      versionName:
-                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
-                          .versions[romName].title[i18n.resolvedLanguage] ||
-                        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
-                          .versions[romName].title[fallbackLng],
-                    }}
-                  />
+                  {(() => {
+                    const family =
+                      KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]];
+
+                    const familyName =
+                      family.title[i18n.resolvedLanguage] ||
+                      family.title[fallbackLng];
+
+                    const romTitle = family.versions[romName].title;
+
+                    if (romTitle == null) {
+                      return <>{familyName}</>;
+                    }
+
+                    return (
+                      <Trans
+                        i18nKey="play:rom-name"
+                        values={{
+                          familyName,
+                          versionName:
+                            romTitle[i18n.resolvedLanguage] ||
+                            romTitle[fallbackLng],
+                        }}
+                      />
+                    );
+                  })()}
                 </MenuItem>
               ))}
             </Select>
@@ -368,23 +377,32 @@ function SaveSelector({
                             />
                           </Tooltip>
                         ) : null}{" "}
-                        <Trans
-                          i18nKey="play:rom-name"
-                          values={{
-                            familyName:
-                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
-                                .title[i18n.resolvedLanguage] ||
-                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
-                                .title[fallbackLng],
-                            versionName:
-                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
-                                .versions[romName].title[
-                                i18n.resolvedLanguage
-                              ] ||
-                              KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]]
-                                .versions[romName].title[fallbackLng],
-                          }}
-                        />
+                        {(() => {
+                          const family =
+                            KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]];
+
+                          const familyName =
+                            family.title[i18n.resolvedLanguage] ||
+                            family.title[fallbackLng];
+
+                          const romTitle = family.versions[romName].title;
+
+                          if (romTitle == null) {
+                            return <>{familyName}</>;
+                          }
+
+                          return (
+                            <Trans
+                              i18nKey="play:rom-name"
+                              values={{
+                                familyName,
+                                versionName:
+                                  romTitle[i18n.resolvedLanguage] ||
+                                  romTitle[fallbackLng],
+                              }}
+                            />
+                          );
+                        })()}
                       </ListItemText>
                     </ListItemButton>
                   </Collapse>
@@ -629,29 +647,35 @@ export default function SavesPane({ active }: { active: boolean }) {
                             ) : null}{" "}
                             {selection.saveName}{" "}
                             <small>
-                              <Trans
-                                i18nKey="play:rom-name"
-                                values={{
-                                  familyName:
-                                    KNOWN_ROM_FAMILIES[
-                                      FAMILY_BY_ROM_NAME[selection.romName]
-                                    ].title[i18n.resolvedLanguage] ||
-                                    KNOWN_ROM_FAMILIES[
-                                      FAMILY_BY_ROM_NAME[selection.romName]
-                                    ].title[fallbackLng],
-                                  versionName:
-                                    KNOWN_ROM_FAMILIES[
-                                      FAMILY_BY_ROM_NAME[selection.romName]
-                                    ].versions[selection.romName].title[
-                                      i18n.resolvedLanguage
-                                    ] ||
-                                    KNOWN_ROM_FAMILIES[
-                                      FAMILY_BY_ROM_NAME[selection.romName]
-                                    ].versions[selection.romName].title[
-                                      fallbackLng
-                                    ],
-                                }}
-                              />
+                              {(() => {
+                                const family =
+                                  KNOWN_ROM_FAMILIES[
+                                    FAMILY_BY_ROM_NAME[selection.romName]
+                                  ];
+
+                                const familyName =
+                                  family.title[i18n.resolvedLanguage] ||
+                                  family.title[fallbackLng];
+
+                                const romTitle =
+                                  family.versions[selection.romName].title;
+
+                                if (romTitle == null) {
+                                  return <>{familyName}</>;
+                                }
+
+                                return (
+                                  <Trans
+                                    i18nKey="play:rom-name"
+                                    values={{
+                                      familyName,
+                                      versionName:
+                                        romTitle[i18n.resolvedLanguage] ||
+                                        romTitle[fallbackLng],
+                                    }}
+                                  />
+                                );
+                              })()}
                             </small>
                           </>
                         );

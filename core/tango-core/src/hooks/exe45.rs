@@ -11,7 +11,7 @@ pub struct EXE45 {
 
 lazy_static! {
     pub static ref ROCKEXE45ROBR4J_00: Box<dyn hooks::Hooks + Send + Sync> =
-    EXE45::new(offsets::ROCKEXE45ROBR4J_00);
+        EXE45::new(offsets::ROCKEXE45ROBR4J_00);
 }
 
 impl EXE45 {
@@ -338,18 +338,13 @@ impl hooks::Hooks for EXE45 {
                 )
             },
             {
-                let facade = facade.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.comm_menu_connection_check_ret,
                     Box::new(move |mut core| {
                         handle.block_on(async {
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(0, 0);
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(1, 0);
+                            core.gba_mut().cpu_mut().set_gpr(0, 0);
+                            core.gba_mut().cpu_mut().set_gpr(1, 0);
                         });
                     }),
                 )
