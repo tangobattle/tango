@@ -1,5 +1,6 @@
 import * as bn3 from "./bn3";
 import * as bn4 from "./bn4";
+import * as exe45 from "./exe45";
 import * as bn5 from "./bn5";
 import * as bn6 from "./bn6";
 
@@ -108,6 +109,7 @@ export interface ModcardsEditor {
 const EDITORS: { [key: string]: EditorClass } = {
   bn3: bn3.Editor,
   bn4: bn4.Editor,
+  exe45: exe45.Editor,
   bn5: bn5.Editor,
   bn6: bn6.Editor,
 };
@@ -120,6 +122,8 @@ export function editorClassForGameFamily(family: string): EditorClass {
     case "bn4":
     case "exe4":
       return bn4.Editor;
+    case "exe45":
+        return exe45.Editor;
     case "bn5":
     case "exe5":
       return bn5.Editor;

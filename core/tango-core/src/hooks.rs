@@ -2,6 +2,7 @@ use crate::{facade, replayer, shadow};
 
 mod bn3;
 mod bn4;
+mod exe45;
 mod bn5;
 mod bn6;
 
@@ -15,6 +16,7 @@ pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + 
         (b"MEGAMAN5_TC_BRKE", 0x00) => &bn5::MEGAMAN5_TC_BRKE_00,
         (b"ROCKEXE5_TOBBRBJ", 0x00) => &bn5::ROCKEXE5_TOBBRBJ_00,
         (b"ROCKEXE5_TOCBRKJ", 0x00) => &bn5::ROCKEXE5_TOCBRKJ_00,
+        (b"ROCKEXE4.5ROBR4J", 0x00) => &exe45::ROCKEXE45ROBR4J_00,
         (b"MEGAMANBN4BMB4BE", 0x00) => &bn4::MEGAMANBN4BMB4BE_00,
         (b"MEGAMANBN4RSB4WE", 0x00) => &bn4::MEGAMANBN4RSB4WE_00,
         (b"ROCK_EXE4_BMB4BJ", 0x00) => &bn4::ROCK_EXE4_BMB4BJ_00,
