@@ -9,6 +9,9 @@ pub(super) struct EWRAMOffsets {
     /// Title menu jump table control.
     pub(super) title_menu_control: u32,
 
+    /// Intro jump table control.
+    pub(super) intro_control: u32,
+
     /// Subsystem control.
     pub(super) subsystem_control: u32,
 
@@ -60,7 +63,9 @@ pub(super) struct ROMOffsets {
     /// This hooks the exit into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
     ///
     /// Packets to transmit should be injected here into tx_packet.
-    pub(super) copy_input_data_ret: u32,
+    pub(super) copy_input_data_ret1: u32,
+    pub(super) copy_input_data_ret2: u32,
+    pub(super) copy_input_data_ret3: u32,
 
     pub(super) round_end_set_win: u32,
     pub(super) round_end_set_loss: u32,
@@ -101,7 +106,7 @@ pub(super) struct ROMOffsets {
     /// This routine has to return 0 for r0 and r1 for battle to start
     ///
     /// Here, Tango sets r0 and r1 to 0
-    pub(super) comm_menu_connection_check_ret: u32,
+    pub(super) comm_menu_handle_link_cable_input: u32,
 
     /// This handles underlying link cable SIO in the comm menu.
     ///
@@ -124,6 +129,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     tx_packet:              0x02035640,
     rx_packet_arr:          0x02038690,
     title_menu_control:     0x02010810,
+    intro_control:          0x0201A800,
     subsystem_control:      0x0200FD50,
     submenu_control:        0x0200F970,
     rng1_state:             0x02003D58,
@@ -144,10 +150,12 @@ pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
         start_screen_jump_table_entry:          0x080305EE,
         intro_jump_table_entry:                 0x08045AEC,
         start_screen_sram_unmask_ret:           0x08028D3E,
-        game_load_ret:                          0x08004266,
+        game_load_ret:                          0x08028F30,
         main_read_joyflags:                     0x0800039E,
         copy_input_data_entry:                  0x08019262,//Routine slightly different from BN4
-        copy_input_data_ret:                    0x08019364,
+        copy_input_data_ret1:                   0x0801934C,
+        copy_input_data_ret2:                   0x08019358,
+        copy_input_data_ret3:                   0x08019364,
         round_end_set_win:                      0x080075D8,
         round_end_set_loss:                     0x080075EC,
         round_end_damage_judge_set_win:         0x08007882,
@@ -160,9 +168,9 @@ pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0804A3A8,
         link_is_p2_ret:                         0x0804A3C6,
         comm_menu_init_ret:                     0x080440D2,//Routine different from BN4
-        comm_menu_connection_check_ret:         0x08044BF6,
         handle_sio_entry:                       0x0804A49C,
         in_battle_call_handle_link_cable_input: 0x08006E3E,
+        comm_menu_handle_link_cable_input:      0x080443E2,
         match_end_ret:                          0x08004746,
     },
 };
