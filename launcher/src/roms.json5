@@ -134,22 +134,18 @@
   },
   exe45: {
     title: {
-      en: "Rockman EXE 4.5",
-      ja: "ロックマンエグゼ4.5",
+      en: "Rockman EXE 4.5: Real Operation",
+      ja: "ロックマンエグゼ4.5：リアルオペレーション",
       "zh-Hans": "洛克人EXE4.5（日文版）",
     },
     lang: "ja",
 
     versions: {
       "ROCKEXE4.5ROBR4J": {
-        title: {
-          en: "Real Operation",
-          ja: "リアルオペレーション",
-          "zh-Hans": "idk",
-        },
+        title: null,
         order: 0,
         revisions: {
-          "0": { crc32: 0xA646601B },
+          "0": { crc32: 0xa646601b },
         },
       },
     },
