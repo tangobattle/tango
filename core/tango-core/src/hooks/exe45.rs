@@ -340,9 +340,13 @@ impl hooks::Hooks for EXE45 {
             {
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.comm_menu_connection_check_ret,
+                    self.offsets.rom.comm_menu_handle_link_cable_input,
                     Box::new(move |mut core| {
                         handle.block_on(async {
+                            //Skip call
+                            let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                            //return r0 = 0, r1 = 0
                             core.gba_mut().cpu_mut().set_gpr(0, 0);
                             core.gba_mut().cpu_mut().set_gpr(1, 0);
                         });

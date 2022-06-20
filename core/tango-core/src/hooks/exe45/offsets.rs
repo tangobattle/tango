@@ -101,7 +101,7 @@ pub(super) struct ROMOffsets {
     /// This routine has to return 0 for r0 and r1 for battle to start
     ///
     /// Here, Tango sets r0 and r1 to 0
-    pub(super) comm_menu_connection_check_ret: u32,
+    pub(super) comm_menu_handle_link_cable_input: u32,
 
     /// This handles underlying link cable SIO in the comm menu.
     ///
@@ -144,7 +144,7 @@ pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
         start_screen_jump_table_entry:          0x080305EE,
         intro_jump_table_entry:                 0x08045AEC,
         start_screen_sram_unmask_ret:           0x08028D3E,
-        game_load_ret:                          0x08004266,
+        game_load_ret:                          0x08028F30,
         main_read_joyflags:                     0x0800039E,
         copy_input_data_entry:                  0x08019262,//Routine slightly different from BN4
         copy_input_data_ret:                    0x08019364,
@@ -160,9 +160,9 @@ pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
         battle_is_p2_tst:                       0x0804A3A8,
         link_is_p2_ret:                         0x0804A3C6,
         comm_menu_init_ret:                     0x080440D2,//Routine different from BN4
-        comm_menu_connection_check_ret:         0x08044BF6,
         handle_sio_entry:                       0x0804A49C,
         in_battle_call_handle_link_cable_input: 0x08006E3E,
+        comm_menu_handle_link_cable_input:      0x080443E2,
         match_end_ret:                          0x08004746,
     },
 };
