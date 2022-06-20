@@ -42,7 +42,7 @@ export function getROMInfo(buffer: ArrayBuffer) {
 }
 
 export interface KnownROM {
-  title: { [language: string]: string };
+  title: { [language: string]: string } | null;
   order: number;
   revisions: { [key: number]: { crc32: number } };
 }

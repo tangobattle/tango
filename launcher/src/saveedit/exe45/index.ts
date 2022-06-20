@@ -4,22 +4,11 @@ export { CHIPS };
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
-const SRAM_SIZE = 0xC7A8;
-const MASK_OFFSET = 0x3C80;
-const GAME_NAME_OFFSET = 0x4BA8;
-const CHECKSUM_OFFSET = 0x4B88;
-
-const GAME_INFOS: { [key: string]: GameInfo } = {
-  // Japan
-  "ROCKEXE4.5ROBR4J": {
-    region: "JP",
-    version: "realoperation",
-  },
-};
-
-const CHECKSUM_START: { [key: string]: number } = {
-  realoperation: 0x38,
-};
+const SRAM_START_OFFSET = 0x0100;
+const SRAM_SIZE = 0xc7a8;
+const MASK_OFFSET = 0x3b84;
+const GAME_NAME_OFFSET = 0x4aa8;
+const CHECKSUM_OFFSET = 0x4a88;
 
 function maskSave(dv: DataView) {
   const mask = dv.getUint32(MASK_OFFSET, true);
@@ -29,36 +18,6 @@ function maskSave(dv: DataView) {
   }
   // Write the mask back.
   dv.setUint32(MASK_OFFSET, mask, true);
-}
-
-export interface GameInfo {
-  region: "US" | "JP";
-  version: "realoperation";
-}
-
-function getChecksum(dv: DataView) {
-  return dv.getUint32(CHECKSUM_OFFSET, true);
-}
-
-function computeChecksum(dv: DataView, gameInfo: GameInfo) {
-  return (
-    computeChecksumRaw(dv) +
-    CHECKSUM_START[gameInfo.version]
-  );
-}
-
-function computeChecksumRaw(dv: DataView) {
-  let checksum = 0;
-  const arr = new Uint8Array(dv.buffer, 0, dv.buffer.byteLength);
-  for (let i = 0; i < dv.buffer.byteLength; ++i) {
-    if (i == CHECKSUM_OFFSET + dv.byteOffset) {
-      // Don't include the checksum itself in the checksum.
-      i += 3;
-      continue;
-    }
-    checksum += arr[i];
-  }
-  return checksum;
 }
 
 class FolderEditor {
@@ -76,23 +35,21 @@ class FolderEditor {
     return 0;
   }
 
-  setEquippedFolder(i: number) {
-    return 0;
+  setEquippedFolder(_i: number) {
+    // Not supported.
+    return;
   }
 
   isRegularChipInPlace() {
     return false;
   }
 
-  getRegularChipIndex(folderIdx: number) {
-    // const i = this.editor.dv.getUint8(0x214d + folderIdx);
-    // return i != 0xff ? i : null;
+  getRegularChipIndex(_folderIdx: number) {
     // Not supported.
     return null;
   }
 
-  setRegularChipIndex(folderIdx: number, i: number | null) {
-    //this.editor.dv.setUint8(0x214d + folderIdx, i == null ? 0xff : i);
+  setRegularChipIndex(_folderIdx: number, _i: number | null) {
     // Not supported.
     return null;
   }
@@ -116,7 +73,7 @@ class FolderEditor {
   }
 
   getChipCountRaw(id: number, variant: number) {
-    return this.editor.dv.getUint8(0x52C8 + ((id * 0xc) | variant));
+    return this.editor.dv.getUint8(0x52c8 + ((id * 0xc) | variant));
   }
 
   setChipCount(id: number, code: string, n: number) {
@@ -124,11 +81,11 @@ class FolderEditor {
   }
 
   setChipCountRaw(id: number, variant: number, n: number) {
-    this.editor.dv.setUint8(0x52C8 + ((id * 0xc) | variant), n);
+    this.editor.dv.setUint8(0x52c8 + ((id * 0xc) | variant), n);
   }
 
   getChipRaw(folderIdx: number, chipIdx: number) {
-    const naviIdx  = this.editor.dv.getUint8(0x4AD1);
+    const naviIdx = this.editor.dv.getUint8(0x4ad1);
     const chipConstant = this.editor.dv.getUint16(
       0x7500 + naviIdx * (30 * 2) + chipIdx * 2,
       true
@@ -157,7 +114,7 @@ class FolderEditor {
   }
 
   setChipRaw(folderIdx: number, chipIdx: number, id: number, variant: number) {
-    const naviIdx  = this.editor.dv.getUint8(0x4AD1);
+    const naviIdx = this.editor.dv.getUint8(0x4ad1);
     this.editor.dv.setUint16(
       0x7500 + naviIdx * (30 * 2) + chipIdx * 2,
       id | (variant << 9),
@@ -178,26 +135,16 @@ export class Editor {
     return this.romName;
   }
 
-  static getStartOffset(buffer: ArrayBuffer) {
-    const dv = new DataView(buffer);
-    const startOffset = dv.getUint32(0x3C80, true);
-    if (startOffset > 0x1fc || (startOffset & 3) != 0) {
-      return null;
-    }
-    return startOffset;
-  }
-
   static sramDumpToRaw(buffer: ArrayBuffer) {
-    buffer = buffer.slice(0, SRAM_SIZE);
-    const dv = new DataView(buffer);
-    maskSave(dv);
+    buffer = buffer.slice(SRAM_START_OFFSET, SRAM_START_OFFSET + SRAM_SIZE);
+    maskSave(new DataView(buffer));
     return buffer;
   }
 
   static rawToSramDump(buffer: ArrayBuffer) {
     const arr = new Uint8Array(0x10000);
-    arr.set(new Uint8Array(buffer));
-    maskSave(new DataView(arr.buffer));
+    arr.set(new Uint8Array(buffer), SRAM_START_OFFSET);
+    maskSave(new DataView(arr.buffer, SRAM_START_OFFSET, SRAM_SIZE));
     return arr.buffer;
   }
 
@@ -213,44 +160,21 @@ export class Editor {
 
     buffer = buffer.slice(0);
 
-    const startOffset = Editor.getStartOffset(buffer);
-    if (startOffset == null) {
-      throw "could not locate start offset";
-    }
-    const dv = new DataView(buffer, startOffset);
+    const dv = new DataView(buffer);
 
     const decoder = new TextDecoder("ascii");
     const gn = decoder.decode(
       new Uint8Array(buffer, dv.byteOffset + GAME_NAME_OFFSET, 20)
     );
-    if (gn != "ROCKMANEXE4RO 041217") {
+    if (gn != "ROCKMANEXE4RO 040607") {
       throw "unknown game name: " + gn;
     }
 
-    const checksum = getChecksum(dv);
-    const rawChecksum = computeChecksumRaw(dv);
-    const firstVal = new Uint8Array(buffer, 0, 1)[0];
-
-    const romNames = [];
-
-    if (checksum == rawChecksum + CHECKSUM_START.realoperation) {
-      romNames.push("ROCKEXE4.5ROBR4J");
-    }
-
-    if (romNames.length == 0) {
-      throw "unknown game, no checksum formats match";
-    }
-
-    return romNames;
+    return ["ROCKEXE4.5ROBR4J"];
   }
 
   constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
-    const startOffset = Editor.getStartOffset(buffer);
-    if (startOffset == null) {
-      throw "could not locate start offset";
-    }
-
-    this.dv = new DataView(buffer, startOffset);
+    this.dv = new DataView(buffer);
     this.romName = romName;
 
     if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
@@ -258,12 +182,8 @@ export class Editor {
     }
   }
 
-  getGameInfo() {
-    return GAME_INFOS[this.romName];
-  }
-
   getChecksum() {
-    return getChecksum(this.dv);
+    return this.dv.getUint32(CHECKSUM_OFFSET, true);
   }
 
   rebuildChecksum() {
@@ -271,7 +191,21 @@ export class Editor {
   }
 
   computeChecksum() {
-    return computeChecksum(this.dv, this.getGameInfo());
+    let checksum = 0x38;
+    const arr = new Uint8Array(
+      this.dv.buffer,
+      this.dv.byteOffset,
+      this.dv.buffer.byteLength
+    );
+    for (let i = 0; i < arr.length; ++i) {
+      if (i == CHECKSUM_OFFSET) {
+        // Don't include the checksum itself in the checksum.
+        i += 3;
+        continue;
+      }
+      checksum += arr[i];
+    }
+    return checksum;
   }
 
   rebuild() {
