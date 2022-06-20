@@ -346,8 +346,8 @@ impl Match {
         let mut replay_filename = self.settings.replays_path.clone().as_os_str().to_owned();
         replay_filename.push(format!(
             "-round{}-p{}.tangoreplay",
-            local_player_index + 1,
-            round_state.number
+            round_state.number,
+            local_player_index + 1
         ));
         let replay_filename = std::path::Path::new(&replay_filename);
         let replay_file = std::fs::File::create(&replay_filename)?;
