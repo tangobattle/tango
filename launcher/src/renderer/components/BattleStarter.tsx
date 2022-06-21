@@ -1049,8 +1049,10 @@ export default function BattleStarter({
     };
   }, [start, pendingStates]);
 
-  const averageRtt =
-    rtts.length > 0 ? rtts.reduce((a, b) => a + b) / rtts.length : 0;
+  const medianRtt =
+    rtts.length > 0
+      ? rtts.sort((a, b) => a - b)[Math.floor(rtts.length / 2)]
+      : 0;
 
   return (
     <>
@@ -1095,7 +1097,7 @@ export default function BattleStarter({
                       >
                         <SparklinesLine color={theme.palette.primary.main} />
                         <SparklinesSpots />
-                        <SparklinesReferenceLine type="avg" />
+                        <SparklinesReferenceLine type="median" />
                       </Sparklines>
                     </div>{" "}
                     {rtts.length > 0 ? (
@@ -1287,7 +1289,7 @@ export default function BattleStarter({
                             Math.max(
                               2,
                               Math.round(
-                                ((averageRtt / 1000 / 1000 / 2) * 60) / 1000
+                                ((medianRtt / 1000 / 1000 / 2) * 60) / 1000
                               ) +
                                 1 -
                                 2
