@@ -654,15 +654,15 @@ impl Round {
                     tx.for_tick,
                     pi.local_tick
                 );
-                Ok(input::Input {
+                input::Input {
                     local_tick: pi.local_tick,
                     remote_tick: pi.remote_tick,
                     joyflags: pi.joyflags,
                     rx: tx.tx,
                     is_prediction: true,
-                })
+                }
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Vec<_>>();
 
         let mut shadow = self.shadow.lock().await;
         let input_pairs = partial_input_pairs
