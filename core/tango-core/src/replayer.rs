@@ -188,7 +188,7 @@ impl Fastforwarder {
         last_committed_tick: u32,
         commit_pairs: &[input::Pair<input::Input, input::Input>],
         last_committed_remote_input: input::Input,
-        local_player_inputs_left: &[input::PartialInput],
+        local_player_inputs_left: &[input::Input],
     ) -> anyhow::Result<(
         mgba::state::State,
         mgba::state::State,
@@ -203,13 +203,7 @@ impl Fastforwarder {
                 let remote_tick = local.remote_tick;
                 self.hooks.predict_rx(&mut predicted_rx);
                 input::Pair {
-                    local: input::Input {
-                        local_tick,
-                        remote_tick,
-                        joyflags: local.joyflags,
-                        rx: self.hooks.placeholder_rx(),
-                        is_prediction: true,
-                    },
+                    local,
                     remote: input::Input {
                         local_tick,
                         remote_tick,

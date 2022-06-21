@@ -424,6 +424,7 @@ impl Match {
     }
 }
 
+#[derive(Clone)]
 struct Tx {
     for_tick: u32,
     tx: Vec<u8>,
@@ -611,7 +612,7 @@ impl Round {
         &mut self,
     ) -> anyhow::Result<(
         Vec<input::Pair<input::Input, input::Input>>,
-        Vec<input::PartialInput>,
+        Vec<input::Input>,
     )> {
         let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
 
@@ -639,6 +640,32 @@ impl Round {
                         is_prediction: false,
                     },
                     remote: pair.remote,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        assert!(
+            self.tx_queue.len() >= left.len(),
+            "not enough tx queue inputs"
+        );
+
+        let left = left
+            .into_iter()
+            .zip(self.tx_queue.iter().cloned())
+            .map(|(pi, tx)| {
+                if tx.for_tick != pi.local_tick {
+                    anyhow::bail!(
+                        "tx input did not match current tick: {} != {}",
+                        tx.for_tick,
+                        pi.local_tick
+                    );
+                }
+                Ok(input::Input {
+                    local_tick: pi.local_tick,
+                    remote_tick: pi.remote_tick,
+                    joyflags: pi.joyflags,
+                    rx: tx.tx,
+                    is_prediction: true,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
