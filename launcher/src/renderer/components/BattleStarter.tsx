@@ -256,6 +256,10 @@ function makeCommitment(s: Uint8Array): Uint8Array {
   return new Uint8Array(shake128.digest());
 }
 
+function addToCappedArray<T>(xs: T[], x: T, limit: number) {
+  return [...(xs.length >= limit ? xs.slice(0, -1) : xs), x];
+}
+
 async function runCallback(
   config: Config,
   signal: AbortSignal,
@@ -282,7 +286,7 @@ async function runCallback(
       React.SetStateAction<FromCoreMessage_StateEvent_State>
     >;
     config: Config;
-    setRtt: React.Dispatch<React.SetStateAction<number | null>>;
+    setRtts: React.Dispatch<React.SetStateAction<number[]>>;
     setRevealedSetupEditor: React.Dispatch<React.SetStateAction<Editor | null>>;
   }>
 ) {
@@ -487,7 +491,9 @@ async function runCallback(
       }
 
       if (msg.connectionQualityEv != null) {
-        ref.current.setRtt(msg.connectionQualityEv.rtt);
+        ref.current.setRtts((rtts) =>
+          addToCappedArray(rtts, msg.connectionQualityEv!.rtt, 10)
+        );
         continue;
       }
 
@@ -592,7 +598,9 @@ async function runCallback(
           }
 
           if (msg.connectionQualityEv != null) {
-            ref.current.setRtt(msg.connectionQualityEv.rtt / 1000 / 1000);
+            ref.current.setRtts((rtts) =>
+              addToCappedArray(rtts, msg.connectionQualityEv!.rtt, 10)
+            );
             continue;
           }
 
@@ -746,7 +754,7 @@ async function runCallback(
       startReq,
     });
 
-    ref.current.setRtt(null);
+    ref.current.setRtts([]);
     discord.setInProgress(linkCode, new Date(), {
       title: ref.current.getGameFamilyTitle(ownGameInfo),
       family: FAMILY_BY_ROM_NAME[ownGameInfo.rom],
@@ -862,7 +870,7 @@ export default function BattleStarter({
     React.useState<PendingStates | null>(null);
 
   const [changingCommitment, setChangingCommitment] = React.useState(false);
-  const [rtt, setRtt] = React.useState<number | null>(null);
+  const [rtts, setRtts] = React.useState<number[]>([]);
 
   const [revealedSetupEditor, setRevealedSetupEditor] =
     React.useState<Editor | null>(null);
@@ -973,7 +981,7 @@ export default function BattleStarter({
     saveName,
     setState,
     config,
-    setRtt,
+    setRtts,
     setRevealedSetupEditor,
   };
   const runCallbackDataRef = React.useRef(runCallbackData);
@@ -1070,11 +1078,15 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                     {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
-                    {rtt != null ? (
+                    {rtts.length > 0 ? (
                       <small>
                         <Trans
                           i18nKey="play:connection-quality"
-                          values={{ rtt: Math.round(rtt / 1000 / 1000) }}
+                          values={{
+                            rtt: Math.round(
+                              rtts[rtts.length - 1] / 1000 / 1000
+                            ),
+                          }}
                         />
                       </small>
                     ) : null}{" "}
@@ -1241,7 +1253,7 @@ export default function BattleStarter({
                     />{" "}
                     <Button
                       disabled={
-                        rtt == null ||
+                        rtts.length == 0 ||
                         pendingStates?.own?.negotiatedState != null
                       }
                       size="small"
@@ -1255,7 +1267,9 @@ export default function BattleStarter({
                             Math.max(
                               2,
                               Math.round(
-                                ((rtt! / 1000 / 1000 / 2) * 60) / 1000
+                                ((rtts[rtts.length - 1] / 1000 / 1000 / 2) *
+                                  60) /
+                                  1000
                               ) +
                                 1 -
                                 2
