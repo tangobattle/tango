@@ -1028,6 +1028,7 @@ export default function BattleStarter({
             setRevealedSetupEditor(null);
             setPendingStates(null);
             setState(FromCoreMessage_StateEvent_State.UNKNOWN);
+            setRtts([]);
             coreRef.current = null;
             onExit();
           })();
@@ -1051,7 +1052,7 @@ export default function BattleStarter({
 
   const medianRtt =
     rtts.length > 0
-      ? rtts.sort((a, b) => a - b)[Math.floor(rtts.length / 2)]
+      ? rtts.slice().sort((a, b) => a - b)[Math.floor(rtts.length / 2)]
       : 0;
 
   return (
