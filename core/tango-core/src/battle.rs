@@ -616,10 +616,16 @@ impl Round {
     )> {
         let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
 
-        let partial_input_pairs = partial_input_pairs
+        let partial_input_pairs_len = partial_input_pairs.len();
+        assert!(
+            self.tx_queue.len() >= partial_input_pairs_len + left.len(),
+            "not enough tx queue inputs"
+        );
+
+        let input_pairs = partial_input_pairs
             .into_iter()
-            .map(|pair| {
-                let tx = self.tx_queue.pop_front().expect("tx queue pop front");
+            .zip(self.tx_queue.drain(..partial_input_pairs_len))
+            .map(|(pair, tx)| {
                 assert!(
                     tx.for_tick == pair.local.local_tick,
                     "tx input did not match current tick: {} != {}",
@@ -638,11 +644,6 @@ impl Round {
                 }
             })
             .collect::<Vec<_>>();
-
-        assert!(
-            self.tx_queue.len() >= left.len(),
-            "not enough tx queue inputs"
-        );
 
         let left = left
             .into_iter()
@@ -665,7 +666,7 @@ impl Round {
             .collect::<Vec<_>>();
 
         let mut shadow = self.shadow.lock().await;
-        let input_pairs = partial_input_pairs
+        let input_pairs = input_pairs
             .into_iter()
             .map(|pair| shadow.apply_input(pair))
             .collect::<Result<Vec<_>, _>>()?;
