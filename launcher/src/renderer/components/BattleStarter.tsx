@@ -7,6 +7,9 @@ import fetch from "node-fetch";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
+import {
+    Sparklines, SparklinesLine, SparklinesReferenceLine, SparklinesSpots
+} from "react-sparklines";
 import { usePrevious } from "react-use";
 import { SHAKE } from "sha3";
 import { promisify } from "util";
@@ -42,6 +45,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
+import useTheme from "@mui/system/useTheme";
 
 import { Config } from "../../config";
 import * as discord from "../../discord";
@@ -257,7 +261,7 @@ function makeCommitment(s: Uint8Array): Uint8Array {
 }
 
 function addToCappedArray<T>(xs: T[], x: T, limit: number) {
-  return [...(xs.length >= limit ? xs.slice(0, -1) : xs), x];
+  return [...(xs.length >= limit ? xs.slice(1) : xs), x];
 }
 
 async function runCallback(
@@ -845,6 +849,7 @@ export default function BattleStarter({
   onReadyChange: (ready: boolean) => void;
   onOpponentSettingsChange: (settings: SetSettings | null) => void;
 }) {
+  const theme = useTheme();
   const { config, save: saveConfig } = useConfig();
   const { tempDir } = useTempDir();
   const getROMPath = useGetROMPath();
@@ -1044,6 +1049,9 @@ export default function BattleStarter({
     };
   }, [start, pendingStates]);
 
+  const averageRtt =
+    rtts.length > 0 ? rtts.reduce((a, b) => a + b) / rtts.length : 0;
+
   return (
     <>
       <Stack>
@@ -1078,6 +1086,18 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                     {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
+                    <div style={{ display: "inline-block", width: "40px" }}>
+                      <Sparklines
+                        data={rtts}
+                        min={0}
+                        max={500 * 1000 * 1000}
+                        limit={10}
+                      >
+                        <SparklinesLine color={theme.palette.primary.main} />
+                        <SparklinesSpots />
+                        <SparklinesReferenceLine type="avg" />
+                      </Sparklines>
+                    </div>{" "}
                     {rtts.length > 0 ? (
                       <small>
                         <Trans
@@ -1267,9 +1287,7 @@ export default function BattleStarter({
                             Math.max(
                               2,
                               Math.round(
-                                ((rtts[rtts.length - 1] / 1000 / 1000 / 2) *
-                                  60) /
-                                  1000
+                                ((averageRtt / 1000 / 1000 / 2) * 60) / 1000
                               ) +
                                 1 -
                                 2
