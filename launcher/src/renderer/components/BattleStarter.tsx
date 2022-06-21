@@ -1089,30 +1089,34 @@ export default function BattleStarter({
                   </TableCell>
                   <TableCell sx={{ width: "40%", fontWeight: "bold" }}>
                     {pendingStates?.opponent?.settings.nickname ?? ""}{" "}
-                    <div style={{ display: "inline-block", width: "40px" }}>
-                      <Sparklines
-                        data={rtts}
-                        min={0}
-                        max={500 * 1000 * 1000}
-                        limit={10}
-                      >
-                        <SparklinesLine color={theme.palette.primary.main} />
-                        <SparklinesSpots />
-                        <SparklinesReferenceLine type="median" />
-                      </Sparklines>
-                    </div>{" "}
                     {rtts.length > 0 ? (
-                      <small>
-                        <Trans
-                          i18nKey="play:connection-quality"
-                          values={{
-                            rtt: Math.round(
-                              rtts[rtts.length - 1] / 1000 / 1000
-                            ),
-                          }}
-                        />
-                      </small>
-                    ) : null}{" "}
+                      <>
+                        <div style={{ display: "inline-block", width: "40px" }}>
+                          <Sparklines
+                            data={rtts}
+                            min={0}
+                            max={500 * 1000 * 1000}
+                            limit={10}
+                          >
+                            <SparklinesLine
+                              color={theme.palette.primary.main}
+                            />
+                            <SparklinesSpots />
+                            <SparklinesReferenceLine type="median" />
+                          </Sparklines>
+                        </div>{" "}
+                        <small>
+                          <Trans
+                            i18nKey="play:connection-quality"
+                            values={{
+                              rtt: Math.round(
+                                rtts[rtts.length - 1] / 1000 / 1000
+                              ),
+                            }}
+                          />
+                        </small>{" "}
+                      </>
+                    ) : null}
                     {pendingStates?.opponent?.commitment != null ? (
                       <CheckCircleIcon
                         color="success"
