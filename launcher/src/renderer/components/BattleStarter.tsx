@@ -109,23 +109,24 @@ function useGetGameTitle() {
   const { i18n, t } = useTranslation();
 
   return React.useCallback(
-    (gameInfo: GameInfo) =>
-      `${t("play:rom-name", {
-        familyName:
-          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].title[
-            i18n.resolvedLanguage
-          ] ||
-          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].title[
-            fallbackLng
-          ],
-        versionName:
-          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].versions[
-            gameInfo.rom
-          ].title[i18n.resolvedLanguage] ||
-          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].versions[
-            gameInfo.rom
-          ].title[fallbackLng],
-      })}${gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""}`,
+    (gameInfo: GameInfo) => {
+      const family = KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]];
+
+      const familyName =
+        family.title[i18n.resolvedLanguage] || family.title[fallbackLng];
+
+      const romTitle = family.versions[gameInfo.rom].title;
+
+      return `${
+        romTitle != null
+          ? t("play:rom-name", {
+              familyName,
+              versionName:
+                romTitle[i18n.resolvedLanguage] || romTitle[fallbackLng],
+            })
+          : familyName
+      }${gameInfo.patch != null ? ` + ${getPatchName(gameInfo.patch)}` : ""}`;
+    },
     [i18n, t, getPatchName]
   );
 }
