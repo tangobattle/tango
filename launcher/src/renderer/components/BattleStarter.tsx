@@ -260,7 +260,7 @@ function makeCommitment(s: Uint8Array): Uint8Array {
   return new Uint8Array(shake128.digest());
 }
 
-function addToCappedArray<T>(xs: T[], x: T, limit: number) {
+function addToArrayCapped<T>(xs: T[], x: T, limit: number) {
   return [...(xs.length >= limit ? xs.slice(1) : xs), x];
 }
 
@@ -496,7 +496,7 @@ async function runCallback(
 
       if (msg.connectionQualityEv != null) {
         ref.current.setRtts((rtts) =>
-          addToCappedArray(rtts, msg.connectionQualityEv!.rtt, 10)
+          addToArrayCapped(rtts, msg.connectionQualityEv!.rtt, 9)
         );
         continue;
       }
@@ -603,7 +603,7 @@ async function runCallback(
 
           if (msg.connectionQualityEv != null) {
             ref.current.setRtts((rtts) =>
-              addToCappedArray(rtts, msg.connectionQualityEv!.rtt, 10)
+              addToArrayCapped(rtts, msg.connectionQualityEv!.rtt, 9)
             );
             continue;
           }
