@@ -993,15 +993,6 @@ impl hooks::Hooks for BN4 {
             {
                 let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.round_set_ending,
-                    Box::new(move |_core| {
-                        replayer_state.set_round_ending();
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
                     self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
                         replayer_state.increment_current_tick();

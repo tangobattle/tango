@@ -987,12 +987,6 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
-            (self.offsets.rom.round_ending_entry, {
-                let replayer_state = replayer_state.clone();
-                Box::new(move |_| {
-                    replayer_state.set_round_ending();
-                })
-            }),
             {
                 let replayer_state = replayer_state.clone();
                 (
@@ -1067,11 +1061,15 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.handle_input_post_call,
                     Box::new(move |mut core| {
-                        replayer_state.increment_current_tick();
-                        if replayer_state.is_round_ending() {
-                            // We have no real inputs left but the round has ended. Just fudge them until we get to the next round.
+                        // HACK: During the first few ticks, we do some wacky stuff that we can't let the game consume willy-nilly.
+                        // Only after the second tick when ingestion is complete can we start assuming that if the input queue runs out we're at the end of the match.
+                        if replayer_state.current_tick() > 2
+                            && replayer_state.peek_input_pair().is_none()
+                        {
                             core.gba_mut().cpu_mut().set_gpr(0, 7);
                         }
+
+                        replayer_state.increment_current_tick();
                     }),
                 )
             },
