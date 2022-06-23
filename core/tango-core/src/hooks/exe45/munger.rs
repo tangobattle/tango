@@ -51,9 +51,8 @@ impl Munger {
             self.offsets.ewram.submenu_control + 0x15,
             -1,
             battle_settings,
-        ); //Changed
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x16, -1, background);
-        //Changed
+        );//Changed
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x16, -1, background);//Changed
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
