@@ -27,7 +27,6 @@ export interface PatchInfo {
   authors: { name: string | null; contact: string }[];
   source?: string;
   license?: string;
-  readme: string | null;
   versions: {
     [version: string]: PatchVersionInfo;
   };
@@ -114,10 +113,6 @@ export async function scan(dir: string) {
           throw `could not parse patch info for ${patchName}: ${e}`;
         }
 
-        const files = await readdir(patchPath);
-        const readme =
-          files.find((f) => f.toLowerCase().startsWith("readme")) ?? null;
-
         for (const versionName of Object.keys(info.versions)) {
           const version = info.versions[versionName];
 
@@ -179,7 +174,6 @@ export async function scan(dir: string) {
               : [],
           source: info.patch.source,
           license: info.patch.license,
-          readme,
           versions,
         };
       } catch (e) {
