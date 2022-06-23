@@ -163,7 +163,10 @@ function AboutTab({ active }: { active: boolean }) {
               <Link href="https://twitter.com/GreigaMaster" target="_blank">
                 GreigaMaster
               </Link>{" "}
-              and{" "}
+              for all of their original reverse engineering work on Battle
+              Network 6 and adding support for Rockman.EXE 4.5: Real Operation.
+            </li>
+            <li>
               <Link href="https://twitter.com/Prof9" target="_blank">
                 Prof. 9
               </Link>{" "}
