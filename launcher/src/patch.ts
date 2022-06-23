@@ -24,9 +24,10 @@ export interface PatchVersionInfo {
 
 export interface PatchInfo {
   title?: string;
-  authors: { name: string | null; email: string }[];
+  authors: { name: string | null; contact: string }[];
   source?: string;
   license?: string;
+  readme: string | null;
   versions: {
     [version: string]: PatchVersionInfo;
   };
@@ -113,6 +114,10 @@ export async function scan(dir: string) {
           throw `could not parse patch info for ${patchName}: ${e}`;
         }
 
+        const files = await readdir(patchPath);
+        const readme =
+          files.find((f) => f.toLowerCase().startsWith("readme")) ?? null;
+
         for (const versionName of Object.keys(info.versions)) {
           const version = info.versions[versionName];
 
@@ -169,11 +174,12 @@ export async function scan(dir: string) {
                   if (addr == null || addr.type != "mailbox") {
                     return [];
                   }
-                  return [{ name: addr.name, email: addr.address }];
+                  return [{ name: addr.name, contact: addr.address }];
                 })
               : [],
           source: info.patch.source,
           license: info.patch.license,
+          readme,
           versions,
         };
       } catch (e) {

@@ -1,5 +1,10 @@
 {
   "no-patches": "没有补丁",
   "update": "更新",
-  "byline": "作者：{{authors}}"
+  "byline": "作者：{{authors}}",
+  "authors": "作者",
+  "license": "许可证",
+  "all-rights-reserved": "所有权保留",
+  "versions": "版本",
+  "source": "网站"
 }

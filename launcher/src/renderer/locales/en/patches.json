@@ -1,5 +1,10 @@
 {
   "no-patches": "No patches",
   "update": "Update",
-  "byline": "by {{authors}}"
+  "byline": "by {{authors}}",
+  "authors": "Authors",
+  "license": "License",
+  "all-rights-reserved": "All rights reserved",
+  "versions": "Versions",
+  "source": "Website"
 }

@@ -11,13 +11,17 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
 import Fab from "@mui/material/Fab";
 import List from "@mui/material/List";
-import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
+import Modal from "@mui/material/Modal";
+import Slide from "@mui/material/Slide";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { PatchInfo } from "../../../patch";
 import { usePatches } from "../PatchesContext";
+import PatchInfoDialog from "../PatchInfoDialog";
 
 export default function PatchesPane({ active }: { active: boolean }) {
   const { i18n } = useTranslation();
@@ -26,6 +30,12 @@ export default function PatchesPane({ active }: { active: boolean }) {
 
   const patchNames = Object.keys(patches);
   patchNames.sort();
+
+  const [patchDialogPatch, setPatchDialogPatch] = React.useState<{
+    info: PatchInfo;
+    name: string;
+  } | null>(null);
+  const [patchDialogOpen, setPatchDialogOpen] = React.useState(false);
 
   const listFormatter = new Intl.ListFormat(i18n.resolvedLanguage, {
     style: "long",
@@ -54,7 +64,15 @@ export default function PatchesPane({ active }: { active: boolean }) {
 
                 return (
                   <Collapse key={`${patchName} ${version}`}>
-                    <ListItem sx={{ userSelect: "none" }}>
+                    <ListItemButton
+                      onClick={() => {
+                        setPatchDialogPatch({
+                          name: patchName,
+                          info: patches[patchName],
+                        });
+                        setPatchDialogOpen(true);
+                      }}
+                    >
                       <ListItemText
                         primary={
                           <>
@@ -88,7 +106,7 @@ export default function PatchesPane({ active }: { active: boolean }) {
                           },
                         }}
                       />
-                    </ListItem>
+                    </ListItemButton>
                   </Collapse>
                 );
               })}
@@ -150,6 +168,33 @@ export default function PatchesPane({ active }: { active: boolean }) {
           </Stack>
         </Box>
       )}
+      <Modal
+        open={patchDialogOpen}
+        onClose={(_e, _reason) => {
+          setPatchDialogOpen(false);
+        }}
+      >
+        <Slide
+          in={patchDialogOpen}
+          direction="up"
+          unmountOnExit
+          onExited={() => {
+            setPatchDialogPatch(null);
+          }}
+        >
+          <Box>
+            {patchDialogPatch != null ? (
+              <PatchInfoDialog
+                name={patchDialogPatch.name}
+                patchInfo={patchDialogPatch.info}
+                onClose={() => {
+                  setPatchDialogOpen(false);
+                }}
+              />
+            ) : null}
+          </Box>
+        </Slide>
+      </Modal>
     </Box>
   );
 }
