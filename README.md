@@ -12,6 +12,7 @@ Tango is rollback netplay for Mega Man Battle Network.
 -   `MEGAMAN5_TC_BRKE`: Mega Man Battle Network 5: Team Colonel (US)
 -   `ROCKEXE5_TOBBRBJ`: Rockman EXE 5: Team of Blues (JP)
 -   `ROCKEXE5_TOCBRKJ`: Rockman EXE 5: Team of Colonel (JP)
+-   `ROCKEXE4.5ROBR4J`: Rockman EXE 4.5: Real Operation (JP)
 -   `MEGAMANBN4BMB4BE`: Mega Man Battle Network 4: Blue Moon (US)
 -   `MEGAMANBN4RSB4WE`: Mega Man Battle Network 4: Red Sun (US)
 -   `ROCK_EXE4_BMB4BJ`: Rockman EXE 4: Tournament Blue Moon (Rev 0 only) (JP)
