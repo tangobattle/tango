@@ -23,8 +23,9 @@ export interface PatchVersionInfo {
 }
 
 export interface PatchInfo {
-  title?: string;
-  authors: { name: string | null; contact: string }[];
+  title: string;
+  readme: string | null;
+  authors: { name: string; email: string | null }[];
   source?: string;
   license?: string;
   versions: {
@@ -113,6 +114,15 @@ export async function scan(dir: string) {
           throw `could not parse patch info for ${patchName}: ${e}`;
         }
 
+        const filenames = await readdir(patchPath);
+        const readmeFilename = filenames.find(
+          (f) => f.toLowerCase() == "readme"
+        );
+        const readme =
+          readmeFilename != null
+            ? (await readFile(path.join(patchPath, readmeFilename))).toString()
+            : null;
+
         for (const versionName of Object.keys(info.versions)) {
           const version = info.versions[versionName];
 
@@ -162,14 +172,20 @@ export async function scan(dir: string) {
 
         patches[patchName] = {
           title: info.patch.title || patchName,
+          readme,
           authors:
             info.patch.authors != null
               ? info.patch.authors.flatMap((a) => {
                   const addr = parseOneAddress(a);
                   if (addr == null || addr.type != "mailbox") {
-                    return [];
+                    return [{ name: a, email: null as string | null }];
                   }
-                  return [{ name: addr.name, contact: addr.address }];
+                  return [
+                    {
+                      name: addr.name ?? addr.address,
+                      email: addr.address as string | null,
+                    },
+                  ];
                 })
               : [],
           source: info.patch.source,

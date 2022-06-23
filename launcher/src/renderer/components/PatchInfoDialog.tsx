@@ -1,9 +1,12 @@
 import { sortBy } from "lodash-es";
+import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 import semver from "semver";
 
+import { shell } from "@electron/remote";
 import CloseIcon from "@mui/icons-material/Close";
+import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Link from "@mui/material/Link";
@@ -45,14 +48,22 @@ export default function PatchInfoDialog({
       direction="column"
     >
       <Stack direction="row" sx={{ pt: 1, px: 1, alignItems: "start" }}>
-        <Box>
+        <Box sx={{ width: "100%" }}>
           <Typography variant="h6" component="h2" sx={{ px: 1 }}>
             {patchInfo.title!} <small>{name}</small>
           </Typography>
         </Box>
+        <Tooltip title={<Trans i18nKey="patches:open-directory" />}>
+          <IconButton
+            onClick={() => {
+              shell.openPath(path.join(config.paths.patches, name));
+            }}
+          >
+            <FolderOpenOutlinedIcon />
+          </IconButton>
+        </Tooltip>
         <Tooltip title={<Trans i18nKey="common:close" />}>
           <IconButton
-            sx={{ ml: "auto" }}
             onClick={() => {
               onClose();
             }}
@@ -61,26 +72,37 @@ export default function PatchInfoDialog({
           </IconButton>
         </Tooltip>
       </Stack>
-      <Box flexGrow={1} sx={{ display: "flex" }}>
+      <Box
+        flexGrow={1}
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          height: 0,
+          overflow: "auto",
+        }}
+      >
         <Box sx={{ width: "100%" }}>
           <Table size="small">
             <TableBody>
               <TableRow>
                 <TableCell
                   component="th"
-                  sx={{ width: "40px", verticalAlign: "top" }}
-                  color="textSecondary"
+                  sx={{
+                    width: "0",
+                    maxWidth: "100%",
+                    whiteSpace: "nowrap",
+                    verticalAlign: "top",
+                    color: "text.secondary",
+                  }}
                 >
-                  <Typography color="textSecondary" fontSize="inherit">
-                    <Trans i18nKey="patches:authors" />
-                  </Typography>
+                  <Trans i18nKey="patches:authors" />
                 </TableCell>
                 <TableCell sx={{ verticalAlign: "top" }}>
                   <ul style={{ margin: 0, paddingLeft: "1em" }}>
                     {patchInfo.authors.map((a, i) => (
                       <li key={i}>
-                        {a.contact != null ? (
-                          <Link href={a.contact} target="_blank">
+                        {a.email != null ? (
+                          <Link href={`mailto:${a.email}`} target="_blank">
                             {a.name}
                           </Link>
                         ) : (
@@ -94,12 +116,15 @@ export default function PatchInfoDialog({
               <TableRow>
                 <TableCell
                   component="th"
-                  sx={{ width: "40px", verticalAlign: "top" }}
-                  color="textSecondary"
+                  sx={{
+                    width: "0",
+                    maxWidth: "100%",
+                    whiteSpace: "nowrap",
+                    verticalAlign: "top",
+                    color: "text.secondary",
+                  }}
                 >
-                  <Typography color="textSecondary" fontSize="inherit">
-                    <Trans i18nKey="patches:license" />
-                  </Typography>
+                  <Trans i18nKey="patches:license" />
                 </TableCell>
                 <TableCell sx={{ verticalAlign: "top" }}>
                   {patchInfo.license != null ? (
@@ -118,14 +143,22 @@ export default function PatchInfoDialog({
                 <TableRow>
                   <TableCell
                     component="th"
-                    sx={{ width: "40px", verticalAlign: "top" }}
+                    sx={{
+                      width: "0",
+                      maxWidth: "100%",
+                      whiteSpace: "nowrap",
+                      verticalAlign: "top",
+                      color: "text.secondary",
+                    }}
                   >
-                    <Typography color="textSecondary" fontSize="inherit">
-                      <Trans i18nKey="patches:source" />
-                    </Typography>
+                    <Trans i18nKey="patches:source" />
                   </TableCell>
                   <TableCell sx={{ verticalAlign: "top" }}>
-                    <Link href={patchInfo.source} target="_blank">
+                    <Link
+                      href={patchInfo.source}
+                      target="_blank"
+                      sx={{ wordWrap: "break-word" }}
+                    >
                       {patchInfo.source}
                     </Link>
                   </TableCell>
@@ -134,11 +167,15 @@ export default function PatchInfoDialog({
               <TableRow>
                 <TableCell
                   component="th"
-                  sx={{ width: "40px", verticalAlign: "top" }}
+                  sx={{
+                    width: "0",
+                    maxWidth: "100%",
+                    whiteSpace: "nowrap",
+                    verticalAlign: "top",
+                    color: "text.secondary",
+                  }}
                 >
-                  <Typography color="textSecondary" fontSize="inherit">
-                    <Trans i18nKey="patches:versions" />
-                  </Typography>
+                  <Trans i18nKey="patches:versions" />
                 </TableCell>
                 <TableCell sx={{ verticalAlign: "top" }}>
                   <ul style={{ margin: 0, paddingLeft: "1em" }}>
@@ -196,6 +233,9 @@ export default function PatchInfoDialog({
               </TableRow>
             </TableBody>
           </Table>
+        </Box>
+        <Box sx={{ px: 2 }}>
+          <pre style={{ whiteSpace: "pre-wrap" }}>{patchInfo.readme}</pre>
         </Box>
       </Box>
     </Stack>

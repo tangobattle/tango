@@ -1,5 +1,6 @@
 {
   "no-patches": "パッチがありません",
+  "open-directory": "ディレクトリを開く",
   "update": "更新",
   "byline": "作者：{{authors}}",
   "authors": "作者",
