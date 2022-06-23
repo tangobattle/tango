@@ -346,8 +346,8 @@ impl Match {
         let mut replay_filename = self.settings.replays_path.clone().as_os_str().to_owned();
         replay_filename.push(format!(
             "-round{}-p{}.tangoreplay",
-            local_player_index + 1,
-            round_state.number
+            round_state.number,
+            local_player_index + 1
         ));
         let replay_filename = std::path::Path::new(&replay_filename);
         let replay_file = std::fs::File::create(&replay_filename)?;
@@ -424,6 +424,7 @@ impl Match {
     }
 }
 
+#[derive(Clone)]
 struct Tx {
     for_tick: u32,
     tx: Vec<u8>,
@@ -611,26 +612,27 @@ impl Round {
         &mut self,
     ) -> anyhow::Result<(
         Vec<input::Pair<input::Input, input::Input>>,
-        Vec<input::PartialInput>,
+        Vec<input::Input>,
     )> {
         let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
 
-        let partial_input_pairs = partial_input_pairs
+        let partial_input_pairs_len = partial_input_pairs.len();
+        assert!(
+            self.tx_queue.len() >= partial_input_pairs_len + left.len(),
+            "not enough tx queue inputs"
+        );
+
+        let input_pairs = partial_input_pairs
             .into_iter()
-            .map(|pair| {
-                let tx = if let Some(tx) = self.tx_queue.pop_front() {
-                    tx
-                } else {
-                    anyhow::bail!("tx queue is empty");
-                };
-                if tx.for_tick != pair.local.local_tick {
-                    anyhow::bail!(
-                        "tx input did not match current tick: {} != {}",
-                        tx.for_tick,
-                        pair.local.local_tick
-                    );
-                }
-                Ok(input::Pair {
+            .zip(self.tx_queue.drain(..partial_input_pairs_len))
+            .map(|(pair, tx)| {
+                assert!(
+                    tx.for_tick == pair.local.local_tick,
+                    "tx input did not match current tick: {} != {}",
+                    tx.for_tick,
+                    pair.local.local_tick
+                );
+                input::Pair {
                     local: input::Input {
                         local_tick: pair.local.local_tick,
                         remote_tick: pair.local.remote_tick,
@@ -639,12 +641,32 @@ impl Round {
                         is_prediction: false,
                     },
                     remote: pair.remote,
-                })
+                }
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Vec<_>>();
+
+        let left = left
+            .into_iter()
+            .zip(self.tx_queue.iter().cloned())
+            .map(|(pi, tx)| {
+                assert!(
+                    tx.for_tick == pi.local_tick,
+                    "tx input did not match current tick: {} != {}",
+                    tx.for_tick,
+                    pi.local_tick
+                );
+                input::Input {
+                    local_tick: pi.local_tick,
+                    remote_tick: pi.remote_tick,
+                    joyflags: pi.joyflags,
+                    rx: tx.tx,
+                    is_prediction: true,
+                }
+            })
+            .collect::<Vec<_>>();
 
         let mut shadow = self.shadow.lock().await;
-        let input_pairs = partial_input_pairs
+        let input_pairs = input_pairs
             .into_iter()
             .map(|pair| shadow.apply_input(pair))
             .collect::<Result<Vec<_>, _>>()?;

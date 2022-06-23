@@ -43,9 +43,9 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x11, -1, 0x01);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x14, -1, 0x01);
         core.raw_write_8(
-            self.offsets.ewram.submenu_control + 0x10,
+            self.offsets.ewram.submenu_control + 0x14,
             -1,
-            match_type,
+            match_type * 2 + 1,
         );
         core.raw_write_8(
             self.offsets.ewram.submenu_control + 0x15,

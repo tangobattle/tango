@@ -1,7 +1,7 @@
 {
   "name": "tango",
   "productName": "Tango",
-  "version": "3.2.25",
+  "version": "3.2.27",
   "author": {
     "name": "The Tango Authors",
     "email": "lets@tangobattle.com"
@@ -50,6 +50,7 @@
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-i18next": "^11.16.7",
+    "react-sparklines": "^1.7.0",
     "react-transition-group": "^4.4.2",
     "react-use": "^17.3.2",
     "react-virtualized-auto-sizer": "^1.0.6",
@@ -66,6 +67,7 @@
     "@types/node": "^16.11.26",
     "@types/react": "^17.0.43",
     "@types/react-dom": "^17.0.14",
+    "@types/react-sparklines": "^1.7.2",
     "@types/react-virtualized-auto-sizer": "^1.0.1",
     "@types/react-window": "^1.8.5",
     "@types/semver": "^7.3.9",
