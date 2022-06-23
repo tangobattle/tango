@@ -162,7 +162,7 @@ pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
         round_end_damage_judge_set_loss:        0x08007896,
         round_end_damage_judge_set_draw:        0x0800789C,
         round_start_ret:                        0x08006B2E,
-        round_set_ending:                       0x08007CC4,
+        round_set_ending:                       0x08007CC2,
         round_end_entry:                        0x080071EE,
         round_call_jump_table_ret:              0x08006E50,
         battle_is_p2_tst:                       0x0804A3A8,
