@@ -9,6 +9,9 @@ pub(super) struct EWRAMOffsets {
     /// Title menu jump table control.
     pub(super) title_menu_control: u32,
 
+    /// Intro jump table control.
+    pub(super) intro_control: u32,
+
     /// Subsystem control.
     pub(super) subsystem_control: u32,
 
@@ -60,7 +63,9 @@ pub(super) struct ROMOffsets {
     /// This hooks the exit into the function that will copy received input data from rx_packet_arr into game state, as well as copies the next game state into tx_packet.
     ///
     /// Packets to transmit should be injected here into tx_packet.
-    pub(super) copy_input_data_ret: u32,
+    pub(super) copy_input_data_ret1: u32,
+    pub(super) copy_input_data_ret2: u32,
+    pub(super) copy_input_data_ret3: u32,
 
     pub(super) round_end_set_win: u32,
     pub(super) round_end_set_loss: u32,
@@ -124,6 +129,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     tx_packet:              0x02035640,
     rx_packet_arr:          0x02038690,
     title_menu_control:     0x02010810,
+    intro_control:          0x0201A800,
     subsystem_control:      0x0200FD50,
     submenu_control:        0x0200F970,
     rng1_state:             0x02003D58,
@@ -147,7 +153,9 @@ pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
         game_load_ret:                          0x08028F30,
         main_read_joyflags:                     0x0800039E,
         copy_input_data_entry:                  0x08019262,//Routine slightly different from BN4
-        copy_input_data_ret:                    0x08019364,
+        copy_input_data_ret1:                   0x0801934C,
+        copy_input_data_ret2:                   0x08019358,
+        copy_input_data_ret3:                   0x08019364,
         round_end_set_win:                      0x080075D8,
         round_end_set_loss:                     0x080075EC,
         round_end_damage_judge_set_win:         0x08007882,

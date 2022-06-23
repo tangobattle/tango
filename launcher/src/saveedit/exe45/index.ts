@@ -4,11 +4,11 @@ export { CHIPS };
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
-const SRAM_START_OFFSET = 0x0100;
+const SRAM_START_OFFSET = 0x00;
 const SRAM_SIZE = 0xc7a8;
-const MASK_OFFSET = 0x3b84;
-const GAME_NAME_OFFSET = 0x4aa8;
-const CHECKSUM_OFFSET = 0x4a88;
+const MASK_OFFSET = 0x3C84;
+const GAME_NAME_OFFSET = 0x4BA8;
+const CHECKSUM_OFFSET = 0x4B88;
 
 function maskSave(dv: DataView) {
   const mask = dv.getUint32(MASK_OFFSET, true);
@@ -166,7 +166,7 @@ export class Editor {
     const gn = decoder.decode(
       new Uint8Array(buffer, dv.byteOffset + GAME_NAME_OFFSET, 20)
     );
-    if (gn != "ROCKMANEXE4RO 040607") {
+    if ((gn != "ROCKMANEXE4RO 040607") && (gn != "ROCKMANEXE4RO 041217")) {
       throw "unknown game name: " + gn;
     }
 

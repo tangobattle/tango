@@ -95,6 +95,19 @@ impl hooks::Hooks for EXE45 {
                     }),
                 )
             },
+            {
+                (
+                    self.offsets.rom.comm_menu_handle_link_cable_input,
+                    Box::new(move |mut core| {
+                        //Skip call
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        //return r0 = 0, r1 = 0
+                        core.gba_mut().cpu_mut().set_gpr(0, 0);
+                        core.gba_mut().cpu_mut().set_gpr(1, 0);
+                    }),
+                )
+            },
         ]
     }
 
@@ -338,22 +351,6 @@ impl hooks::Hooks for EXE45 {
                 )
             },
             {
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.comm_menu_handle_link_cable_input,
-                    Box::new(move |mut core| {
-                        handle.block_on(async {
-                            //Skip call
-                            let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                            //return r0 = 0, r1 = 0
-                            core.gba_mut().cpu_mut().set_gpr(0, 0);
-                            core.gba_mut().cpu_mut().set_gpr(1, 0);
-                        });
-                    }),
-                )
-            },
-            {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
@@ -478,7 +475,71 @@ impl hooks::Hooks for EXE45 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret,
+                    self.offsets.rom.copy_input_data_ret1,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            round.queue_tx(
+                                round.current_tick() + 1,
+                                munger.tx_packet(core).to_vec(),
+                            );
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret2,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match facade.match_().await {
+                                Some(match_) => match_,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            let mut round_state = match_.lock_round_state().await;
+
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
+                            };
+
+                            round.queue_tx(
+                                round.current_tick() + 1,
+                                munger.tx_packet(core).to_vec(),
+                            );
+                        });
+                    }),
+                )
+            },
+            {
+                let facade = facade.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret3,
                     Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -992,15 +1053,6 @@ impl hooks::Hooks for EXE45 {
                             replayer_state.remote_player_index() as u32,
                             &ip.remote.rx.try_into().unwrap(),
                         );
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_set_ending,
-                    Box::new(move |_core| {
-                        replayer_state.set_round_ending();
                     }),
                 )
             },

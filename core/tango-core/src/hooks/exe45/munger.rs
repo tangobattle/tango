@@ -9,7 +9,7 @@ impl Munger {
     }
 
     pub(super) fn skip_intro(&self, mut core: mgba::core::CoreMutRef) {
-        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x00, -1, 0x08);
+        core.raw_write_8(self.offsets.ewram.intro_control + 0x00, -1, 0x08);
     }
 
     pub(super) fn continue_from_title_menu(&self, mut core: mgba::core::CoreMutRef) {
