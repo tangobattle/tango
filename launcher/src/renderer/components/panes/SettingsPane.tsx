@@ -392,14 +392,14 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.replayCollectorEndpoint}
+            value={config.replaycollectorEndpoint}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                replayCollectorEndpoint: e.target.value,
+                replaycollectorEndpoint: e.target.value,
               }));
             }}
-            label={<Trans i18nKey="settings:replay-collector-endpoint" />}
+            label={<Trans i18nKey="settings:replaycollector-endpoint" />}
           />
           <TextField
             size="small"

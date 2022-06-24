@@ -780,9 +780,9 @@ async function runCallback(
     if (msg.roundEndedEv != null) {
       // eslint-disable-next-line no-console
       console.log("round ended", msg.roundEndedEv);
-      if (config.replayCollectorEndpoint != "") {
+      if (config.replaycollectorEndpoint != "") {
         (async () => {
-          const collectorResp = await fetch(config.replayCollectorEndpoint, {
+          const collectorResp = await fetch(config.replaycollectorEndpoint, {
             method: "POST",
             headers: {
               "Content-Type": "application/x-tango-replay",

@@ -39,7 +39,7 @@
     "update-channel.disabled": "Disabled",
     "rust-log-filter": "RUST_LOG filter",
     "open-logs-folder": "Open logs folder",
-    "replay-collector-endpoint": "Replay collector endpoint",
+    "replaycollector-endpoint": "Replay collector endpoint",
     "signaling-endpoint": "Signaling endpoint",
     "iceconfig-endpoint": "ICE configuration endpoint",
     "patch-repo": "Patch repository",
