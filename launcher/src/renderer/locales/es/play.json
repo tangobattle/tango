@@ -14,6 +14,7 @@
   "match-type.triple": "Triple",
   "rescan": "Re-buscar",
   "select-save": "Partida Guardada",
+  "select-game": "Game",
   "no-save-selected": "No se ha seleccionado partida guardada",
   "tab.navicust": "NaviCust",
   "tab.folder": "Folder",
@@ -43,5 +44,10 @@
   "connection-quality": "{{rtt}} ms",
   "auto-input-delay": "Auto",
   "reveal-setup-title": "Build de {{opponentNickname}}",
-  "missing-patch": "Parche desconocido \"{{name}}\""
+  "missing-patch": "Parche desconocido \"{{name}}\"",
+  "save-viewer-unsupported": "Save viewer is unsupported for this game",
+  "rom-name": "{{familyName}}: {{versionName}}",
+  "select-save-button": "Select",
+  "select-a-game": "Select a game",
+  "return-to-games-list": "Return to games list"
 }
