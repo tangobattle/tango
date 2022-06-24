@@ -39,6 +39,7 @@
     "update-channel.disabled": "禁用",
     "rust-log-filter": "RUST_LOG过滤",
     "open-logs-folder": "打开日志文件夹",
+    "replaycollector-endpoint": "回放收集器端点",
     "signaling-endpoint": "信令端点",
     "iceconfig-endpoint": "ICE配置端点",
     "patch-repo": "补丁仓库",

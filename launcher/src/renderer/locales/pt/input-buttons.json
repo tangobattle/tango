@@ -1,0 +1,18 @@
+{
+  "dpup": "Direcional para cima",
+  "dpdown": "Direcional para baixo",
+  "dpleft": "Direcional para esquerda",
+  "dpright": "Direcional para direita",
+  "a": "Botão A",
+  "b": "Botão B",
+  "x": "Botão X",
+  "y": "Botão Y",
+  "leftstick": "Botão do Analógico Esquerdo",
+  "rightstick": "Botão do Analógico Direito",
+  "leftshoulder": "Botão LB",
+  "rightshoulder": "Botão RB",
+  "back": "Voltar",
+  "guide": "Guia",
+  "start": "Iniciar",
+  "touchpad": "Painel de toque"
+}

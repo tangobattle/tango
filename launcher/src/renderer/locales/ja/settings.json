@@ -39,6 +39,7 @@
     "update-channel.disabled": "無効",
     "rust-log-filter": "RUST_LOGフィルター",
     "open-logs-folder": "ログフォルダーを開く",
+    "replaycollector-endpoint": "リプレイコレクターエンドポイント",
     "signaling-endpoint": "シグナリングエンドポイント",
     "iceconfig-endpoint": "ICE設定エンドポイント",
     "patch-repo": "パッチリポジトリ",

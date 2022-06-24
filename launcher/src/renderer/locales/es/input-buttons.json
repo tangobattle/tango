@@ -7,12 +7,12 @@
   "b": "B",
   "x": "X",
   "y": "Y",
-  "leftstick": "LStick Button",
-  "rightstick": "RStick Button",
-  "leftshoulder": "LBumper",
-  "rightshoulder": "RBumper",
-  "back": "Back",
-  "guide": "Guide",
+  "leftstick": "Botón Stick Izq",
+  "rightstick": "Botón Stick Der",
+  "leftshoulder": "Bumper Izq",
+  "rightshoulder": "Bumper Der",
+  "back": "Atrás",
+  "guide": "Guía",
   "start": "Start",
-  "touchpad": "Touchpad"
+  "touchpad": "Panel Táctil"
 }
