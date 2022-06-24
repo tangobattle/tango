@@ -1,8 +1,8 @@
 {
-  "play": "Play",
-  "replays": "Replays",
-  "patches": "Patches",
-  "settings": "Settings",
-  "settings-update-available": "Settings (update available)",
-  "settings-update-downloaded": "Settings (will update on restart)"
+  "play": "Jogar",
+  "replays": "Gravações",
+  "patches": "Mods",
+  "settings": "Configurações",
+  "settings-update-available": "Configurações (atualização disponível)",
+  "settings-update-downloaded": "Configurações (será atualizado ao reiniciar)"
 }
