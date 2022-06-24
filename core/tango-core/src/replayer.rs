@@ -15,11 +15,12 @@ struct InnerState {
     error: Option<anyhow::Error>,
 }
 
-#[derive(Clone, Copy, serde::Serialize)]
+#[derive(Clone, Copy, serde_repr::Serialize_repr)]
+#[repr(i8)]
 pub enum BattleResult {
-    Win,
-    Loss,
-    Draw,
+    Draw = -1,
+    Loss = 0,
+    Win = 1,
 }
 
 pub struct Fastforwarder {

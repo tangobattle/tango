@@ -11,8 +11,8 @@ use crate::transport;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum BattleResult {
-    Win,
     Loss,
+    Win,
 }
 
 #[derive(Clone)]
