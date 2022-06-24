@@ -1,5 +1,6 @@
 #![windows_subsystem = "windows"]
 
+use bitvec::view::BitView;
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
 use sha3::Digest;
@@ -54,7 +55,7 @@ struct EWRAMCli {}
 struct TextCli {}
 
 #[derive(clap::Parser)]
-struct HashCli {}
+struct InfoCli {}
 
 #[derive(clap::Parser)]
 struct EvalCli {
@@ -67,7 +68,7 @@ enum Action {
     Video(VideoCli),
     EWRAM(EWRAMCli),
     Text(TextCli),
-    Hash(HashCli),
+    Info(InfoCli),
     Eval(EvalCli),
 }
 
@@ -93,7 +94,7 @@ fn main() -> Result<(), anyhow::Error> {
         Action::EWRAM(args) => dump_ewram(args, replay),
         Action::Text(args) => dump_text(args, replay),
         Action::Eval(args) => dump_eval(args, replay),
-        Action::Hash(args) => dump_hash(args, replay),
+        Action::Info(args) => dump_info(args, replay),
     }
 }
 
@@ -275,7 +276,19 @@ fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), a
     Ok(())
 }
 
-fn dump_hash(_args: HashCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+#[derive(serde::Serialize)]
+struct Info {
+    num_actual_input_pairs: usize,
+    local_player_index: u8,
+    local_input_histogram: [usize; 16],
+    remote_input_histogram: [usize; 16],
+    hash: String,
+}
+
+fn dump_info(_args: InfoCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+    let mut local_input_histogram = [0; 16];
+    let mut remote_input_histogram = [0; 16];
+
     let mut sha3 = sha3::Sha3_256::new();
     for ip in &replay.input_pairs {
         sha3.update(
@@ -285,16 +298,38 @@ fn dump_hash(_args: HashCli, replay: tango_core::replay::Replay) -> Result<(), a
                 .zip(ip.remote.rx.iter())
                 .map(|(x, y)| (*x ^ *y))
                 .collect::<Vec<_>>(),
-        )
-    }
-    println!("{}", hex::encode(&sha3.finalize().as_slice()));
-    Ok(())
-}
+        );
 
-#[derive(serde::Serialize)]
-struct Eval {
-    local_player_index: u8,
-    result: tango_core::replayer::BattleResult,
+        for i in ip
+            .local
+            .joyflags
+            .view_bits::<bitvec::order::Lsb0>()
+            .iter_ones()
+        {
+            local_input_histogram[i] += 1;
+        }
+
+        for i in ip
+            .remote
+            .joyflags
+            .view_bits::<bitvec::order::Lsb0>()
+            .iter_ones()
+        {
+            remote_input_histogram[i] += 1;
+        }
+    }
+
+    serde_json::to_writer(
+        std::io::stdout(),
+        &Info {
+            num_actual_input_pairs: replay.input_pairs.len(),
+            local_input_histogram,
+            remote_input_histogram,
+            local_player_index: replay.local_player_index,
+            hash: hex::encode(&sha3.finalize().as_slice()),
+        },
+    )?;
+    Ok(())
 }
 
 fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
@@ -353,13 +388,7 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
         core.as_mut().run_frame();
     }
 
-    serde_json::to_writer(
-        std::io::stdout(),
-        &Eval {
-            local_player_index: replayer_state.local_player_index(),
-            result: replayer_state.round_result().unwrap(),
-        },
-    )?;
+    println!("{}", replayer_state.round_result().unwrap() as u8);
 
     Ok(())
 }
