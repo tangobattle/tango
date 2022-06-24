@@ -58,6 +58,7 @@ export interface FromCoreMessage {
   stateEv: FromCoreMessage_StateEvent | undefined;
   smuggleEv: FromCoreMessage_SmuggleEvent | undefined;
   connectionQualityEv: FromCoreMessage_ConnectionQualityEvent | undefined;
+  roundEndedEv: FromCoreMessage_RoundEndedEvent | undefined;
 }
 
 export interface FromCoreMessage_StateEvent {
@@ -126,6 +127,10 @@ export interface FromCoreMessage_ConnectionQualityEvent {
   rtt: number;
 }
 
+export interface FromCoreMessage_RoundEndedEvent {
+  replayFilename: string;
+}
+
 export interface ToCoreMessage {
   startReq: ToCoreMessage_StartRequest | undefined;
   smuggleReq: ToCoreMessage_SmuggleRequest | undefined;
@@ -160,6 +165,7 @@ function createBaseFromCoreMessage(): FromCoreMessage {
     stateEv: undefined,
     smuggleEv: undefined,
     connectionQualityEv: undefined,
+    roundEndedEv: undefined,
   };
 }
 
@@ -184,6 +190,12 @@ export const FromCoreMessage = {
       FromCoreMessage_ConnectionQualityEvent.encode(
         message.connectionQualityEv,
         writer.uint32(26).fork()
+      ).ldelim();
+    }
+    if (message.roundEndedEv !== undefined) {
+      FromCoreMessage_RoundEndedEvent.encode(
+        message.roundEndedEv,
+        writer.uint32(34).fork()
       ).ldelim();
     }
     return writer;
@@ -215,6 +227,12 @@ export const FromCoreMessage = {
               reader.uint32()
             );
           break;
+        case 4:
+          message.roundEndedEv = FromCoreMessage_RoundEndedEvent.decode(
+            reader,
+            reader.uint32()
+          );
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -236,6 +254,9 @@ export const FromCoreMessage = {
             object.connectionQualityEv
           )
         : undefined,
+      roundEndedEv: isSet(object.roundEndedEv)
+        ? FromCoreMessage_RoundEndedEvent.fromJSON(object.roundEndedEv)
+        : undefined,
     };
   },
 
@@ -254,6 +275,10 @@ export const FromCoreMessage = {
         ? FromCoreMessage_ConnectionQualityEvent.toJSON(
             message.connectionQualityEv
           )
+        : undefined);
+    message.roundEndedEv !== undefined &&
+      (obj.roundEndedEv = message.roundEndedEv
+        ? FromCoreMessage_RoundEndedEvent.toJSON(message.roundEndedEv)
         : undefined);
     return obj;
   },
@@ -276,6 +301,10 @@ export const FromCoreMessage = {
         ? FromCoreMessage_ConnectionQualityEvent.fromPartial(
             object.connectionQualityEv
           )
+        : undefined;
+    message.roundEndedEv =
+      object.roundEndedEv !== undefined && object.roundEndedEv !== null
+        ? FromCoreMessage_RoundEndedEvent.fromPartial(object.roundEndedEv)
         : undefined;
     return message;
   },
@@ -456,6 +485,66 @@ export const FromCoreMessage_ConnectionQualityEvent = {
   >(object: I): FromCoreMessage_ConnectionQualityEvent {
     const message = createBaseFromCoreMessage_ConnectionQualityEvent();
     message.rtt = object.rtt ?? 0;
+    return message;
+  },
+};
+
+function createBaseFromCoreMessage_RoundEndedEvent(): FromCoreMessage_RoundEndedEvent {
+  return { replayFilename: "" };
+}
+
+export const FromCoreMessage_RoundEndedEvent = {
+  encode(
+    message: FromCoreMessage_RoundEndedEvent,
+    writer: _m0.Writer = _m0.Writer.create()
+  ): _m0.Writer {
+    if (message.replayFilename !== "") {
+      writer.uint32(10).string(message.replayFilename);
+    }
+    return writer;
+  },
+
+  decode(
+    input: _m0.Reader | Uint8Array,
+    length?: number
+  ): FromCoreMessage_RoundEndedEvent {
+    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
+    let end = length === undefined ? reader.len : reader.pos + length;
+    const message = createBaseFromCoreMessage_RoundEndedEvent();
+    while (reader.pos < end) {
+      const tag = reader.uint32();
+      switch (tag >>> 3) {
+        case 1:
+          message.replayFilename = reader.string();
+          break;
+        default:
+          reader.skipType(tag & 7);
+          break;
+      }
+    }
+    return message;
+  },
+
+  fromJSON(object: any): FromCoreMessage_RoundEndedEvent {
+    return {
+      replayFilename: isSet(object.replayFilename)
+        ? String(object.replayFilename)
+        : "",
+    };
+  },
+
+  toJSON(message: FromCoreMessage_RoundEndedEvent): unknown {
+    const obj: any = {};
+    message.replayFilename !== undefined &&
+      (obj.replayFilename = message.replayFilename);
+    return obj;
+  },
+
+  fromPartial<I extends Exact<DeepPartial<FromCoreMessage_RoundEndedEvent>, I>>(
+    object: I
+  ): FromCoreMessage_RoundEndedEvent {
+    const message = createBaseFromCoreMessage_RoundEndedEvent();
+    message.replayFilename = object.replayFilename ?? "";
     return message;
   },
 };

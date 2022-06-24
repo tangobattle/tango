@@ -3,6 +3,7 @@ use rand::Rng;
 use crate::game;
 use crate::hooks;
 use crate::input;
+use crate::ipc;
 use crate::protocol;
 use crate::replay;
 use crate::replayer;
@@ -43,6 +44,7 @@ pub struct RoundState {
     pub number: u8,
     pub round: Option<Round>,
     pub last_result: Option<BattleResult>,
+    ipc_sender: std::sync::Arc<parking_lot::Mutex<ipc::Sender>>,
 }
 
 impl RoundState {
@@ -57,6 +59,21 @@ impl RoundState {
                     .unwrap()
                     .finish()
                     .expect("finish");
+                self.ipc_sender
+                    .lock()
+                    .send(ipc::protos::FromCoreMessage {
+                        which: Some(ipc::protos::from_core_message::Which::RoundEndedEv(
+                            ipc::protos::from_core_message::RoundEndedEvent {
+                                replay_filename: round
+                                    .replay_filename
+                                    .as_os_str()
+                                    .to_str()
+                                    .expect("replay filename")
+                                    .to_owned(),
+                            },
+                        )),
+                    })
+                    .await?;
             }
             None => {
                 return Ok(());
@@ -164,6 +181,7 @@ impl Match {
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
+        ipc_sender: std::sync::Arc<parking_lot::Mutex<ipc::Sender>>,
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let shadow_rom = std::fs::read(&settings.shadow_rom_path)?;
@@ -199,6 +217,7 @@ impl Match {
                 number: 0,
                 round: None,
                 last_result: Some(last_result),
+                ipc_sender,
             }),
             is_offerer,
             primary_thread_handle,
@@ -402,6 +421,7 @@ impl Match {
             first_state_committed_tx: Some(first_state_committed_tx),
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
+            replay_filename: replay_filename.to_owned(),
             replay_writer: Some(replay::Writer::new(
                 Box::new(replay_file),
                 &self.settings.replay_metadata,
@@ -444,6 +464,7 @@ pub struct Round {
     committed_state: Option<CommittedState>,
     replay_writer: Option<replay::Writer>,
     replayer: replayer::Fastforwarder,
+    replay_filename: std::path::PathBuf,
     primary_thread_handle: mgba::thread::Handle,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,

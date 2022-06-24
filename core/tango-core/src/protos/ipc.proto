@@ -23,11 +23,13 @@ message FromCoreMessage {
   }
   message SmuggleEvent { bytes data = 1; }
   message ConnectionQualityEvent { uint64 rtt = 1; }
+  message RoundEndedEvent { string replay_filename = 1; }
 
   oneof which {
     StateEvent state_ev = 1;
     SmuggleEvent smuggle_ev = 2;
     ConnectionQualityEvent connection_quality_ev = 3;
+    RoundEndedEvent round_ended_ev = 4;
   }
 }
 

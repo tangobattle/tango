@@ -324,7 +324,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let g = tango_core::game::Game::new(
         rt,
-        ipc_sender,
+        std::sync::Arc::new(parking_lot::Mutex::new(ipc_sender)),
         window_title,
         input_mapping,
         rom_path.into(),

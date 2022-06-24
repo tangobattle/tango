@@ -775,6 +775,11 @@ async function runCallback(
     if (msg.stateEv != null) {
       ref.current.setState(msg.stateEv.state);
     }
+
+    if (msg.roundEndedEv != null) {
+      // eslint-disable-next-line no-console
+      console.log("round ended", msg.roundEndedEv);
+    }
   }
 }
 

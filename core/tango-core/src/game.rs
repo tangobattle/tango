@@ -90,7 +90,7 @@ impl InputMapping {
 
 pub struct Game {
     rt: tokio::runtime::Runtime,
-    ipc_sender: ipc::Sender,
+    ipc_sender: Arc<Mutex<ipc::Sender>>,
     fps_counter: Arc<Mutex<tps::Counter>>,
     emu_tps_counter: Arc<Mutex<tps::Counter>>,
     match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<Arc<battle::Match>>>>>,
@@ -107,7 +107,7 @@ pub struct Game {
 impl Game {
     pub fn new(
         rt: tokio::runtime::Runtime,
-        ipc_sender: ipc::Sender,
+        ipc_sender: Arc<Mutex<ipc::Sender>>,
         window_title: String,
         input_mapping: InputMapping,
         rom_path: std::path::PathBuf,
@@ -216,6 +216,7 @@ impl Game {
                             rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                             is_offerer,
                             thread.handle(),
+                            ipc_sender.clone(),
                             match_init.settings,
                         )
                         .expect("new match"),
@@ -316,6 +317,7 @@ impl Game {
         log::info!("running...");
         self.rt.block_on(async {
             self.ipc_sender
+                .lock()
                 .send(ipc::protos::FromCoreMessage {
                     which: Some(ipc::protos::from_core_message::Which::StateEv(
                         ipc::protos::from_core_message::StateEvent {
