@@ -1,0 +1,18 @@
+{
+  "viewing": "Reprodução em progresso...",
+  "exporting": "Exportação em progresso...",
+  "export-complete": "Sua gravação foi exportada com sucesso.",
+  "no-replays": "Sem gravações (ainda!)",
+  "incomplete": "Esta gravação está incompleta.",
+  "play": "Jogar",
+  "show-info": "Mostrar Informações",
+  "show-file": "Mostrar no folder",
+  "export-video": "Exportar para vídeo",
+  "replay-title": "{{linkCode}}: vs {{nickname}}",
+  "crash": "Oops, parece que o visualizador de gravações estragou!\nPor favor, apresente este código quando informar sobre um erro!",
+  "export-settings": "Exportar as configurações",
+  "output-path": "Salvar em",
+  "scale-factor": "Ajuste de escala",
+  "scale-factor-suffix": "x",
+  "start-export": "Vai!"
+}
