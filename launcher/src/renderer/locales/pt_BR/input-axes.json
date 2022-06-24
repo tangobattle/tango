@@ -1,12 +1,12 @@
 {
-  "leftx-": "Analógico Esquerdo para esquerda",
-  "leftx+": "Analógico Esquerdo para direita",
-  "lefty-": "Analógico Esquerdo para cima",
-  "lefty+": "Analógico Esquerdo para baixo",
-  "rightx-": "Analógico Direito para esquerda",
-  "rightx+": "Analógico Direito para direita",
-  "righty-": "Analógico Direito para cima",
-  "righty+": "Analógico Direito para baixo",
-  "lefttrigger+": "Gatilho Esquerdo",
-  "righttrigger+": "Gatilho Direito"
+  "leftx-": "LStick ⬅",
+  "leftx+": "LStick ⮕",
+  "lefty-": "LStick ⬆",
+  "lefty+": "LStick ⬇",
+  "rightx-": "RStick ⬅",
+  "rightx+": "RStick ⮕",
+  "righty-": "RStick ⬆",
+  "righty+": "RStick ⬇",
+  "lefttrigger+": "LTrigger",
+  "righttrigger+": "RTrigger"
 }
