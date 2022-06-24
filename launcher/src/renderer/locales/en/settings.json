@@ -33,7 +33,7 @@
     "theme.light": "Light",
     "theme.dark": "Dark",
     "update-channel": "Update channel (requires restart)",
-    "update-channel.latest": "Latest",
+    "update-channel.latest": "Stable",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
     "update-channel.disabled": "Disabled",
