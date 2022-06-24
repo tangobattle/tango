@@ -1,14 +1,14 @@
 {
-  "status.unknown": "Please wait...",
-  "status.running": "Running...",
-  "status.waiting": "Waiting for opponent...",
-  "status.connecting": "Connecting to opponent...",
-  "status.starting": "Starting...",
-  "error.lost-connection": "The other player disconnected.",
-  "error.protocol-version-too-old": "Unable to connect to the other player: they are using an older version of Tango.",
-  "error.protocol-version-too-new": "The other player is using a newer version of Tango. Please update.",
-  "error.unknown": "Oops, it looks like the emulator crashed! Please provide this log when reporting a bug!",
-  "cancel": "Stop",
-  "dismiss": "Damn!",
-  "ok": "Yay!"
+  "status.unknown": "Por favor, aguarde...",
+  "status.running": "Executando...",
+  "status.waiting": "Esperando pelo oponente...",
+  "status.connecting": "Conectando-se ao oponente...",
+  "status.starting": "Iniciando...",
+  "error.lost-connection": "O jogador adversário desconectou.",
+  "error.protocol-version-too-old": "Incapaz de se conectar ao jogador adversário: ele usa uma versão antiga do Tango.",
+  "error.protocol-version-too-new": "O jogador adversário usa uma versão mais recente do Tango. Por favor, atualize-o.",
+  "error.unknown": "Oops, parece que o emulador crashou! Por favor, apresente esse log caso for reportar a esse bug!",
+  "cancel": "Pare",
+  "dismiss": "Droga!",
+  "ok": "Massa!"
 }
