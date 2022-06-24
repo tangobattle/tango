@@ -47,7 +47,7 @@
   "missing-patch": "未知补丁“{{name}}”",
   "save-viewer-unsupported": "此游戏不支持保存查看器",
   "rom-name": "{{familyName}} {{versionName}}",
-  "select": "选择",
+  "select-save-button": "选择",
   "select-a-game": "请选择游戏",
   "return-to-games-list": "返回游戏列表"
 }

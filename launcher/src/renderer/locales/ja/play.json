@@ -47,7 +47,7 @@
   "missing-patch": "未知のパッチ「{{name}}」",
   "save-viewer-unsupported": "このゲームではセーブビューアーに対応されていません",
   "rom-name": "{{familyName}} {{versionName}}",
-  "select": "選択",
+  "select-save-button": "選択",
   "select-a-game": "ゲームを選択してください",
   "return-to-games-list": "ゲーム一覧へ戻る"
 }
