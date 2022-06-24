@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "crypto";
 import * as datefns from "date-fns";
 import { clipboard } from "electron";
+import { createReadStream } from "fs";
 import { readFile, writeFile } from "fs/promises";
 import { isEqual } from "lodash-es";
 import fetch from "node-fetch";
@@ -779,6 +780,24 @@ async function runCallback(
     if (msg.roundEndedEv != null) {
       // eslint-disable-next-line no-console
       console.log("round ended", msg.roundEndedEv);
+      if (config.replayCollectorEndpoint != "") {
+        (async () => {
+          const collectorResp = await fetch(config.replayCollectorEndpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-tango-replay",
+            },
+            body: createReadStream(msg.roundEndedEv!.replayFilename),
+          });
+          if (!collectorResp.ok) {
+            console.error(
+              "failed to send to collector",
+              collectorResp.status,
+              await collectorResp.text()
+            );
+          }
+        })();
+      }
     }
   }
 }

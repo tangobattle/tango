@@ -29,6 +29,7 @@ export interface Config {
   };
   signalingEndpoint: string;
   iceconfigEndpoint: string;
+  replayCollectorEndpoint: string;
   iceServers: string[];
   patchRepo: string;
   defaultMatchSettings: {
@@ -77,6 +78,7 @@ function defaultConfig(app: Electron.App): Config {
     },
     signalingEndpoint: "wss://lets.tangobattle.com/signaling",
     iceconfigEndpoint: "https://lets.tangobattle.com/iceconfig",
+    replayCollectorEndpoint: "https://lets.tangobattle.com/replaycollector",
     iceServers: [
       "stun://stun.l.google.com:19302",
       "stun://stun1.l.google.com:19302",
