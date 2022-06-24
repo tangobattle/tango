@@ -9,9 +9,17 @@ struct InnerState {
     committed_state: Option<mgba::state::State>,
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
+    round_result: Option<RoundResult>,
     on_inputs_exhausted: Box<dyn Fn() + Send>,
     on_round_ended: Box<dyn Fn() + Send>,
     error: Option<anyhow::Error>,
+}
+
+#[derive(Clone, Copy)]
+pub enum RoundResult {
+    Win,
+    Loss,
+    Draw,
 }
 
 pub struct Fastforwarder {
@@ -40,6 +48,7 @@ impl State {
                 committed_state: None,
                 dirty_time: 0,
                 dirty_state: None,
+                round_result: None,
                 on_inputs_exhausted,
                 on_round_ended,
                 error: None,
@@ -53,6 +62,10 @@ impl State {
 
     pub fn commit_time(&self) -> u32 {
         self.0.lock().as_ref().expect("commit time").commit_time
+    }
+
+    pub fn set_round_result(&self, result: RoundResult) {
+        self.0.lock().as_mut().expect("round result").round_result = Some(result);
     }
 
     pub fn set_committed_state(&self, state: mgba::state::State) {
@@ -233,6 +246,7 @@ impl Fastforwarder {
             committed_state: None,
             dirty_time,
             dirty_state: None,
+            round_result: None,
             on_inputs_exhausted: Box::new(|| {}),
             on_round_ended: Box::new(|| {}),
             error: None,
