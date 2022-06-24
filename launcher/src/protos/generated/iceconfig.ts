@@ -16,12 +16,6 @@ export interface GetResponse_ICEServer {
   urls: string[];
 }
 
-export interface GetLegacyRequest {}
-
-export interface GetLegacyResponse {
-  iceServers: string[];
-}
-
 function createBaseGetRequest(): GetRequest {
   return {};
 }
@@ -205,110 +199,6 @@ export const GetResponse_ICEServer = {
     message.credential = object.credential ?? undefined;
     message.username = object.username ?? undefined;
     message.urls = object.urls?.map((e) => e) || [];
-    return message;
-  },
-};
-
-function createBaseGetLegacyRequest(): GetLegacyRequest {
-  return {};
-}
-
-export const GetLegacyRequest = {
-  encode(
-    _: GetLegacyRequest,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetLegacyRequest {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetLegacyRequest();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(_: any): GetLegacyRequest {
-    return {};
-  },
-
-  toJSON(_: GetLegacyRequest): unknown {
-    const obj: any = {};
-    return obj;
-  },
-
-  fromPartial<I extends Exact<DeepPartial<GetLegacyRequest>, I>>(
-    _: I
-  ): GetLegacyRequest {
-    const message = createBaseGetLegacyRequest();
-    return message;
-  },
-};
-
-function createBaseGetLegacyResponse(): GetLegacyResponse {
-  return { iceServers: [] };
-}
-
-export const GetLegacyResponse = {
-  encode(
-    message: GetLegacyResponse,
-    writer: _m0.Writer = _m0.Writer.create()
-  ): _m0.Writer {
-    for (const v of message.iceServers) {
-      writer.uint32(10).string(v!);
-    }
-    return writer;
-  },
-
-  decode(input: _m0.Reader | Uint8Array, length?: number): GetLegacyResponse {
-    const reader = input instanceof _m0.Reader ? input : new _m0.Reader(input);
-    let end = length === undefined ? reader.len : reader.pos + length;
-    const message = createBaseGetLegacyResponse();
-    while (reader.pos < end) {
-      const tag = reader.uint32();
-      switch (tag >>> 3) {
-        case 1:
-          message.iceServers.push(reader.string());
-          break;
-        default:
-          reader.skipType(tag & 7);
-          break;
-      }
-    }
-    return message;
-  },
-
-  fromJSON(object: any): GetLegacyResponse {
-    return {
-      iceServers: Array.isArray(object?.iceServers)
-        ? object.iceServers.map((e: any) => String(e))
-        : [],
-    };
-  },
-
-  toJSON(message: GetLegacyResponse): unknown {
-    const obj: any = {};
-    if (message.iceServers) {
-      obj.iceServers = message.iceServers.map((e) => e);
-    } else {
-      obj.iceServers = [];
-    }
-    return obj;
-  },
-
-  fromPartial<I extends Exact<DeepPartial<GetLegacyResponse>, I>>(
-    object: I
-  ): GetLegacyResponse {
-    const message = createBaseGetLegacyResponse();
-    message.iceServers = object.iceServers?.map((e) => e) || [];
     return message;
   },
 };

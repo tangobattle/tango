@@ -12,7 +12,3 @@ message GetResponse {
   }
   repeated ICEServer ice_servers = 1;
 }
-
-message GetLegacyRequest {}
-
-message GetLegacyResponse { repeated string ice_servers = 1; }
