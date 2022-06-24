@@ -1,0 +1,3 @@
+files:
+  - source: /launcher/src/renderer/locales/*/*.json
+    translation: /launcher/src/renderer/locales/%locale%/%original_file_name%
