@@ -2,6 +2,7 @@
 
 use byteorder::{ByteOrder, LittleEndian};
 use clap::Parser;
+use sha3::Digest;
 use std::io::Write;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -53,6 +54,9 @@ struct EWRAMCli {}
 struct TextCli {}
 
 #[derive(clap::Parser)]
+struct HashCli {}
+
+#[derive(clap::Parser)]
 struct SummaryCli {
     #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
@@ -63,6 +67,7 @@ enum Action {
     Video(VideoCli),
     EWRAM(EWRAMCli),
     Text(TextCli),
+    Hash(HashCli),
     Summary(SummaryCli),
 }
 
@@ -88,6 +93,7 @@ fn main() -> Result<(), anyhow::Error> {
         Action::EWRAM(args) => dump_ewram(args, replay),
         Action::Text(args) => dump_text(args, replay),
         Action::Summary(args) => dump_summary(args, replay),
+        Action::Hash(args) => dump_hash(args, replay),
     }
 }
 
@@ -266,6 +272,22 @@ fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), a
             ip.local.local_tick, ip.local.joyflags, ip.local.rx, ip.remote.joyflags, ip.remote.rx,
         );
     }
+    Ok(())
+}
+
+fn dump_hash(_args: HashCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+    let mut sha3 = sha3::Sha3_256::new();
+    for ip in &replay.input_pairs {
+        sha3.update(
+            &ip.local
+                .rx
+                .iter()
+                .zip(ip.remote.rx.iter())
+                .map(|(x, y)| (*x ^ *y))
+                .collect::<Vec<_>>(),
+        )
+    }
+    println!("{}", hex::encode(&sha3.finalize().as_slice()));
     Ok(())
 }
 

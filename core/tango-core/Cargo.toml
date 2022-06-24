@@ -41,6 +41,7 @@ bytes = "1.1.0"
 sdl2 = { version = "0.35", features = ["ttf"] }
 sdl2-input-helper = { path = "../sdl2-input-helper" }
 serde_repr = "0.1"
+hex = "0.4"
 
 [build-dependencies]
 winres = "0.1"
