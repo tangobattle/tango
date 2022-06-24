@@ -33,7 +33,7 @@
     "theme.light": "浅色",
     "theme.dark": "深色",
     "update-channel": "更新频道（需要重新启动）",
-    "update-channel.latest": "Latest",
+    "update-channel.latest": "Stable",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
     "update-channel.disabled": "禁用",

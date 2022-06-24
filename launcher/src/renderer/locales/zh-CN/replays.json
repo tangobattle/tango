@@ -1,0 +1,18 @@
+{
+  "viewing": "Playback in progress...",
+  "exporting": "Export in progress...",
+  "export-complete": "Your replay was successfully exported.",
+  "no-replays": "No replays (yet!)",
+  "incomplete": "This replay is incomplete.",
+  "play": "Play",
+  "show-info": "Show info",
+  "show-file": "Show in folder",
+  "export-video": "Export to video",
+  "replay-title": "{{linkCode}}: vs {{nickname}}",
+  "crash": "Oops, it looks like the replay viewer crashed! Please provide this log when reporting a bug!",
+  "export-settings": "Export settings",
+  "output-path": "Save to",
+  "scale-factor": "Scale factor",
+  "scale-factor-suffix": "x",
+  "start-export": "Go!"
+}

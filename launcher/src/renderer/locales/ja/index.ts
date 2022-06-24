@@ -9,8 +9,7 @@ import replays from "./replays.json";
 import settings from "./settings.json";
 import setup from "./setup.json";
 import supervisor from "./supervisor.json";
-
-export default {
+export default ({
   common,
   navbar,
   patches,
@@ -21,5 +20,9 @@ export default {
   supervisor,
   "input-keys": inputKeys,
   "input-buttons": inputButtons,
-  "input-axes": inputAxes,
-} as { [namespace: string]: { [key: string]: string } };
+  "input-axes": inputAxes
+} as {
+  [namespace: string]: {
+    [key: string]: string;
+  };
+});
