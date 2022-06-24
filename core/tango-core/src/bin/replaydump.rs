@@ -52,11 +52,18 @@ struct EWRAMCli {}
 #[derive(clap::Parser)]
 struct TextCli {}
 
+#[derive(clap::Parser)]
+struct SummaryCli {
+    #[clap(parse(from_os_str))]
+    rom_path: std::path::PathBuf,
+}
+
 #[derive(clap::Subcommand)]
 enum Action {
     Video(VideoCli),
     EWRAM(EWRAMCli),
     Text(TextCli),
+    Summary(SummaryCli),
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -80,6 +87,7 @@ fn main() -> Result<(), anyhow::Error> {
         Action::Video(args) => dump_video(args, replay),
         Action::EWRAM(args) => dump_ewram(args, replay),
         Action::Text(args) => dump_text(args, replay),
+        Action::Summary(args) => dump_summary(args, replay),
     }
 }
 
@@ -258,5 +266,78 @@ fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), a
             ip.local.local_tick, ip.local.joyflags, ip.local.rx, ip.remote.joyflags, ip.remote.rx,
         );
     }
+    Ok(())
+}
+
+#[derive(serde::Serialize)]
+struct Summary {
+    local_player_index: u8,
+    result: tango_core::replayer::BattleResult,
+}
+
+fn dump_summary(args: SummaryCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+    if !replay.is_complete {
+        anyhow::bail!("replay is not complete");
+    }
+
+    let mut core = mgba::core::Core::new_gba("tango_core")?;
+    let rom = std::fs::read(&args.rom_path)?;
+    let vf = mgba::vfile::VFile::open_memory(&rom);
+    core.as_mut().load_rom(vf)?;
+
+    core.as_mut().reset();
+
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let input_pairs = replay.input_pairs.clone();
+
+    let replayer_state = {
+        tango_core::replayer::State::new(
+            replay.local_player_index,
+            input_pairs,
+            {
+                let done = done.clone();
+                Box::new(move || {
+                    done.store(true, std::sync::atomic::Ordering::Relaxed);
+                })
+            },
+            {
+                let done = done.clone();
+                Box::new(move || {
+                    done.store(true, std::sync::atomic::Ordering::Relaxed);
+                })
+            },
+        )
+    };
+    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    hooks.patch(core.as_mut());
+    {
+        let replayer_state = replayer_state.clone();
+        let mut traps = hooks.common_traps();
+        traps.extend(hooks.replayer_traps(replayer_state.clone()));
+        core.set_traps(traps);
+    }
+    core.as_mut().load_state(&replay.local_state.unwrap())?;
+
+    loop {
+        if done.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
+        }
+
+        if let Some(err) = replayer_state.take_error() {
+            Err(err)?;
+        }
+
+        core.as_mut().run_frame();
+    }
+
+    serde_json::to_writer(
+        std::io::stdout(),
+        &Summary {
+            local_player_index: replayer_state.local_player_index(),
+            result: replayer_state.round_result().unwrap(),
+        },
+    )?;
+
     Ok(())
 }

@@ -15,7 +15,7 @@ struct InnerState {
     error: Option<anyhow::Error>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, serde::Serialize)]
 pub enum BattleResult {
     Win,
     Loss,
@@ -66,6 +66,10 @@ impl State {
 
     pub fn set_round_result(&self, result: BattleResult) {
         self.0.lock().as_mut().expect("round result").round_result = Some(result);
+    }
+
+    pub fn round_result(&self) -> Option<BattleResult> {
+        self.0.lock().as_ref().expect("round result").round_result
     }
 
     pub fn set_committed_state(&self, state: mgba::state::State) {
