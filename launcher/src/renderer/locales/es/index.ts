@@ -3,6 +3,7 @@ import inputAxes from "./input-axes.json";
 import inputButtons from "./input-buttons.json";
 import inputKeys from "./input-keys.json";
 import navbar from "./navbar.json";
+import patches from "./patches.json";
 import play from "./play.json";
 import replays from "./replays.json";
 import settings from "./settings.json";
@@ -12,6 +13,7 @@ import supervisor from "./supervisor.json";
 export default {
   common,
   navbar,
+  patches,
   play,
   replays,
   settings,
