@@ -1,11 +1,11 @@
 {
-  "no-patches": "Sem patches",
-  "open-directory": "Abrir Diretório",
-  "update": "Atualização",
-  "byline": "por {{authors}}",
-  "authors": "Autores",
-  "license": "Autorização",
-  "all-rights-reserved": "Todos os direitos reservados",
-  "versions": "Versões",
-  "source": "Site oficial"
+  "no-patches": "No patches",
+  "open-directory": "Open directory",
+  "update": "Update",
+  "byline": "by {{authors}}",
+  "authors": "Authors",
+  "license": "License",
+  "all-rights-reserved": "All rights reserved",
+  "versions": "Versions",
+  "source": "Website"
 }
