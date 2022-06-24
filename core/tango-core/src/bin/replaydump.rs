@@ -57,7 +57,7 @@ struct TextCli {}
 struct HashCli {}
 
 #[derive(clap::Parser)]
-struct SummaryCli {
+struct EvalCli {
     #[clap(parse(from_os_str))]
     rom_path: std::path::PathBuf,
 }
@@ -68,7 +68,7 @@ enum Action {
     EWRAM(EWRAMCli),
     Text(TextCli),
     Hash(HashCli),
-    Summary(SummaryCli),
+    Eval(EvalCli),
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -92,7 +92,7 @@ fn main() -> Result<(), anyhow::Error> {
         Action::Video(args) => dump_video(args, replay),
         Action::EWRAM(args) => dump_ewram(args, replay),
         Action::Text(args) => dump_text(args, replay),
-        Action::Summary(args) => dump_summary(args, replay),
+        Action::Eval(args) => dump_eval(args, replay),
         Action::Hash(args) => dump_hash(args, replay),
     }
 }
@@ -292,12 +292,12 @@ fn dump_hash(_args: HashCli, replay: tango_core::replay::Replay) -> Result<(), a
 }
 
 #[derive(serde::Serialize)]
-struct Summary {
+struct Eval {
     local_player_index: u8,
     result: tango_core::replayer::BattleResult,
 }
 
-fn dump_summary(args: SummaryCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     if !replay.is_complete {
         anyhow::bail!("replay is not complete");
     }
@@ -355,7 +355,7 @@ fn dump_summary(args: SummaryCli, replay: tango_core::replay::Replay) -> Result<
 
     serde_json::to_writer(
         std::io::stdout(),
-        &Summary {
+        &Eval {
             local_player_index: replayer_state.local_player_index(),
             result: replayer_state.round_result().unwrap(),
         },
