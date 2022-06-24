@@ -1,12 +1,12 @@
 {
-  "leftx-": "LStick ⬅",
-  "leftx+": "LStick ⮕",
-  "lefty-": "LStick ⬆",
-  "lefty+": "LStick ⬇",
-  "rightx-": "RStick ⬅",
-  "rightx+": "RStick ⮕",
-  "righty-": "RStick ⬆",
-  "righty+": "RStick ⬇",
-  "lefttrigger+": "LTrigger",
-  "righttrigger+": "RTrigger"
+  "leftx-": "Stick Izq ⬅",
+  "leftx+": "Stick Izq ⮕",
+  "lefty-": "Stick Izq ⬆",
+  "lefty+": "Stick Izq ⬇",
+  "rightx-": "Stick Der ⬅",
+  "rightx+": "Stick Der ⮕",
+  "righty-": "Stick Der ⬆",
+  "righty+": "Stick Der ⬇",
+  "lefttrigger+": "Gatillo Izq",
+  "righttrigger+": "Gatillo Der"
 }
