@@ -392,11 +392,14 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.replaycollectorEndpoint}
+            value={config.endpoints.replaycollector}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                replaycollectorEndpoint: e.target.value,
+                endpoints: {
+                  ...config.endpoints,
+                  replaycollector: e.target.value,
+                },
               }));
             }}
             label={<Trans i18nKey="settings:replaycollector-endpoint" />}
@@ -404,11 +407,14 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.signalingEndpoint}
+            value={config.endpoints.signaling}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                signalingEndpoint: e.target.value,
+                endpoints: {
+                  ...config.endpoints,
+                  signaling: e.target.value,
+                },
               }));
             }}
             label={<Trans i18nKey="settings:signaling-endpoint" />}
@@ -416,11 +422,14 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.iceconfigEndpoint}
+            value={config.endpoints.iceconfig}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                iceconfigEndpoint: e.target.value,
+                endpoints: {
+                  ...config.endpoints,
+                  iceconfig: e.target.value,
+                },
               }));
             }}
             label={<Trans i18nKey="settings:iceconfig-endpoint" />}

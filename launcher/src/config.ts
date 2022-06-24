@@ -27,9 +27,11 @@ export interface Config {
     start: PhysicalInput[];
     speedUp: PhysicalInput[];
   };
-  signalingEndpoint: string;
-  iceconfigEndpoint: string;
-  replaycollectorEndpoint: string;
+  endpoints: {
+    signaling: string;
+    iceconfig: string;
+    replaycollector: string;
+  };
   iceServers: string[];
   patchRepo: string;
   defaultMatchSettings: {
@@ -50,6 +52,7 @@ function fillWithDefaults(app: Electron.App, config: Partial<Config>): Config {
     ...default_,
     ...config,
     inputMapping: { ...default_.inputMapping, ...config.inputMapping },
+    endpoints: { ...default_.endpoints, ...config.endpoints },
     paths: { ...default_.paths, ...config.paths },
   };
 }
@@ -76,9 +79,11 @@ function defaultConfig(app: Electron.App): Config {
       start: [{ Key: "Return" }, { Button: "start" }],
       speedUp: [],
     },
-    signalingEndpoint: "wss://lets.tangobattle.com/signaling",
-    iceconfigEndpoint: "https://lets.tangobattle.com/iceconfig",
-    replaycollectorEndpoint: "https://lets.tangobattle.com/replaycollector",
+    endpoints: {
+      signaling: "wss://signaling.tangobattle.com",
+      iceconfig: "https://iceconfig.tangobattle.com",
+      replaycollector: "https://replaycollector.tangobattle.com",
+    },
     iceServers: [
       "stun://stun.l.google.com:19302",
       "stun://stun1.l.google.com:19302",

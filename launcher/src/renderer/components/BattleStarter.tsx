@@ -299,7 +299,7 @@ async function runCallback(
 
   if (linkCode != "") {
     try {
-      const rawResp = await fetch(config.iceconfigEndpoint, {
+      const rawResp = await fetch(config.endpoints.iceconfig, {
         method: "POST",
         headers: {
           "User-Agent": `tango-launcher/${app.getVersion()}`,
@@ -362,7 +362,7 @@ async function runCallback(
 
   const core = new ipc.Core(
     config.inputMapping,
-    config.signalingEndpoint,
+    config.endpoints.signaling,
     iceServers,
     linkCode,
     {
@@ -780,9 +780,9 @@ async function runCallback(
     if (msg.roundEndedEv != null) {
       // eslint-disable-next-line no-console
       console.log("round ended", msg.roundEndedEv);
-      if (config.replaycollectorEndpoint != "") {
+      if (config.endpoints.replaycollector != "") {
         (async () => {
-          const collectorResp = await fetch(config.replaycollectorEndpoint, {
+          const collectorResp = await fetch(config.endpoints.replaycollector, {
             method: "POST",
             headers: {
               "Content-Type": "application/x-tango-replay",
