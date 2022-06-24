@@ -9,14 +9,14 @@ struct InnerState {
     committed_state: Option<mgba::state::State>,
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
-    round_result: Option<RoundResult>,
+    round_result: Option<BattleResult>,
     on_inputs_exhausted: Box<dyn Fn() + Send>,
     on_round_ended: Box<dyn Fn() + Send>,
     error: Option<anyhow::Error>,
 }
 
 #[derive(Clone, Copy)]
-pub enum RoundResult {
+pub enum BattleResult {
     Win,
     Loss,
     Draw,
@@ -64,7 +64,7 @@ impl State {
         self.0.lock().as_ref().expect("commit time").commit_time
     }
 
-    pub fn set_round_result(&self, result: RoundResult) {
+    pub fn set_round_result(&self, result: BattleResult) {
         self.0.lock().as_mut().expect("round result").round_result = Some(result);
     }
 

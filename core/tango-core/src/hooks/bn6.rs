@@ -1108,6 +1108,51 @@ impl hooks::Hooks for BN6 {
                     }),
                 )
             },
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_end_set_win,
+                    Box::new(move |_| {
+                        replayer_state.set_round_result(replayer::BattleResult::Loss);
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_end_set_loss,
+                    Box::new(move |_| {
+                        replayer_state.set_round_result(replayer::BattleResult::Win);
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_win,
+                    Box::new(move |_| {
+                        replayer_state.set_round_result(replayer::BattleResult::Loss);
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_loss,
+                    Box::new(move |_| {
+                        replayer_state.set_round_result(replayer::BattleResult::Win);
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_end_damage_judge_set_draw,
+                    Box::new(move |_| {
+                        replayer_state.set_round_result(replayer::BattleResult::Draw);
+                    }),
+                )
+            },
         ]
     }
 
