@@ -1,15 +1,15 @@
 {
-  "welcome": "Pelo visto essa é a primeira vez que você está usando o Tango. Bem-vindo!",
-  "welcome-2": "Há apenas algumas etapas que você precisa completar antes de começar a jogar.",
-  "nickname": "Nome de Usuário",
-  "nickname-step-title": "Defina seu apelido",
-  "nickname-step-description": "Você pode mudar isso a qualquer momento.",
-  "roms-step-title": "Coloque suas ROMs no {{path}}",
-  "roms-step-description": "Certifique-se de que são ROMs limpas e sem patches.",
-  "roms-step-error": "Não foi possível encontrar nenhuma ROM suportada. Por favor, certifique-se de que estão sem patches!",
-  "saves-step-title": "Coloque seus saves em {{path}}",
-  "saves-step-description": "Certifique-se de que são compatíveis com os jogos que você colocou na pasta ROM. Elas devem ser arquivos .sav ou .sa1.",
-  "saves-step-error": "Não foi possível achar nenhum save apropriado. Por favor, verifique se eles são compatíveis.",
-  "open-folder": "Abrir pasta",
-  "next": "Estou pronto!"
+  "welcome": "It looks like this is the first time you've used Tango. Welcome!",
+  "welcome-2": "There's just a few steps you'll need to complete before you can start playing.",
+  "nickname": "Nickname",
+  "nickname-step-title": "Set your nickname",
+  "nickname-step-description": "You can change this at any time.",
+  "roms-step-title": "Place your ROMs in {{path}}",
+  "roms-step-description": "Make sure they're pristine, unpatched ROMs.",
+  "roms-step-error": "Could not find any supported ROMs. Please make sure they're unpatched!",
+  "saves-step-title": "Place your saves in {{path}}",
+  "saves-step-description": "Make sure they're compatible with the games you've put in the ROMs folder. They should be .sav or .sa1 files.",
+  "saves-step-error": "Could not find any supported saves. Please make sure they compatible.",
+  "open-folder": "Open folder",
+  "next": "I'm done!"
 }
