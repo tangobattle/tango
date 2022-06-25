@@ -333,10 +333,6 @@ fn dump_info(_args: InfoCli, replay: tango_core::replay::Replay) -> Result<(), a
 }
 
 fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
-    if !replay.is_complete {
-        anyhow::bail!("replay is not complete");
-    }
-
     let mut core = mgba::core::Core::new_gba("tango_core")?;
     let rom = std::fs::read(&args.rom_path)?;
     let vf = mgba::vfile::VFile::open_memory(&rom);
@@ -388,7 +384,9 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
         core.as_mut().run_frame();
     }
 
-    println!("{}", replayer_state.round_result().unwrap() as u8);
+    if let Some(result) = replayer_state.round_result() {
+        println!("{}", result as u8);
+    }
 
     Ok(())
 }
