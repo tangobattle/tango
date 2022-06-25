@@ -198,6 +198,16 @@ function AboutTab({ active }: { active: boolean }) {
               for the Spanish translation.
             </li>
             <li>
+              <Link href="https://discord.gg/hPrFVaaRrU" target="_blank">
+                Darkgaia
+              </Link>{" "}
+              and{" "}
+              <Link href="" target="_blank">
+                killb
+              </Link>{" "}
+              for the Brazilian Portuguese translation.
+            </li>
+            <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
               </Link>
