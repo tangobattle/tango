@@ -354,7 +354,8 @@ struct InputInfo {
     local_player_index: u8,
     local_input_histogram: [usize; 16],
     remote_input_histogram: [usize; 16],
-    hash: String,
+    side_dependent_hash: String,
+    side_independent_hash: String,
 }
 
 fn dump_input_info(
@@ -364,14 +365,24 @@ fn dump_input_info(
     let mut local_input_histogram = [0; 16];
     let mut remote_input_histogram = [0; 16];
 
-    let mut sha3 = sha3::Sha3_256::new();
+    let mut side_dependent_sha3 = sha3::Sha3_256::new();
+    let mut side_independent_sha3 = sha3::Sha3_256::new();
     for ip in &replay.input_pairs {
-        sha3.update(
+        side_dependent_sha3.update(
             &ip.local
                 .rx
                 .iter()
                 .zip(ip.remote.rx.iter())
                 .flat_map(|(x, y)| [*x, *y])
+                .collect::<Vec<_>>(),
+        );
+
+        side_independent_sha3.update(
+            &ip.local
+                .rx
+                .iter()
+                .zip(ip.remote.rx.iter())
+                .map(|(x, y)| *x ^ *y)
                 .collect::<Vec<_>>(),
         );
 
@@ -401,7 +412,8 @@ fn dump_input_info(
             local_input_histogram,
             remote_input_histogram,
             local_player_index: replay.local_player_index,
-            hash: hex::encode(&sha3.finalize().as_slice()),
+            side_dependent_hash: hex::encode(side_dependent_sha3.finalize()),
+            side_independent_hash: hex::encode(side_independent_sha3.finalize()),
         },
     )?;
     Ok(())
