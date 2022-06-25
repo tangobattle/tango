@@ -38,7 +38,7 @@
   "reveal-setup": "Mostrar Build",
   "incompatible-game": "Este juego no es compatible con el que selecciono tu oponente.",
   "no-remote-copy": "Tu oponente no tiene una copia de este juego.",
-  "no-local-copy": "No tienes copia de este juego.",
+  "no-local-copy": "No tienes copia de este juego: {{gameTitle}}",
   "mismatching-match-type": "El tipo de pelea seleccionado no es el mismo del oponente.",
   "generate-random-code": "Generar código aleatorio",
   "connection-quality": "{{rtt}} ms",

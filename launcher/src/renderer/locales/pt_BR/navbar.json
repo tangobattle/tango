@@ -1,8 +1,8 @@
 {
   "play": "Jogar",
-  "replays": "Gravações das Batalhas",
-  "patches": "Mods",
+  "replays": "Gravações",
+  "patches": "Patches",
   "settings": "Configurações",
-  "settings-update-available": "Configurações (Atualização Disponível)",
-  "settings-update-downloaded": "Configurações (Atualizar ao Reiniciar)"
+  "settings-update-available": "Configurações (atualização disponível)",
+  "settings-update-downloaded": "Configurações (será atualizado ao reiniciar)"
 }
