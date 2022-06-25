@@ -82,6 +82,7 @@ fn main() -> Result<(), anyhow::Error> {
     let replayer_state = tango_core::replayer::State::new(
         local_player_index,
         input_pairs,
+        0,
         {
             let done = done.clone();
             Box::new(move || {

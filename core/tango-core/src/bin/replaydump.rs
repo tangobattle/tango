@@ -55,7 +55,7 @@ struct EWRAMCli {}
 struct TextCli {}
 
 #[derive(clap::Parser)]
-struct InfoCli {}
+struct InputInfoCli {}
 
 #[derive(clap::Parser)]
 struct EvalCli {
@@ -63,13 +63,23 @@ struct EvalCli {
     rom_path: std::path::PathBuf,
 }
 
+#[derive(clap::Parser)]
+struct StepCli {
+    #[clap(parse(from_os_str))]
+    rom_path: std::path::PathBuf,
+
+    #[clap(required = true)]
+    steps: u32,
+}
+
 #[derive(clap::Subcommand)]
 enum Action {
     Video(VideoCli),
     EWRAM(EWRAMCli),
     Text(TextCli),
-    Info(InfoCli),
+    InputInfo(InputInfoCli),
     Eval(EvalCli),
+    Step(StepCli),
 }
 
 fn main() -> Result<(), anyhow::Error> {
@@ -93,8 +103,9 @@ fn main() -> Result<(), anyhow::Error> {
         Action::Video(args) => dump_video(args, replay),
         Action::EWRAM(args) => dump_ewram(args, replay),
         Action::Text(args) => dump_text(args, replay),
+        Action::InputInfo(args) => dump_input_info(args, replay),
         Action::Eval(args) => dump_eval(args, replay),
-        Action::Info(args) => dump_info(args, replay),
+        Action::Step(args) => dump_step(args, replay),
     }
 }
 
@@ -116,6 +127,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
         tango_core::replayer::State::new(
             replay.local_player_index,
             input_pairs,
+            0,
             {
                 let done = done.clone();
                 Box::new(move || {
@@ -266,6 +278,66 @@ fn dump_ewram(_args: EWRAMCli, replay: tango_core::replay::Replay) -> Result<(),
     Ok(())
 }
 
+fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+    let mut core = mgba::core::Core::new_gba("tango_core")?;
+    let rom = std::fs::read(&args.rom_path)?;
+    let vf = mgba::vfile::VFile::open_memory(&rom);
+    core.as_mut().load_rom(vf)?;
+    core.as_mut().reset();
+
+    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let input_pairs = replay.input_pairs.clone();
+
+    let replayer_state = tango_core::replayer::State::new(
+        replay.local_player_index,
+        input_pairs,
+        args.steps,
+        {
+            let done = done.clone();
+            Box::new(move || {
+                done.store(true, std::sync::atomic::Ordering::Relaxed);
+            })
+        },
+        {
+            let done = done.clone();
+            Box::new(move || {
+                done.store(true, std::sync::atomic::Ordering::Relaxed);
+            })
+        },
+    );
+
+    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    hooks.patch(core.as_mut());
+    {
+        let replayer_state = replayer_state.clone();
+        let mut traps = hooks.common_traps();
+        traps.extend(hooks.replayer_traps(replayer_state.clone()));
+        core.set_traps(traps);
+    }
+    core.as_mut().load_state(&replay.local_state.unwrap())?;
+
+    loop {
+        if done.load(std::sync::atomic::Ordering::Relaxed) {
+            anyhow::bail!("overstepped");
+        }
+
+        if let Some(state) = replayer_state.take_committed_state() {
+            std::io::stdout().write_all(state.wram())?;
+            std::io::stdout().flush()?;
+            break;
+        }
+
+        if let Some(err) = replayer_state.take_error() {
+            Err(err)?;
+        }
+
+        core.as_mut().run_frame();
+    }
+
+    Ok(())
+}
+
 fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
@@ -277,7 +349,7 @@ fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), a
 }
 
 #[derive(serde::Serialize)]
-struct Info {
+struct InputInfo {
     num_actual_input_pairs: usize,
     local_player_index: u8,
     local_input_histogram: [usize; 16],
@@ -285,7 +357,10 @@ struct Info {
     hash: String,
 }
 
-fn dump_info(_args: InfoCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_input_info(
+    _args: InputInfoCli,
+    replay: tango_core::replay::Replay,
+) -> Result<(), anyhow::Error> {
     let mut local_input_histogram = [0; 16];
     let mut remote_input_histogram = [0; 16];
 
@@ -321,7 +396,7 @@ fn dump_info(_args: InfoCli, replay: tango_core::replay::Replay) -> Result<(), a
 
     serde_json::to_writer(
         std::io::stdout(),
-        &Info {
+        &InputInfo {
             num_actual_input_pairs: replay.input_pairs.len(),
             local_input_histogram,
             remote_input_histogram,
@@ -337,7 +412,6 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     let rom = std::fs::read(&args.rom_path)?;
     let vf = mgba::vfile::VFile::open_memory(&rom);
     core.as_mut().load_rom(vf)?;
-
     core.as_mut().reset();
 
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -348,6 +422,7 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
         tango_core::replayer::State::new(
             replay.local_player_index,
             input_pairs,
+            0,
             {
                 let done = done.clone();
                 Box::new(move || {

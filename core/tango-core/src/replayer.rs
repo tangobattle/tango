@@ -37,6 +37,7 @@ impl State {
     pub fn new(
         local_player_index: u8,
         input_pairs: Vec<input::Pair<input::Input, input::Input>>,
+        commit_time: u32,
         on_inputs_exhausted: Box<dyn Fn() + Send>,
         on_round_ended: Box<dyn Fn() + Send>,
     ) -> State {
@@ -45,7 +46,7 @@ impl State {
                 current_tick: 0,
                 local_player_index,
                 input_pairs: input_pairs.into_iter().collect(),
-                commit_time: 0,
+                commit_time,
                 committed_state: None,
                 dirty_time: 0,
                 dirty_state: None,
@@ -79,6 +80,15 @@ impl State {
             .as_mut()
             .expect("committed state")
             .committed_state = Some(state);
+    }
+
+    pub fn take_committed_state(&self) -> Option<mgba::state::State> {
+        self.0
+            .lock()
+            .as_mut()
+            .expect("committed state")
+            .committed_state
+            .take()
     }
 
     pub fn dirty_time(&self) -> u32 {
