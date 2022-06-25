@@ -1094,7 +1094,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
+                        replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
             },
@@ -1103,7 +1103,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
+                        replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )
             },
@@ -1112,7 +1112,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_win,
                     Box::new(move |_| {
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
+                        replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
             },
@@ -1121,7 +1121,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_loss,
                     Box::new(move |_| {
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
+                        replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )
             },
