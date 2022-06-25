@@ -371,7 +371,7 @@ fn dump_input_info(
                 .rx
                 .iter()
                 .zip(ip.remote.rx.iter())
-                .map(|(x, y)| (*x ^ *y))
+                .flat_map(|(x, y)| [*x, *y])
                 .collect::<Vec<_>>(),
         );
 
