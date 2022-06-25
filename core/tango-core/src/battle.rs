@@ -351,7 +351,7 @@ impl Match {
         self.is_offerer
     }
 
-    pub async fn start_round(self: &std::sync::Arc<Self>) -> anyhow::Result<()> {
+    pub async fn start_round(self: &std::sync::Arc<Self>, first_tx: &[u8]) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
         let local_player_index = match round_state.last_result.take().unwrap() {
@@ -379,7 +379,7 @@ impl Match {
         let mut tx_queue = std::collections::VecDeque::with_capacity(MAX_QUEUE_LENGTH);
         tx_queue.push_front(Tx {
             for_tick: 0,
-            tx: self.hooks.placeholder_rx(),
+            tx: first_tx.to_vec(),
         });
 
         let mut iq = input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay);
@@ -414,7 +414,7 @@ impl Match {
                 local_tick: 0,
                 remote_tick: 0,
                 joyflags: 0,
-                rx: self.hooks.placeholder_rx(),
+                rx: vec![0; self.hooks.rx_size()],
                 is_prediction: false,
             },
             last_input: None,
@@ -426,7 +426,7 @@ impl Match {
                 Box::new(replay_file),
                 &self.settings.replay_metadata,
                 local_player_index,
-                self.hooks.placeholder_rx().len() as u8,
+                self.hooks.rx_size() as u8,
             )?),
             replayer: replayer::Fastforwarder::new(
                 &self.rom,

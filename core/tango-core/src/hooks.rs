@@ -2,9 +2,9 @@ use crate::{facade, replayer, shadow};
 
 mod bn3;
 mod bn4;
-mod exe45;
 mod bn5;
 mod bn6;
+mod exe45;
 
 pub fn get(mut core: mgba::core::CoreMutRef) -> Option<&'static Box<dyn Hooks + Send + Sync>> {
     Some(match (&core.full_rom_name(), core.rom_revision()) {
@@ -55,7 +55,9 @@ pub trait Hooks {
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
-    fn placeholder_rx(&self) -> Vec<u8>;
+    fn rx_size(&self) -> usize {
+        return 0x10;
+    }
 
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 

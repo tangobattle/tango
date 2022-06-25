@@ -278,10 +278,11 @@ impl hooks::Hooks for BN6 {
             },
             {
                 let facade = facade.clone();
+                let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |_core| {
+                    Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -289,7 +290,10 @@ impl hooks::Hooks for BN6 {
                                     return;
                                 }
                             };
-                            match_.start_round().await.expect("start round");
+                            match_
+                                .start_round(&munger.tx_packet(core))
+                                .await
+                                .expect("start round");
                         });
                     }),
                 )
@@ -453,6 +457,7 @@ impl hooks::Hooks for BN6 {
                                             .await
                                             .expect("shadow save state"),
                                     );
+
                                     log::info!(
                                         "primary rng1 state: {:08x}",
                                         munger.rng1_state(core)
@@ -1153,13 +1158,6 @@ impl hooks::Hooks for BN6 {
                     }),
                 )
             },
-        ]
-    }
-
-    fn placeholder_rx(&self) -> Vec<u8> {
-        vec![
-            0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00,
         ]
     }
 
