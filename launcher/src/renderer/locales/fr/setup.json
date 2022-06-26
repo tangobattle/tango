@@ -1,14 +1,14 @@
 {
   "welcome": "It looks like this is the first time you've used Tango. Welcome!",
-  "welcome-2": "There's just a few steps you'll need to complete before you can start playing.",
+  "welcome-2": "Il vous reste quelque étapes que vous devrez compléter avant de pouvoir commencer à jouer.",
   "nickname": "Nickname",
   "nickname-step-title": "Set your nickname",
-  "nickname-step-description": "You can change this at any time.",
+  "nickname-step-description": "Vous pouvez modifier ceci à tout moment.",
   "roms-step-title": "Place your ROMs in {{path}}",
   "roms-step-description": "Make sure they're pristine, unpatched ROMs.",
   "roms-step-error": "Could not find any supported ROMs. Please make sure they're unpatched!",
   "saves-step-title": "Placez vos sauvegardes dans {{path}}",
-  "saves-step-description": "Make sure they're compatible with the games you've put in the ROMs folder. They should be .sav or .sa1 files.",
+  "saves-step-description": "Assurez-vous qu'ils sont compatibles avec les jeux que vous avez mis dans le dossier ROMs. Ils devraient être des fichiers .sav ou .sa1.",
   "saves-step-error": "Impossible de trouver des sauvegardes supportées. Veuillez vous assurer qu'elles sont compatibles.",
   "open-folder": "Open folder",
   "next": "J'ai terminé !"
