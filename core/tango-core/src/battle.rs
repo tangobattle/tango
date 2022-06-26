@@ -565,6 +565,14 @@ impl Round {
             }
         };
 
+        for ip in &input_pairs {
+            self.replay_writer
+                .as_mut()
+                .unwrap()
+                .write_input(self.local_player_index, ip)
+                .expect("write input");
+        }
+
         let last_committed_state = self.committed_state.take().expect("committed state");
         let last_committed_remote_input = self.last_committed_remote_input();
 
@@ -694,14 +702,6 @@ impl Round {
 
         if let Some(last) = input_pairs.last() {
             self.last_committed_remote_input = last.remote.clone();
-        }
-
-        for ip in &input_pairs {
-            self.replay_writer
-                .as_mut()
-                .unwrap()
-                .write_input(self.local_player_index, ip)
-                .expect("write input");
         }
 
         Ok((input_pairs, left))
