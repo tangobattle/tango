@@ -2,9 +2,37 @@ import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 
-import locales from "./locales";
-
 export const fallbackLng = "en";
+
+function requireNamespace(
+  lang: string,
+  nsKey: string
+): { [key: string]: string } {
+  try {
+    return require(`./locales/${lang}/${nsKey}.json`);
+  } catch (_e) {
+    console.warn("could not load locale namespace", lang, nsKey);
+    return {};
+  }
+}
+
+function requireLocale(lang: string): {
+  [nsKey: string]: { [key: string]: string };
+} {
+  return {
+    common: requireNamespace(lang, "common"),
+    navbar: requireNamespace(lang, "navbar"),
+    patches: requireNamespace(lang, "patches"),
+    play: requireNamespace(lang, "play"),
+    replays: requireNamespace(lang, "replays"),
+    settings: requireNamespace(lang, "settings"),
+    setup: requireNamespace(lang, "setup"),
+    supervisor: requireNamespace(lang, "supervisor"),
+    "input-keys": requireNamespace(lang, "input-keys"),
+    "input-buttons": requireNamespace(lang, "input-buttons"),
+    "input-axes": requireNamespace(lang, "input-axes"),
+  };
+}
 
 i18n
   .use({
@@ -17,19 +45,14 @@ i18n
       namespace: string,
       callback: (err: any, data?: { [key: string]: string }) => void
     ) {
-      const locale = locales[language];
-      if (!locale) {
-        callback(`${language} not found`);
-        return;
-      }
-      callback(null, locale.default[namespace]);
+      callback(null, requireLocale(language)[namespace]);
     },
   })
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     fallbackLng,
-    ns: Object.keys(locales.en.default),
+    ns: Object.keys(requireLocale("en")),
     defaultNS: "common",
 
     react: {
