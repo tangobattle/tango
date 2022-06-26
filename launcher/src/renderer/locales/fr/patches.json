@@ -1,11 +1,11 @@
 {
   "no-patches": "No patches",
   "open-directory": "Open directory",
-  "update": "Update",
+  "update": "Mettre à jour",
   "byline": "by {{authors}}",
   "authors": "Authors",
   "license": "License",
   "all-rights-reserved": "All rights reserved",
   "versions": "Versions",
-  "source": "Website"
+  "source": "Site Web"
 }
