@@ -202,8 +202,8 @@ function AboutTab({ active }: { active: boolean }) {
                 Darkgaia
               </Link>{" "}
               and{" "}
-              <Link href="" target="_blank">
-                killb
+              <Link href="https://twitter.com/mushiguchi" target="_blank">
+                mushiguchi
               </Link>{" "}
               for the Brazilian Portuguese translation.
             </li>
