@@ -7,7 +7,7 @@
   "error.lost-connection": "O jogador adversário desconectou.",
   "error.protocol-version-too-old": "Incapaz de se conectar ao jogador adversário: ele usa uma versão antiga do Tango.",
   "error.protocol-version-too-new": "O jogador adversário usa uma versão mais recente do Tango. Por favor, atualize-o.",
-  "error.unknown": "Oops, parece que o emulador crashou! Por favor, apresente esse log caso for reportar a esse bug!",
+  "error.unknown": "Oops, parece que o emulador crashou! Por favor, apresente esse log caso for reportar esse bug!",
   "cancel": "Parar",
   "dismiss": "Droga!",
   "ok": "Eba!"
