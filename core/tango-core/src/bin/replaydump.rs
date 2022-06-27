@@ -182,17 +182,18 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
     writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
     loop {
-        if let Some(err) = replayer_state.take_error() {
-            Err(err)?;
-        }
-
         if (!replay.is_complete && replayer_state.are_inputs_exhausted())
-            || replayer_state.round_end_time().is_some()
+            || replayer_state.round_end_tick().is_some()
         {
             break;
         }
 
         core.as_mut().run_frame();
+
+        if let Some(err) = replayer_state.take_error() {
+            Err(err)?;
+        }
+
         let clock_rate = core.as_ref().frequency();
         let n = {
             let mut core = core.as_mut();
@@ -282,7 +283,7 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.are_inputs_exhausted() || replayer_state.round_end_time().is_some() {
+        if replayer_state.are_inputs_exhausted() || replayer_state.round_end_tick().is_some() {
             anyhow::bail!("overstepped");
         }
 
@@ -405,15 +406,15 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.are_inputs_exhausted() || replayer_state.round_end_time().is_some() {
+        if replayer_state.are_inputs_exhausted() || replayer_state.round_end_tick().is_some() {
             break;
         }
+
+        core.as_mut().run_frame();
 
         if let Some(err) = replayer_state.take_error() {
             Err(err)?;
         }
-
-        core.as_mut().run_frame();
     }
 
     if let Some(result) = replayer_state.round_result() {

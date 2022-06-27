@@ -158,7 +158,7 @@ fn main() -> Result<(), anyhow::Error> {
             }
 
             if (!replay.is_complete && replayer_state.are_inputs_exhausted())
-                || replayer_state.round_end_time().is_some()
+                || replayer_state.round_end_tick().is_some()
             {
                 break 'toplevel;
             }
