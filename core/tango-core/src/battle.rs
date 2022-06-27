@@ -51,7 +51,7 @@ impl RoundState {
     pub async fn end_round(&mut self) -> anyhow::Result<()> {
         match self.round.take() {
             Some(mut round) => {
-                log::info!("round ended at {:08x}", round.current_tick);
+                log::info!("round ended at {:x}", round.current_tick);
                 round
                     .replay_writer
                     .take()
