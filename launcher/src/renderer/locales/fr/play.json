@@ -14,7 +14,7 @@
   "match-type.triple": "Trois",
   "rescan": "Rescanner",
   "select-save": "Save file",
-  "select-game": "Game",
+  "select-game": "Jeu",
   "no-save-selected": "No save file selected",
   "tab.navicust": "NaviCust",
   "tab.folder": "Folder",
@@ -24,7 +24,7 @@
   "folder.tag-chip": "TAG",
   "patch-name": "Patch",
   "patch-version": "Version",
-  "show-hide-extra-options": "Show/hide extra options",
+  "show-hide-extra-options": "Afficher/Masquer les options supplémentaires",
   "navicust.color.red": "rouge",
   "navicust.color.pink": "rose",
   "navicust.color.yellow": "jaune",
@@ -44,10 +44,10 @@
   "connection-quality": "{{rtt}} ms",
   "auto-input-delay": "Auto",
   "reveal-setup-title": "{{opponentNickname}}'s setup",
-  "missing-patch": "Unknown patch \"{{name}}\"",
+  "missing-patch": "Patch inconnu \"{{name}}\"",
   "save-viewer-unsupported": "Save viewer is unsupported for this game",
   "rom-name": "{{familyName}}: {{versionName}}",
-  "select-save-button": "Select",
-  "select-a-game": "Select a game",
-  "return-to-games-list": "Return to games list"
+  "select-save-button": "Sélectionner",
+  "select-a-game": "Sélectionner un jeu",
+  "return-to-games-list": "Retourner à la liste des jeux"
 }
