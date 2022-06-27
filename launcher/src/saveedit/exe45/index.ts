@@ -1,4 +1,4 @@
-import CHIPS from "./data/chips.json";
+import CHIPS from "../bn4/data/chips.json";
 
 export { CHIPS };
 

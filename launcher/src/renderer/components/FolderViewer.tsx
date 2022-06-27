@@ -34,9 +34,8 @@ function romNameToAssetFolder(romName: string) {
     case "MEGAMANBN4RSB4WE":
     case "ROCK_EXE4_BMB4BJ":
     case "ROCK_EXE4_RSB4WJ":
-      return "bn4";
     case "ROCKEXE4.5ROBR4J":
-      return "exe45";
+      return "bn4";
   }
   throw `unknown rom name: ${romName}`;
 }
