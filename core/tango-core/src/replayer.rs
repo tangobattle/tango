@@ -15,6 +15,12 @@ struct InnerState {
     error: Option<anyhow::Error>,
 }
 
+pub struct FastforwardResult {
+    pub committed_state: mgba::state::State,
+    pub dirty_state: mgba::state::State,
+    pub last_input: input::Pair<input::Input, input::Input>,
+}
+
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
 #[repr(i8)]
 pub enum BattleResult {
@@ -207,11 +213,7 @@ impl Fastforwarder {
         commit_pairs: &[input::Pair<input::Input, input::Input>],
         last_committed_remote_input: input::Input,
         local_player_inputs_left: &[input::Input],
-    ) -> anyhow::Result<(
-        mgba::state::State,
-        mgba::state::State,
-        input::Pair<input::Input, input::Input>,
-    )> {
+    ) -> anyhow::Result<FastforwardResult> {
         let mut predicted_rx = last_committed_remote_input.rx.clone();
         let input_pairs = commit_pairs
             .iter()
@@ -273,11 +275,11 @@ impl Fastforwarder {
                 let mut inner_state = inner_state_guard.as_mut().unwrap();
                 if inner_state.committed_state.is_some() && inner_state.dirty_state.is_some() {
                     let state = inner_state_guard.take().expect("state");
-                    return Ok((
-                        state.committed_state.expect("committed state"),
-                        state.dirty_state.expect("dirty state"),
+                    return Ok(FastforwardResult {
+                        committed_state: state.committed_state.expect("committed state"),
+                        dirty_state: state.dirty_state.expect("dirty state"),
                         last_input,
-                    ));
+                    });
                 }
                 inner_state.error = None;
             }

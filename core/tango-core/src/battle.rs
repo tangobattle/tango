@@ -576,7 +576,7 @@ impl Round {
         let last_committed_state = self.committed_state.take().expect("committed state");
         let last_committed_remote_input = self.last_committed_remote_input();
 
-        let (committed_state, dirty_state, last_input) = match self.replayer.fastforward(
+        let ff_result = match self.replayer.fastforward(
             &last_committed_state.state,
             last_committed_state.tick,
             &input_pairs,
@@ -590,13 +590,14 @@ impl Round {
             }
         };
 
-        core.load_state(&dirty_state).expect("load dirty state");
+        core.load_state(&ff_result.dirty_state)
+            .expect("load dirty state");
 
         self.committed_state = Some(CommittedState {
-            state: committed_state,
+            state: ff_result.committed_state,
             tick: last_committed_state.tick + input_pairs.len() as u32,
         });
-        self.last_input = Some(last_input);
+        self.last_input = Some(ff_result.last_input);
 
         core.gba_mut()
             .sync_mut()
