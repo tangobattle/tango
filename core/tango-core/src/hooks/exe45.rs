@@ -968,7 +968,7 @@ impl hooks::Hooks for EXE45 {
                     Box::new(move |mut core| {
                         let current_tick = replayer_state.current_tick();
 
-                        if current_tick == replayer_state.commit_time() {
+                        if current_tick == replayer_state.commit_tick() {
                             replayer_state.set_committed_state(
                                 core.save_state().expect("save committed state"),
                             );
@@ -1004,7 +1004,7 @@ impl hooks::Hooks for EXE45 {
                             .cpu_mut()
                             .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                        if current_tick == replayer_state.dirty_time() {
+                        if current_tick == replayer_state.dirty_tick() {
                             replayer_state
                                 .set_dirty_state(core.save_state().expect("save dirty state"));
                         }
@@ -1017,7 +1017,7 @@ impl hooks::Hooks for EXE45 {
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
-                        if replayer_state.round_end_time().is_some() {
+                        if replayer_state.round_end_tick().is_some() {
                             return;
                         }
 

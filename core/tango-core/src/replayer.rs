@@ -6,12 +6,12 @@ struct InnerState {
     local_player_index: u8,
     input_pairs: std::collections::VecDeque<input::Pair<input::Input, input::Input>>,
     consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
-    commit_time: u32,
+    commit_tick: u32,
     committed_state: Option<mgba::state::State>,
-    dirty_time: u32,
+    dirty_tick: u32,
     dirty_state: Option<mgba::state::State>,
     round_result: Option<BattleResult>,
-    round_end_time: Option<u32>,
+    round_end_tick: Option<u32>,
     error: Option<anyhow::Error>,
 }
 
@@ -20,6 +20,7 @@ pub struct FastforwardResult {
     pub dirty_state: mgba::state::State,
     pub last_input: input::Pair<input::Input, input::Input>,
     pub consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
+    pub round_end_tick: Option<u32>,
 }
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
@@ -44,7 +45,7 @@ impl State {
     pub fn new(
         local_player_index: u8,
         input_pairs: Vec<input::Pair<input::Input, input::Input>>,
-        commit_time: u32,
+        commit_tick: u32,
     ) -> State {
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
             InnerState {
@@ -52,12 +53,12 @@ impl State {
                 local_player_index,
                 input_pairs: input_pairs.into_iter().collect(),
                 consumed_input_pairs: vec![],
-                commit_time,
+                commit_tick,
                 committed_state: None,
-                dirty_time: 0,
+                dirty_tick: 0,
                 dirty_state: None,
                 round_result: None,
-                round_end_time: None,
+                round_end_tick: None,
                 error: None,
             },
         ))))
@@ -67,8 +68,8 @@ impl State {
         self.0.lock().as_mut().expect("error").error.take()
     }
 
-    pub fn commit_time(&self) -> u32 {
-        self.0.lock().as_ref().expect("commit time").commit_time
+    pub fn commit_tick(&self) -> u32 {
+        self.0.lock().as_ref().expect("commit time").commit_tick
     }
 
     pub fn set_round_result(&self, result: BattleResult) {
@@ -96,8 +97,8 @@ impl State {
             .take()
     }
 
-    pub fn dirty_time(&self) -> u32 {
-        self.0.lock().as_ref().expect("dirty time").dirty_time
+    pub fn dirty_tick(&self) -> u32 {
+        self.0.lock().as_ref().expect("dirty time").dirty_tick
     }
 
     pub fn set_dirty_state(&self, state: mgba::state::State) {
@@ -152,15 +153,15 @@ impl State {
     pub fn end_round(&self) {
         let mut inner = self.0.lock();
         let inner = inner.as_mut().expect("on battle ended");
-        inner.round_end_time = Some(inner.current_tick);
+        inner.round_end_tick = Some(inner.current_tick);
     }
 
-    pub fn round_end_time(&self) -> Option<u32> {
+    pub fn round_end_tick(&self) -> Option<u32> {
         self.0
             .lock()
             .as_ref()
             .expect("on battle ended")
-            .round_end_time
+            .round_end_tick
     }
 
     pub fn inputs_pairs_left(&self) -> usize {
@@ -257,20 +258,20 @@ impl Fastforwarder {
         self.core.as_mut().load_state(state)?;
         self.hooks.prepare_for_fastforward(self.core.as_mut());
 
-        let commit_time = last_committed_tick + commit_pairs.len() as u32;
-        let dirty_time = last_committed_tick + input_pairs.len() as u32 - 1;
+        let commit_tick = last_committed_tick + commit_pairs.len() as u32;
+        let dirty_tick = last_committed_tick + input_pairs.len() as u32 - 1;
 
         *self.state.0.lock() = Some(InnerState {
             current_tick: last_committed_tick,
             local_player_index: self.local_player_index,
             input_pairs: input_pairs.into_iter().collect(),
             consumed_input_pairs: vec![],
-            commit_time,
+            commit_tick,
             committed_state: None,
-            dirty_time,
+            dirty_tick,
             dirty_state: None,
             round_result: None,
-            round_end_time: None,
+            round_end_tick: None,
             error: None,
         });
 
@@ -285,6 +286,7 @@ impl Fastforwarder {
                         dirty_state: state.dirty_state.expect("dirty state"),
                         consumed_input_pairs: state.consumed_input_pairs,
                         last_input,
+                        round_end_tick: state.round_end_tick,
                     });
                 }
                 inner_state.error = None;

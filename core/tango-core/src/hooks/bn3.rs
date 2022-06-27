@@ -917,7 +917,7 @@ impl hooks::Hooks for BN3 {
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                if replayer_state.round_end_time().is_some() {
+                if replayer_state.round_end_tick().is_some() {
                     return;
                 }
 
@@ -1002,7 +1002,7 @@ impl hooks::Hooks for BN3 {
                     Box::new(move |mut core| {
                         let current_tick = replayer_state.current_tick();
 
-                        if current_tick == replayer_state.commit_time() {
+                        if current_tick == replayer_state.commit_tick() {
                             replayer_state.set_committed_state(
                                 core.save_state().expect("save committed state"),
                             );
@@ -1038,7 +1038,7 @@ impl hooks::Hooks for BN3 {
                             .cpu_mut()
                             .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                        if current_tick == replayer_state.dirty_time() {
+                        if current_tick == replayer_state.dirty_tick() {
                             replayer_state
                                 .set_dirty_state(core.save_state().expect("save dirty state"));
                         }
