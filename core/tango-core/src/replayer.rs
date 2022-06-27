@@ -21,6 +21,7 @@ pub struct FastforwardResult {
     pub last_input: input::Pair<input::Input, input::Input>,
     pub consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
     pub round_end_tick: Option<u32>,
+    pub round_result: Option<BattleResult>,
 }
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
@@ -287,6 +288,7 @@ impl Fastforwarder {
                         consumed_input_pairs: state.consumed_input_pairs,
                         last_input,
                         round_end_tick: state.round_end_tick,
+                        round_result: state.round_result,
                     });
                 }
                 inner_state.error = None;
