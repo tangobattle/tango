@@ -1042,7 +1042,7 @@ impl hooks::Hooks for BN6 {
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
-                        if replayer_state.is_round_ended() {
+                        if replayer_state.round_end_time().is_some() {
                             return;
                         }
 

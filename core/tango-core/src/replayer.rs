@@ -11,7 +11,7 @@ struct InnerState {
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
     round_result: Option<BattleResult>,
-    round_ended: bool,
+    round_end_time: Option<u32>,
     error: Option<anyhow::Error>,
 }
 
@@ -57,7 +57,7 @@ impl State {
                 dirty_time: 0,
                 dirty_state: None,
                 round_result: None,
-                round_ended: false,
+                round_end_time: None,
                 error: None,
             },
         ))))
@@ -150,11 +150,17 @@ impl State {
     }
 
     pub fn end_round(&self) {
-        self.0.lock().as_mut().expect("on battle ended").round_ended = true;
+        let mut inner = self.0.lock();
+        let inner = inner.as_mut().expect("on battle ended");
+        inner.round_end_time = Some(inner.current_tick);
     }
 
-    pub fn is_round_ended(&self) -> bool {
-        self.0.lock().as_ref().expect("on battle ended").round_ended
+    pub fn round_end_time(&self) -> Option<u32> {
+        self.0
+            .lock()
+            .as_ref()
+            .expect("on battle ended")
+            .round_end_time
     }
 
     pub fn inputs_pairs_left(&self) -> usize {
@@ -264,7 +270,7 @@ impl Fastforwarder {
             dirty_time,
             dirty_state: None,
             round_result: None,
-            round_ended: false,
+            round_end_time: None,
             error: None,
         });
 

@@ -917,7 +917,7 @@ impl hooks::Hooks for BN3 {
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                if replayer_state.is_round_ended() {
+                if replayer_state.round_end_time().is_some() {
                     return;
                 }
 

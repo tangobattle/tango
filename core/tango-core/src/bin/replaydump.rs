@@ -187,7 +187,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
         }
 
         if (!replay.is_complete && replayer_state.are_inputs_exhausted())
-            || replayer_state.is_round_ended()
+            || replayer_state.round_end_time().is_some()
         {
             break;
         }
@@ -282,7 +282,7 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.are_inputs_exhausted() || replayer_state.is_round_ended() {
+        if replayer_state.are_inputs_exhausted() || replayer_state.round_end_time().is_some() {
             anyhow::bail!("overstepped");
         }
 
@@ -405,7 +405,7 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.are_inputs_exhausted() || replayer_state.is_round_ended() {
+        if replayer_state.are_inputs_exhausted() || replayer_state.round_end_time().is_some() {
             break;
         }
 
