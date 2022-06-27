@@ -565,14 +565,6 @@ impl Round {
             }
         };
 
-        for ip in &input_pairs {
-            self.replay_writer
-                .as_mut()
-                .unwrap()
-                .write_input(self.local_player_index, ip)
-                .expect("write input");
-        }
-
         let last_committed_state = self.committed_state.take().expect("committed state");
         let last_committed_remote_input = self.last_committed_remote_input();
 
@@ -589,6 +581,18 @@ impl Round {
                 return false;
             }
         };
+
+        for ip in &ff_result.consumed_input_pairs {
+            if ip.local.local_tick > last_committed_state.tick + input_pairs.len() as u32 {
+                break;
+            }
+
+            self.replay_writer
+                .as_mut()
+                .unwrap()
+                .write_input(self.local_player_index, ip)
+                .expect("write input");
+        }
 
         core.load_state(&ff_result.dirty_state)
             .expect("load dirty state");

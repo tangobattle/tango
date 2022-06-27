@@ -5,6 +5,7 @@ struct InnerState {
     current_tick: u32,
     local_player_index: u8,
     input_pairs: std::collections::VecDeque<input::Pair<input::Input, input::Input>>,
+    consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
     commit_time: u32,
     committed_state: Option<mgba::state::State>,
     dirty_time: u32,
@@ -19,6 +20,7 @@ pub struct FastforwardResult {
     pub committed_state: mgba::state::State,
     pub dirty_state: mgba::state::State,
     pub last_input: input::Pair<input::Input, input::Input>,
+    pub consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
 }
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
@@ -52,6 +54,7 @@ impl State {
                 current_tick: 0,
                 local_player_index,
                 input_pairs: input_pairs.into_iter().collect(),
+                consumed_input_pairs: vec![],
                 commit_time,
                 committed_state: None,
                 dirty_time: 0,
@@ -116,12 +119,13 @@ impl State {
     }
 
     pub fn pop_input_pair(&self) -> Option<input::Pair<input::Input, input::Input>> {
-        self.0
-            .lock()
-            .as_mut()
-            .expect("input pairs")
-            .input_pairs
-            .pop_front()
+        let mut inner = self.0.lock();
+        let inner = inner.as_mut().expect("input pairs");
+        let ip = inner.input_pairs.pop_front();
+        if let Some(ip) = ip.clone() {
+            inner.consumed_input_pairs.push(ip);
+        }
+        ip
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
@@ -259,6 +263,7 @@ impl Fastforwarder {
             current_tick: last_committed_tick,
             local_player_index: self.local_player_index,
             input_pairs: input_pairs.into_iter().collect(),
+            consumed_input_pairs: vec![],
             commit_time,
             committed_state: None,
             dirty_time,
@@ -278,6 +283,7 @@ impl Fastforwarder {
                     return Ok(FastforwardResult {
                         committed_state: state.committed_state.expect("committed state"),
                         dirty_state: state.dirty_state.expect("dirty state"),
+                        consumed_input_pairs: state.consumed_input_pairs,
                         last_input,
                     });
                 }
