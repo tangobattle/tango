@@ -2,10 +2,10 @@
   "no-patches": "No patches",
   "open-directory": "Open directory",
   "update": "Mettre à jour",
-  "byline": "by {{authors}}",
-  "authors": "Authors",
+  "byline": "par {{authors}}",
+  "authors": "Auteurs",
   "license": "License",
-  "all-rights-reserved": "All rights reserved",
+  "all-rights-reserved": "Tous droits réservés",
   "versions": "Versions",
   "source": "Site Web"
 }
