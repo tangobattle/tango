@@ -582,8 +582,10 @@ impl Round {
             }
         };
 
+        let committed_tick = last_committed_state.tick + input_pairs.len() as u32;
+
         for ip in &ff_result.consumed_input_pairs {
-            if ip.local.local_tick > last_committed_state.tick + input_pairs.len() as u32 {
+            if ip.local.local_tick >= committed_tick {
                 break;
             }
 
@@ -599,7 +601,7 @@ impl Round {
 
         self.committed_state = Some(CommittedState {
             state: ff_result.committed_state,
-            tick: last_committed_state.tick + input_pairs.len() as u32,
+            tick: committed_tick,
         });
         self.last_input = Some(ff_result.last_input);
 

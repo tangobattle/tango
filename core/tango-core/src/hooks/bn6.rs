@@ -973,7 +973,7 @@ impl hooks::Hooks for BN6 {
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        replayer_state.on_round_ended();
+                        replayer_state.end_round();
                     }),
                 )
             },
@@ -1002,7 +1002,6 @@ impl hooks::Hooks for BN6 {
                         let ip = match replayer_state.peek_input_pair() {
                             Some(ip) => ip,
                             None => {
-                                replayer_state.on_inputs_exhausted();
                                 return;
                             }
                         };
@@ -1043,6 +1042,10 @@ impl hooks::Hooks for BN6 {
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
+                        if replayer_state.is_round_ended() {
+                            return;
+                        }
+
                         let current_tick = replayer_state.current_tick();
 
                         let game_current_tick = munger.current_tick(core);

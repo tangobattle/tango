@@ -11,8 +11,7 @@ struct InnerState {
     dirty_time: u32,
     dirty_state: Option<mgba::state::State>,
     round_result: Option<BattleResult>,
-    on_inputs_exhausted: Box<dyn Fn() + Send>,
-    on_round_ended: Box<dyn Fn() + Send>,
+    round_ended: bool,
     error: Option<anyhow::Error>,
 }
 
@@ -46,8 +45,6 @@ impl State {
         local_player_index: u8,
         input_pairs: Vec<input::Pair<input::Input, input::Input>>,
         commit_time: u32,
-        on_inputs_exhausted: Box<dyn Fn() + Send>,
-        on_round_ended: Box<dyn Fn() + Send>,
     ) -> State {
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
             InnerState {
@@ -60,8 +57,7 @@ impl State {
                 dirty_time: 0,
                 dirty_state: None,
                 round_result: None,
-                on_inputs_exhausted,
-                on_round_ended,
+                round_ended: false,
                 error: None,
             },
         ))))
@@ -144,22 +140,21 @@ impl State {
         1 - self.local_player_index()
     }
 
-    pub fn on_inputs_exhausted(&self) {
-        (self
-            .0
+    pub fn are_inputs_exhausted(&self) -> bool {
+        self.0
             .lock()
-            .as_mut()
-            .expect("on inputs exhausted")
-            .on_inputs_exhausted)();
+            .as_ref()
+            .expect("are inputs exhausted")
+            .input_pairs
+            .is_empty()
     }
 
-    pub fn on_round_ended(&self) {
-        (self
-            .0
-            .lock()
-            .as_mut()
-            .expect("on battle ended")
-            .on_round_ended)();
+    pub fn end_round(&self) {
+        self.0.lock().as_mut().expect("on battle ended").round_ended = true;
+    }
+
+    pub fn is_round_ended(&self) -> bool {
+        self.0.lock().as_ref().expect("on battle ended").round_ended
     }
 
     pub fn inputs_pairs_left(&self) -> usize {
@@ -269,8 +264,7 @@ impl Fastforwarder {
             dirty_time,
             dirty_state: None,
             round_result: None,
-            on_inputs_exhausted: Box::new(|| {}),
-            on_round_ended: Box::new(|| {}),
+            round_ended: false,
             error: None,
         });
 

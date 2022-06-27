@@ -119,31 +119,10 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
 
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = {
-        tango_core::replayer::State::new(
-            replay.local_player_index,
-            input_pairs,
-            0,
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    if !replay.is_complete || args.assume_incomplete {
-                        done.store(true, std::sync::atomic::Ordering::Relaxed);
-                    }
-                })
-            },
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-        )
-    };
+    let replayer_state =
+        { tango_core::replayer::State::new(replay.local_player_index, input_pairs, 0) };
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
@@ -203,12 +182,14 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
     writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
     loop {
-        if done.load(std::sync::atomic::Ordering::Relaxed) {
-            break;
-        }
-
         if let Some(err) = replayer_state.take_error() {
             Err(err)?;
+        }
+
+        if (!replay.is_complete && replayer_state.are_inputs_exhausted())
+            || replayer_state.is_round_ended()
+        {
+            break;
         }
 
         core.as_mut().run_frame();
@@ -285,27 +266,10 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_rom(vf)?;
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = tango_core::replayer::State::new(
-        replay.local_player_index,
-        input_pairs,
-        args.steps,
-        {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        },
-        {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        },
-    );
+    let replayer_state =
+        tango_core::replayer::State::new(replay.local_player_index, input_pairs, args.steps);
 
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
@@ -318,7 +282,7 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if done.load(std::sync::atomic::Ordering::Relaxed) {
+        if replayer_state.are_inputs_exhausted() || replayer_state.is_round_ended() {
             anyhow::bail!("overstepped");
         }
 
@@ -426,29 +390,10 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_rom(vf)?;
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = {
-        tango_core::replayer::State::new(
-            replay.local_player_index,
-            input_pairs,
-            0,
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-        )
-    };
+    let replayer_state =
+        { tango_core::replayer::State::new(replay.local_player_index, input_pairs, 0) };
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
@@ -460,7 +405,7 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if done.load(std::sync::atomic::Ordering::Relaxed) {
+        if replayer_state.are_inputs_exhausted() || replayer_state.is_round_ended() {
             break;
         }
 

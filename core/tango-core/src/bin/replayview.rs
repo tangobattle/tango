@@ -63,7 +63,6 @@ fn main() -> Result<(), anyhow::Error> {
         .build()
         .unwrap();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     let local_player_index = if !args.remote {
@@ -79,25 +78,7 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let replayer_state = tango_core::replayer::State::new(
-        local_player_index,
-        input_pairs,
-        0,
-        {
-            let done = done.clone();
-            Box::new(move || {
-                if !replay.is_complete {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            })
-        },
-        {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        },
-    );
+    let replayer_state = tango_core::replayer::State::new(local_player_index, input_pairs, 0);
     let mut traps = hooks.common_traps();
     traps.extend(hooks.replayer_traps(replayer_state.clone()));
     core.set_traps(traps);
@@ -176,7 +157,9 @@ fn main() -> Result<(), anyhow::Error> {
                 Err(err)?;
             }
 
-            if done.load(std::sync::atomic::Ordering::Relaxed) {
+            if (!replay.is_complete && replayer_state.are_inputs_exhausted())
+                || replayer_state.is_round_ended()
+            {
                 break 'toplevel;
             }
 

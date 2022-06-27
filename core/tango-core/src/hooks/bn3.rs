@@ -917,6 +917,10 @@ impl hooks::Hooks for BN3 {
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
+                if replayer_state.is_round_ended() {
+                    return;
+                }
+
                 let current_tick = replayer_state.current_tick();
 
                 let ip = match replayer_state.pop_input_pair() {
@@ -987,7 +991,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        replayer_state.on_round_ended();
+                        replayer_state.end_round();
                     }),
                 )
             },
@@ -1007,7 +1011,6 @@ impl hooks::Hooks for BN3 {
                         let ip = match replayer_state.peek_input_pair() {
                             Some(ip) => ip,
                             None => {
-                                replayer_state.on_inputs_exhausted();
                                 return;
                             }
                         };
