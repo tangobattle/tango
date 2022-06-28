@@ -179,7 +179,7 @@ impl State {
 
     pub fn is_round_ended(&self) -> bool {
         let phase = self.0.lock().as_ref().expect("round ended").phase;
-        phase == RoundPhase::Ending
+        phase == RoundPhase::Ended
     }
 
     pub fn round_result(&self) -> Option<RoundResult> {
