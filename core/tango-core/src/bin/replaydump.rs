@@ -183,7 +183,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
     loop {
         if (!replay.is_complete && replayer_state.are_inputs_exhausted())
-            || replayer_state.round_ended()
+            || replayer_state.is_round_ended()
         {
             break;
         }
@@ -283,7 +283,7 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.are_inputs_exhausted() || replayer_state.round_ended() {
+        if replayer_state.are_inputs_exhausted() || replayer_state.is_round_ended() {
             anyhow::bail!("overstepped");
         }
 
@@ -406,7 +406,7 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.are_inputs_exhausted() || replayer_state.round_ended() {
+        if replayer_state.are_inputs_exhausted() || replayer_state.is_round_ended() {
             break;
         }
 
@@ -418,7 +418,7 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     }
 
     if let Some(result) = replayer_state.round_result() {
-        println!("{}", result as u8);
+        println!("{}", result.result as u8);
     }
 
     Ok(())

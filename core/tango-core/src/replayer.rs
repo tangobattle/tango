@@ -10,9 +10,8 @@ struct InnerState {
     committed_state: Option<mgba::state::State>,
     dirty_tick: u32,
     dirty_state: Option<mgba::state::State>,
-    round_result: Option<BattleResult>,
-    round_set_ending_tick: Option<u32>,
-    round_ended: bool,
+    round_result: Option<RoundResult>,
+    phase: RoundPhase,
     error: Option<anyhow::Error>,
 }
 
@@ -21,8 +20,7 @@ pub struct FastforwardResult {
     pub dirty_state: mgba::state::State,
     pub last_input: input::Pair<input::Input, input::Input>,
     pub consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
-    pub round_set_ending_tick: Option<u32>,
-    pub round_result: Option<BattleResult>,
+    pub round_result: Option<RoundResult>,
 }
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
@@ -31,6 +29,19 @@ pub enum BattleResult {
     Draw = -1,
     Loss = 0,
     Win = 1,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum RoundPhase {
+    InProgress,
+    Ending,
+    Ended,
+}
+
+#[derive(Clone, Copy)]
+pub struct RoundResult {
+    pub tick: u32,
+    pub result: BattleResult,
 }
 
 pub struct Fastforwarder {
@@ -60,8 +71,7 @@ impl State {
                 dirty_tick: 0,
                 dirty_state: None,
                 round_result: None,
-                round_set_ending_tick: None,
-                round_ended: false,
+                phase: RoundPhase::InProgress,
                 error: None,
             },
         ))))
@@ -76,11 +86,12 @@ impl State {
     }
 
     pub fn set_round_result(&self, result: BattleResult) {
-        self.0.lock().as_mut().expect("round result").round_result = Some(result);
-    }
-
-    pub fn round_result(&self) -> Option<BattleResult> {
-        self.0.lock().as_ref().expect("round result").round_result
+        let mut inner = self.0.lock();
+        let inner = inner.as_mut().expect("set round ending");
+        inner.round_result = Some(RoundResult {
+            tick: inner.current_tick,
+            result,
+        });
     }
 
     pub fn set_committed_state(&self, state: mgba::state::State) {
@@ -154,25 +165,25 @@ impl State {
     }
 
     pub fn set_round_ending(&self) {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("set round ending");
-        inner.round_set_ending_tick = Some(inner.current_tick);
+        self.0.lock().as_mut().expect("round ended").phase = RoundPhase::Ending;
     }
 
     pub fn set_round_ended(&self) {
-        self.0.lock().as_mut().expect("round ended").round_ended = true;
+        self.0.lock().as_mut().expect("round ended").phase = RoundPhase::Ended;
     }
 
-    pub fn round_ended(&self) -> bool {
-        self.0.lock().as_ref().expect("round ended").round_ended
+    pub fn is_round_ending(&self) -> bool {
+        let phase = self.0.lock().as_ref().expect("round ended").phase;
+        phase == RoundPhase::Ending || phase == RoundPhase::Ended
     }
 
-    pub fn round_set_ending_tick(&self) -> Option<u32> {
-        self.0
-            .lock()
-            .as_ref()
-            .expect("round set ending tick")
-            .round_set_ending_tick
+    pub fn is_round_ended(&self) -> bool {
+        let phase = self.0.lock().as_ref().expect("round ended").phase;
+        phase == RoundPhase::Ending
+    }
+
+    pub fn round_result(&self) -> Option<RoundResult> {
+        self.0.lock().as_ref().expect("round result").round_result
     }
 
     pub fn inputs_pairs_left(&self) -> usize {
@@ -282,8 +293,7 @@ impl Fastforwarder {
             dirty_tick,
             dirty_state: None,
             round_result: None,
-            round_set_ending_tick: None,
-            round_ended: false,
+            phase: RoundPhase::InProgress,
             error: None,
         });
 
@@ -298,7 +308,6 @@ impl Fastforwarder {
                         dirty_state: state.dirty_state.expect("dirty state"),
                         consumed_input_pairs: state.consumed_input_pairs,
                         last_input,
-                        round_set_ending_tick: state.round_set_ending_tick,
                         round_result: state.round_result,
                     });
                 }

@@ -1032,7 +1032,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
-                        if replayer_state.round_set_ending_tick().is_some() {
+                        if replayer_state.is_round_ending() {
                             return;
                         }
 

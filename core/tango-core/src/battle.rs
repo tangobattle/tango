@@ -50,14 +50,8 @@ pub struct RoundState {
 impl RoundState {
     pub async fn end_round(&mut self) -> anyhow::Result<()> {
         match self.round.take() {
-            Some(mut round) => {
+            Some(round) => {
                 log::info!("round ended at {:x}", round.current_tick);
-                round
-                    .replay_writer
-                    .take()
-                    .unwrap()
-                    .finish()
-                    .expect("finish");
                 self.ipc_sender
                     .lock()
                     .send(ipc::protos::FromCoreMessage {
@@ -408,7 +402,6 @@ impl Match {
             current_tick: 0,
             iq,
             tx_queue,
-            is_ending: false,
             remote_delay: self.settings.shadow_input_delay,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
@@ -456,7 +449,6 @@ pub struct Round {
     current_tick: u32,
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
     tx_queue: std::collections::VecDeque<Tx>,
-    is_ending: bool,
     remote_delay: u32,
     last_committed_remote_input: input::Input,
     last_input: Option<input::Pair<input::Input, input::Input>>,
@@ -564,11 +556,11 @@ impl Round {
                 break;
             }
 
-            self.replay_writer
-                .as_mut()
-                .unwrap()
-                .write_input(self.local_player_index, ip)
-                .expect("write input");
+            if let Some(replay_writer) = self.replay_writer.as_mut() {
+                replay_writer
+                    .write_input(self.local_player_index, ip)
+                    .expect("write input");
+            }
         }
 
         core.load_state(&ff_result.dirty_state)
@@ -585,19 +577,22 @@ impl Round {
             .expect("set fps target")
             .set_fps_target(game::EXPECTED_FPS as f32 + self.tps_adjustment());
 
-        self.is_ending = ff_result.round_set_ending_tick.is_some();
-
-        let round_ending_tick = if let Some(round_ending_tick) = ff_result.round_set_ending_tick {
-            round_ending_tick
+        let round_result = if let Some(round_result) = ff_result.round_result {
+            round_result
         } else {
             return Ok(None);
         };
 
-        if round_ending_tick < committed_tick {
+        if round_result.tick < committed_tick {
             return Ok(None);
         }
 
-        Ok(Some(match ff_result.round_result.expect("round result") {
+        if let Some(replay_writer) = self.replay_writer.take() {
+            replay_writer.finish().expect("finish");
+            log::info!("replay finished at {:x}", self.current_tick);
+        }
+
+        Ok(Some(match round_result.result {
             replayer::BattleResult::Draw => match self.local_player_index {
                 0 => BattleResult::Win,
                 1 => BattleResult::Loss,
@@ -606,10 +601,6 @@ impl Round {
             replayer::BattleResult::Loss => BattleResult::Loss,
             replayer::BattleResult::Win => BattleResult::Win,
         }))
-    }
-
-    pub fn is_ending(&self) -> bool {
-        self.is_ending
     }
 
     pub fn on_draw_result(&self) -> BattleResult {

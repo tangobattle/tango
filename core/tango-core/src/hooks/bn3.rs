@@ -918,7 +918,7 @@ impl hooks::Hooks for BN3 {
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                if replayer_state.round_set_ending_tick().is_some() {
+                if replayer_state.is_round_ending() {
                     return;
                 }
 
@@ -992,7 +992,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_ending_entry,
                     Box::new(move |_core| {
-                        if replayer_state.round_set_ending_tick().is_some() {
+                        if replayer_state.is_round_ending() {
                             return;
                         }
                         replayer_state.set_round_ending();
