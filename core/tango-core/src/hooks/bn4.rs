@@ -456,13 +456,14 @@ impl hooks::Hooks for BN4 {
                                     );
                                 }
 
-                                if !round
+                                if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
                                     )
                                     .await
                                 {
+                                    log::error!("failed to add local input: {}", e);
                                     break 'abort;
                                 }
                                 return;
@@ -889,9 +890,18 @@ impl hooks::Hooks for BN4 {
             {
                 let replayer_state = replayer_state.clone();
                 (
+                    self.offsets.rom.round_set_ending,
+                    Box::new(move |_core| {
+                        replayer_state.set_round_ending();
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        replayer_state.end_round();
+                        replayer_state.set_round_ended();
                     }),
                 )
             },
@@ -951,7 +961,7 @@ impl hooks::Hooks for BN4 {
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
-                        if replayer_state.round_end_tick().is_some() {
+                        if replayer_state.round_set_ending_tick().is_some() {
                             return;
                         }
 

@@ -11,7 +11,8 @@ struct InnerState {
     dirty_tick: u32,
     dirty_state: Option<mgba::state::State>,
     round_result: Option<BattleResult>,
-    round_end_tick: Option<u32>,
+    round_set_ending_tick: Option<u32>,
+    round_ended: bool,
     error: Option<anyhow::Error>,
 }
 
@@ -20,7 +21,7 @@ pub struct FastforwardResult {
     pub dirty_state: mgba::state::State,
     pub last_input: input::Pair<input::Input, input::Input>,
     pub consumed_input_pairs: Vec<input::Pair<input::Input, input::Input>>,
-    pub round_end_tick: Option<u32>,
+    pub round_set_ending_tick: Option<u32>,
     pub round_result: Option<BattleResult>,
 }
 
@@ -59,7 +60,8 @@ impl State {
                 dirty_tick: 0,
                 dirty_state: None,
                 round_result: None,
-                round_end_tick: None,
+                round_set_ending_tick: None,
+                round_ended: false,
                 error: None,
             },
         ))))
@@ -151,18 +153,26 @@ impl State {
             .is_empty()
     }
 
-    pub fn end_round(&self) {
+    pub fn set_round_ending(&self) {
         let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("on battle ended");
-        inner.round_end_tick = Some(inner.current_tick);
+        let inner = inner.as_mut().expect("set round ending");
+        inner.round_set_ending_tick = Some(inner.current_tick);
     }
 
-    pub fn round_end_tick(&self) -> Option<u32> {
+    pub fn set_round_ended(&self) {
+        self.0.lock().as_mut().expect("round ended").round_ended = true;
+    }
+
+    pub fn round_ended(&self) -> bool {
+        self.0.lock().as_ref().expect("round ended").round_ended
+    }
+
+    pub fn round_set_ending_tick(&self) -> Option<u32> {
         self.0
             .lock()
             .as_ref()
-            .expect("on battle ended")
-            .round_end_tick
+            .expect("round set ending tick")
+            .round_set_ending_tick
     }
 
     pub fn inputs_pairs_left(&self) -> usize {
@@ -272,7 +282,8 @@ impl Fastforwarder {
             dirty_tick,
             dirty_state: None,
             round_result: None,
-            round_end_tick: None,
+            round_set_ending_tick: None,
+            round_ended: false,
             error: None,
         });
 
@@ -287,7 +298,7 @@ impl Fastforwarder {
                         dirty_state: state.dirty_state.expect("dirty state"),
                         consumed_input_pairs: state.consumed_input_pairs,
                         last_input,
-                        round_end_tick: state.round_end_tick,
+                        round_set_ending_tick: state.round_set_ending_tick,
                         round_result: state.round_result,
                     });
                 }

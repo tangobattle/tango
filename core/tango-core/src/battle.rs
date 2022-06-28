@@ -408,6 +408,7 @@ impl Match {
             current_tick: 0,
             iq,
             tx_queue,
+            is_ending: false,
             remote_delay: self.settings.shadow_input_delay,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
@@ -455,6 +456,7 @@ pub struct Round {
     current_tick: u32,
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
     tx_queue: std::collections::VecDeque<Tx>,
+    is_ending: bool,
     remote_delay: u32,
     last_committed_remote_input: input::Input,
     last_input: Option<input::Pair<input::Input, input::Input>>,
@@ -470,14 +472,6 @@ pub struct Round {
 }
 
 impl Round {
-    pub fn on_draw_result(&self) -> BattleResult {
-        match self.local_player_index {
-            0 => BattleResult::Win,
-            1 => BattleResult::Loss,
-            _ => unreachable!(),
-        }
-    }
-
     pub fn current_tick(&self) -> u32 {
         self.current_tick
     }
@@ -519,7 +513,7 @@ impl Round {
         &mut self,
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
-    ) -> bool {
+    ) -> anyhow::Result<Option<BattleResult>> {
         let local_tick = self.current_tick + self.local_delay();
         let remote_tick = self.last_committed_remote_input().local_tick;
 
@@ -530,12 +524,10 @@ impl Round {
         //
         // This is all done while the self is locked, so there are no TOCTTOU issues.
         if !self.can_add_local_input() {
-            log::error!("local input buffer overflow!");
-            return false;
+            anyhow::bail!("local input buffer overflow!");
         }
 
-        if let Err(e) = self
-            .transport
+        self.transport
             .lock()
             .await
             .send_input(
@@ -544,11 +536,7 @@ impl Round {
                 (remote_tick as i32 - local_tick as i32) as i8,
                 joyflags,
             )
-            .await
-        {
-            log::error!("failed to send input: {}", e);
-            return false;
-        }
+            .await?;
 
         self.add_local_input(input::PartialInput {
             local_tick,
@@ -556,30 +544,18 @@ impl Round {
             joyflags,
         });
 
-        let (input_pairs, left) = match self.consume_and_peek_local().await {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("failed to consume input: {}", e);
-                return false;
-            }
-        };
+        let (input_pairs, left) = self.consume_and_peek_local().await?;
 
         let last_committed_state = self.committed_state.take().expect("committed state");
         let last_committed_remote_input = self.last_committed_remote_input();
 
-        let ff_result = match self.replayer.fastforward(
+        let ff_result = self.replayer.fastforward(
             &last_committed_state.state,
             last_committed_state.tick,
             &input_pairs,
             last_committed_remote_input,
             &left,
-        ) {
-            Ok(t) => t,
-            Err(e) => {
-                log::error!("replayer failed with error: {}", e);
-                return false;
-            }
-        };
+        )?;
 
         let committed_tick = last_committed_state.tick + input_pairs.len() as u32;
 
@@ -609,7 +585,39 @@ impl Round {
             .expect("set fps target")
             .set_fps_target(game::EXPECTED_FPS as f32 + self.tps_adjustment());
 
-        true
+        self.is_ending = ff_result.round_set_ending_tick.is_some();
+
+        let round_ending_tick = if let Some(round_ending_tick) = ff_result.round_set_ending_tick {
+            round_ending_tick
+        } else {
+            return Ok(None);
+        };
+
+        if round_ending_tick < committed_tick {
+            return Ok(None);
+        }
+
+        Ok(Some(match ff_result.round_result.expect("round result") {
+            replayer::BattleResult::Draw => match self.local_player_index {
+                0 => BattleResult::Win,
+                1 => BattleResult::Loss,
+                _ => unreachable!(),
+            },
+            replayer::BattleResult::Loss => BattleResult::Loss,
+            replayer::BattleResult::Win => BattleResult::Win,
+        }))
+    }
+
+    pub fn is_ending(&self) -> bool {
+        self.is_ending
+    }
+
+    pub fn on_draw_result(&self) -> BattleResult {
+        match self.local_player_index {
+            0 => BattleResult::Win,
+            1 => BattleResult::Loss,
+            _ => unreachable!(),
+        }
     }
 
     pub fn has_committed_state(&mut self) -> bool {

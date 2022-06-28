@@ -466,13 +466,14 @@ impl hooks::Hooks for BN3 {
                                     );
                                 }
 
-                                if !round
+                                if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
                                     )
                                     .await
                                 {
+                                    log::error!("failed to add local input: {}", e);
                                     break 'abort;
                                 }
                                 return;
@@ -917,7 +918,7 @@ impl hooks::Hooks for BN3 {
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                if replayer_state.round_end_tick().is_some() {
+                if replayer_state.round_set_ending_tick().is_some() {
                     return;
                 }
 
@@ -989,9 +990,21 @@ impl hooks::Hooks for BN3 {
             {
                 let replayer_state = replayer_state.clone();
                 (
+                    self.offsets.rom.round_ending_entry,
+                    Box::new(move |_core| {
+                        if replayer_state.round_set_ending_tick().is_some() {
+                            return;
+                        }
+                        replayer_state.set_round_ending();
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        replayer_state.end_round();
+                        replayer_state.set_round_ended();
                     }),
                 )
             },
