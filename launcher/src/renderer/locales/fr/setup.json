@@ -5,7 +5,7 @@
   "nickname-step-title": "Entrez votre surnom",
   "nickname-step-description": "Vous pouvez modifier ceci à tout moment.",
   "roms-step-title": "Placez vos ROMs dans {{path}}",
-  "roms-step-description": "Make sure they're pristine, unpatched ROMs.",
+  "roms-step-description": "Assurez-vous qu'ils sont des ROMs vierges et non patchées.",
   "roms-step-error": "Impossible de trouver des ROMs supportées. Veuillez vous assurer qu'elles ne sont pas patchées !",
   "saves-step-title": "Placez vos sauvegardes dans {{path}}",
   "saves-step-description": "Assurez-vous qu'ils sont compatibles avec les jeux que vous avez mis dans le dossier ROMs. Ils devraient être des fichiers .sav ou .sa1.",
