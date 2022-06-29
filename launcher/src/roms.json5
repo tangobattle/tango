@@ -284,4 +284,42 @@
       },
     },
   },
+
+  bn2: {
+    title: {
+      en: "Mega Man Battle Network 2",
+      ja: "ロックマンエグゼ2（英語版）",
+      "zh-Hans": "洛克人EXE2（英文版）",
+    },
+    lang: "en",
+
+    versions: {
+      MEGAMAN_EXE2AE2E: {
+        title: null,
+        order: 0,
+        revisions: {
+          "0": { crc32: 0x6d961f82 },
+        },
+      },
+    },
+  },
+
+  exe2: {
+    title: {
+      en: "Rockman EXE 2",
+      ja: "ロックマンエグゼ2",
+      "zh-Hans": "洛克人EXE2（日文版）",
+    },
+    lang: "ja",
+
+    versions: {
+      ROCKMAN_EXE2AE2J: {
+        title: null,
+        order: 0,
+        revisions: {
+          "1": { crc32: 0x41576087 },
+        },
+      },
+    },
+  },
 }

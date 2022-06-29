@@ -1,5 +1,6 @@
 use crate::{facade, replayer, shadow};
 
+mod bn2;
 mod bn3;
 mod bn4;
 mod bn5;
