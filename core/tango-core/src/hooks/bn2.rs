@@ -1,8 +1,6 @@
 mod munger;
 mod offsets;
 
-use byteorder::ByteOrder;
-
 use crate::{battle, facade, hooks, input, replayer, shadow};
 
 #[derive(Clone)]
