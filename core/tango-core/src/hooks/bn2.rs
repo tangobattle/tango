@@ -28,7 +28,7 @@ impl BN2 {
 }
 
 fn random_background(rng: &mut impl rand::Rng) -> u8 {
-    const BATTLE_BACKGROUNDS: &[u8] = &[0x00]; // TODO
+    const BATTLE_BACKGROUNDS: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x05, 0x08, 0x15, 0x18];
     BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())]
 }
 
