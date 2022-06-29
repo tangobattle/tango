@@ -44,5 +44,6 @@
     "iceconfig-endpoint": "Salida de configuración ICE",
     "patch-repo": "Repositorio de parches",
     "window-scale": "Tamaño de ventana",
-    "window-scale-suffix": "x"
+    "window-scale-suffix": "x",
+    "max-queue-length": "Max queue length"
 }
