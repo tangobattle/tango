@@ -400,6 +400,29 @@ function AdvancedTab({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:rust-log-filter" />}
           />
           <TextField
+            variant="outlined"
+            size="small"
+            type="number"
+            label={<Trans i18nKey="settings:max-queue-length" />}
+            value={config.maxQueueLength}
+            onChange={(e) => {
+              let v = parseInt(e.target.value);
+              if (isNaN(v)) {
+                v = 60;
+              }
+              saveConfig((config) => ({
+                ...config,
+                maxQueueLength: Math.min(Math.max(v, 0), 6000),
+              }));
+            }}
+            InputProps={{
+              inputProps: {
+                min: 0,
+                max: 6000,
+              },
+            }}
+          />
+          <TextField
             size="small"
             fullWidth
             value={config.endpoints.replaycollector}

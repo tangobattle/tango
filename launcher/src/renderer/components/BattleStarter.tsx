@@ -746,6 +746,7 @@ async function runCallback(
             revealSetup: opponentGameSettings.revealSetup,
           },
         }).finish(),
+        maxQueueLength: config.maxQueueLength,
         rngSeed,
       },
     } as ToCoreMessage_StartRequest;

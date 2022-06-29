@@ -28,6 +28,7 @@ where
     local_queue: std::collections::VecDeque<T>,
     remote_queue: std::collections::VecDeque<U>,
     local_delay: u32,
+    max_length: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -50,7 +51,12 @@ where
             local_queue: std::collections::VecDeque::with_capacity(capacity),
             remote_queue: std::collections::VecDeque::with_capacity(capacity),
             local_delay,
+            max_length: capacity,
         }
+    }
+
+    pub fn max_length(&self) -> usize {
+        self.max_length
     }
 
     pub fn add_local_input(&mut self, v: T) {

@@ -2,7 +2,7 @@
 import Long from "long";
 import * as _m0 from "protobufjs/minimal";
 
-export const protobufPackage = "";
+export const protobufPackage = "tango.replay";
 
 export interface ReplayMetadata {
   ts: number;

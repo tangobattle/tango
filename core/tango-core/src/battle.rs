@@ -38,6 +38,7 @@ pub struct Settings {
     pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
     pub opponent_nickname: Option<String>,
+    pub max_queue_length: usize,
 }
 
 pub struct RoundState {
@@ -162,8 +163,6 @@ pub enum NegotiationProgress {
     Signalling,
     Handshaking,
 }
-
-const MAX_QUEUE_LENGTH: usize = 600;
 
 impl Match {
     pub fn new(
@@ -369,13 +368,15 @@ impl Match {
 
         let (first_state_committed_tx, first_state_committed_rx) = tokio::sync::oneshot::channel();
 
-        let mut tx_queue = std::collections::VecDeque::with_capacity(MAX_QUEUE_LENGTH);
+        let mut tx_queue =
+            std::collections::VecDeque::with_capacity(self.settings.max_queue_length);
         tx_queue.push_front(Tx {
             for_tick: 0,
             tx: first_tx.to_vec(),
         });
 
-        let mut iq = input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay);
+        let mut iq =
+            input::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
         log::info!(
             "filling input delay: local = {}, remote = {}",
             self.settings.input_delay,
@@ -709,7 +710,7 @@ impl Round {
     }
 
     pub fn can_add_local_input(&mut self) -> bool {
-        self.iq.local_queue_length() < MAX_QUEUE_LENGTH
+        self.iq.local_queue_length() < self.iq.max_length()
     }
 
     pub fn add_local_input(&mut self, input: input::PartialInput) {
@@ -718,7 +719,7 @@ impl Round {
     }
 
     pub fn can_add_remote_input(&mut self) -> bool {
-        self.iq.remote_queue_length() < MAX_QUEUE_LENGTH
+        self.iq.remote_queue_length() < self.iq.max_length()
     }
 
     pub fn add_remote_input(&mut self, input: input::PartialInput) {
@@ -735,7 +736,7 @@ impl Round {
         };
         let dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
         let ddelay = self.local_delay() as i32 - self.remote_delay() as i32;
-        ((dtick + ddelay) * game::EXPECTED_FPS as i32) as f32 / MAX_QUEUE_LENGTH as f32
+        ((dtick + ddelay) * game::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
     }
 }
 
