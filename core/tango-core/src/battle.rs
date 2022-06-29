@@ -583,7 +583,7 @@ impl Round {
             return Ok(None);
         };
 
-        if round_result.tick < committed_tick {
+        if round_result.tick > committed_tick {
             return Ok(None);
         }
 
@@ -593,11 +593,7 @@ impl Round {
         }
 
         Ok(Some(match round_result.result {
-            replayer::BattleResult::Draw => match self.local_player_index {
-                0 => BattleResult::Win,
-                1 => BattleResult::Loss,
-                _ => unreachable!(),
-            },
+            replayer::BattleResult::Draw => self.on_draw_result(),
             replayer::BattleResult::Loss => BattleResult::Loss,
             replayer::BattleResult::Win => BattleResult::Win,
         }))
