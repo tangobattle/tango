@@ -44,5 +44,6 @@
     "iceconfig-endpoint": "ICE配置端点",
     "patch-repo": "补丁仓库",
     "window-scale": "窗口缩放",
-    "window-scale-suffix": "倍"
+    "window-scale-suffix": "倍",
+    "max-queue-length": "Max queue length"
 }
