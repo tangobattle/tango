@@ -56,7 +56,9 @@ import { GetRequest, GetResponse } from "../../protos/generated/iceconfig";
 import {
     FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest
 } from "../../protos/generated/ipc";
-import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/generated/lobby";
+import {
+    GameInfo, GameInfo_Patch, Message, NegotiatedState, SetSettings
+} from "../../protos/generated/lobby";
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
 import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
@@ -848,15 +850,32 @@ interface PendingStates {
   } | null;
 }
 
+interface TrivializedSettings {
+  matchType: number;
+  gameFamily: string | null;
+  patch: GameInfo_Patch | null;
+  revealSetup: boolean;
+}
+
+function trivializeSettings(settings: SetSettings): TrivializedSettings {
+  return {
+    matchType: settings.matchType,
+    gameFamily:
+      settings.gameInfo != null
+        ? FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
+        : null,
+    patch: (settings.gameInfo != null ? settings.gameInfo.patch : null) ?? null,
+    revealSetup: settings.revealSetup,
+  };
+}
+
 function isSettingsChangeTrivial(
   previousSettings: SetSettings,
   settings: SetSettings
 ) {
-  return (
-    previousSettings.gameInfo != null &&
-    settings.gameInfo != null &&
-    FAMILY_BY_ROM_NAME[previousSettings.gameInfo.rom] ==
-      FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
+  return isEqual(
+    trivializeSettings(previousSettings),
+    trivializeSettings(settings)
   );
 }
 
