@@ -98,14 +98,15 @@ impl hooks::Hooks for BN2 {
                 handle.block_on(async {
                     let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                     let match_ = match facade.match_().await {
                         Some(match_) => match_,
                         None => {
+                            core.gba_mut().cpu_mut().set_gpr(0, 0);
                             return;
                         }
                     };
+                    core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                     let mut round_state = match_.lock_round_state().await;
 
@@ -503,15 +504,16 @@ impl hooks::Hooks for BN2 {
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                 let mut round_state = shadow_state.lock_round_state();
                 let round = match round_state.round.as_mut() {
                     Some(round) => round,
                     None => {
+                        core.gba_mut().cpu_mut().set_gpr(0, 0);
                         return;
                     }
                 };
+                core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                 let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
                     ip
