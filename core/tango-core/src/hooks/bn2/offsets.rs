@@ -120,11 +120,11 @@ pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x08005fd8,
         round_end_damage_judge_set_loss:            0x08005fc8,
         round_end_damage_judge_set_draw:            0x08005fbe,
-        round_ending_entry:                         0,
-        round_end_entry:                            0,
+        round_ending_entry:                         0x08005b28,
+        round_end_entry:                            0x08006114,
         link_is_p2_ret:                             0x08002b28,
         comm_menu_init_ret:                         0x0802b2a0,
-        match_end_ret:                              0,
+        match_end_ret:                              0x080061a2,
     },
 };
 
