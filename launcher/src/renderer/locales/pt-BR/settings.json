@@ -44,5 +44,6 @@
     "iceconfig-endpoint": "Ponto de extremidade de configuração ICE",
     "patch-repo": "Repositório de patches",
     "window-scale": "Tamanho de tela",
-    "window-scale-suffix": "x"
+    "window-scale-suffix": "x",
+    "max-queue-length": "Max queue length"
 }
