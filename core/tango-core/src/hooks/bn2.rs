@@ -28,7 +28,7 @@ impl BN2 {
 }
 
 fn random_background(rng: &mut impl rand::Rng) -> u8 {
-    const BATTLE_BACKGROUNDS: &[u8] = &[0x00, 0x04, 0x05, 0x06, 0x17, 0x10, 0x02, 0x0a];
+    const BATTLE_BACKGROUNDS: &[u8] = &[0x00]; // TODO
     BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())]
 }
 
@@ -40,15 +40,15 @@ fn step_rng(seed: u32) -> u32 {
 }
 
 fn generate_rng_state(rng: &mut impl rand::Rng) -> u32 {
-    let mut rng2_state = 0xa338244f;
+    let mut rng_state = 0xa338244f;
     for _ in 0..rng.gen_range(0..=0xffffusize) {
-        rng2_state = step_rng(rng2_state);
+        rng_state = step_rng(rng_state);
     }
-    rng2_state
+    rng_state
 }
 
 const INIT_RX: [u8; 16] = [
-    0x01, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0x00, 0x04, 0x00, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
 ];
 
 impl hooks::Hooks for BN2 {
@@ -1008,11 +1008,6 @@ impl hooks::Hooks for BN2 {
                 )
             },
         ]
-    }
-
-    fn predict_rx(&self, rx: &mut Vec<u8>) {
-        let tick = byteorder::LittleEndian::read_u16(&rx[0x4..0x6]);
-        byteorder::LittleEndian::write_u16(&mut rx[0x4..0x6], tick.wrapping_add(1));
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {

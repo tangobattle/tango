@@ -108,7 +108,7 @@ pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
         start_screen_sram_unmask_ret:               0x0801c1f8,
         game_load_ret:                              0x08003ccc,
         main_read_joyflags:                         0x08000376,
-        init_sio_call:                              0x080e6124,
+        init_sio_call:                              0x08006612,
         comm_menu_send_and_receive_call:            0x0802b07e,
         handle_input_init_send_and_receive_call:    0x08006666,
         handle_input_update_send_and_receive_call:  0x08006956,
