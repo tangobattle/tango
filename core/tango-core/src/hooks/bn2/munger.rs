@@ -31,7 +31,7 @@ impl Munger {
         background: u8,
     ) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x30);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x2c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_range(
             self.offsets.ewram.tx_packet,

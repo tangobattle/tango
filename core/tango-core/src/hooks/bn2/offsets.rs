@@ -114,7 +114,7 @@ pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
         handle_input_update_send_and_receive_call:  0x08006956,
         handle_input_deinit_send_and_receive_call:  0x0802b07e,
         handle_input_post_call:                     0x0800582a,
-        round_start_ret:                            0,
+        round_start_ret:                            0x08004e34,
         round_end_set_win:                          0x08006ec8,
         round_end_set_loss:                         0x08006ed0,
         round_end_damage_judge_set_win:             0,
