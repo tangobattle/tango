@@ -829,10 +829,6 @@ impl hooks::Hooks for BN2 {
                 let ip = match replayer_state.pop_input_pair() {
                     Some(ip) => ip,
                     None => {
-                        let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
-                        munger.set_rx_packet(core, 0, &rx);
-                        munger.set_rx_packet(core, 1, &rx);
                         return;
                     }
                 };
