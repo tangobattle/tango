@@ -574,6 +574,7 @@ export default function SavesPane({ active }: { active: boolean }) {
               <OutlinedInput
                 label={<Trans i18nKey="play:select-save" />}
                 readOnly
+                disabled={battleReady}
                 value={selectedSave != null ? JSON.stringify(selectedSave) : ""}
                 inputComponent={React.forwardRef(
                   ({ value, className }, ref) => (
@@ -692,6 +693,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                       sx={{ marginRight: "-10px" }}
                       size="small"
                       variant="contained"
+                      disabled={battleReady}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSaveSelectorOpen(true);
