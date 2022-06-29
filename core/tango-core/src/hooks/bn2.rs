@@ -39,15 +39,7 @@ fn step_rng(seed: u32) -> u32 {
     .0
 }
 
-fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
-    let mut rng1_state = 0;
-    for _ in 0..rng.gen_range(0..=0xffffusize) {
-        rng1_state = step_rng(rng1_state);
-    }
-    rng1_state
-}
-
-fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
+fn generate_rng_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng2_state = 0xa338244f;
     for _ in 0..rng.gen_range(0..=0xffffusize) {
         rng2_state = step_rng(rng2_state);
@@ -159,23 +151,7 @@ impl hooks::Hooks for BN2 {
                             };
 
                             let mut rng = match_.lock_rng().await;
-
-                            // rng1 is the local rng, it should not be synced.
-                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                            munger.set_rng1_state(
-                                core,
-                                if match_.is_offerer() {
-                                    offerer_rng1_state
-                                } else {
-                                    answerer_rng1_state
-                                },
-                            );
-
-                            // rng2 is the shared rng, it must be synced.
-                            munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
-
+                            munger.set_rng_state(core, generate_rng_state(&mut *rng));
                             munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
                         });
                     }),
@@ -350,30 +326,6 @@ impl hooks::Hooks for BN2 {
                 let facade = facade.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.battle_is_p2_ret,
-                    Box::new(move |mut core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let round_state = match_.lock_round_state().await;
-                            let round = round_state.round.as_ref().expect("round");
-
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(0, round.local_player_index() as i32);
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let handle = handle.clone();
-                (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         handle.block_on(async {
@@ -436,14 +388,7 @@ impl hooks::Hooks for BN2 {
                                             .await
                                             .expect("shadow save state"),
                                     );
-                                    log::info!(
-                                        "primary rng1 state: {:08x}",
-                                        munger.rng1_state(core)
-                                    );
-                                    log::info!(
-                                        "primary rng2 state: {:08x}",
-                                        munger.rng2_state(core)
-                                    );
+                                    log::info!("primary rng state: {:08x}", munger.rng_state(core));
                                     log::info!(
                                         "battle state committed on {}",
                                         round.current_tick()
@@ -614,23 +559,7 @@ impl hooks::Hooks for BN2 {
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
-
-                        // rng1 is the local rng, it should not be synced.
-                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                        munger.set_rng1_state(
-                            core,
-                            if shadow_state.is_offerer() {
-                                answerer_rng1_state
-                            } else {
-                                offerer_rng1_state
-                            },
-                        );
-
-                        // rng2 is the shared rng, it must be synced.
-                        munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
-
+                        munger.set_rng_state(core, generate_rng_state(&mut *rng));
                         munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
                     }),
                 )
@@ -711,20 +640,6 @@ impl hooks::Hooks for BN2 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.battle_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_ref().expect("round");
-
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, round.remote_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         let round_state = shadow_state.lock_round_state();
@@ -761,8 +676,7 @@ impl hooks::Hooks for BN2 {
 
                         if !round.has_first_committed_state() {
                             round.set_first_committed_state(core.save_state().expect("save state"));
-                            log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
-                            log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
+                            log::info!("shadow rng state: {:08x}", munger.rng_state(core));
                             log::info!("shadow state committed on {}", round.current_tick());
                             return;
                         }
@@ -937,17 +851,6 @@ impl hooks::Hooks for BN2 {
         };
 
         vec![
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.battle_is_p2_ret,
-                    Box::new(move |mut core| {
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, replayer_state.local_player_index() as i32);
-                    }),
-                )
-            },
             {
                 let replayer_state = replayer_state.clone();
                 (

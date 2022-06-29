@@ -15,11 +15,8 @@ pub(super) struct EWRAMOffsets {
     /// START menu submenu (e.g. comm menu) jump table control.
     pub(super) submenu_control: u32,
 
-    /// Local RNG state. Doesn't need to be synced.
-    pub(super) rng1_state: u32,
-
     /// Shared RNG state. Must be synced.
-    pub(super) rng2_state: u32,
+    pub(super) rng_state: u32,
 
     pub(super) is_linking: u32,
 }
@@ -70,11 +67,6 @@ pub(super) struct ROMOffsets {
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
 
-    /// This hooks the point determining if the player is player 2 or not.
-    ///
-    /// r0 should be set to the local player index.
-    pub(super) battle_is_p2_ret: u32,
-
     /// This hooks another point determining if the player is player 2 or not.
     ///
     /// r0 should be set to the local player index.
@@ -93,14 +85,13 @@ pub(super) struct ROMOffsets {
 
 #[rustfmt::skip]
 static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
-    tx_packet:              0,
-    rx_packet_arr:          0,
-    title_menu_control:     0,
-    subsystem_control:      0,
-    submenu_control:        0,
-    rng1_state:             0,
-    rng2_state:             0,
-    is_linking:             0,
+    tx_packet:              0x02004f80,
+    rx_packet_arr:          0x02009ba0,
+    title_menu_control:     0x02009b80,
+    subsystem_control:      0x02009078,
+    submenu_control:        0x02007ea0,
+    rng_state:              0x02009080,
+    is_linking:             0x0200eae0,
 };
 
 #[derive(Clone, Copy)]
@@ -113,27 +104,26 @@ pub struct Offsets {
 pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
-        start_screen_jump_table_entry:              0,
-        start_screen_sram_unmask_ret:               0,
-        game_load_ret:                              0,
-        main_read_joyflags:                         0,
-        init_sio_call:                              0,
-        comm_menu_send_and_receive_call:            0,
-        handle_input_init_send_and_receive_call:    0,
-        handle_input_update_send_and_receive_call:  0,
-        handle_input_deinit_send_and_receive_call:  0,
-        handle_input_post_call:                     0,
+        start_screen_jump_table_entry:              0x08024a54,
+        start_screen_sram_unmask_ret:               0x0801c1f8,
+        game_load_ret:                              0x08003ccc,
+        main_read_joyflags:                         0x08000376,
+        init_sio_call:                              0x080e6124,
+        comm_menu_send_and_receive_call:            0x080e5998,
+        handle_input_init_send_and_receive_call:    0x08006666,
+        handle_input_update_send_and_receive_call:  0x08006956,
+        handle_input_deinit_send_and_receive_call:  0x0802b07e,
+        handle_input_post_call:                     0x0800582a,
         round_start_ret:                            0,
-        round_end_set_win:                          0,
-        round_end_set_loss:                         0,
+        round_end_set_win:                          0x08006ec8,
+        round_end_set_loss:                         0x08006ed0,
         round_end_damage_judge_set_win:             0,
         round_end_damage_judge_set_loss:            0,
         round_end_damage_judge_set_draw:            0,
         round_ending_entry:                         0,
         round_end_entry:                            0,
-        battle_is_p2_ret:                           0,
-        link_is_p2_ret:                             0,
-        comm_menu_init_ret:                         0,
+        link_is_p2_ret:                             0x08002b28,
+        comm_menu_init_ret:                         0x0802b2a0,
         match_end_ret:                              0,
     },
 };
@@ -160,7 +150,6 @@ pub static ROCKMAN_EXE2AE2J_01: Offsets = Offsets {
         round_end_damage_judge_set_draw:            0,
         round_ending_entry:                         0,
         round_end_entry:                            0,
-        battle_is_p2_ret:                           0,
         link_is_p2_ret:                             0,
         comm_menu_init_ret:                         0,
         match_end_ret:                              0,
