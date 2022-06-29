@@ -121,8 +121,12 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state =
-        { tango_core::replayer::State::new(replay.local_player_index, input_pairs, 0) };
+    let replayer_state = tango_core::replayer::State::new(
+        replay.local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {}),
+    );
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
@@ -269,8 +273,12 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state =
-        tango_core::replayer::State::new(replay.local_player_index, input_pairs, args.steps);
+    let replayer_state = tango_core::replayer::State::new(
+        replay.local_player_index,
+        input_pairs,
+        args.steps,
+        Box::new(|| {}),
+    );
 
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
@@ -393,8 +401,12 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state =
-        { tango_core::replayer::State::new(replay.local_player_index, input_pairs, 0) };
+    let replayer_state = tango_core::replayer::State::new(
+        replay.local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {}),
+    );
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {

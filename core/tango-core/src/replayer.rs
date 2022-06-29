@@ -12,6 +12,7 @@ struct InnerState {
     dirty_state: Option<mgba::state::State>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
+    on_round_ended: Box<dyn Fn() + Sync + Send>,
     error: Option<anyhow::Error>,
 }
 
@@ -59,6 +60,7 @@ impl State {
         local_player_index: u8,
         input_pairs: Vec<input::Pair<input::Input, input::Input>>,
         commit_tick: u32,
+        on_round_ended: Box<dyn Fn() + Sync + Send>,
     ) -> State {
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
             InnerState {
@@ -73,6 +75,7 @@ impl State {
                 round_result: None,
                 phase: RoundPhase::InProgress,
                 error: None,
+                on_round_ended,
             },
         ))))
     }
@@ -165,20 +168,23 @@ impl State {
     }
 
     pub fn set_round_ending(&self) {
-        self.0.lock().as_mut().expect("round ended").phase = RoundPhase::Ending;
+        self.0.lock().as_mut().expect("set round ending").phase = RoundPhase::Ending;
     }
 
     pub fn set_round_ended(&self) {
-        self.0.lock().as_mut().expect("round ended").phase = RoundPhase::Ended;
+        let mut inner = self.0.lock();
+        let inner = inner.as_mut().expect("set round ended");
+        inner.phase = RoundPhase::Ended;
+        (inner.on_round_ended)();
     }
 
     pub fn is_round_ending(&self) -> bool {
-        let phase = self.0.lock().as_ref().expect("round ended").phase;
+        let phase = self.0.lock().as_ref().expect("is round ending").phase;
         phase == RoundPhase::Ending || phase == RoundPhase::Ended
     }
 
     pub fn is_round_ended(&self) -> bool {
-        let phase = self.0.lock().as_ref().expect("round ended").phase;
+        let phase = self.0.lock().as_ref().expect("is round ended").phase;
         phase == RoundPhase::Ended
     }
 
@@ -295,6 +301,7 @@ impl Fastforwarder {
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
+            on_round_ended: Box::new(|| {}),
         });
 
         loop {

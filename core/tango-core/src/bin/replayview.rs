@@ -78,7 +78,14 @@ fn main() -> Result<(), anyhow::Error> {
         }
     }
 
-    let replayer_state = tango_core::replayer::State::new(local_player_index, input_pairs, 0);
+    let replayer_state = tango_core::replayer::State::new(
+        local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {
+            std::process::exit(0);
+        }),
+    );
     let mut traps = hooks.common_traps();
     traps.extend(hooks.replayer_traps(replayer_state.clone()));
     core.set_traps(traps);
