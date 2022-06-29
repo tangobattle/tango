@@ -44,5 +44,6 @@
     "iceconfig-endpoint": "ICE configuration endpoint",
     "patch-repo": "Patch repository",
     "window-scale": "Échelle de la fenêtre",
-    "window-scale-suffix": "x"
+    "window-scale-suffix": "x",
+    "max-queue-length": "Max queue length"
 }
