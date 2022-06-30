@@ -152,14 +152,19 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .unwrap();
 
+        let mut input_state = sdl2_input_helper::State::new();
+
         let vbuf = vbuf;
         'toplevel: loop {
             for event in event_loop.poll_iter() {
+                input_state.handle_event(&event);
+
                 match event {
                     sdl2::event::Event::Quit { .. } => break 'toplevel,
                     _ => {}
                 }
             }
+
             if let Some(err) = replayer_state.take_error() {
                 Err(err)?;
             }
