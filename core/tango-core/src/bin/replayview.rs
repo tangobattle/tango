@@ -198,6 +198,12 @@ fn main() -> Result<(), anyhow::Error> {
                     args.path.clone().with_extension("").to_str().unwrap(),
                     replayer_state.current_tick()
                 ))?;
+                let mut encoder =
+                    png::Encoder::new(ss_f, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
+                encoder.set_color(png::ColorType::Rgba);
+                encoder.set_depth(png::BitDepth::Eight);
+                let mut writer = encoder.write_header().unwrap();
+                writer.write_image_data(&*vbuf)?;
             }
 
             texture

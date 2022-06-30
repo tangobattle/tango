@@ -43,6 +43,7 @@ sdl2-input-helper = { path = "../sdl2-input-helper" }
 serde_repr = "0.1"
 hex = "0.4"
 bitvec = "1.0"
+png = "0.17"
 
 [build-dependencies]
 winres = "0.1"
