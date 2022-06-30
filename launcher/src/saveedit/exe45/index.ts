@@ -173,13 +173,9 @@ export class Editor {
     return ["ROCKEXE4.5ROBR4J"];
   }
 
-  constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
+  constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
-
-    if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
-      throw "checksum does not match";
-    }
   }
 
   getChecksum() {
