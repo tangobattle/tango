@@ -25,7 +25,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let mut f = std::fs::File::open(args.path)?;
+    let mut f = std::fs::File::open(args.path.clone())?;
 
     let replay = tango_core::replay::Replay::decode(&mut f)?;
 
@@ -156,14 +156,20 @@ fn main() -> Result<(), anyhow::Error> {
 
         let mut input_state = sdl2_input_helper::State::new();
 
-        let vbuf = vbuf;
+        let mut take_screenshot_pressed = false;
         'toplevel: loop {
+            let mut taking_screenshot = false;
             for event in event_loop.poll_iter() {
-                input_state.handle_event(&event);
-
                 match event {
                     sdl2::event::Event::Quit { .. } => break 'toplevel,
                     _ => {}
+                }
+
+                if input_state.handle_event(&event) {
+                    let last_take_screenshot_pressed = take_screenshot_pressed;
+                    take_screenshot_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::S);
+                    taking_screenshot = take_screenshot_pressed && !last_take_screenshot_pressed;
                 }
 
                 let audio_guard = thread_handle.lock_audio();
@@ -186,8 +192,17 @@ fn main() -> Result<(), anyhow::Error> {
                 break 'toplevel;
             }
 
+            let vbuf = vbuf.lock();
+            if taking_screenshot {
+                let ss_f = std::fs::File::create(format!(
+                    "{}_{}.png",
+                    args.path.clone().with_extension("").to_str().unwrap(),
+                    replayer_state.current_tick()
+                ))?;
+            }
+
             texture
-                .update(None, &*vbuf.lock(), mgba::gba::SCREEN_WIDTH as usize * 4)
+                .update(None, &*vbuf, mgba::gba::SCREEN_WIDTH as usize * 4)
                 .unwrap();
             canvas.clear();
             canvas.copy(&texture, None, None).unwrap();
