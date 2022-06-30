@@ -266,7 +266,7 @@ export class Editor {
     return romNames;
   }
 
-  constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
+  constructor(buffer: ArrayBuffer, romName: string) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
@@ -274,10 +274,6 @@ export class Editor {
 
     this.dv = new DataView(buffer, startOffset);
     this.romName = romName;
-
-    if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
-      throw "checksum does not match";
-    }
   }
 
   getGameInfo() {

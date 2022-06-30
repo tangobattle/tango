@@ -370,13 +370,9 @@ export class Editor {
     return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
-  constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
+  constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
-
-    if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
-      throw "checksum does not match";
-    }
 
     this.navicustDirty = false;
     this.modcardsDirty = false;

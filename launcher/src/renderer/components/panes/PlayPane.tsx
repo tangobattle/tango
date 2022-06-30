@@ -436,8 +436,7 @@ function SaveViewerWrapper({
           Editor.sramDumpToRaw(
             (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
-          romName,
-          false
+          romName
         )
       );
     })();

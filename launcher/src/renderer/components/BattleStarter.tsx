@@ -709,8 +709,7 @@ async function runCallback(
       ref.current.setRevealedSetupEditor(
         new Editor(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
-          opponentGameInfo.rom,
-          false
+          opponentGameInfo.rom
         )
       );
     }

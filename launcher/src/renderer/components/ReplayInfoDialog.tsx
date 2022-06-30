@@ -70,8 +70,7 @@ export default function ReplayInfoDialog({
       setEditor(
         new Editor(
           new Uint8Array(buf).buffer,
-          replayInfo.metadata.localSide!.gameInfo!.rom,
-          false
+          replayInfo.metadata.localSide!.gameInfo!.rom
         )
       );
     })();
