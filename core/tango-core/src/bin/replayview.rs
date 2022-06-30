@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+pub const EXPECTED_FPS: f32 = 60.0;
+
 use clap::Parser;
 
 #[derive(clap::Parser)]
@@ -163,6 +165,15 @@ fn main() -> Result<(), anyhow::Error> {
                     sdl2::event::Event::Quit { .. } => break 'toplevel,
                     _ => {}
                 }
+
+                let audio_guard = thread_handle.lock_audio();
+                audio_guard.sync_mut().set_fps_target(
+                    if input_state.is_key_pressed(sdl2::keyboard::Scancode::Tab) {
+                        EXPECTED_FPS * 2.0
+                    } else {
+                        EXPECTED_FPS
+                    },
+                );
             }
 
             if let Some(err) = replayer_state.take_error() {
