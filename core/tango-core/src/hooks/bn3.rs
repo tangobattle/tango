@@ -1148,8 +1148,8 @@ impl hooks::Hooks for BN3 {
     }
 
     fn predict_rx(&self, rx: &mut Vec<u8>) {
-        let tick = byteorder::LittleEndian::read_u16(&rx[0x4..0x6]);
-        byteorder::LittleEndian::write_u16(&mut rx[0x4..0x6], tick.wrapping_add(1));
+        let tick = byteorder::LittleEndian::read_u32(&rx[0x4..0x8]);
+        byteorder::LittleEndian::write_u32(&mut rx[0x4..0x8], tick + 1);
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {
