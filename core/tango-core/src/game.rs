@@ -367,7 +367,6 @@ impl Game {
 
         'toplevel: loop {
             for event in self.event_loop.poll_iter() {
-                input_state.handle_event(&event);
                 match event {
                     sdl2::event::Event::Quit { .. } => {
                         break 'toplevel;
@@ -388,15 +387,18 @@ impl Game {
                     _ => {}
                 }
 
-                let last_show_debug_pressed = show_debug_pressed;
-                show_debug_pressed = input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
-                if show_debug_pressed && !last_show_debug_pressed {
-                    show_debug = !show_debug;
+                if input_state.handle_event(&event) {
+                    let last_show_debug_pressed = show_debug_pressed;
+                    show_debug_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
+                    if show_debug_pressed && !last_show_debug_pressed {
+                        show_debug = !show_debug;
+                    }
+                    self.joyflags.store(
+                        self.input_mapping.to_mgba_keys(&input_state),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
                 }
-                self.joyflags.store(
-                    self.input_mapping.to_mgba_keys(&input_state),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
             }
 
             if self.match_.is_none() {

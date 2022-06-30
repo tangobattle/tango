@@ -35,7 +35,7 @@ impl State {
         }
     }
 
-    pub fn handle_event(&mut self, event: &sdl2::event::Event) {
+    pub fn handle_event(&mut self, event: &sdl2::event::Event) -> bool {
         match event {
             sdl2::event::Event::KeyDown {
                 scancode: Some(scancode),
@@ -63,7 +63,7 @@ impl State {
                 let controller = if let Some(controller) = self.controllers.get_mut(which) {
                     controller
                 } else {
-                    return;
+                    return false;
                 };
                 controller.axes[*axis as usize] = *value;
             }
@@ -71,7 +71,7 @@ impl State {
                 let controller = if let Some(controller) = self.controllers.get_mut(which) {
                     controller
                 } else {
-                    return;
+                    return false;
                 };
                 controller.buttons_pressed[*button as usize] = true;
             }
@@ -79,12 +79,15 @@ impl State {
                 let controller = if let Some(controller) = self.controllers.get_mut(which) {
                     controller
                 } else {
-                    return;
+                    return false;
                 };
                 controller.buttons_pressed[*button as usize] = false;
             }
-            _ => {}
+            _ => {
+                return false;
+            }
         }
+        true
     }
 
     pub fn is_key_pressed(&self, scancode: sdl2::keyboard::Scancode) -> bool {

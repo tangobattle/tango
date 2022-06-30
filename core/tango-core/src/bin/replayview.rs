@@ -181,7 +181,6 @@ fn main() -> Result<(), anyhow::Error> {
                     },
                 );
             }
-
             if let Some(err) = replayer_state.take_error() {
                 Err(err)?;
             }
@@ -195,7 +194,7 @@ fn main() -> Result<(), anyhow::Error> {
             let vbuf = vbuf.lock();
             if taking_screenshot {
                 let ss_f = std::fs::File::create(format!(
-                    "{}_{}.png",
+                    "{}-tick{}.png",
                     args.path.clone().with_extension("").to_str().unwrap(),
                     replayer_state.current_tick()
                 ))?;
