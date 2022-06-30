@@ -421,15 +421,11 @@ impl hooks::Hooks for BN2 {
                 )
             },
             (
-                self.offsets.rom.handle_input_init_send_and_receive_call,
+                self.offsets.rom.handle_input_custom_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
             (
-                self.offsets.rom.handle_input_update_send_and_receive_call,
-                make_send_and_receive_call_hook(),
-            ),
-            (
-                self.offsets.rom.handle_input_deinit_send_and_receive_call,
+                self.offsets.rom.handle_input_in_turn_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
             {
@@ -745,15 +741,11 @@ impl hooks::Hooks for BN2 {
                 )
             },
             (
-                self.offsets.rom.handle_input_init_send_and_receive_call,
+                self.offsets.rom.handle_input_custom_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
             (
-                self.offsets.rom.handle_input_update_send_and_receive_call,
-                make_send_and_receive_call_hook(),
-            ),
-            (
-                self.offsets.rom.handle_input_deinit_send_and_receive_call,
+                self.offsets.rom.handle_input_in_turn_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
             {
@@ -948,15 +940,11 @@ impl hooks::Hooks for BN2 {
                 )
             },
             (
-                self.offsets.rom.handle_input_init_send_and_receive_call,
+                self.offsets.rom.handle_input_custom_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
             (
-                self.offsets.rom.handle_input_update_send_and_receive_call,
-                make_send_and_receive_call_hook(),
-            ),
-            (
-                self.offsets.rom.handle_input_deinit_send_and_receive_call,
+                self.offsets.rom.handle_input_in_turn_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
             {
