@@ -67,7 +67,7 @@ function defaultConfig(app: Electron.App): Config {
     updateChannel: "latest",
     rustLogFilter: "",
     windowScale: 3,
-    maxQueueLength: 600,
+    maxQueueLength: 1200,
     inputMapping: {
       up: [{ Key: "Up" }, { Button: "dpup" }, { Axis: ["lefty", -1] }],
       down: [{ Key: "Down" }, { Button: "dpdown" }, { Axis: ["lefty", 1] }],

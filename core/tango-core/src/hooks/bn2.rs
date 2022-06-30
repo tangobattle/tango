@@ -1015,11 +1015,13 @@ impl hooks::Hooks for BN2 {
     }
 
     fn predict_rx(&self, rx: &mut Vec<u8>) {
-        if rx[0] != 0x05 {
-            return;
+        match rx[0] {
+            0x05 => {
+                let tick = byteorder::LittleEndian::read_u32(&rx[0xc..0x10]);
+                byteorder::LittleEndian::write_u32(&mut rx[0xc..0x10], tick + 1);
+            }
+            _ => {}
         }
-        let tick = byteorder::LittleEndian::read_u32(&rx[0xc..0x10]);
-        byteorder::LittleEndian::write_u32(&mut rx[0xc..0x10], tick + 1);
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {
