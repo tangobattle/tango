@@ -67,8 +67,6 @@ export interface Editor {
   getFolderEditor(): FolderEditor | null;
   getNavicustEditor(): NavicustEditor | null;
   getModcardsEditor(): ModcardsEditor | null;
-  computeChecksum(): number;
-  getChecksum(): number;
   rebuild(): void;
 }
 

@@ -19,6 +19,24 @@ function maskSave(dv: DataView) {
   dv.setUint32(MASK_OFFSET, mask, true);
 }
 
+function getChecksum(dv: DataView) {
+  return dv.getUint32(CHECKSUM_OFFSET, true);
+}
+
+function computeChecksum(dv: DataView, version: string) {
+  let checksum = CHECKSUM_START[version];
+  const arr = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  for (let i = 0; i < arr.length; ++i) {
+    if (i == CHECKSUM_OFFSET) {
+      // Don't include the checksum itself in the checksum.
+      i += 3;
+      continue;
+    }
+    checksum += arr[i];
+  }
+  return checksum;
+}
+
 const CHECKSUM_START: { [key: string]: number } = {
   protoman: 0x72,
   colonel: 0x18,
@@ -103,25 +121,18 @@ export class Editor {
       throw "unknown game name: " + gn;
     }
 
+    if (
+      getChecksum(dv) !=
+      computeChecksum(dv, GAME_INFOS[ROM_NAMES_BY_SAVE_GAME_NAME[gn]].version)
+    ) {
+      throw "checksum mismatch";
+    }
+
     return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
   computeChecksum() {
-    let checksum = CHECKSUM_START[this.getGameInfo().version];
-    const arr = new Uint8Array(
-      this.dv.buffer,
-      this.dv.byteOffset,
-      this.dv.byteLength
-    );
-    for (let i = 0; i < arr.length; ++i) {
-      if (i == CHECKSUM_OFFSET) {
-        // Don't include the checksum itself in the checksum.
-        i += 3;
-        continue;
-      }
-      checksum += arr[i];
-    }
-    return checksum;
+    return computeChecksum(this.dv, this.getGameInfo().version);
   }
 
   rebuild() {
@@ -129,7 +140,7 @@ export class Editor {
   }
 
   getChecksum() {
-    return this.dv.getUint32(CHECKSUM_OFFSET, true);
+    return getChecksum(this.dv);
   }
 
   rebuildChecksum() {

@@ -1,6 +1,24 @@
 const SRAM_SIZE = 0x3a78;
 const GAME_NAME_OFFSET = 0x1198;
-const CHECKSUM_OFFSET = 0x1148;
+const CHECKSUM_OFFSET = 0x114c;
+
+function getChecksum(dv: DataView) {
+  return dv.getUint32(CHECKSUM_OFFSET, true);
+}
+
+function computeChecksum(dv: DataView) {
+  let checksum = 0x16;
+  const arr = new Uint8Array(dv.buffer, 0, dv.buffer.byteLength);
+  for (let i = 0; i < dv.buffer.byteLength; ++i) {
+    if (i == CHECKSUM_OFFSET + dv.byteOffset) {
+      // Don't include the checksum itself in the checksum.
+      i += 3;
+      continue;
+    }
+    checksum += arr[i];
+  }
+  return checksum;
+}
 
 export class Editor {
   dv: DataView;
@@ -22,12 +40,12 @@ export class Editor {
     return arr.buffer;
   }
 
-  getROMName() {
-    return this.romName;
+  getChecksum(dv: DataView) {
+    return getChecksum(dv);
   }
 
-  getChecksum() {
-    return this.dv.getUint32(CHECKSUM_OFFSET, true);
+  getROMName() {
+    return this.romName;
   }
 
   rebuildChecksum() {
@@ -35,17 +53,7 @@ export class Editor {
   }
 
   computeChecksum() {
-    let checksum = 0x16;
-    const arr = new Uint8Array(this.dv.buffer, 0, this.dv.buffer.byteLength);
-    for (let i = 0; i < this.dv.buffer.byteLength; ++i) {
-      if (i == CHECKSUM_OFFSET + this.dv.byteOffset) {
-        // Don't include the checksum itself in the checksum.
-        i += 3;
-        continue;
-      }
-      checksum += arr[i];
-    }
-    return checksum;
+    return computeChecksum(this.dv);
   }
 
   static sniff(buffer: ArrayBuffer) {
@@ -68,6 +76,10 @@ export class Editor {
     );
     if (gn != "ROCKMANEXE2 20011016") {
       throw "unknown game name: " + gn;
+    }
+
+    if (computeChecksum(dv) != getChecksum(dv)) {
+      throw "checksum mismatch";
     }
 
     return ["ROCKMAN_EXE2AE2J", "MEGAMAN_EXE2AE2E"];
