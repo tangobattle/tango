@@ -4,8 +4,8 @@ pub struct Round {
     current_tick: u32,
     local_player_index: u8,
     first_committed_state: Option<mgba::state::State>,
-    pending_in_input: Option<input::Pair<input::Input, input::PartialInput>>,
-    pending_out_input: Option<input::Pair<input::Input, input::Input>>,
+    pending_shadow_input: Option<input::Pair<input::Input, input::PartialInput>>,
+    pending_remote_packet: Option<Vec<u8>>,
     input_injected: bool,
 }
 
@@ -42,22 +42,16 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub fn take_in_input_pair(&mut self) -> Option<input::Pair<input::Input, input::PartialInput>> {
-        self.pending_in_input.take()
+    pub fn take_shadow_input(&mut self) -> Option<input::Pair<input::Input, input::PartialInput>> {
+        self.pending_shadow_input.take()
     }
 
-    pub fn set_out_input_pair(&mut self, ip: input::Pair<input::Input, input::Input>) {
-        self.pending_out_input = Some(ip);
+    pub fn set_remote_packet(&mut self, tx: Vec<u8>) {
+        self.pending_remote_packet = Some(tx);
     }
 
-    pub fn peek_in_input_pair(
-        &mut self,
-    ) -> &Option<input::Pair<input::Input, input::PartialInput>> {
-        &self.pending_in_input
-    }
-
-    pub fn peek_out_input_pair(&self) -> &Option<input::Pair<input::Input, input::Input>> {
-        &self.pending_out_input
+    pub fn peek_shadow_input(&mut self) -> &Option<input::Pair<input::Input, input::PartialInput>> {
+        &self.pending_shadow_input
     }
 
     pub fn set_input_injected(&mut self) {
@@ -153,8 +147,8 @@ impl State {
             current_tick: 0,
             local_player_index,
             first_committed_state: None,
-            pending_in_input: None,
-            pending_out_input: None,
+            pending_shadow_input: None,
+            pending_remote_packet: None,
             input_injected: false,
         });
     }
@@ -266,12 +260,12 @@ impl Shadow {
 
     pub fn apply_input(
         &mut self,
-        input: input::Pair<input::Input, input::PartialInput>,
-    ) -> anyhow::Result<input::Pair<input::Input, input::Input>> {
+        ip: input::Pair<input::Input, input::PartialInput>,
+    ) -> anyhow::Result<Vec<u8>> {
         {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
-            round.pending_in_input = Some(input);
+            round.pending_shadow_input = Some(ip);
         }
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
@@ -293,7 +287,10 @@ impl Shadow {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
             round.current_tick = applied_state.tick;
-            return Ok(round.pending_out_input.take().expect("pending out input"));
+            return Ok(round
+                .pending_remote_packet
+                .take()
+                .expect("pending out input"));
         }
     }
 }

@@ -185,7 +185,7 @@ fn main() -> Result<(), anyhow::Error> {
                 Err(err)?;
             }
 
-            if (!replay.is_complete && replayer_state.are_inputs_exhausted())
+            if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
                 || replayer_state.is_round_ended()
             {
                 break 'toplevel;

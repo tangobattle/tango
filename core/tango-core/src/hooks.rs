@@ -58,7 +58,7 @@ pub trait Hooks {
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
-    fn rx_size(&self) -> usize {
+    fn packet_size(&self) -> usize {
         return 0x10;
     }
 

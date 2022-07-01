@@ -310,11 +310,10 @@ impl hooks::Hooks for EXE45 {
             },
             {
                 let facade = facade.clone();
-                let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |core| {
+                    Box::new(move |_core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -322,10 +321,7 @@ impl hooks::Hooks for EXE45 {
                                     return;
                                 }
                             };
-                            match_
-                                .start_round(&munger.tx_packet(core))
-                                .await
-                                .expect("start round");
+                            match_.start_round().await.expect("start round");
                         });
                     }),
                 )
@@ -443,6 +439,7 @@ impl hooks::Hooks for EXE45 {
                                             .advance_shadow_until_first_committed_state()
                                             .await
                                             .expect("shadow save state"),
+                                        &munger.tx_packet(core),
                                     );
                                     log::info!(
                                         "primary rng1 state: {:08x}",
@@ -471,102 +468,6 @@ impl hooks::Hooks for EXE45 {
                                 return;
                             }
                             facade.abort_match().await;
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let munger = self.munger.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.copy_input_data_ret1,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-
-                            let round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            round.queue_tx(
-                                round.current_tick() + 1,
-                                munger.tx_packet(core).to_vec(),
-                            );
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let munger = self.munger.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.copy_input_data_ret2,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-
-                            let round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            round.queue_tx(
-                                round.current_tick() + 1,
-                                munger.tx_packet(core).to_vec(),
-                            );
-                        });
-                    }),
-                )
-            },
-            {
-                let facade = facade.clone();
-                let munger = self.munger.clone();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.copy_input_data_ret3,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = match_.lock_round_state().await;
-
-                            let round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            round.queue_tx(
-                                round.current_tick() + 1,
-                                munger.tx_packet(core).to_vec(),
-                            );
                         });
                     }),
                 )
@@ -793,7 +694,7 @@ impl hooks::Hooks for EXE45 {
                             return;
                         }
 
-                        if let Some(ip) = round.take_in_input_pair() {
+                        if let Some(ip) = round.peek_shadow_input().clone() {
                             if ip.local.local_tick != ip.remote.local_tick {
                                 shadow_state.set_anyhow_error(anyhow::anyhow!(
                                     "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
@@ -812,17 +713,6 @@ impl hooks::Hooks for EXE45 {
                                 ));
                                 return;
                             }
-
-                            round.set_out_input_pair(input::Pair {
-                                local: ip.local,
-                                remote: input::Input {
-                                    local_tick: ip.remote.local_tick,
-                                    remote_tick: ip.remote.remote_tick,
-                                    joyflags: ip.remote.joyflags,
-                                    rx: munger.tx_packet(core).to_vec(),
-                                    is_prediction: false,
-                                },
-                            });
 
                             core.gba_mut()
                                 .cpu_mut()
@@ -847,7 +737,7 @@ impl hooks::Hooks for EXE45 {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
 
-                        let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
+                        let ip = if let Some(ip) = round.take_shadow_input() {
                             ip
                         } else {
                             return;
@@ -878,18 +768,18 @@ impl hooks::Hooks for EXE45 {
                             return;
                         }
 
+                        let tx = munger.tx_packet(core).to_vec();
                         munger.set_rx_packet(
                             core,
                             round.local_player_index() as u32,
-                            &ip.local.rx.clone().try_into().unwrap(),
+                            &ip.local.packet.try_into().unwrap(),
                         );
-
                         munger.set_rx_packet(
                             core,
                             round.remote_player_index() as u32,
-                            &ip.remote.rx.clone().try_into().unwrap(),
+                            &tx.clone().try_into().unwrap(),
                         );
-
+                        round.set_remote_packet(tx);
                         round.set_input_injected();
                     }),
                 )
@@ -1059,16 +949,71 @@ impl hooks::Hooks for EXE45 {
                             return;
                         }
 
+                        let tx = munger.tx_packet(core).to_vec();
                         munger.set_rx_packet(
                             core,
                             replayer_state.local_player_index() as u32,
-                            &ip.local.rx.try_into().unwrap(),
+                            &tx.clone().try_into().unwrap(),
                         );
-
                         munger.set_rx_packet(
                             core,
                             replayer_state.remote_player_index() as u32,
-                            &ip.remote.rx.try_into().unwrap(),
+                            &replayer_state
+                                .apply_shadow_input(input::Pair {
+                                    local: ip.local.with_packet(tx),
+                                    remote: ip.remote,
+                                })
+                                .expect("apply shadow input")
+                                .try_into()
+                                .unwrap(),
+                        );
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret1,
+                    Box::new(move |core| {
+                        if replayer_state.is_round_ending() {
+                            return;
+                        }
+                        replayer_state.set_local_packet(
+                            replayer_state.current_tick() + 1,
+                            munger.tx_packet(core).to_vec(),
+                        );
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret2,
+                    Box::new(move |core| {
+                        if replayer_state.is_round_ending() {
+                            return;
+                        }
+                        replayer_state.set_local_packet(
+                            replayer_state.current_tick() + 1,
+                            munger.tx_packet(core).to_vec(),
+                        );
+                    }),
+                )
+            },
+            {
+                let munger = self.munger.clone();
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret3,
+                    Box::new(move |core| {
+                        if replayer_state.is_round_ending() {
+                            return;
+                        }
+                        replayer_state.set_local_packet(
+                            replayer_state.current_tick() + 1,
+                            munger.tx_packet(core).to_vec(),
                         );
                     }),
                 )

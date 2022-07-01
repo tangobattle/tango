@@ -90,51 +90,6 @@ impl hooks::Hooks for BN2 {
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
-        let make_send_and_receive_call_hook = || {
-            let facade = facade.clone();
-            let munger = self.munger.clone();
-            let handle = handle.clone();
-            Box::new(move |mut core: mgba::core::CoreMutRef| {
-                handle.block_on(async {
-                    let pc = core.as_ref().gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-
-                    let match_ = match facade.match_().await {
-                        Some(match_) => match_,
-                        None => {
-                            core.gba_mut().cpu_mut().set_gpr(0, 0);
-                            return;
-                        }
-                    };
-                    core.gba_mut().cpu_mut().set_gpr(0, 3);
-
-                    let mut round_state = match_.lock_round_state().await;
-
-                    let round = match round_state.round.as_mut() {
-                        Some(round) => round,
-                        None => {
-                            return;
-                        }
-                    };
-
-                    round.queue_tx(round.current_tick() + 1, munger.tx_packet(core).to_vec());
-
-                    let ip = round.peek_last_input().as_ref().unwrap();
-
-                    munger.set_rx_packet(
-                        core,
-                        round.local_player_index() as u32,
-                        &ip.local.rx.clone().try_into().unwrap(),
-                    );
-
-                    munger.set_rx_packet(
-                        core,
-                        round.remote_player_index() as u32,
-                        &ip.remote.rx.clone().try_into().unwrap(),
-                    );
-                });
-            })
-        };
         vec![
             {
                 let facade = facade.clone();
@@ -312,11 +267,10 @@ impl hooks::Hooks for BN2 {
             }),
             {
                 let facade = facade.clone();
-                let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |core| {
+                    Box::new(move |_core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -324,10 +278,7 @@ impl hooks::Hooks for BN2 {
                                     return;
                                 }
                             };
-                            match_
-                                .start_round(&munger.tx_packet(core))
-                                .await
-                                .expect("start round");
+                            match_.start_round().await.expect("start round");
                         });
                     }),
                 )
@@ -397,6 +348,7 @@ impl hooks::Hooks for BN2 {
                                             .advance_shadow_until_first_committed_state()
                                             .await
                                             .expect("shadow save state"),
+                                        &munger.tx_packet(core),
                                     );
                                     log::info!("primary rng state: {:08x}", munger.rng_state(core));
                                     log::info!(
@@ -422,14 +374,6 @@ impl hooks::Hooks for BN2 {
                     }),
                 )
             },
-            (
-                self.offsets.rom.handle_input_custom_send_and_receive_call,
-                make_send_and_receive_call_hook(),
-            ),
-            (
-                self.offsets.rom.handle_input_in_turn_send_and_receive_call,
-                make_send_and_receive_call_hook(),
-            ),
             {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
@@ -511,7 +455,7 @@ impl hooks::Hooks for BN2 {
                 };
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
+                let ip = if let Some(ip) = round.take_shadow_input() {
                     ip
                 } else {
                     return;
@@ -525,11 +469,11 @@ impl hooks::Hooks for BN2 {
 
                 if ip.local.local_tick != ip.remote.local_tick {
                     shadow_state.set_anyhow_error(anyhow::anyhow!(
-                    "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-                    round.current_tick(),
-                    ip.local.local_tick,
-                    ip.remote.local_tick
-                ));
+                        "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                        round.current_tick(),
+                        ip.local.local_tick,
+                        ip.remote.local_tick
+                    ));
                     return;
                 }
 
@@ -542,18 +486,18 @@ impl hooks::Hooks for BN2 {
                     return;
                 }
 
+                let tx = munger.tx_packet(core).to_vec();
                 munger.set_rx_packet(
                     core,
                     round.local_player_index() as u32,
-                    &ip.local.rx.clone().try_into().unwrap(),
+                    &ip.local.packet.try_into().unwrap(),
                 );
-
                 munger.set_rx_packet(
                     core,
                     round.remote_player_index() as u32,
-                    &ip.remote.rx.clone().try_into().unwrap(),
+                    &tx.clone().try_into().unwrap(),
                 );
-
+                round.set_remote_packet(tx);
                 round.set_input_injected();
             })
         };
@@ -697,7 +641,7 @@ impl hooks::Hooks for BN2 {
                             return;
                         }
 
-                        if let Some(ip) = round.take_in_input_pair() {
+                        if let Some(ip) = round.peek_shadow_input().clone() {
                             if ip.local.local_tick != ip.remote.local_tick {
                                 shadow_state.set_anyhow_error(anyhow::anyhow!(
                                     "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
@@ -716,17 +660,6 @@ impl hooks::Hooks for BN2 {
                                 ));
                                 return;
                             }
-
-                            round.set_out_input_pair(input::Pair {
-                                local: ip.local,
-                                remote: input::Input {
-                                    local_tick: ip.remote.local_tick,
-                                    remote_tick: ip.remote.remote_tick,
-                                    joyflags: ip.remote.joyflags,
-                                    rx: munger.tx_packet(core).to_vec(),
-                                    is_prediction: false,
-                                },
-                            });
 
                             core.gba_mut()
                                 .cpu_mut()
@@ -844,16 +777,28 @@ impl hooks::Hooks for BN2 {
                     return;
                 }
 
+                let tx = munger.tx_packet(core).to_vec();
                 munger.set_rx_packet(
                     core,
                     replayer_state.local_player_index() as u32,
-                    &ip.local.rx.try_into().unwrap(),
+                    &tx.clone().try_into().unwrap(),
                 );
-
                 munger.set_rx_packet(
                     core,
                     replayer_state.remote_player_index() as u32,
-                    &ip.remote.rx.try_into().unwrap(),
+                    &replayer_state
+                        .apply_shadow_input(input::Pair {
+                            local: ip.local.with_packet(tx),
+                            remote: ip.remote,
+                        })
+                        .expect("apply shadow input")
+                        .try_into()
+                        .unwrap(),
+                );
+
+                replayer_state.set_local_packet(
+                    replayer_state.current_tick() + 1,
+                    munger.tx_packet(core).to_vec(),
                 );
             })
         };
