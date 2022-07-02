@@ -685,7 +685,10 @@ impl hooks::Hooks for BN4 {
 
                         if !round.has_first_committed_state() {
                             // HACK: For some inexplicable reason, we don't always start on tick 0.
-                            round.set_first_committed_state(core.save_state().expect("save state"));
+                            round.set_first_committed_state(
+                                core.save_state().expect("save state"),
+                                &munger.tx_packet(core),
+                            );
                             log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
                             log::info!("shadow state committed on {}", round.current_tick());
@@ -766,7 +769,16 @@ impl hooks::Hooks for BN4 {
                             return;
                         }
 
-                        let tx = munger.tx_packet(core).to_vec();
+                        let remote_packet = round.peek_remote_packet().unwrap();
+                        if remote_packet.tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: local packet tick != in battle tick: {} != {}",
+                                remote_packet.tick,
+                                round.current_tick(),
+                            ));
+                            return;
+                        }
+
                         munger.set_rx_packet(
                             core,
                             round.local_player_index() as u32,
@@ -775,9 +787,23 @@ impl hooks::Hooks for BN4 {
                         munger.set_rx_packet(
                             core,
                             round.remote_player_index() as u32,
-                            &tx.clone().try_into().unwrap(),
+                            &remote_packet.packet.clone().try_into().unwrap(),
                         );
-                        round.set_remote_packet(round.current_tick(), tx);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret,
+                    Box::new(move |core| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let round = round_state.round.as_mut().expect("round");
+                        round.set_remote_packet(
+                            round.current_tick() + 1,
+                            munger.tx_packet(core).to_vec(),
+                        );
                         round.set_input_injected();
                     }),
                 )
@@ -947,18 +973,27 @@ impl hooks::Hooks for BN4 {
                             return;
                         }
 
-                        let tx = munger.tx_packet(core).to_vec();
+                        let local_packet = replayer_state.peek_local_packet().unwrap();
+                        if local_packet.tick != current_tick {
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: local packet tick != in battle tick: {} != {}",
+                                local_packet.tick,
+                                current_tick,
+                            ));
+                            return;
+                        }
+
                         munger.set_rx_packet(
                             core,
                             replayer_state.local_player_index() as u32,
-                            &tx.clone().try_into().unwrap(),
+                            &local_packet.clone().packet.try_into().unwrap(),
                         );
                         munger.set_rx_packet(
                             core,
                             replayer_state.remote_player_index() as u32,
                             &replayer_state
                                 .apply_shadow_input(input::Pair {
-                                    local: ip.local.with_packet(tx),
+                                    local: ip.local.with_packet(local_packet.packet),
                                     remote: ip.remote,
                                 })
                                 .expect("apply shadow input")

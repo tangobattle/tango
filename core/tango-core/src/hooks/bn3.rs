@@ -604,13 +604,12 @@ impl hooks::Hooks for BN3 {
                     return;
                 }
 
-                let tx = munger.tx_packet(core).to_vec();
                 munger.set_rx_packet(
                     core,
                     round.local_player_index() as u32,
                     &ip.local.packet.try_into().unwrap(),
                 );
-                round.set_remote_packet(round.current_tick(), tx);
+                round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
                 round.set_input_injected();
             })
         };
@@ -773,7 +772,10 @@ impl hooks::Hooks for BN3 {
                         }
 
                         if !round.has_first_committed_state() {
-                            round.set_first_committed_state(core.save_state().expect("save state"));
+                            round.set_first_committed_state(
+                                core.save_state().expect("save state"),
+                                &munger.tx_packet(core),
+                            );
                             log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
                             log::info!("shadow state committed on {}", round.current_tick());
@@ -930,20 +932,23 @@ impl hooks::Hooks for BN3 {
                     return;
                 }
 
-                let tx = munger.tx_packet(core).to_vec();
+                let local_packet = replayer_state.peek_local_packet().unwrap();
                 munger.set_rx_packet(
                     core,
                     replayer_state.remote_player_index() as u32,
                     &replayer_state
                         .apply_shadow_input(input::Pair {
-                            local: ip.local.with_packet(tx.clone()),
+                            local: ip.local.with_packet(local_packet.packet),
                             remote: ip.remote,
                         })
                         .expect("apply shadow input")
                         .try_into()
                         .unwrap(),
                 );
-                replayer_state.set_local_packet(replayer_state.current_tick() + 1, tx);
+                replayer_state.set_local_packet(
+                    replayer_state.current_tick() + 1,
+                    munger.tx_packet(core).to_vec(),
+                );
             })
         };
 

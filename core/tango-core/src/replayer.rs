@@ -2,12 +2,6 @@ use crate::battle;
 use crate::hooks;
 use crate::input;
 
-#[derive(Clone)]
-struct Packet {
-    packet: Vec<u8>,
-    tick: u32,
-}
-
 struct InnerState {
     current_tick: u32,
     local_player_index: u8,
@@ -18,7 +12,7 @@ struct InnerState {
             + Sync
             + Send,
     >,
-    local_packet: Option<Packet>,
+    local_packet: Option<input::Packet>,
     commit_tick: u32,
     committed_state: Option<battle::CommittedState>,
     dirty_tick: u32,
@@ -74,7 +68,7 @@ impl State {
         commit_tick: u32,
         on_round_ended: Box<dyn Fn() + Sync + Send>,
     ) -> State {
-        let local_packet = input_pairs.first().map(|ip| Packet {
+        let local_packet = input_pairs.first().map(|ip| input::Packet {
             tick: ip.local.local_tick,
             packet: ip.local.packet.clone(),
         });
@@ -219,7 +213,17 @@ impl State {
     }
 
     pub fn set_local_packet(&self, tick: u32, packet: Vec<u8>) {
-        self.0.lock().as_mut().expect("local packet").local_packet = Some(Packet { tick, packet });
+        self.0.lock().as_mut().expect("local packet").local_packet =
+            Some(input::Packet { tick, packet });
+    }
+
+    pub fn peek_local_packet(&self) -> Option<input::Packet> {
+        self.0
+            .lock()
+            .as_ref()
+            .expect("local packet")
+            .local_packet
+            .clone()
     }
 
     pub fn set_anyhow_error(&self, err: anyhow::Error) {
@@ -334,7 +338,7 @@ impl Fastforwarder {
             input_pairs: input_pairs.into_iter().collect(),
             output_pairs: vec![],
             apply_shadow_input,
-            local_packet: Some(Packet {
+            local_packet: Some(input::Packet {
                 tick: current_tick,
                 packet: last_local_packet.to_vec(),
             }),

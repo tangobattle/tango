@@ -509,13 +509,12 @@ impl hooks::Hooks for BN2 {
                     return;
                 }
 
-                let tx = munger.tx_packet(core).to_vec();
                 munger.set_rx_packet(
                     core,
                     round.local_player_index() as u32,
                     &ip.local.packet.try_into().unwrap(),
                 );
-                round.set_remote_packet(round.current_tick(), tx);
+                round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
                 round.set_input_injected();
             })
         };
@@ -653,7 +652,10 @@ impl hooks::Hooks for BN2 {
                         }
 
                         if !round.has_first_committed_state() {
-                            round.set_first_committed_state(core.save_state().expect("save state"));
+                            round.set_first_committed_state(
+                                core.save_state().expect("save state"),
+                                &munger.tx_packet(core),
+                            );
                             log::info!("shadow rng state: {:08x}", munger.rng_state(core));
                             log::info!("shadow state committed on {}", round.current_tick());
                             return;
@@ -795,20 +797,23 @@ impl hooks::Hooks for BN2 {
                     return;
                 }
 
-                let tx = munger.tx_packet(core).to_vec();
+                let local_packet = replayer_state.peek_local_packet().unwrap();
                 munger.set_rx_packet(
                     core,
                     replayer_state.remote_player_index() as u32,
                     &replayer_state
                         .apply_shadow_input(input::Pair {
-                            local: ip.local.with_packet(tx.clone()),
+                            local: ip.local.with_packet(local_packet.packet),
                             remote: ip.remote,
                         })
                         .expect("apply shadow input")
                         .try_into()
                         .unwrap(),
                 );
-                replayer_state.set_local_packet(replayer_state.current_tick() + 1, tx);
+                replayer_state.set_local_packet(
+                    replayer_state.current_tick() + 1,
+                    munger.tx_packet(core).to_vec(),
+                );
             })
         };
 
@@ -907,15 +912,7 @@ impl hooks::Hooks for BN2 {
                 let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
-                        // HACK: During the first few ticks, we do some wacky stuff that we can't let the game consume willy-nilly.
-                        // Only after the second tick when ingestion is complete can we start assuming that if the input queue runs out we're at the end of the match.
-                        if replayer_state.current_tick() > 2
-                            && replayer_state.peek_input_pair().is_none()
-                        {
-                            core.gba_mut().cpu_mut().set_gpr(0, 7);
-                        }
-
+                    Box::new(move |_| {
                         replayer_state.increment_current_tick();
                     }),
                 )

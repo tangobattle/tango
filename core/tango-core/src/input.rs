@@ -1,3 +1,9 @@
+#[derive(Clone)]
+pub struct Packet {
+    pub packet: Vec<u8>,
+    pub tick: u32,
+}
+
 #[derive(Clone, Debug)]
 pub struct Input {
     pub local_tick: u32,

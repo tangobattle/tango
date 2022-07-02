@@ -1,16 +1,11 @@
 use crate::{battle, hooks, input};
 
-pub struct Packet {
-    pub tick: u32,
-    pub packet: Vec<u8>,
-}
-
 pub struct Round {
     current_tick: u32,
     local_player_index: u8,
     first_committed_state: Option<mgba::state::State>,
     pending_shadow_input: Option<input::Pair<input::Input, input::PartialInput>>,
-    pending_remote_packet: Option<Packet>,
+    pending_remote_packet: Option<input::Packet>,
     input_injected: bool,
 }
 
@@ -39,8 +34,12 @@ impl Round {
         1 - self.local_player_index
     }
 
-    pub fn set_first_committed_state(&mut self, state: mgba::state::State) {
+    pub fn set_first_committed_state(&mut self, state: mgba::state::State, packet: &[u8]) {
         self.first_committed_state = Some(state);
+        self.pending_remote_packet = Some(input::Packet {
+            tick: 0,
+            packet: packet.to_vec(),
+        });
     }
 
     pub fn has_first_committed_state(&self) -> bool {
@@ -52,7 +51,11 @@ impl Round {
     }
 
     pub fn set_remote_packet(&mut self, tick: u32, packet: Vec<u8>) {
-        self.pending_remote_packet = Some(Packet { tick, packet });
+        self.pending_remote_packet = Some(input::Packet { tick, packet });
+    }
+
+    pub fn peek_remote_packet(&self) -> Option<input::Packet> {
+        self.pending_remote_packet.clone()
     }
 
     pub fn peek_shadow_input(&mut self) -> &Option<input::Pair<input::Input, input::PartialInput>> {
@@ -266,7 +269,7 @@ impl Shadow {
     pub fn apply_input(
         &mut self,
         ip: input::Pair<input::Input, input::PartialInput>,
-    ) -> anyhow::Result<Packet> {
+    ) -> anyhow::Result<input::Packet> {
         {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
@@ -294,7 +297,7 @@ impl Shadow {
             round.current_tick = applied_state.tick;
             return Ok(round
                 .pending_remote_packet
-                .take()
+                .clone()
                 .expect("pending out input"));
         }
     }
