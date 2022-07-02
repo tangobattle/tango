@@ -294,9 +294,7 @@ impl Match {
 
                     let mut round_state = self.round_state.lock().await;
                     if input.round_number != round_state.number {
-                        log::error!(
-                            "round number mismatch, dropping input: this is probably not what you"
-                        );
+                        log::error!("round number mismatch, dropping input: this is probably bad!");
                         continue;
                     }
 
