@@ -755,7 +755,7 @@ impl hooks::Hooks for BN2 {
                 let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
+                    Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
                             Some(round) => round,
@@ -763,16 +763,10 @@ impl hooks::Hooks for BN2 {
                                 return;
                             }
                         };
-
                         if !round.has_first_committed_state() {
                             return;
                         }
                         round.increment_current_tick();
-
-                        if round_state.last_result.is_some() {
-                            // We have no real inputs left but the round has ended. Just fudge them until we get to the next round.
-                            core.gba_mut().cpu_mut().set_gpr(0, 7);
-                        }
                     }),
                 )
             },
