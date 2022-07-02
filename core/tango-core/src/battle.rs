@@ -582,7 +582,7 @@ impl Round {
                     Ok(if ip.local.local_tick < commit_tick {
                         let r = shadow.lock().apply_input(ip)?;
                         assert!(
-                            r.tick == local_tick + 1,
+                            r.tick == local_tick,
                             "shadow input did not match current tick: {} != {}",
                             r.tick,
                             local_tick
@@ -602,12 +602,12 @@ impl Round {
                 break;
             }
 
-            // log::info!(
-            //     "{}\n  {:02x?}\n  {:02x?}",
-            //     ip.local.local_tick,
-            //     ip.local.packet,
-            //     ip.remote.packet
-            // );
+            log::info!(
+                "{}\n  {:02x?}\n  {:02x?}",
+                ip.local.local_tick,
+                ip.local.packet,
+                ip.remote.packet
+            );
 
             if let Some(replay_writer) = self.replay_writer.as_mut() {
                 replay_writer

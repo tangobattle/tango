@@ -270,11 +270,15 @@ impl Shadow {
         &mut self,
         ip: input::Pair<input::Input, input::PartialInput>,
     ) -> anyhow::Result<input::Packet> {
-        {
+        let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
             round.pending_shadow_input = Some(ip);
-        }
+            round
+                .pending_remote_packet
+                .clone()
+                .expect("pending remote packet")
+        };
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
             self.core.as_mut().run_loop();
@@ -295,10 +299,7 @@ impl Shadow {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
             round.current_tick = applied_state.tick;
-            return Ok(round
-                .pending_remote_packet
-                .clone()
-                .expect("pending out input"));
+            return Ok(pending_remote_packet);
         }
     }
 }

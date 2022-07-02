@@ -138,9 +138,9 @@ impl hooks::Hooks for BN3 {
                     };
 
                     let current_tick = round.current_tick();
-                    if current_tick > 0 {
+                    if current_tick > 1 {
                         let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 1);
+                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
                         munger.set_rx_packet(core, 0, &rx);
                         munger.set_rx_packet(core, 1, &rx);
                     }
@@ -906,7 +906,7 @@ impl hooks::Hooks for BN3 {
                     Some(ip) => ip,
                     None => {
                         let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 1);
+                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
                         munger.set_rx_packet(core, 0, &rx);
                         munger.set_rx_packet(core, 1, &rx);
                         return;
@@ -1069,7 +1069,13 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.handle_input_post_call,
                     Box::new(move |mut core| {
-                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+                        // HACK: During the first few ticks, we do some wacky stuff that we can't let the game consume willy-nilly.
+                        // Only after the second tick when ingestion is complete can we start assuming that if the input queue runs out we're at the end of the match.
+                        if replayer_state.current_tick() > 2
+                            && replayer_state.peek_input_pair().is_none()
+                        {
+                            core.gba_mut().cpu_mut().set_gpr(0, 7);
+                        }
                         replayer_state.increment_current_tick();
                     }),
                 )
