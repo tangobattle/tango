@@ -627,13 +627,17 @@ impl Round {
             return Ok(None);
         };
 
-        if round_result.tick > commit_tick {
+        if round_result.tick >= commit_tick {
             return Ok(None);
         }
 
         if let Some(replay_writer) = self.replay_writer.take() {
             replay_writer.finish().expect("finish");
-            log::info!("replay finished at {:x}", self.current_tick);
+            log::info!(
+                "replay finished at {:x} (real tick {:x})",
+                round_result.tick,
+                self.current_tick
+            );
         }
 
         Ok(Some(match round_result.result {
