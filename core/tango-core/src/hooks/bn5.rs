@@ -1066,7 +1066,7 @@ impl hooks::Hooks for BN5 {
                         munger.set_rx_packet(
                             core,
                             replayer_state.local_player_index() as u32,
-                            &local_packet.clone().packet.try_into().unwrap(),
+                            &local_packet.packet.clone().try_into().unwrap(),
                         );
                         munger.set_rx_packet(
                             core,
