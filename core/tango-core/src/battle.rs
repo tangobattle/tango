@@ -578,10 +578,17 @@ impl Round {
                 let hooks = self.hooks;
                 let mut last_commit = self.last_committed_remote_input.packet.clone();
                 move |ip| {
+                    let local_tick = ip.local.local_tick;
                     Ok(if ip.local.local_tick < commit_tick {
                         let r = shadow.lock().apply_input(ip)?;
-                        last_commit = r.clone();
-                        r
+                        assert!(
+                            r.tick == local_tick,
+                            "shadow input did not match current tick: {} != {}",
+                            r.tick,
+                            local_tick
+                        );
+                        last_commit = r.packet.clone();
+                        r.packet
                     } else {
                         hooks.predict_rx(&mut last_commit);
                         last_commit.clone()

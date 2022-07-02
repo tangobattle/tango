@@ -497,7 +497,7 @@ impl hooks::Hooks for BN2 {
                     round.remote_player_index() as u32,
                     &tx.clone().try_into().unwrap(),
                 );
-                round.set_remote_packet(tx);
+                round.set_remote_packet(round.current_tick(), tx);
                 round.set_input_injected();
             })
         };

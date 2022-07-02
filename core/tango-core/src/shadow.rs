@@ -1,11 +1,16 @@
 use crate::{battle, hooks, input};
 
+pub struct Packet {
+    pub tick: u32,
+    pub packet: Vec<u8>,
+}
+
 pub struct Round {
     current_tick: u32,
     local_player_index: u8,
     first_committed_state: Option<mgba::state::State>,
     pending_shadow_input: Option<input::Pair<input::Input, input::PartialInput>>,
-    pending_remote_packet: Option<Vec<u8>>,
+    pending_remote_packet: Option<Packet>,
     input_injected: bool,
 }
 
@@ -46,8 +51,8 @@ impl Round {
         self.pending_shadow_input.take()
     }
 
-    pub fn set_remote_packet(&mut self, tx: Vec<u8>) {
-        self.pending_remote_packet = Some(tx);
+    pub fn set_remote_packet(&mut self, tick: u32, packet: Vec<u8>) {
+        self.pending_remote_packet = Some(Packet { tick, packet });
     }
 
     pub fn peek_shadow_input(&mut self) -> &Option<input::Pair<input::Input, input::PartialInput>> {
@@ -261,7 +266,7 @@ impl Shadow {
     pub fn apply_input(
         &mut self,
         ip: input::Pair<input::Input, input::PartialInput>,
-    ) -> anyhow::Result<Vec<u8>> {
+    ) -> anyhow::Result<Packet> {
         {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
