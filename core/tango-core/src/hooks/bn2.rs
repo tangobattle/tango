@@ -90,6 +90,21 @@ impl hooks::Hooks for BN2 {
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         facade: facade::Facade,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+        let make_send_and_receive_call_hook = || {
+            let facade = facade.clone();
+            let handle = handle.clone();
+            Box::new(move |mut core: mgba::core::CoreMutRef| {
+                handle.block_on(async {
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                    if facade.match_().await.is_none() {
+                        core.gba_mut().cpu_mut().set_gpr(0, 0);
+                        return;
+                    };
+                    core.gba_mut().cpu_mut().set_gpr(0, 3);
+                });
+            })
+        };
         vec![
             {
                 let facade = facade.clone();
@@ -374,6 +389,14 @@ impl hooks::Hooks for BN2 {
                     }),
                 )
             },
+            (
+                self.offsets.rom.handle_input_custom_send_and_receive_call,
+                make_send_and_receive_call_hook(),
+            ),
+            (
+                self.offsets.rom.handle_input_in_turn_send_and_receive_call,
+                make_send_and_receive_call_hook(),
+            ),
             {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
