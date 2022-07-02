@@ -602,10 +602,16 @@ impl Round {
                 break;
             }
 
-            if let Some(replay_writer) = self.replay_writer.as_mut() {
-                replay_writer
-                    .write_input(self.local_player_index, ip)
-                    .expect("write input");
+            if ff_result
+                .round_result
+                .map(|rr| ip.local.local_tick < rr.tick)
+                .unwrap_or(true)
+            {
+                if let Some(replay_writer) = self.replay_writer.as_mut() {
+                    replay_writer
+                        .write_input(self.local_player_index, ip)
+                        .expect("write input");
+                }
             }
             self.last_committed_remote_input = ip.remote.clone();
         }
@@ -626,10 +632,6 @@ impl Round {
         } else {
             return Ok(None);
         };
-
-        if round_result.tick >= commit_tick {
-            return Ok(None);
-        }
 
         if let Some(replay_writer) = self.replay_writer.take() {
             replay_writer.finish().expect("finish");
