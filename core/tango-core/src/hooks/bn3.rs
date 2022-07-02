@@ -1064,14 +1064,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.handle_input_post_call,
                     Box::new(move |mut core| {
-                        // HACK: During the first few ticks, we do some wacky stuff that we can't let the game consume willy-nilly.
-                        // Only after the second tick when ingestion is complete can we start assuming that if the input queue runs out we're at the end of the match.
-                        if replayer_state.current_tick() > 2
-                            && replayer_state.peek_input_pair().is_none()
-                        {
-                            core.gba_mut().cpu_mut().set_gpr(0, 7);
-                        }
-
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
                         replayer_state.increment_current_tick();
                     }),
                 )
