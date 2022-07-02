@@ -936,18 +936,14 @@ impl hooks::Hooks for BN3 {
                     replayer_state.remote_player_index() as u32,
                     &replayer_state
                         .apply_shadow_input(input::Pair {
-                            local: ip.local.with_packet(tx),
+                            local: ip.local.with_packet(tx.clone()),
                             remote: ip.remote,
                         })
                         .expect("apply shadow input")
                         .try_into()
                         .unwrap(),
                 );
-
-                replayer_state.set_local_packet(
-                    replayer_state.current_tick() + 1,
-                    munger.tx_packet(core).to_vec(),
-                );
+                replayer_state.set_local_packet(replayer_state.current_tick() + 1, tx);
             })
         };
 
