@@ -45,5 +45,5 @@
     "patch-repo": "Repositório de patches",
     "window-scale": "Tamanho de tela",
     "window-scale-suffix": "x",
-    "max-queue-length": "Max queue length"
+    "max-queue-length": "Tamanho máximo da fila"
 }
