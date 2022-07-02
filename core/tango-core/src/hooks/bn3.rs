@@ -138,7 +138,7 @@ impl hooks::Hooks for BN3 {
                     };
 
                     let current_tick = round.current_tick();
-                    if current_tick >= 1 {
+                    if current_tick > 0 {
                         let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
                         byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 1);
                         munger.set_rx_packet(core, 0, &rx);
