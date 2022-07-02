@@ -816,7 +816,16 @@ impl hooks::Hooks for BN5 {
                             return;
                         }
 
-                        let tx = munger.tx_packet(core).to_vec();
+                        let remote_packet = round.peek_remote_packet().unwrap();
+                        if remote_packet.tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: local packet tick != in battle tick: {} != {}",
+                                remote_packet.tick,
+                                round.current_tick(),
+                            ));
+                            return;
+                        }
+
                         munger.set_rx_packet(
                             core,
                             round.local_player_index() as u32,
@@ -825,9 +834,33 @@ impl hooks::Hooks for BN5 {
                         munger.set_rx_packet(
                             core,
                             round.remote_player_index() as u32,
-                            &tx.clone().try_into().unwrap(),
+                            &remote_packet.packet.clone().try_into().unwrap(),
                         );
-                        round.set_remote_packet(round.current_tick(), tx);
+                    }),
+                )
+            },
+            {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.copy_input_data_ret,
+                    Box::new(move |core| {
+                        let mut round_state = shadow_state.lock_round_state();
+                        let round = round_state.round.as_mut().expect("round");
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            ));
+                        }
+
+                        round.set_remote_packet(
+                            round.current_tick() + 1,
+                            munger.tx_packet(core).to_vec(),
+                        );
                         round.set_input_injected();
                     }),
                 )
