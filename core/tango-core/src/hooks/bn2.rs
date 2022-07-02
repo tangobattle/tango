@@ -515,11 +515,6 @@ impl hooks::Hooks for BN2 {
                     round.local_player_index() as u32,
                     &ip.local.packet.try_into().unwrap(),
                 );
-                munger.set_rx_packet(
-                    core,
-                    round.remote_player_index() as u32,
-                    &tx.clone().try_into().unwrap(),
-                );
                 round.set_remote_packet(round.current_tick(), tx);
                 round.set_input_injected();
             })
@@ -801,11 +796,6 @@ impl hooks::Hooks for BN2 {
                 }
 
                 let tx = munger.tx_packet(core).to_vec();
-                munger.set_rx_packet(
-                    core,
-                    replayer_state.local_player_index() as u32,
-                    &tx.clone().try_into().unwrap(),
-                );
                 munger.set_rx_packet(
                     core,
                     replayer_state.remote_player_index() as u32,
