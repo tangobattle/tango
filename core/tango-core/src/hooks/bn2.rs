@@ -783,11 +783,11 @@ impl hooks::Hooks for BN2 {
 
                 if ip.local.local_tick != ip.remote.local_tick {
                     replayer_state.set_anyhow_error(anyhow::anyhow!(
-                            "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-                            current_tick,
-                            ip.local.local_tick,
-                            ip.remote.local_tick
-                        ));
+                        "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                        current_tick,
+                        ip.local.local_tick,
+                        ip.remote.local_tick
+                    ));
                     return;
                 }
 
