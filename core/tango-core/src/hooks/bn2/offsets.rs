@@ -61,7 +61,8 @@ pub(super) struct ROMOffsets {
     pub(super) round_end_damage_judge_set_loss: u32,
     pub(super) round_end_damage_judge_set_draw: u32,
 
-    pub(super) round_ending_entry: u32,
+    pub(super) round_ending_entry1: u32,
+    pub(super) round_ending_entry2: u32,
 
     /// This hooks the point after the battle end routine is complete.
     pub(super) round_end_entry: u32,
@@ -118,7 +119,8 @@ pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x08005fd8,
         round_end_damage_judge_set_loss:            0x08005fc8,
         round_end_damage_judge_set_draw:            0x08005fbe,
-        round_ending_entry:                         0x08005b28,
+        round_ending_entry1:                        0x08005c10,
+        round_ending_entry2:                        0x08005db0,
         round_end_entry:                            0x08006114,
         link_is_p2_ret:                             0x08002b28,
         comm_menu_init_ret:                         0x0802b2a0,
@@ -137,7 +139,7 @@ pub static ROCKMAN_EXE2AE2J_01: Offsets = Offsets {
         init_sio_call:                              0x08006606,
         comm_menu_send_and_receive_call:            0x0802afc6,
         handle_input_custom_send_and_receive_call:  0x0800665a,
-        handle_input_in_turn_send_and_receive_call:  0x0800694a,
+        handle_input_in_turn_send_and_receive_call: 0x0800694a,
         handle_input_post_call:                     0x08005826,
         round_start_ret:                            0x08004e30,
         round_end_set_win:                          0x08006ebc,
@@ -145,7 +147,8 @@ pub static ROCKMAN_EXE2AE2J_01: Offsets = Offsets {
         round_end_damage_judge_set_win:             0x08005fcc,
         round_end_damage_judge_set_loss:            0x08005fbc,
         round_end_damage_judge_set_draw:            0x08005fb2,
-        round_ending_entry:                         0x08005b1c,
+        round_ending_entry1:                        0x08005c04,
+        round_ending_entry2:                        0x08005da4,
         round_end_entry:                            0x08006108,
         link_is_p2_ret:                             0x08002b28,
         comm_menu_init_ret:                         0x0802b1e8,

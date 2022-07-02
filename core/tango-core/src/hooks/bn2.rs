@@ -254,10 +254,36 @@ impl hooks::Hooks for BN2 {
                     }),
                 )
             },
-            (self.offsets.rom.round_ending_entry, {
+            (self.offsets.rom.round_ending_entry1, {
                 let facade = facade.clone();
                 let handle = handle.clone();
-                Box::new(move |_| {
+                Box::new(move |mut _core| {
+                    handle.block_on(async {
+                        let match_ = match facade.match_().await {
+                            Some(match_) => match_,
+                            None => {
+                                return;
+                            }
+                        };
+
+                        // This is level-triggered because otherwise it's a massive pain to deal with.
+                        let mut round_state = match_.lock_round_state().await;
+                        if round_state.round.is_none() {
+                            return;
+                        }
+
+                        round_state.end_round().await.expect("end round");
+                        match_
+                            .advance_shadow_until_round_end()
+                            .await
+                            .expect("advance shadow");
+                    });
+                })
+            }),
+            (self.offsets.rom.round_ending_entry2, {
+                let facade = facade.clone();
+                let handle = handle.clone();
+                Box::new(move |mut _core| {
                     handle.block_on(async {
                         let match_ = match facade.match_().await {
                             Some(match_) => match_,
@@ -832,7 +858,19 @@ impl hooks::Hooks for BN2 {
             {
                 let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.round_ending_entry,
+                    self.offsets.rom.round_ending_entry1,
+                    Box::new(move |_core| {
+                        if replayer_state.is_round_ending() {
+                            return;
+                        }
+                        replayer_state.set_round_ending();
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.round_ending_entry2,
                     Box::new(move |_core| {
                         if replayer_state.is_round_ending() {
                             return;
