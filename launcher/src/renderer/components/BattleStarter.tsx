@@ -654,7 +654,7 @@ async function runCallback(
     const ownGameSettings = ref.current.pendingStates!.own!.settings;
     const ownGameInfo = ownGameSettings.gameInfo!;
 
-    const ownFullROMName = `${ownGameInfo}${
+    const ownFullROMName = `${ownGameInfo.rom}${
       ownGameInfo.patch != null
         ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
         : ""
@@ -696,7 +696,7 @@ async function runCallback(
     const prefix = `${datefns.format(
       now,
       "yyyyMMddHHmmss"
-    )}-${ownFullROMName}-vs-${removeBadPathCharacters(
+    )}-${ownFullROMName.replace(/\0/g, "@")}-vs-${removeBadPathCharacters(
       opponentGameSettings.nickname
     )}-${linkCode}`;
 
