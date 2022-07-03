@@ -88,7 +88,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     subsystem_control:      0x02006cb8,
     submenu_control:        0x020062e0,
     rng_state:              0x02006cc0,
-    is_linking:             0,
+    is_linking:             0x0200372d,
 };
 
 #[derive(Clone, Copy)]

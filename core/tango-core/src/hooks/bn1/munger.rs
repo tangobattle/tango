@@ -29,6 +29,14 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x14);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x5c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
+        core.raw_write_range(
+            self.offsets.ewram.tx_packet,
+            -1,
+            &[
+                0x40, 0xff, 0xff, 0xff, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40,
+                0x40, 0x40,
+            ],
+        );
     }
 
     pub(super) fn set_rng_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
@@ -53,6 +61,6 @@ impl Munger {
     }
 
     pub(super) fn is_linking(&self, mut core: mgba::core::CoreMutRef) -> bool {
-        core.raw_read_8(self.offsets.ewram.is_linking, -1) == 1
+        core.raw_read_8(self.offsets.ewram.is_linking, -1) != 0xff
     }
 }
