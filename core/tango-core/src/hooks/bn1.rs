@@ -692,6 +692,16 @@ impl hooks::Hooks for BN2 {
                 let ip = match replayer_state.pop_input_pair() {
                     Some(ip) => ip,
                     None => {
+                        let mut rx = [
+                            0x80, 0x00, 0x00, 0xfc, 0x00, 0x00, 0x00, 0xfc, 0x00, 0xfc, 0x00, 0x00,
+                            0xff, 0xff, 0xff, 0xff,
+                        ];
+                        byteorder::LittleEndian::write_u32(
+                            &mut rx[0xc..0x10],
+                            munger.packet_seqnum(core),
+                        );
+                        munger.set_rx_packet(core, 0, &rx);
+                        munger.set_rx_packet(core, 1, &rx);
                         return;
                     }
                 };

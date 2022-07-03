@@ -59,4 +59,8 @@ impl Munger {
     pub(super) fn tx_packet(&self, mut core: mgba::core::CoreMutRef) -> [u8; 0x10] {
         core.raw_read_range(self.offsets.ewram.tx_packet, -1)
     }
+
+    pub(super) fn packet_seqnum(&self, mut core: mgba::core::CoreMutRef) -> u32 {
+        core.raw_read_32(self.offsets.ewram.packet_seqnum, -1)
+    }
 }
