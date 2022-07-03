@@ -201,12 +201,7 @@ impl hooks::Hooks for BN2 {
                             }
                         };
 
-                        // This is level-triggered because otherwise it's a massive pain to deal with.
                         let mut round_state = match_.lock_round_state().await;
-                        if round_state.round.is_none() {
-                            return;
-                        }
-
                         round_state.end_round().await.expect("end round");
                         match_
                             .advance_shadow_until_round_end()
@@ -227,12 +222,7 @@ impl hooks::Hooks for BN2 {
                             }
                         };
 
-                        // This is level-triggered because otherwise it's a massive pain to deal with.
                         let mut round_state = match_.lock_round_state().await;
-                        if round_state.round.is_none() {
-                            return;
-                        }
-
                         round_state.end_round().await.expect("end round");
                         match_
                             .advance_shadow_until_round_end()
