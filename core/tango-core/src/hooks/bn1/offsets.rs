@@ -115,10 +115,10 @@ pub static MEGAMAN_BNAREE_00: Offsets = Offsets {
         round_end_set_loss:                         0x08006d20,
         round_ending_entry1:                        0,
         round_ending_entry2:                        0,
-        round_end_entry:                            0,
+        round_end_entry:                            0x08005cd0,
         link_is_p2_ret:                             0x08002c58,
         comm_menu_init_ret:                         0x0801ce94,
-        match_end_ret:                              0,
+        match_end_ret:                              0x08005cd0,
     },
 };
 
