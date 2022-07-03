@@ -1,5 +1,6 @@
 # パッチ
 
+-   **ROCKMAN_EXE2AE2J-rev0-to-rev1**: EXE2 1.1 → 1.0
 -   **ROCK_EXE4_RSB4WJ-rev1-to-rev0**: EXE4 レッドサン 1.1 → 1.0
 -   **ROCK_EXE4_RSB4WJ-rev0-to-rev1**: EXE4 レッドサン 1.0 → 1.1
 -   **ROCKMAN_EXE3A6BJ-rev0-to-rev1**: EXE3 WHITE 1.0 → 1.1
