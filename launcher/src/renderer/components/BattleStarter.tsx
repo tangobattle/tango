@@ -414,15 +414,16 @@ async function runCallback(
 
   if (linkCode == "") {
     // No link code to worry about, just start the game with no settings.
+    const outFullROMName = `${ref.current.gameInfo!.rom}${
+      ref.current.gameInfo!.patch != null
+        ? `+${ref.current.gameInfo!.patch.name}-v${
+            ref.current.gameInfo!.patch.version
+          }`
+        : ""
+    }`;
     const outROMPath = path.join(
       ref.current.tempDir,
-      `${ref.current.gameInfo!.rom}${
-        ref.current.gameInfo!.patch != null
-          ? `+${ref.current.gameInfo!.patch.name}-v${
-              ref.current.gameInfo!.patch.version
-            }`
-          : ""
-      }.gba`
+      `${outFullROMName.replace(/\0/g, "@")}.gba`
     );
     await makeROM(
       ref.current.getROMPath(ref.current.gameInfo!.rom),
@@ -653,15 +654,14 @@ async function runCallback(
     const ownGameSettings = ref.current.pendingStates!.own!.settings;
     const ownGameInfo = ownGameSettings.gameInfo!;
 
-    const ownFullROMName = `${ownGameInfo.rom}${
+    const ownFullROMName = `${ownGameInfo}${
       ownGameInfo.patch != null
         ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
         : ""
     }`;
-
     const outOwnROMPath = path.join(
       ref.current.tempDir,
-      `${ownFullROMName}.gba`
+      `${ownFullROMName.replace(/\0/g, "@")}.gba`
     );
     await makeROM(
       ref.current.getROMPath(ownGameInfo.rom),
@@ -674,13 +674,14 @@ async function runCallback(
     const opponentGameSettings = ref.current.pendingStates!.opponent!.settings;
     const opponentGameInfo = opponentGameSettings.gameInfo!;
 
+    const opponentFullROMName = `${opponentGameInfo.rom}${
+      opponentGameInfo.patch != null
+        ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
+        : ""
+    }`;
     const outOpponentROMPath = path.join(
       ref.current.tempDir,
-      `${opponentGameInfo.rom}${
-        opponentGameInfo.patch != null
-          ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
-          : ""
-      }.gba`
+      `${opponentFullROMName.replace(/\0/g, "@")}.gba`
     );
     await makeROM(
       ref.current.getROMPath(opponentGameInfo.rom),
