@@ -451,7 +451,7 @@ impl hooks::Hooks for BN2 {
             {
                 let facade = facade.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -769,7 +769,7 @@ impl hooks::Hooks for BN2 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
@@ -972,7 +972,7 @@ impl hooks::Hooks for BN2 {
             {
                 let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_| {
                         replayer_state.increment_current_tick();
                     }),

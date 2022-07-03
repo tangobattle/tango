@@ -520,7 +520,7 @@ impl hooks::Hooks for BN3 {
             {
                 let facade = facade.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -874,7 +874,7 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |mut core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
@@ -1096,7 +1096,7 @@ impl hooks::Hooks for BN3 {
             {
                 let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |mut core| {
                         // HACK: During the first few ticks, we do some wacky stuff that we can't let the game consume willy-nilly.
                         // Only after the second tick when ingestion is complete can we start assuming that if the input queue runs out we're at the end of the match.

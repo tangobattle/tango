@@ -48,7 +48,7 @@ pub(super) struct ROMOffsets {
     pub(super) handle_input_custom_send_and_receive_call: u32,
     pub(super) handle_input_in_turn_send_and_receive_call: u32,
 
-    pub(super) handle_input_post_call: u32,
+    pub(super) round_call_jump_table_ret: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -112,7 +112,7 @@ pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
         comm_menu_send_and_receive_call:            0x0802b07e,
         handle_input_custom_send_and_receive_call:  0x08006666,
         handle_input_in_turn_send_and_receive_call: 0x08006956,
-        handle_input_post_call:                     0x0800582a,
+        round_call_jump_table_ret:                  0x08005834,
         round_start_ret:                            0x08004e34,
         round_end_set_win:                          0x08006ec8,
         round_end_set_loss:                         0x08006ed0,
@@ -140,7 +140,7 @@ pub static ROCKMAN_EXE2AE2J_01: Offsets = Offsets {
         comm_menu_send_and_receive_call:            0x0802afc6,
         handle_input_custom_send_and_receive_call:  0x0800665a,
         handle_input_in_turn_send_and_receive_call: 0x0800694a,
-        handle_input_post_call:                     0x08005826,
+        round_call_jump_table_ret:                  0x08005830,
         round_start_ret:                            0x08004e30,
         round_end_set_win:                          0x08006ebc,
         round_end_set_loss:                         0x08006ec4,
