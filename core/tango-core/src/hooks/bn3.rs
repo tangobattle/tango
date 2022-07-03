@@ -573,9 +573,15 @@ impl hooks::Hooks for BN3 {
                 };
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
+                let current_tick = round.current_tick();
+
                 let ip = if let Some(ip) = round.take_shadow_input() {
                     ip
                 } else {
+                    let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                    byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                    munger.set_rx_packet(core, 0, &rx);
+                    munger.set_rx_packet(core, 1, &rx);
                     return;
                 };
 
@@ -917,15 +923,14 @@ impl hooks::Hooks for BN3 {
 
                 let current_tick = replayer_state.current_tick();
 
-                let ip = match replayer_state.pop_input_pair() {
-                    Some(ip) => ip,
-                    None => {
-                        let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
-                        munger.set_rx_packet(core, 0, &rx);
-                        munger.set_rx_packet(core, 1, &rx);
-                        return;
-                    }
+                let ip = if let Some(ip) = replayer_state.pop_input_pair() {
+                    ip
+                } else {
+                    let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                    byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                    munger.set_rx_packet(core, 0, &rx);
+                    munger.set_rx_packet(core, 1, &rx);
+                    return;
                 };
 
                 if ip.local.local_tick != ip.remote.local_tick {
