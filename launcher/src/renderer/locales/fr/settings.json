@@ -11,7 +11,7 @@
     "paths.patches": "Patchs",
     "browse": "Parcourir",
     "open-directory": "Open directory",
-    "input-key": "Key: {{key}}",
+    "input-key": "Touche : {{key}}",
     "input-button": "Bouton : {{button}}",
     "input-axis": "Axis: {{axis}}",
     "input.up": "Haut",
