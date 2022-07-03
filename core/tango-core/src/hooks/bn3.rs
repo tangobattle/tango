@@ -604,10 +604,25 @@ impl hooks::Hooks for BN3 {
                     return;
                 }
 
+                let remote_packet = round.peek_remote_packet().unwrap();
+                if remote_packet.tick != round.current_tick() {
+                    shadow_state.set_anyhow_error(anyhow::anyhow!(
+                        "copy input data: local packet tick != in battle tick: {} != {}",
+                        remote_packet.tick,
+                        round.current_tick(),
+                    ));
+                    return;
+                }
+
                 munger.set_rx_packet(
                     core,
                     round.local_player_index() as u32,
                     &ip.local.packet.try_into().unwrap(),
+                );
+                munger.set_rx_packet(
+                    core,
+                    round.remote_player_index() as u32,
+                    &remote_packet.packet.clone().try_into().unwrap(),
                 );
                 round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
                 round.set_input_injected();
@@ -933,6 +948,20 @@ impl hooks::Hooks for BN3 {
                 }
 
                 let local_packet = replayer_state.peek_local_packet().unwrap();
+                if local_packet.tick != current_tick {
+                    replayer_state.set_anyhow_error(anyhow::anyhow!(
+                        "copy input data: local packet tick != in battle tick: {} != {}",
+                        local_packet.tick,
+                        current_tick,
+                    ));
+                    return;
+                }
+
+                munger.set_rx_packet(
+                    core,
+                    replayer_state.local_player_index() as u32,
+                    &local_packet.packet.clone().try_into().unwrap(),
+                );
                 munger.set_rx_packet(
                     core,
                     replayer_state.remote_player_index() as u32,
