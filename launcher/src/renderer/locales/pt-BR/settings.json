@@ -33,7 +33,7 @@
     "theme.light": "Claro",
     "theme.dark": "Escuro",
     "update-channel": "Atualizar (requer reiniciar)",
-    "update-channel.latest": "Estável",
+    "update-channel.latest": "Atual",
     "update-channel.beta": "Beta",
     "update-channel.alpha": "Alpha",
     "update-channel.disabled": "Desativado",
@@ -45,5 +45,5 @@
     "patch-repo": "Repositório de patches",
     "window-scale": "Tamanho de tela",
     "window-scale-suffix": "x",
-    "max-queue-length": "Tamanho máximo da fila"
+    "max-queue-length": "Comprimento máximo da fila"
 }
