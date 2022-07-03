@@ -139,7 +139,7 @@ pub static ROCKMAN_EXEAREJ_00: Offsets = Offsets {
         round_end_set_win:                          0x08006d08,
         round_end_set_loss:                         0x08006d10,
         round_ending_entry1:                        0x08005ba4,
-        round_ending_entry2:                        0x08005ba6,
+        round_ending_entry2:                        0x08005c1a,
         round_end_entry:                            0x08005cc0,
         link_is_p2_ret:                             0x08002c48,
         comm_menu_init_ret:                         0x0801cd90,
