@@ -110,7 +110,7 @@ pub static MEGAMAN_BNAREE_00: Offsets = Offsets {
         handle_input_custom_send_and_receive_call:  0x08007842,
         handle_input_in_turn_send_and_receive_call: 0x08007aea,
         handle_input_post_call:                     0x08005890,
-        round_start_ret:                            0,
+        round_start_ret:                            0x0800527a,
         round_end_set_win:                          0x08006d18,
         round_end_set_loss:                         0x08006d20,
         round_ending_entry1:                        0,

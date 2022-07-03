@@ -27,11 +27,6 @@ impl BN2 {
     }
 }
 
-fn random_background(rng: &mut impl rand::Rng) -> u8 {
-    const BATTLE_BACKGROUNDS: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x05, 0x08, 0x15, 0x18];
-    BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())]
-}
-
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
     (((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1))
@@ -48,7 +43,7 @@ fn generate_rng_state(rng: &mut impl rand::Rng) -> u32 {
 }
 
 const INIT_RX: [u8; 16] = [
-    0x00, 0x04, 0x00, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 ];
 
 impl hooks::Hooks for BN2 {
@@ -132,7 +127,7 @@ impl hooks::Hooks for BN2 {
                                     answerer_rng_state
                                 },
                             );
-                            munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
+                            munger.start_battle_from_comm_menu(core);
                         });
                     }),
                 )
@@ -499,7 +494,7 @@ impl hooks::Hooks for BN2 {
                                 offerer_rng_state
                             },
                         );
-                        munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
+                        munger.start_battle_from_comm_menu(core);
                     }),
                 )
             },
@@ -874,7 +869,7 @@ impl hooks::Hooks for BN2 {
 
     fn predict_rx(&self, rx: &mut Vec<u8>) {
         match rx[0] {
-            0x05 => {
+            0x80 => {
                 let tick = byteorder::LittleEndian::read_u32(&rx[0xc..0x10]);
                 byteorder::LittleEndian::write_u32(&mut rx[0xc..0x10], tick + 1);
             }
