@@ -313,10 +313,6 @@ impl hooks::Hooks for BN2 {
                                     }
                                 };
 
-                                if !munger.is_linking(core) {
-                                    return;
-                                }
-
                                 if !round.has_committed_state() {
                                     round.set_first_committed_state(
                                         core.save_state().expect("save state"),
@@ -589,7 +585,7 @@ impl hooks::Hooks for BN2 {
                             }
                         };
 
-                        if !munger.is_linking(core) && !round.has_first_committed_state() {
+                        if !round.has_first_committed_state() {
                             return;
                         }
 
