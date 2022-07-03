@@ -8,6 +8,6 @@
 
 ## 使用方法
 
-1. ここから Flips をダウンロードしてください：https://dl.smwcentral.net/11474/floating.zip
+1. ここから Flips をダウンロードします：https://dl.smwcentral.net/11474/floating.zip
 
-2. Flips のプログラムを開き、ROM と`.bps`パッチを選択してください。
+2. Flips のプログラムを開き、ROM と`.bps`パッチを選択します。
