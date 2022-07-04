@@ -31,7 +31,7 @@ impl BN5 {
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng1_state = 0;
-    for _ in 0..rng.gen_range(0..=0xffffusize) {
+    for _ in 0..rng.gen_range(0..0x1000) {
         rng1_state = step_rng(rng1_state);
     }
     rng1_state
@@ -39,7 +39,7 @@ fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
 
 fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng2_state = 0xa338244f;
-    for _ in 0..rng.gen_range(0..=0xffffusize) {
+    for _ in 0..rng.gen_range(0..0x1000) {
         rng2_state = step_rng(rng2_state);
     }
     rng2_state

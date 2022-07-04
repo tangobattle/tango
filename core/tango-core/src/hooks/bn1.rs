@@ -37,7 +37,7 @@ fn step_rng(seed: u32) -> u32 {
 
 fn generate_rng_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng_state = 0xa338244f;
-    for _ in 0..rng.gen_range(0..=0xffffusize) {
+    for _ in 0..rng.gen_range(0..0x1000) {
         rng_state = step_rng(rng_state);
     }
     rng_state
@@ -248,7 +248,7 @@ impl hooks::Hooks for BN2 {
                             };
                             match_.start_round().await.expect("start round");
                             let mut rng = match_.lock_rng().await;
-                            munger.set_battle_stage(core, rng.gen_range(0..=0xb));
+                            munger.set_battle_stage(core, rng.gen_range(0..0xc));
                         });
                     }),
                 )
@@ -515,7 +515,7 @@ impl hooks::Hooks for BN2 {
                     Box::new(move |core| {
                         shadow_state.start_round();
                         let mut rng = shadow_state.lock_rng();
-                        munger.set_battle_stage(core, rng.gen_range(0..=0xb));
+                        munger.set_battle_stage(core, rng.gen_range(0..0xc));
                     }),
                 )
             },
