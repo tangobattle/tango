@@ -2,6 +2,7 @@ mod munger;
 mod offsets;
 
 use byteorder::ByteOrder;
+use rand::Rng;
 
 use crate::{battle, facade, hooks, input, replayer, shadow};
 
@@ -234,9 +235,10 @@ impl hooks::Hooks for BN2 {
             {
                 let facade = facade.clone();
                 let handle = handle.clone();
+                let munger = self.munger.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |_core| {
+                    Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -245,6 +247,8 @@ impl hooks::Hooks for BN2 {
                                 }
                             };
                             match_.start_round().await.expect("start round");
+                            let mut rng = match_.lock_rng().await;
+                            munger.set_battle_stage(core, rng.gen_range(0..=0xb));
                         });
                     }),
                 )
@@ -505,10 +509,13 @@ impl hooks::Hooks for BN2 {
             },
             {
                 let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |_| {
+                    Box::new(move |core| {
                         shadow_state.start_round();
+                        let mut rng = shadow_state.lock_rng();
+                        munger.set_battle_stage(core, rng.gen_range(0..=0xb));
                     }),
                 )
             },

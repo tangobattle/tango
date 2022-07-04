@@ -39,6 +39,10 @@ impl Munger {
         );
     }
 
+    pub(super) fn set_battle_stage(&self, mut core: mgba::core::CoreMutRef, v: u8) {
+        core.raw_write_8(self.offsets.ewram.battle_state + 0xd, -1, v);
+    }
+
     pub(super) fn set_rng_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
         core.raw_write_32(self.offsets.ewram.rng_state, -1, state);
     }
