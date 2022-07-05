@@ -8,6 +8,9 @@ export function requestAttention(app: Electron.App) {
   if (process.platform === "darwin") {
     app.dock.bounce("critical");
   } else {
-    getMainWindow().flashFrame(true);
+    const win = getMainWindow();
+    if (!win.isFocused()) {
+      win.flashFrame(true);
+    }
   }
 }
