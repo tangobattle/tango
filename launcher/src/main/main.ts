@@ -87,7 +87,7 @@ function createWindow() {
   }
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 800,
     height: 600,
     minWidth: 800,
@@ -101,8 +101,9 @@ function createWindow() {
       devTools: process.env.NODE_ENV !== "production",
     },
   });
+  mainWindow = win;
 
-  mainWindow.loadURL(
+  win.loadURL(
     process.env.NODE_ENV == "development"
       ? "http://localhost:4000/"
       : url.format({
@@ -112,33 +113,35 @@ function createWindow() {
         })
   );
 
-  mainWindow.on("closed", () => {
+  win.on("closed", () => {
     mainWindow = null;
   });
 
-  mainWindow.webContents.addListener("new-window", function (e, url) {
+  win.on("focus", () => {
+    win.flashFrame(false);
+  });
+
+  win.webContents.addListener("new-window", function (e, url) {
     e.preventDefault();
     shell.openExternal(url);
   });
 
-  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+  win.webContents.session.webRequest.onBeforeSendHeaders(
     (details, callback) => {
       callback({ requestHeaders: { Origin: "*", ...details.requestHeaders } });
     }
   );
 
-  mainWindow.webContents.session.webRequest.onHeadersReceived(
-    (details, callback) => {
-      callback({
-        responseHeaders: {
-          "Access-Control-Allow-Origin": ["*"],
-          ...details.responseHeaders,
-        },
-      });
-    }
-  );
+  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        "Access-Control-Allow-Origin": ["*"],
+        ...details.responseHeaders,
+      },
+    });
+  });
 
-  remoteMain.enable(mainWindow.webContents);
+  remoteMain.enable(win.webContents);
 
   if (cfg.updateChannel != "disabled") {
     autoUpdater.checkForUpdates();

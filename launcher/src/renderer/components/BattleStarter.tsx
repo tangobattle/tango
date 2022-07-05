@@ -65,6 +65,7 @@ import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { fallbackLng } from "../i18n";
+import { requestAttention } from "../platform";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
@@ -450,6 +451,8 @@ async function runCallback(
       },
     });
   } else {
+    requestAttention(app);
+
     // Need to negotiate settings with the opponent.
     const myPendingSettings: SetSettings = {
       nickname: ref.current.config.nickname!,
