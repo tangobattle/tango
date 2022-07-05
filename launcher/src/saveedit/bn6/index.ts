@@ -536,6 +536,10 @@ export class Editor {
     return this.dv.getUint8(0x1b81);
   }
 
+  setCurrentNavi(i: number) {
+    this.dv.setUint8(0x1b81, i);
+  }
+
   getRegMemory() {
     return this.dv.getUint8(
       this.getNaviStatsOffset(this.getCurrentNavi()) + 0x09
