@@ -42,7 +42,7 @@
   "mismatching-match-type": "Votre adversaire a choisi un nombre de victoires différent.",
   "generate-random-code": "Générer un code aléatoire",
   "connection-quality": "{{rtt}} ms",
-  "auto-input-delay": "Auto",
+  "auto-input-delay": "Suggest",
   "reveal-setup-title": "Le setup de {{opponentNickname}}",
   "missing-patch": "Patch inconnu \"{{name}}\"",
   "save-viewer-unsupported": "Save viewer is unsupported for this game",
