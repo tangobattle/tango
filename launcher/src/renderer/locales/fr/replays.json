@@ -1,5 +1,5 @@
 {
-  "viewing": "Playback in progress...",
+  "viewing": "Lecture en cours...",
   "exporting": "Exportation en cours...",
   "export-complete": "Votre match a été converti avec succès.",
   "no-replays": "Pas des matchs passés (encore !)",
@@ -9,10 +9,10 @@
   "show-file": "Afficher dans le dossier",
   "export-video": "Exporter en vidéo",
   "replay-title": "{{linkCode}}: vs {{nickname}}",
-  "crash": "Oops, it looks like the replay viewer crashed! Please provide this log when reporting a bug!",
+  "crash": "Oups, il semble que le visionneur de match ait planté ! Veuillez fournir ce log lorsque vous signalez un bug !",
   "export-settings": "Paramètres d'exportation",
   "output-path": "Enregistrer sous",
-  "scale-factor": "Scale factor",
+  "scale-factor": "Facteur de mise à l'échelle",
   "scale-factor-suffix": "x",
   "start-export": "Allez !"
 }
