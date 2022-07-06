@@ -74,15 +74,19 @@ export class Editor {
     const gn = decoder.decode(
       new Uint8Array(dv.buffer, dv.byteOffset + GAME_NAME_OFFSET, 20)
     );
-    if (gn != "ROCKMAN EXE 20010727") {
-      throw "unknown game name: " + gn;
-    }
 
     if (computeChecksum(dv) != getChecksum(dv)) {
       throw "checksum mismatch";
     }
 
-    return ["MEGAMAN_BN\0\0AREE", "ROCKMAN_EXE\0AREJ"];
+    switch (gn) {
+      case "ROCKMAN EXE 20010120":
+        return ["ROCKMAN_EXE\0AREJ"];
+      case "ROCKMAN EXE 20010727":
+        return ["MEGAMAN_BN\0\0AREE"];
+    }
+
+    throw "unknown game name: " + gn;
   }
 
   rebuild() {
