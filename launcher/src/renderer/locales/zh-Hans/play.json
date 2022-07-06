@@ -42,7 +42,7 @@
   "mismatching-match-type": "对方和你的战斗类型设置不匹配。",
   "generate-random-code": "生成随机链接代码",
   "connection-quality": "{{rtt}} ms",
-  "auto-input-delay": "自动选择",
+  "auto-input-delay": "建议",
   "reveal-setup-title": "{{opponentNickname}}的构筑",
   "missing-patch": "未知补丁“{{name}}”",
   "save-viewer-unsupported": "此游戏不支持保存查看器",

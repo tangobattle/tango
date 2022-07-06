@@ -42,7 +42,7 @@
   "mismatching-match-type": "Does not match your opponent's match type.",
   "generate-random-code": "Generate random code",
   "connection-quality": "{{rtt}} ms",
-  "auto-input-delay": "Auto",
+  "auto-input-delay": "Suggérer",
   "reveal-setup-title": "{{opponentNickname}}'s setup",
   "missing-patch": "Unknown patch \"{{name}}\"",
   "save-viewer-unsupported": "Save viewer is unsupported for this game",
