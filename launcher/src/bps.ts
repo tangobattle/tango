@@ -58,9 +58,19 @@ export default function applyBPS(
   if (u8() != 0x42 || u8() != 0x50 || u8() != 0x53 || u8() != 0x31) {
     throw new Error("not a BPS patch");
   }
-  if (decode() != rom.length) throw new Error("wrong input file");
-  if (!ignoreCRC32 && crc32(rom) != u32at(patch.length - 12)) {
-    throw new Error("wrong input file");
+  // const expectedLength = decode();
+  // if (expectedLength != rom.length)
+  //   throw new Error(
+  //     `wrong input file: length ${expectedLength} != ${rom.length}`
+  //   );
+  const actualCRC32 = crc32(rom);
+  const expectedCRC32 = u32at(patch.length - 12);
+  if (!ignoreCRC32 && actualCRC32 != expectedCRC32) {
+    throw new Error(
+      `wrong input file: CRC32 ${expectedCRC32
+        .toString(16)
+        .padStart(8, "0")} != ${actualCRC32.toString(16).padStart(8, "0")}`
+    );
   }
 
   const out = new Uint8Array(decode());
