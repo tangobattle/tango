@@ -686,6 +686,8 @@ impl hooks::Hooks for BN2 {
             let munger = self.munger.clone();
             let replayer_state = replayer_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
+                let mut replayer_state = replayer_state.lock_inner();
+
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
@@ -732,7 +734,7 @@ impl hooks::Hooks for BN2 {
                     return;
                 }
 
-                let local_packet = replayer_state.peek_local_packet().unwrap();
+                let local_packet = replayer_state.peek_local_packet().unwrap().clone();
                 if local_packet.tick != current_tick {
                     replayer_state.set_anyhow_error(anyhow::anyhow!(
                         "copy input data: local packet tick != in battle tick: {} != {}",
@@ -759,10 +761,7 @@ impl hooks::Hooks for BN2 {
                         .try_into()
                         .unwrap(),
                 );
-                replayer_state.set_local_packet(
-                    replayer_state.current_tick() + 1,
-                    munger.tx_packet(core).to_vec(),
-                );
+                replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
             })
         };
 
@@ -772,6 +771,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
+                        let replayer_state = replayer_state.lock_inner();
                         core.gba_mut()
                             .cpu_mut()
                             .set_gpr(0, replayer_state.local_player_index() as i32);
@@ -783,6 +783,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.round_ending_entry1,
                     Box::new(move |_core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         if replayer_state.is_round_ending() {
                             return;
                         }
@@ -795,6 +796,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.round_ending_entry2,
                     Box::new(move |_core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         if replayer_state.is_round_ending() {
                             return;
                         }
@@ -807,6 +809,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_ended();
                     }),
                 )
@@ -816,6 +819,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         let current_tick = replayer_state.current_tick();
 
                         if current_tick == replayer_state.commit_tick() {
@@ -825,7 +829,7 @@ impl hooks::Hooks for BN2 {
                         }
 
                         let ip = match replayer_state.peek_input_pair() {
-                            Some(ip) => ip,
+                            Some(ip) => ip.clone(),
                             None => {
                                 return;
                             }
@@ -874,6 +878,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.increment_current_tick();
                     }),
                 )
@@ -883,6 +888,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
@@ -892,6 +898,7 @@ impl hooks::Hooks for BN2 {
                 (
                     self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )

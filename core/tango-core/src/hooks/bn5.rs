@@ -902,6 +902,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.battle_is_p2_tst,
                     Box::new(move |mut core| {
+                        let replayer_state = replayer_state.lock_inner();
                         core.gba_mut()
                             .cpu_mut()
                             .set_gpr(0, replayer_state.local_player_index() as i32);
@@ -913,6 +914,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
+                        let replayer_state = replayer_state.lock_inner();
                         core.gba_mut()
                             .cpu_mut()
                             .set_gpr(0, replayer_state.local_player_index() as i32);
@@ -935,6 +937,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_set_ending,
                     Box::new(move |_core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_ending();
                     }),
                 )
@@ -944,6 +947,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_ended();
                     }),
                 )
@@ -954,6 +958,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         let current_tick = replayer_state.current_tick();
 
                         let game_current_tick = munger.current_tick(core);
@@ -971,7 +976,7 @@ impl hooks::Hooks for BN5 {
                         }
 
                         let ip = match replayer_state.peek_input_pair() {
-                            Some(ip) => ip,
+                            Some(ip) => ip.clone(),
                             None => {
                                 return;
                             }
@@ -1013,6 +1018,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.copy_input_data_entry,
                     Box::new(move |core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         if replayer_state.is_round_ending() {
                             return;
                         }
@@ -1028,7 +1034,7 @@ impl hooks::Hooks for BN5 {
                         }
 
                         let ip = match replayer_state.pop_input_pair() {
-                            Some(ip) => ip,
+                            Some(ip) => ip.clone(),
                             None => {
                                 return;
                             }
@@ -1053,7 +1059,7 @@ impl hooks::Hooks for BN5 {
                             return;
                         }
 
-                        let local_packet = replayer_state.peek_local_packet().unwrap();
+                        let local_packet = replayer_state.peek_local_packet().unwrap().clone();
                         if local_packet.tick != current_tick {
                             replayer_state.set_anyhow_error(anyhow::anyhow!(
                                 "copy input data: local packet tick != in battle tick: {} != {}",
@@ -1089,6 +1095,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.copy_input_data_ret,
                     Box::new(move |core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         if replayer_state.is_round_ending() {
                             return;
                         }
@@ -1114,6 +1121,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_post_increment_tick,
                     Box::new(move |core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.increment_current_tick();
                         let current_tick = replayer_state.current_tick();
 
@@ -1133,6 +1141,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
@@ -1142,6 +1151,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )
@@ -1151,6 +1161,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_win,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
@@ -1160,6 +1171,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_loss,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )
@@ -1169,6 +1181,7 @@ impl hooks::Hooks for BN5 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_draw,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Draw);
                     }),
                 )

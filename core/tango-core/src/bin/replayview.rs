@@ -181,30 +181,38 @@ fn main() -> Result<(), anyhow::Error> {
                     },
                 );
             }
-            if let Some(err) = replayer_state.take_error() {
-                Err(err)?;
-            }
 
-            if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
-                || replayer_state.is_round_ended()
-            {
-                break 'toplevel;
-            }
+            let vbuf = {
+                let mut replayer_state = replayer_state.lock_inner();
+                if let Some(err) = replayer_state.take_error() {
+                    Err(err)?;
+                }
 
-            let vbuf = vbuf.lock();
-            if taking_screenshot {
-                let ss_f = std::fs::File::create(format!(
-                    "{}-tick{}.png",
-                    args.path.clone().with_extension("").to_str().unwrap(),
-                    replayer_state.current_tick()
-                ))?;
-                let mut encoder =
-                    png::Encoder::new(ss_f, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
-                encoder.set_color(png::ColorType::Rgba);
-                encoder.set_depth(png::BitDepth::Eight);
-                let mut writer = encoder.write_header().unwrap();
-                writer.write_image_data(&*vbuf)?;
-            }
+                if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
+                    || replayer_state.is_round_ended()
+                {
+                    break 'toplevel;
+                }
+
+                let current_tick = replayer_state.current_tick();
+
+                let vbuf = vbuf.lock();
+                if taking_screenshot {
+                    let ss_f = std::fs::File::create(format!(
+                        "{}-tick{}.png",
+                        args.path.clone().with_extension("").to_str().unwrap(),
+                        current_tick
+                    ))?;
+                    let mut encoder =
+                        png::Encoder::new(ss_f, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
+                    encoder.set_color(png::ColorType::Rgba);
+                    encoder.set_depth(png::BitDepth::Eight);
+                    let mut writer = encoder.write_header().unwrap();
+                    writer.write_image_data(&*vbuf)?;
+                }
+
+                vbuf
+            };
 
             texture
                 .update(None, &*vbuf, mgba::gba::SCREEN_WIDTH as usize * 4)

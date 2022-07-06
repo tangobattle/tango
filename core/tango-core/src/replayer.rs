@@ -2,7 +2,7 @@ use crate::battle;
 use crate::hooks;
 use crate::input;
 
-struct InnerState {
+pub struct InnerState {
     current_tick: u32,
     local_player_index: u8,
     input_pairs: std::collections::VecDeque<input::Pair<input::PartialInput, input::PartialInput>>,
@@ -21,6 +21,138 @@ struct InnerState {
     phase: RoundPhase,
     on_round_ended: Box<dyn Fn() + Sync + Send>,
     error: Option<anyhow::Error>,
+}
+
+impl InnerState {
+    pub fn take_error(&mut self) -> Option<anyhow::Error> {
+        self.error.take()
+    }
+
+    pub fn commit_tick(&self) -> u32 {
+        self.commit_tick
+    }
+
+    pub fn set_round_result(&mut self, result: BattleResult) {
+        self.round_result = Some(RoundResult {
+            tick: self.current_tick,
+            result,
+        });
+    }
+
+    pub fn set_committed_state(&mut self, state: mgba::state::State) {
+        let local_packet = self.local_packet.clone().unwrap();
+        if self.current_tick != local_packet.tick {
+            panic!(
+                "local packet tick mismatch: {} != {}",
+                self.current_tick, local_packet.tick
+            );
+        }
+        self.committed_state = Some(battle::CommittedState {
+            tick: self.current_tick,
+            state,
+            packet: local_packet.packet,
+        });
+    }
+
+    pub fn take_committed_state(&mut self) -> Option<battle::CommittedState> {
+        self.committed_state.take()
+    }
+
+    pub fn dirty_tick(&self) -> u32 {
+        self.dirty_tick
+    }
+
+    pub fn set_dirty_state(&mut self, state: mgba::state::State) {
+        let local_packet = self.local_packet.clone().unwrap();
+        if self.current_tick != local_packet.tick {
+            panic!(
+                "local packet tick mismatch: {} != {}",
+                self.current_tick, local_packet.tick
+            );
+        }
+        self.dirty_state = Some(battle::CommittedState {
+            tick: self.current_tick,
+            state,
+            packet: local_packet.packet,
+        });
+    }
+
+    pub fn peek_input_pair(
+        &self,
+    ) -> Option<&input::Pair<input::PartialInput, input::PartialInput>> {
+        self.input_pairs.front()
+    }
+
+    pub fn pop_input_pair(
+        &mut self,
+    ) -> Option<input::Pair<input::PartialInput, input::PartialInput>> {
+        self.input_pairs.pop_front()
+    }
+
+    pub fn apply_shadow_input(
+        &mut self,
+        input: input::Pair<input::Input, input::PartialInput>,
+    ) -> anyhow::Result<Vec<u8>> {
+        let remote_packet = (self.apply_shadow_input)(input.clone())?;
+        self.output_pairs.push(input::Pair {
+            local: input.local,
+            remote: input.remote.with_packet(remote_packet.clone()),
+        });
+        Ok(remote_packet)
+    }
+
+    pub fn set_local_packet(&mut self, tick: u32, packet: Vec<u8>) {
+        self.local_packet = Some(input::Packet { tick, packet });
+    }
+
+    pub fn peek_local_packet(&mut self) -> Option<&input::Packet> {
+        self.local_packet.as_ref()
+    }
+
+    pub fn set_anyhow_error(&mut self, err: anyhow::Error) {
+        self.error = Some(err);
+    }
+
+    pub fn local_player_index(&self) -> u8 {
+        self.local_player_index
+    }
+
+    pub fn remote_player_index(&self) -> u8 {
+        1 - self.local_player_index()
+    }
+
+    pub fn set_round_ending(&mut self) {
+        self.phase = RoundPhase::Ending;
+    }
+
+    pub fn set_round_ended(&mut self) {
+        self.phase = RoundPhase::Ended;
+        (self.on_round_ended)();
+    }
+
+    pub fn is_round_ending(&self) -> bool {
+        self.phase == RoundPhase::Ending || self.phase == RoundPhase::Ended
+    }
+
+    pub fn is_round_ended(&self) -> bool {
+        self.phase == RoundPhase::Ended
+    }
+
+    pub fn round_result(&self) -> Option<RoundResult> {
+        self.round_result
+    }
+
+    pub fn input_pairs_left(&self) -> usize {
+        self.input_pairs.len()
+    }
+
+    pub fn current_tick(&self) -> u32 {
+        self.current_tick
+    }
+
+    pub fn increment_current_tick(&mut self) {
+        self.current_tick += 1;
+    }
 }
 
 pub struct FastforwardResult {
@@ -118,170 +250,8 @@ impl State {
         ))))
     }
 
-    pub fn take_error(&self) -> Option<anyhow::Error> {
-        self.0.lock().as_mut().expect("error").error.take()
-    }
-
-    pub fn commit_tick(&self) -> u32 {
-        self.0.lock().as_ref().expect("commit time").commit_tick
-    }
-
-    pub fn set_round_result(&self, result: BattleResult) {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("set round ending");
-        inner.round_result = Some(RoundResult {
-            tick: inner.current_tick,
-            result,
-        });
-    }
-
-    pub fn set_committed_state(&self, state: mgba::state::State) {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("committed state");
-        let local_packet = inner.local_packet.clone().unwrap();
-        if inner.current_tick != local_packet.tick {
-            panic!(
-                "local packet tick mismatch: {} != {}",
-                inner.current_tick, local_packet.tick
-            );
-        }
-        inner.committed_state = Some(battle::CommittedState {
-            tick: inner.current_tick,
-            state,
-            packet: local_packet.packet,
-        });
-    }
-
-    pub fn take_committed_state(&self) -> Option<battle::CommittedState> {
-        self.0
-            .lock()
-            .as_mut()
-            .expect("committed state")
-            .committed_state
-            .take()
-    }
-
-    pub fn dirty_tick(&self) -> u32 {
-        self.0.lock().as_ref().expect("dirty time").dirty_tick
-    }
-
-    pub fn set_dirty_state(&self, state: mgba::state::State) {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("dirty state");
-        let local_packet = inner.local_packet.clone().unwrap();
-        if inner.current_tick != local_packet.tick {
-            panic!(
-                "local packet tick mismatch: {} != {}",
-                inner.current_tick, local_packet.tick
-            );
-        }
-        inner.dirty_state = Some(battle::CommittedState {
-            tick: inner.current_tick,
-            state,
-            packet: local_packet.packet,
-        });
-    }
-
-    pub fn peek_input_pair(&self) -> Option<input::Pair<input::PartialInput, input::PartialInput>> {
-        self.0
-            .lock()
-            .as_ref()
-            .expect("input pairs")
-            .input_pairs
-            .front()
-            .cloned()
-    }
-
-    pub fn pop_input_pair(&self) -> Option<input::Pair<input::PartialInput, input::PartialInput>> {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("input pairs");
-        inner.input_pairs.pop_front()
-    }
-
-    pub fn apply_shadow_input(
-        &self,
-        input: input::Pair<input::Input, input::PartialInput>,
-    ) -> anyhow::Result<Vec<u8>> {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("apply shadow input");
-        let remote_packet = (inner.apply_shadow_input)(input.clone())?;
-        inner.output_pairs.push(input::Pair {
-            local: input.local,
-            remote: input.remote.with_packet(remote_packet.clone()),
-        });
-        Ok(remote_packet)
-    }
-
-    pub fn set_local_packet(&self, tick: u32, packet: Vec<u8>) {
-        self.0.lock().as_mut().expect("local packet").local_packet =
-            Some(input::Packet { tick, packet });
-    }
-
-    pub fn peek_local_packet(&self) -> Option<input::Packet> {
-        self.0
-            .lock()
-            .as_ref()
-            .expect("local packet")
-            .local_packet
-            .clone()
-    }
-
-    pub fn set_anyhow_error(&self, err: anyhow::Error) {
-        self.0.lock().as_mut().expect("error").error = Some(err);
-    }
-
-    pub fn local_player_index(&self) -> u8 {
-        self.0
-            .lock()
-            .as_ref()
-            .expect("local player index")
-            .local_player_index
-    }
-
-    pub fn remote_player_index(&self) -> u8 {
-        1 - self.local_player_index()
-    }
-
-    pub fn set_round_ending(&self) {
-        self.0.lock().as_mut().expect("set round ending").phase = RoundPhase::Ending;
-    }
-
-    pub fn set_round_ended(&self) {
-        let mut inner = self.0.lock();
-        let inner = inner.as_mut().expect("set round ended");
-        inner.phase = RoundPhase::Ended;
-        (inner.on_round_ended)();
-    }
-
-    pub fn is_round_ending(&self) -> bool {
-        let phase = self.0.lock().as_ref().expect("is round ending").phase;
-        phase == RoundPhase::Ending || phase == RoundPhase::Ended
-    }
-
-    pub fn is_round_ended(&self) -> bool {
-        let phase = self.0.lock().as_ref().expect("is round ended").phase;
-        phase == RoundPhase::Ended
-    }
-
-    pub fn round_result(&self) -> Option<RoundResult> {
-        self.0.lock().as_ref().expect("round result").round_result
-    }
-
-    pub fn input_pairs_left(&self) -> usize {
-        self.0
-            .lock()
-            .as_ref()
-            .expect("input pairs")
-            .input_pairs
-            .len()
-    }
-
-    pub fn current_tick(&self) -> u32 {
-        self.0.lock().as_ref().expect("current tick").current_tick
-    }
-
-    pub fn increment_current_tick(&self) {
-        self.0.lock().as_mut().expect("current tick").current_tick += 1;
+    pub fn lock_inner(&self) -> parking_lot::MappedMutexGuard<'_, InnerState> {
+        parking_lot::MutexGuard::map(self.0.lock(), |s| s.as_mut().unwrap())
     }
 }
 

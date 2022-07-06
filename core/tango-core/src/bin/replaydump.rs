@@ -184,17 +184,24 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    writeln!(std::io::stdout(), "{}", replayer_state.input_pairs_left())?;
+    writeln!(
+        std::io::stdout(),
+        "{}",
+        replayer_state.lock_inner().input_pairs_left()
+    )?;
     loop {
-        if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
-            || replayer_state.is_round_ended()
         {
-            break;
+            let replayer_state = replayer_state.lock_inner();
+            if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
+                || replayer_state.is_round_ended()
+            {
+                break;
+            }
         }
 
         core.as_mut().run_frame();
 
-        if let Some(err) = replayer_state.take_error() {
+        if let Some(err) = replayer_state.lock_inner().take_error() {
             Err(err)?;
         }
 
@@ -232,7 +239,11 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
-        writeln!(std::io::stdout(), "{}", replayer_state.input_pairs_left())?;
+        writeln!(
+            std::io::stdout(),
+            "{}",
+            replayer_state.lock_inner().input_pairs_left()
+        )?;
     }
 
     video_child.stdin = None;
@@ -291,18 +302,21 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.input_pairs_left() == 0 || replayer_state.is_round_ended() {
-            anyhow::bail!("overstepped");
-        }
+        {
+            let mut replayer_state = replayer_state.lock_inner();
+            if replayer_state.input_pairs_left() == 0 || replayer_state.is_round_ended() {
+                anyhow::bail!("overstepped");
+            }
 
-        if let Some(state) = replayer_state.take_committed_state() {
-            std::io::stdout().write_all(state.state.wram())?;
-            std::io::stdout().flush()?;
-            break;
-        }
+            if let Some(state) = replayer_state.take_committed_state() {
+                std::io::stdout().write_all(state.state.wram())?;
+                std::io::stdout().flush()?;
+                break;
+            }
 
-        if let Some(err) = replayer_state.take_error() {
-            Err(err)?;
+            if let Some(err) = replayer_state.take_error() {
+                Err(err)?;
+            }
         }
 
         core.as_mut().run_frame();
@@ -422,18 +436,24 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if replayer_state.input_pairs_left() == 0 || replayer_state.is_round_ended() {
-            break;
+        {
+            let replayer_state = replayer_state.lock_inner();
+            if replayer_state.input_pairs_left() == 0 || replayer_state.is_round_ended() {
+                break;
+            }
         }
 
         core.as_mut().run_frame();
 
-        if let Some(err) = replayer_state.take_error() {
-            Err(err)?;
+        {
+            let mut replayer_state = replayer_state.lock_inner();
+            if let Some(err) = replayer_state.take_error() {
+                Err(err)?;
+            }
         }
     }
 
-    if let Some(result) = replayer_state.round_result() {
+    if let Some(result) = replayer_state.lock_inner().round_result() {
         println!("{}", result.result as u8);
     }
 

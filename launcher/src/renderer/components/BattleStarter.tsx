@@ -1411,7 +1411,9 @@ export default function BattleStarter({
                 setLinkCode(
                   e.target.value
                     .toLowerCase()
+                    .replace(/[\s-]+/g, "-")
                     .replace(/[^a-z0-9-]/g, "")
+                    .replace(/^-/g, "")
                     .slice(0, 40)
                 );
               }}
