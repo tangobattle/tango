@@ -42,7 +42,7 @@
   "mismatching-match-type": "相手と自分のマッチタイプの設定が一致していません。",
   "generate-random-code": "ランダムリンクコードを作成",
   "connection-quality": "{{rtt}} ms",
-  "auto-input-delay": "自動選択",
+  "auto-input-delay": "Suggest",
   "reveal-setup-title": "{{opponentNickname}}さんの構築",
   "missing-patch": "未知のパッチ「{{name}}」",
   "save-viewer-unsupported": "このゲームではセーブビューアーに対応されていません",
