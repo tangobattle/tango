@@ -162,7 +162,7 @@ export async function scan(dir: string) {
               );
               return [
                 {
-                  name: fullRomName.substring(0, delimIdx),
+                  name: fullRomName.substring(0, delimIdx).replace(/@/g, "\0"),
                   revision,
                 },
               ];
