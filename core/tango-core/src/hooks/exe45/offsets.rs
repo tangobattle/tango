@@ -24,6 +24,8 @@ pub(super) struct EWRAMOffsets {
     /// Shared RNG state. Must be synced.
     pub(super) rng2_state: u32,
 
+    pub(super) rng3_state: u32,
+
     /// The state of copying input data, usually returned by get_copy_data_input_state_ret.
     pub(super) copy_data_input_state: u32,
 }
@@ -134,6 +136,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     submenu_control:        0x0200F970,
     rng1_state:             0x02003D58,
     rng2_state:             0x02003F6C,
+    rng3_state:             0x0200481C,
     copy_data_input_state:  0x0203DBBD,
 };
 

@@ -149,7 +149,9 @@ impl hooks::Hooks for EXE45 {
                             );
 
                             // rng2 is the shared rng, it must be synced.
-                            munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                            let rng2_state = generate_rng2_state(&mut *rng);
+                            munger.set_rng2_state(core, rng2_state);
+                            munger.set_rng3_state(core, rng2_state);
 
                             let (battle_settings, background) =
                                 random_battle_settings_and_background(
@@ -442,12 +444,10 @@ impl hooks::Hooks for EXE45 {
                                         &munger.tx_packet(core),
                                     );
                                     log::info!(
-                                        "primary rng1 state: {:08x}",
-                                        munger.rng1_state(core)
-                                    );
-                                    log::info!(
-                                        "primary rng2 state: {:08x}",
-                                        munger.rng2_state(core)
+                                        "primary rng1 state: {:08x}, rng2 state: {:08x}, rng3 state: {:08x}",
+                                        munger.rng1_state(core),
+                                        munger.rng2_state(core),
+                                        munger.rng3_state(core),
                                     );
                                     log::info!(
                                         "battle state committed on {}",
@@ -532,7 +532,9 @@ impl hooks::Hooks for EXE45 {
                         );
 
                         // rng2 is the shared rng, it must be synced.
-                        munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+                        let rng2_state = generate_rng2_state(&mut *rng);
+                        munger.set_rng2_state(core, rng2_state);
+                        munger.set_rng3_state(core, rng2_state);
 
                         let (battle_settings, background) = random_battle_settings_and_background(
                             &mut *rng,
@@ -691,8 +693,12 @@ impl hooks::Hooks for EXE45 {
                                 core.save_state().expect("save state"),
                                 &munger.tx_packet(core),
                             );
-                            log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
-                            log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
+                            log::info!(
+                                "shadow rng1 state: {:08x}, rng2 state: {:08x}, rng3 state: {:08x}",
+                                munger.rng1_state(core),
+                                munger.rng2_state(core),
+                                munger.rng3_state(core)
+                            );
                             log::info!("shadow state committed on {}", round.current_tick());
                             return;
                         }
