@@ -44,5 +44,6 @@
     "iceconfig-endpoint": "ICE設定エンドポイント",
     "patch-repo": "パッチリポジトリ",
     "window-scale": "ウィンドウスケール",
-    "window-scale-suffix": "倍"
+    "window-scale-suffix": "倍",
+    "max-queue-length": "最大キューの長"
 }
