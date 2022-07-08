@@ -122,6 +122,16 @@ impl hooks::Hooks for BN2 {
                             };
 
                             let mut rng = match_.lock_rng().await;
+                            let offerer_rng_state = generate_rng_state(&mut *rng);
+                            let answerer_rng_state = generate_rng_state(&mut *rng);
+                            munger.set_rng_state(
+                                core,
+                                if match_.is_offerer() {
+                                    offerer_rng_state
+                                } else {
+                                    answerer_rng_state
+                                },
+                            );
                             munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
                         });
                     }),
@@ -374,16 +384,8 @@ impl hooks::Hooks for BN2 {
 
                                 if !round.has_committed_state() {
                                     let mut rng = match_.lock_rng().await;
-                                    let offerer_rng_state = generate_rng_state(&mut *rng);
-                                    let answerer_rng_state = generate_rng_state(&mut *rng);
-                                    munger.set_rng_state(
-                                        core,
-                                        if match_.is_offerer() {
-                                            offerer_rng_state
-                                        } else {
-                                            answerer_rng_state
-                                        },
-                                    );
+                                    let rng_state = generate_rng_state(&mut *rng);
+                                    munger.set_rng_state(core, rng_state);
 
                                     round.set_first_committed_state(
                                         core.save_state().expect("save state"),
@@ -570,6 +572,16 @@ impl hooks::Hooks for BN2 {
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
+                        let offerer_rng_state = generate_rng_state(&mut *rng);
+                        let answerer_rng_state = generate_rng_state(&mut *rng);
+                        munger.set_rng_state(
+                            core,
+                            if shadow_state.is_offerer() {
+                                answerer_rng_state
+                            } else {
+                                offerer_rng_state
+                            },
+                        );
                         munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
                     }),
                 )
@@ -682,17 +694,8 @@ impl hooks::Hooks for BN2 {
 
                         if !munger.is_linking(core) && !round.has_first_committed_state() {
                             let mut rng = shadow_state.lock_rng();
-                            let offerer_rng_state = generate_rng_state(&mut *rng);
-                            let answerer_rng_state = generate_rng_state(&mut *rng);
-                            munger.set_rng_state(
-                                core,
-                                if shadow_state.is_offerer() {
-                                    answerer_rng_state
-                                } else {
-                                    offerer_rng_state
-                                },
-                            );
-
+                            let rng_state = generate_rng_state(&mut *rng);
+                            munger.set_rng_state(core, rng_state);
                             return;
                         }
 
