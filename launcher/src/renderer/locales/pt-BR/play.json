@@ -42,7 +42,7 @@
   "mismatching-match-type": "Não coincide com o tipo de partida do seu oponente.",
   "generate-random-code": "Gerar um código aleatório",
   "connection-quality": "{{rtt}} ms",
-  "auto-input-delay": "Suggest",
+  "auto-input-delay": "Sugerir",
   "reveal-setup-title": "Configuração de {{opponentNickname}}",
   "missing-patch": "Patch Desconhecido \"{{name}}\"",
   "save-viewer-unsupported": "O visualizador de save não está disponível para este jogo",
