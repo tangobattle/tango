@@ -113,26 +113,6 @@ impl hooks::Hooks for BN5 {
                             };
 
                             munger.start_battle_from_comm_menu(core, match_.match_type());
-
-                            let mut rng = match_.lock_rng().await;
-
-                            // rng1 is the local rng, it should not be synced.
-                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                            munger.set_rng1_state(
-                                core,
-                                if match_.is_offerer() {
-                                    offerer_rng1_state
-                                } else {
-                                    answerer_rng1_state
-                                },
-                            );
-
-                            // rng2 is the shared rng, it must be synced.
-                            let rng2_state = generate_rng2_state(&mut *rng);
-                            munger.set_rng2_state(core, rng2_state);
-                            munger.set_rng3_state(core, rng2_state);
                         });
                     }),
                 )
@@ -430,6 +410,26 @@ impl hooks::Hooks for BN5 {
                                 };
 
                                 if !round.has_committed_state() {
+                                    let mut rng = match_.lock_rng().await;
+
+                                    // rng1 is the local rng, it should not be synced.
+                                    // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                                    let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                                    let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                                    munger.set_rng1_state(
+                                        core,
+                                        if match_.is_offerer() {
+                                            offerer_rng1_state
+                                        } else {
+                                            answerer_rng1_state
+                                        },
+                                    );
+
+                                    // rng2 is the shared rng, it must be synced.
+                                    let rng2_state = generate_rng2_state(&mut *rng);
+                                    munger.set_rng2_state(core, rng2_state);
+                                    munger.set_rng3_state(core, rng2_state);
+
                                     // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
                                     munger.set_current_tick(core, 0);
 
@@ -535,26 +535,6 @@ impl hooks::Hooks for BN5 {
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
                         munger.start_battle_from_comm_menu(core, shadow_state.match_type());
-
-                        let mut rng = shadow_state.lock_rng();
-
-                        // rng1 is the local rng, it should not be synced.
-                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                        munger.set_rng1_state(
-                            core,
-                            if shadow_state.is_offerer() {
-                                answerer_rng1_state
-                            } else {
-                                offerer_rng1_state
-                            },
-                        );
-
-                        // rng2 is the shared rng, it must be synced.
-                        let rng2_state = generate_rng2_state(&mut *rng);
-                        munger.set_rng2_state(core, rng2_state);
-                        munger.set_rng3_state(core, rng2_state);
                     }),
                 )
             },
@@ -713,6 +693,26 @@ impl hooks::Hooks for BN5 {
                         };
 
                         if !round.has_first_committed_state() {
+                            let mut rng = shadow_state.lock_rng();
+
+                            // rng1 is the local rng, it should not be synced.
+                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                            munger.set_rng1_state(
+                                core,
+                                if shadow_state.is_offerer() {
+                                    answerer_rng1_state
+                                } else {
+                                    offerer_rng1_state
+                                },
+                            );
+
+                            // rng2 is the shared rng, it must be synced.
+                            let rng2_state = generate_rng2_state(&mut *rng);
+                            munger.set_rng2_state(core, rng2_state);
+                            munger.set_rng3_state(core, rng2_state);
+
                             // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
                             munger.set_current_tick(core, 0);
 

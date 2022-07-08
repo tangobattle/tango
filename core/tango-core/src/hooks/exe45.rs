@@ -135,24 +135,6 @@ impl hooks::Hooks for EXE45 {
 
                             let mut rng = match_.lock_rng().await;
 
-                            // rng1 is the local rng, it should not be synced.
-                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                            munger.set_rng1_state(
-                                core,
-                                if match_.is_offerer() {
-                                    offerer_rng1_state
-                                } else {
-                                    answerer_rng1_state
-                                },
-                            );
-
-                            // rng2 is the shared rng, it must be synced.
-                            let rng2_state = generate_rng2_state(&mut *rng);
-                            munger.set_rng2_state(core, rng2_state);
-                            munger.set_rng3_state(core, rng2_state);
-
                             let (battle_settings, background) =
                                 random_battle_settings_and_background(
                                     &mut *rng,
@@ -435,6 +417,26 @@ impl hooks::Hooks for EXE45 {
                                 };
 
                                 if !round.has_committed_state() {
+                                    let mut rng = match_.lock_rng().await;
+
+                                    // rng1 is the local rng, it should not be synced.
+                                    // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                                    let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                                    let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                                    munger.set_rng1_state(
+                                        core,
+                                        if match_.is_offerer() {
+                                            offerer_rng1_state
+                                        } else {
+                                            answerer_rng1_state
+                                        },
+                                    );
+
+                                    // rng2 is the shared rng, it must be synced.
+                                    let rng2_state = generate_rng2_state(&mut *rng);
+                                    munger.set_rng2_state(core, rng2_state);
+                                    munger.set_rng3_state(core, rng2_state);
+
                                     round.set_first_committed_state(
                                         core.save_state().expect("save state"),
                                         match_
@@ -517,24 +519,6 @@ impl hooks::Hooks for EXE45 {
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
-
-                        // rng1 is the local rng, it should not be synced.
-                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                        munger.set_rng1_state(
-                            core,
-                            if shadow_state.is_offerer() {
-                                answerer_rng1_state
-                            } else {
-                                offerer_rng1_state
-                            },
-                        );
-
-                        // rng2 is the shared rng, it must be synced.
-                        let rng2_state = generate_rng2_state(&mut *rng);
-                        munger.set_rng2_state(core, rng2_state);
-                        munger.set_rng3_state(core, rng2_state);
 
                         let (battle_settings, background) = random_battle_settings_and_background(
                             &mut *rng,
@@ -688,6 +672,26 @@ impl hooks::Hooks for EXE45 {
                         };
 
                         if !round.has_first_committed_state() {
+                            let mut rng = shadow_state.lock_rng();
+
+                            // rng1 is the local rng, it should not be synced.
+                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                            munger.set_rng1_state(
+                                core,
+                                if shadow_state.is_offerer() {
+                                    answerer_rng1_state
+                                } else {
+                                    offerer_rng1_state
+                                },
+                            );
+
+                            // rng2 is the shared rng, it must be synced.
+                            let rng2_state = generate_rng2_state(&mut *rng);
+                            munger.set_rng2_state(core, rng2_state);
+                            munger.set_rng3_state(core, rng2_state);
+
                             // HACK: For some inexplicable reason, we don't always start on tick 0.
                             round.set_first_committed_state(
                                 core.save_state().expect("save state"),
