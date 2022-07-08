@@ -209,6 +209,16 @@ function AboutTab({ active }: { active: boolean }) {
               for the Brazilian Portuguese translation.
             </li>
             <li>
+              <Link href="https://twitter.com/Sheriel_Phoenix" target="_blank">
+                Sheriel Phoenix
+              </Link>{" "}
+              and{" "}
+              <Link href="https://twitter.com/justplayfly" target="_blank">
+                Justplay
+              </Link>{" "}
+              for the French translation.
+            </li>
+            <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
               </Link>
