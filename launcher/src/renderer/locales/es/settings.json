@@ -45,5 +45,5 @@
     "patch-repo": "Repositorio de parches",
     "window-scale": "Tamaño de ventana",
     "window-scale-suffix": "x",
-    "max-queue-length": "Max queue length"
+    "max-queue-length": "Máximo largo de la cola"
 }
