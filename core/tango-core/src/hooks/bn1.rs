@@ -107,19 +107,12 @@ impl hooks::Hooks for BN2 {
         };
         vec![
             {
-                let facade = facade.clone();
                 let handle = handle.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
-                                Some(match_) => match_,
-                                None => {
-                                    return;
-                                }
-                            };
                             munger.start_battle_from_comm_menu(core);
                         });
                     }),
@@ -488,7 +481,6 @@ impl hooks::Hooks for BN2 {
         vec![
             {
                 let munger = self.munger.clone();
-                let shadow_state = shadow_state.clone();
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
