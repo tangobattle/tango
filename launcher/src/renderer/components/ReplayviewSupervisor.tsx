@@ -40,9 +40,12 @@ export default function ReplayviewSupervisor({
   const romPath = getROMPath(romName);
   const patchPath = patch != null ? getPatchPath(romName, patch) : null;
 
+  const outFullROMName = `${romName}${
+    patch != null ? `+${patch.name}-v${patch.version}` : ""
+  }`;
   const outROMPath = path.join(
     tempDir,
-    `${romName}${patch != null ? `+${patch.name}-v${patch.version}` : ""}.gba`
+    `${outFullROMName.replace(/\0/g, "@")}.gba`
   );
 
   const onExitRef = React.useRef(onExit);

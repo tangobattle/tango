@@ -119,31 +119,14 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
 
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = {
-        tango_core::replayer::State::new(
-            replay.local_player_index,
-            input_pairs,
-            0,
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    if !replay.is_complete || args.assume_incomplete {
-                        done.store(true, std::sync::atomic::Ordering::Relaxed);
-                    }
-                })
-            },
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-        )
-    };
+    let replayer_state = tango_core::replayer::State::new(
+        replay.local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {}),
+    );
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
@@ -201,17 +184,27 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
+    writeln!(
+        std::io::stdout(),
+        "{}",
+        replayer_state.lock_inner().input_pairs_left()
+    )?;
     loop {
-        if done.load(std::sync::atomic::Ordering::Relaxed) {
-            break;
-        }
-
-        if let Some(err) = replayer_state.take_error() {
-            Err(err)?;
+        {
+            let replayer_state = replayer_state.lock_inner();
+            if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
+                || replayer_state.is_round_ended()
+            {
+                break;
+            }
         }
 
         core.as_mut().run_frame();
+
+        if let Some(err) = replayer_state.lock_inner().take_error() {
+            Err(err)?;
+        }
+
         let clock_rate = core.as_ref().frequency();
         let n = {
             let mut core = core.as_mut();
@@ -246,7 +239,11 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
-        writeln!(std::io::stdout(), "{}", replayer_state.inputs_pairs_left())?;
+        writeln!(
+            std::io::stdout(),
+            "{}",
+            replayer_state.lock_inner().input_pairs_left()
+        )?;
     }
 
     video_child.stdin = None;
@@ -285,26 +282,13 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_rom(vf)?;
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
     let input_pairs = replay.input_pairs.clone();
 
     let replayer_state = tango_core::replayer::State::new(
         replay.local_player_index,
         input_pairs,
         args.steps,
-        {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        },
-        {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        },
+        Box::new(|| {}),
     );
 
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
@@ -318,18 +302,21 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if done.load(std::sync::atomic::Ordering::Relaxed) {
-            anyhow::bail!("overstepped");
-        }
+        {
+            let mut replayer_state = replayer_state.lock_inner();
+            if replayer_state.input_pairs_left() == 0 || replayer_state.is_round_ended() {
+                anyhow::bail!("overstepped");
+            }
 
-        if let Some(state) = replayer_state.take_committed_state() {
-            std::io::stdout().write_all(state.wram())?;
-            std::io::stdout().flush()?;
-            break;
-        }
+            if let Some(state) = replayer_state.take_committed_state() {
+                std::io::stdout().write_all(state.state.wram())?;
+                std::io::stdout().flush()?;
+                break;
+            }
 
-        if let Some(err) = replayer_state.take_error() {
-            Err(err)?;
+            if let Some(err) = replayer_state.take_error() {
+                Err(err)?;
+            }
         }
 
         core.as_mut().run_frame();
@@ -342,7 +329,11 @@ fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), a
     for ip in &replay.input_pairs {
         println!(
             "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
-            ip.local.local_tick, ip.local.joyflags, ip.local.rx, ip.remote.joyflags, ip.remote.rx,
+            ip.local.local_tick,
+            ip.local.joyflags,
+            ip.local.packet,
+            ip.remote.joyflags,
+            ip.remote.packet,
         );
     }
     Ok(())
@@ -370,18 +361,18 @@ fn dump_input_info(
     for ip in &replay.input_pairs {
         side_dependent_sha3.update(
             &ip.local
-                .rx
+                .packet
                 .iter()
-                .zip(ip.remote.rx.iter())
+                .zip(ip.remote.packet.iter())
                 .flat_map(|(x, y)| [*x, *y])
                 .collect::<Vec<_>>(),
         );
 
         side_independent_sha3.update(
             &ip.local
-                .rx
+                .packet
                 .iter()
-                .zip(ip.remote.rx.iter())
+                .zip(ip.remote.packet.iter())
                 .map(|(x, y)| *x ^ *y)
                 .collect::<Vec<_>>(),
         );
@@ -426,29 +417,14 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_rom(vf)?;
     core.as_mut().reset();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = {
-        tango_core::replayer::State::new(
-            replay.local_player_index,
-            input_pairs,
-            0,
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-            {
-                let done = done.clone();
-                Box::new(move || {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                })
-            },
-        )
-    };
+    let replayer_state = tango_core::replayer::State::new(
+        replay.local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {}),
+    );
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
@@ -460,19 +436,25 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
     core.as_mut().load_state(&replay.local_state.unwrap())?;
 
     loop {
-        if done.load(std::sync::atomic::Ordering::Relaxed) {
-            break;
-        }
-
-        if let Some(err) = replayer_state.take_error() {
-            Err(err)?;
+        {
+            let replayer_state = replayer_state.lock_inner();
+            if replayer_state.input_pairs_left() == 0 || replayer_state.is_round_ended() {
+                break;
+            }
         }
 
         core.as_mut().run_frame();
+
+        {
+            let mut replayer_state = replayer_state.lock_inner();
+            if let Some(err) = replayer_state.take_error() {
+                Err(err)?;
+            }
+        }
     }
 
-    if let Some(result) = replayer_state.round_result() {
-        println!("{}", result as u8);
+    if let Some(result) = replayer_state.lock_inner().round_result() {
+        println!("{}", result.result as u8);
     }
 
     Ok(())

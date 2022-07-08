@@ -50,6 +50,7 @@ message ToCoreMessage {
       bytes replay_metadata = 7;
       bytes rng_seed = 8;
       optional string opponent_nickname = 9;
+      uint32 max_queue_length = 10;
     }
 
     MatchSettings settings = 5;

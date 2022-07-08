@@ -54,7 +54,7 @@ pub(super) struct ROMOffsets {
 
     pub(super) process_battle_input_ret: u32,
 
-    pub(super) handle_input_post_call: u32,
+    pub(super) round_call_jump_table_ret: u32,
 
     /// This hooks the point after the battle start routine is complete.
     ///
@@ -125,7 +125,7 @@ pub static MEGA_EXE3_BLA3XE_00: Offsets = Offsets {
         handle_input_update_send_and_receive_call:  0x080086a8,
         handle_input_deinit_send_and_receive_call:  0x0800877e,
         process_battle_input_ret:                   0x08008af0,
-        handle_input_post_call:                     0x0800643e,
+        round_call_jump_table_ret:                  0x08006470,
         round_start_ret:                            0x080059a8,
         round_end_set_win:                          0x0800946a,
         round_end_set_loss:                         0x08009472,
@@ -155,7 +155,7 @@ pub static MEGA_EXE3_WHA6BE_00: Offsets = Offsets {
         handle_input_update_send_and_receive_call:  0x080086a8,
         handle_input_deinit_send_and_receive_call:  0x0800877e,
         process_battle_input_ret:                   0x08008af0,
-        handle_input_post_call:                     0x0800643e,
+        round_call_jump_table_ret:                  0x08006470,
         round_start_ret:                            0x080059a8,
         round_end_set_win:                          0x0800946a,
         round_end_set_loss:                         0x08009472,
@@ -185,7 +185,7 @@ pub static ROCK_EXE3_BKA3XJ_01: Offsets = Offsets {
         handle_input_update_send_and_receive_call:  0x0800863c,
         handle_input_deinit_send_and_receive_call:  0x08008712,
         process_battle_input_ret:                   0x08008a84,
-        handle_input_post_call:                     0x080063d2,
+        round_call_jump_table_ret:                  0x08006404,
         round_start_ret:                            0x0800593c,
         round_end_set_win:                          0x080093e6,
         round_end_set_loss:                         0x080093ee,
@@ -215,7 +215,7 @@ pub static ROCKMAN_EXE3A6BJ_01: Offsets = Offsets {
         handle_input_update_send_and_receive_call:  0x0800863c,
         handle_input_deinit_send_and_receive_call:  0x08008712,
         process_battle_input_ret:                   0x08008a84,
-        handle_input_post_call:                     0x080063d2,
+        round_call_jump_table_ret:                  0x08006404,
         round_start_ret:                            0x0800593c,
         round_end_set_win:                          0x080093e6,
         round_end_set_loss:                         0x080093ee,

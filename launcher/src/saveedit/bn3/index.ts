@@ -38,7 +38,11 @@ function getChecksum(dv: DataView) {
   return dv.getUint32(CHECKSUM_OFFSET, true);
 }
 
-function computeChecksum(dv: DataView) {
+function computeChecksum(dv: DataView, version: string) {
+  return computeChecksumRaw(dv) + CHECKSUM_START[version];
+}
+
+function computeChecksumRaw(dv: DataView) {
   let checksum = 0;
   const arr = new Uint8Array(dv.buffer, 0, dv.buffer.byteLength);
   for (let i = 0; i < dv.buffer.byteLength; ++i) {
@@ -56,7 +60,7 @@ export class Editor {
   dv: DataView;
   private romName: string;
 
-  constructor(buffer: ArrayBuffer, romName: string, _verifyChecksum = true) {
+  constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
   }
@@ -99,7 +103,7 @@ export class Editor {
     }
 
     const checksum = getChecksum(dv);
-    const computedChecksum = computeChecksum(dv);
+    const computedChecksum = computeChecksumRaw(dv);
 
     const romNames = [];
 
@@ -116,6 +120,18 @@ export class Editor {
     }
 
     return romNames;
+  }
+
+  getChecksum() {
+    return getChecksum(this.dv);
+  }
+
+  rebuildChecksum() {
+    return this.dv.setUint32(CHECKSUM_OFFSET, this.computeChecksum(), true);
+  }
+
+  computeChecksum() {
+    return computeChecksum(this.dv, this.getGameInfo().version);
   }
 
   rebuild() {

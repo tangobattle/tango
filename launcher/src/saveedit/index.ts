@@ -1,8 +1,10 @@
+import * as bn1 from "./bn1";
+import * as bn2 from "./bn2";
 import * as bn3 from "./bn3";
 import * as bn4 from "./bn4";
-import * as exe45 from "./exe45";
 import * as bn5 from "./bn5";
 import * as bn6 from "./bn6";
+import * as exe45 from "./exe45";
 
 export interface GameInfo {
   region: "US" | "JP" | "PL";
@@ -56,7 +58,7 @@ export interface Modcard {
 }
 
 export interface EditorClass {
-  new (buffer: ArrayBuffer, romName: string, verifyChecksum: boolean): Editor;
+  new (buffer: ArrayBuffer, romName: string): Editor;
   sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
   sniff(buffer: ArrayBuffer): string[];
 }
@@ -107,6 +109,8 @@ export interface ModcardsEditor {
 }
 
 const EDITORS: { [key: string]: EditorClass } = {
+  bn1: bn1.Editor,
+  bn2: bn2.Editor,
   bn3: bn3.Editor,
   bn4: bn4.Editor,
   exe45: exe45.Editor,
@@ -116,6 +120,12 @@ const EDITORS: { [key: string]: EditorClass } = {
 
 export function editorClassForGameFamily(family: string): EditorClass {
   switch (family) {
+    case "bn1":
+    case "exe1":
+      return bn2.Editor;
+    case "bn2":
+    case "exe2":
+      return bn2.Editor;
     case "bn3":
     case "exe3":
       return bn3.Editor;
@@ -123,7 +133,7 @@ export function editorClassForGameFamily(family: string): EditorClass {
     case "exe4":
       return bn4.Editor;
     case "exe45":
-        return exe45.Editor;
+      return exe45.Editor;
     case "bn5":
     case "exe5":
       return bn5.Editor;

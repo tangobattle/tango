@@ -56,13 +56,16 @@ import { GetRequest, GetResponse } from "../../protos/generated/iceconfig";
 import {
     FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest
 } from "../../protos/generated/ipc";
-import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/generated/lobby";
+import {
+    GameInfo, GameInfo_Patch, Message, NegotiatedState, SetSettings
+} from "../../protos/generated/lobby";
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
 import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { fallbackLng } from "../i18n";
+import { requestAttention } from "../platform";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
 import { usePatches } from "./PatchesContext";
@@ -412,15 +415,16 @@ async function runCallback(
 
   if (linkCode == "") {
     // No link code to worry about, just start the game with no settings.
+    const outFullROMName = `${ref.current.gameInfo!.rom}${
+      ref.current.gameInfo!.patch != null
+        ? `+${ref.current.gameInfo!.patch.name}-v${
+            ref.current.gameInfo!.patch.version
+          }`
+        : ""
+    }`;
     const outROMPath = path.join(
       ref.current.tempDir,
-      `${ref.current.gameInfo!.rom}${
-        ref.current.gameInfo!.patch != null
-          ? `+${ref.current.gameInfo!.patch.name}-v${
-              ref.current.gameInfo!.patch.version
-            }`
-          : ""
-      }.gba`
+      `${outFullROMName.replace(/\0/g, "@")}.gba`
     );
     await makeROM(
       ref.current.getROMPath(ref.current.gameInfo!.rom),
@@ -447,6 +451,8 @@ async function runCallback(
       },
     });
   } else {
+    requestAttention(app);
+
     // Need to negotiate settings with the opponent.
     const myPendingSettings: SetSettings = {
       nickname: ref.current.config.nickname!,
@@ -656,10 +662,9 @@ async function runCallback(
         ? `+${ownGameInfo.patch.name}-v${ownGameInfo.patch.version}`
         : ""
     }`;
-
     const outOwnROMPath = path.join(
       ref.current.tempDir,
-      `${ownFullROMName}.gba`
+      `${ownFullROMName.replace(/\0/g, "@")}.gba`
     );
     await makeROM(
       ref.current.getROMPath(ownGameInfo.rom),
@@ -672,13 +677,14 @@ async function runCallback(
     const opponentGameSettings = ref.current.pendingStates!.opponent!.settings;
     const opponentGameInfo = opponentGameSettings.gameInfo!;
 
+    const opponentFullROMName = `${opponentGameInfo.rom}${
+      opponentGameInfo.patch != null
+        ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
+        : ""
+    }`;
     const outOpponentROMPath = path.join(
       ref.current.tempDir,
-      `${opponentGameInfo.rom}${
-        opponentGameInfo.patch != null
-          ? `+${opponentGameInfo.patch.name}-v${opponentGameInfo.patch.version}`
-          : ""
-      }.gba`
+      `${opponentFullROMName.replace(/\0/g, "@")}.gba`
     );
     await makeROM(
       ref.current.getROMPath(opponentGameInfo.rom),
@@ -693,7 +699,7 @@ async function runCallback(
     const prefix = `${datefns.format(
       now,
       "yyyyMMddHHmmss"
-    )}-${ownFullROMName}-vs-${removeBadPathCharacters(
+    )}-${ownFullROMName.replace(/\0/g, "@")}-vs-${removeBadPathCharacters(
       opponentGameSettings.nickname
     )}-${linkCode}`;
 
@@ -707,8 +713,7 @@ async function runCallback(
       ref.current.setRevealedSetupEditor(
         new Editor(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
-          opponentGameInfo.rom,
-          false
+          opponentGameInfo.rom
         )
       );
     }
@@ -744,6 +749,7 @@ async function runCallback(
             revealSetup: opponentGameSettings.revealSetup,
           },
         }).finish(),
+        maxQueueLength: config.maxQueueLength,
         rngSeed,
       },
     } as ToCoreMessage_StartRequest;
@@ -848,15 +854,32 @@ interface PendingStates {
   } | null;
 }
 
+interface TrivializedSettings {
+  matchType: number;
+  gameFamily: string | null;
+  patch: GameInfo_Patch | null;
+  revealSetup: boolean;
+}
+
+function trivializeSettings(settings: SetSettings): TrivializedSettings {
+  return {
+    matchType: settings.matchType,
+    gameFamily:
+      settings.gameInfo != null
+        ? FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
+        : null,
+    patch: (settings.gameInfo != null ? settings.gameInfo.patch : null) ?? null,
+    revealSetup: settings.revealSetup,
+  };
+}
+
 function isSettingsChangeTrivial(
   previousSettings: SetSettings,
   settings: SetSettings
 ) {
-  return (
-    previousSettings.gameInfo != null &&
-    settings.gameInfo != null &&
-    FAMILY_BY_ROM_NAME[previousSettings.gameInfo.rom] ==
-      FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
+  return isEqual(
+    trivializeSettings(previousSettings),
+    trivializeSettings(settings)
   );
 }
 
@@ -1388,7 +1411,9 @@ export default function BattleStarter({
                 setLinkCode(
                   e.target.value
                     .toLowerCase()
+                    .replace(/[\s-]+/g, "-")
                     .replace(/[^a-z0-9-]/g, "")
+                    .replace(/^-/g, "")
                     .slice(0, 40)
                 );
               }}

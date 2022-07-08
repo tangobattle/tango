@@ -2,7 +2,7 @@ import { isEqual, sortBy } from "lodash-es";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
-import { app, BrowserWindow, dialog, shell } from "@electron/remote";
+import { app, dialog, shell } from "@electron/remote";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
@@ -33,6 +33,7 @@ import Typography from "@mui/material/Typography";
 import { Config } from "../../../config";
 import { captureInput } from "../../../input";
 import { LANGUAGES } from "../../i18n";
+import { getMainWindow } from "../../platform";
 import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
@@ -202,8 +203,8 @@ function AboutTab({ active }: { active: boolean }) {
                 Darkgaia
               </Link>{" "}
               and{" "}
-              <Link href="" target="_blank">
-                killb
+              <Link href="https://twitter.com/mushiguchi" target="_blank">
+                mushiguchi
               </Link>{" "}
               for the Brazilian Portuguese translation.
             </li>
@@ -400,6 +401,29 @@ function AdvancedTab({ active }: { active: boolean }) {
             label={<Trans i18nKey="settings:rust-log-filter" />}
           />
           <TextField
+            variant="outlined"
+            size="small"
+            type="number"
+            label={<Trans i18nKey="settings:max-queue-length" />}
+            value={config.maxQueueLength}
+            onChange={(e) => {
+              let v = parseInt(e.target.value);
+              if (isNaN(v)) {
+                v = 60;
+              }
+              saveConfig((config) => ({
+                ...config,
+                maxQueueLength: Math.min(Math.max(v, 0), 6000),
+              }));
+            }}
+            InputProps={{
+              inputProps: {
+                min: 0,
+                max: 6000,
+              },
+            }}
+          />
+          <TextField
             size="small"
             fullWidth
             value={config.endpoints.replaycollector}
@@ -511,7 +535,7 @@ function DirectoryField(
   const { value, onPathChange, ...rest } = props;
   const onClick = React.useCallback(() => {
     const fn =
-      dialog.showOpenDialogSync(BrowserWindow.getFocusedWindow()!, {
+      dialog.showOpenDialogSync(getMainWindow(), {
         defaultPath: value,
         properties: ["openDirectory"],
       }) || [];

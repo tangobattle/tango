@@ -14,6 +14,7 @@ export interface Config {
   updateChannel: string;
   rustLogFilter: string;
   windowScale: number;
+  maxQueueLength: number;
   inputMapping: {
     up: PhysicalInput[];
     down: PhysicalInput[];
@@ -66,6 +67,7 @@ function defaultConfig(app: Electron.App): Config {
     updateChannel: "latest",
     rustLogFilter: "",
     windowScale: 3,
+    maxQueueLength: 1200,
     inputMapping: {
       up: [{ Key: "Up" }, { Button: "dpup" }, { Axis: ["lefty", -1] }],
       down: [{ Key: "Down" }, { Button: "dpdown" }, { Axis: ["lefty", 1] }],

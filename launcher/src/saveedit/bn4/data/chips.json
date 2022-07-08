@@ -5259,6 +5259,8 @@
     "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 1,
     "name": {
       "en": "Marking",
       "ja": "マーキング"
@@ -5266,9 +5268,18 @@
     "description": {
       "en": "Chase the\nenemy and\nattack!",
       "ja": "ねらったあいてに\nピッタリはりついて\n攻撃する!"
-    }
+    },
+    "element": "null",
+    "codes": "*",
+    "mb": 10,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 2,
     "name": {
       "en": "CannMode",
       "ja": "キャノンモード"
@@ -5276,9 +5287,18 @@
     "description": {
       "en": "Briefly\nfire many\nCannons",
       "ja": "しばらくのあいだ\nキャノンを\nうちまくる!"
-    }
+    },
+    "element": "null",
+    "codes": "ACE",
+    "mb": 30,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 3,
     "name": {
       "en": "CannBall",
       "ja": "ホウガンモード"
@@ -5286,9 +5306,18 @@
     "description": {
       "en": "Briefly\nthrw many\nCannBalls",
       "ja": "しばらくのあいだ\nホウガンを\nなげまくる!"
-    }
+    },
+    "element": "null",
+    "codes": "BHK",
+    "mb": 30,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 4,
     "name": {
       "en": "SwrdMode",
       "ja": "ソードモード"
@@ -5296,9 +5325,18 @@
     "description": {
       "en": "Briefly\nslsh many\nLongSwrds",
       "ja": "しばらくのあいだ\nロングソードで\nきりつけまくる!"
-    }
+    },
+    "element": "null",
+    "codes": "KLS",
+    "mb": 30,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 5,
     "name": {
       "en": "FirePlus",
       "ja": "ファイアプラス"
@@ -5306,9 +5344,18 @@
     "description": {
       "en": "Temporary\nFire chip\ndmg +40",
       "ja": "いっていじかん\n炎属性チップの\n攻撃力が+40"
-    }
+    },
+    "element": "null",
+    "codes": "*",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 6,
     "name": {
       "en": "ThunPlus",
       "ja": "サンダープラス"
@@ -5316,9 +5363,18 @@
     "description": {
       "en": "Temporary\nElec chip\ndmg +40",
       "ja": "いっていじかん\n電気属性チップの\n攻撃力が+40"
-    }
+    },
+    "element": "null",
+    "codes": "*",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 7,
     "name": {
       "en": "AquaPowr",
       "ja": "アクアパワー"
@@ -5326,9 +5382,18 @@
     "description": {
       "en": "Temporary\nAqua chip\ndmg ×2!",
       "ja": "いっていじかん\n水属性チップの\n攻撃力が2ばい!"
-    }
+    },
+    "element": "null",
+    "codes": "*",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 8,
     "name": {
       "en": "WoodPowr",
       "ja": "ウッドパワー"
@@ -5336,9 +5401,18 @@
     "description": {
       "en": "Temporary\nWood chip\ndmg ×2!",
       "ja": "いっていじかん\n木属性チップの\n攻撃力が2ばい!"
-    }
+    },
+    "element": "null",
+    "codes": "*",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 9,
     "name": {
       "en": "BlakWeap",
       "ja": "ブラックウエポン"
@@ -5346,9 +5420,18 @@
     "description": {
       "en": "Power up\nBuster w/\nown HP",
       "ja": "みずからのHPを\n攻撃力にかえて\nバスターをきょうか"
-    }
+    },
+    "element": "null",
+    "codes": "*",
+    "mb": 64,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 10,
     "name": {
       "en": "FinalGun",
       "ja": "ファイナルガン"
@@ -5356,7 +5439,14 @@
     "description": {
       "en": "Charge up\nultimate\nattack!",
       "ja": "すべてのパワーを\nチャージしてはなつ\nきゅうきょく攻撃!"
-    }
+    },
+    "element": "null",
+    "codes": "F",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 50,
+    "class": "giga"
   },
   null,
   null,

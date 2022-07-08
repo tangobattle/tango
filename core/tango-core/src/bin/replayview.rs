@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+pub const EXPECTED_FPS: f32 = 60.0;
+
 use clap::Parser;
 
 #[derive(clap::Parser)]
@@ -23,7 +25,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let args = Cli::parse();
 
-    let mut f = std::fs::File::open(args.path)?;
+    let mut f = std::fs::File::open(args.path.clone())?;
 
     let replay = tango_core::replay::Replay::decode(&mut f)?;
 
@@ -63,7 +65,6 @@ fn main() -> Result<(), anyhow::Error> {
         .build()
         .unwrap();
 
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     let local_player_index = if !args.remote {
@@ -83,20 +84,9 @@ fn main() -> Result<(), anyhow::Error> {
         local_player_index,
         input_pairs,
         0,
-        {
-            let done = done.clone();
-            Box::new(move || {
-                if !replay.is_complete {
-                    done.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
-            })
-        },
-        {
-            let done = done.clone();
-            Box::new(move || {
-                done.store(true, std::sync::atomic::Ordering::Relaxed);
-            })
-        },
+        Box::new(|| {
+            std::process::exit(0);
+        }),
     );
     let mut traps = hooks.common_traps();
     traps.extend(hooks.replayer_traps(replayer_state.clone()));
@@ -164,24 +154,68 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .unwrap();
 
-        let vbuf = vbuf;
+        let mut input_state = sdl2_input_helper::State::new();
+
+        let mut take_screenshot_pressed = false;
         'toplevel: loop {
+            let mut taking_screenshot = false;
             for event in event_loop.poll_iter() {
                 match event {
                     sdl2::event::Event::Quit { .. } => break 'toplevel,
                     _ => {}
                 }
-            }
-            if let Some(err) = replayer_state.take_error() {
-                Err(err)?;
+
+                if input_state.handle_event(&event) {
+                    let last_take_screenshot_pressed = take_screenshot_pressed;
+                    take_screenshot_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::S);
+                    taking_screenshot = take_screenshot_pressed && !last_take_screenshot_pressed;
+                }
+
+                let audio_guard = thread_handle.lock_audio();
+                audio_guard.sync_mut().set_fps_target(
+                    if input_state.is_key_pressed(sdl2::keyboard::Scancode::Tab) {
+                        EXPECTED_FPS * 2.0
+                    } else {
+                        EXPECTED_FPS
+                    },
+                );
             }
 
-            if done.load(std::sync::atomic::Ordering::Relaxed) {
-                break 'toplevel;
-            }
+            let vbuf = {
+                let mut replayer_state = replayer_state.lock_inner();
+                if let Some(err) = replayer_state.take_error() {
+                    Err(err)?;
+                }
+
+                if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
+                    || replayer_state.is_round_ended()
+                {
+                    break 'toplevel;
+                }
+
+                let current_tick = replayer_state.current_tick();
+
+                let vbuf = vbuf.lock();
+                if taking_screenshot {
+                    let ss_f = std::fs::File::create(format!(
+                        "{}-tick{}.png",
+                        args.path.clone().with_extension("").to_str().unwrap(),
+                        current_tick
+                    ))?;
+                    let mut encoder =
+                        png::Encoder::new(ss_f, mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT);
+                    encoder.set_color(png::ColorType::Rgba);
+                    encoder.set_depth(png::BitDepth::Eight);
+                    let mut writer = encoder.write_header().unwrap();
+                    writer.write_image_data(&*vbuf)?;
+                }
+
+                vbuf
+            };
 
             texture
-                .update(None, &*vbuf.lock(), mgba::gba::SCREEN_WIDTH as usize * 4)
+                .update(None, &*vbuf, mgba::gba::SCREEN_WIDTH as usize * 4)
                 .unwrap();
             canvas.clear();
             canvas.copy(&texture, None, None).unwrap();

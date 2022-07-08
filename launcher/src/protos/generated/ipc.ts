@@ -154,6 +154,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   replayMetadata: Uint8Array;
   rngSeed: Uint8Array;
   opponentNickname?: string | undefined;
+  maxQueueLength: number;
 }
 
 export interface ToCoreMessage_SmuggleRequest {
@@ -766,6 +767,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     replayMetadata: new Uint8Array(),
     rngSeed: new Uint8Array(),
     opponentNickname: undefined,
+    maxQueueLength: 0,
   };
 }
 
@@ -800,6 +802,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     }
     if (message.opponentNickname !== undefined) {
       writer.uint32(74).string(message.opponentNickname);
+    }
+    if (message.maxQueueLength !== 0) {
+      writer.uint32(80).uint32(message.maxQueueLength);
     }
     return writer;
   },
@@ -841,6 +846,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         case 9:
           message.opponentNickname = reader.string();
           break;
+        case 10:
+          message.maxQueueLength = reader.uint32();
+          break;
         default:
           reader.skipType(tag & 7);
           break;
@@ -872,6 +880,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       opponentNickname: isSet(object.opponentNickname)
         ? String(object.opponentNickname)
         : undefined,
+      maxQueueLength: isSet(object.maxQueueLength)
+        ? Number(object.maxQueueLength)
+        : 0,
     };
   },
 
@@ -901,6 +912,8 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       ));
     message.opponentNickname !== undefined &&
       (obj.opponentNickname = message.opponentNickname);
+    message.maxQueueLength !== undefined &&
+      (obj.maxQueueLength = Math.round(message.maxQueueLength));
     return obj;
   },
 
@@ -917,6 +930,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.replayMetadata = object.replayMetadata ?? new Uint8Array();
     message.rngSeed = object.rngSeed ?? new Uint8Array();
     message.opponentNickname = object.opponentNickname ?? undefined;
+    message.maxQueueLength = object.maxQueueLength ?? 0;
     return message;
   },
 };

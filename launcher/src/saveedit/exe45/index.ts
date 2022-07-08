@@ -1,4 +1,4 @@
-import CHIPS from "./data/chips.json";
+import CHIPS from "../bn4/data/chips.json";
 
 export { CHIPS };
 
@@ -9,6 +9,24 @@ const SRAM_SIZE = 0xc7a8;
 const MASK_OFFSET = 0x3c84;
 const GAME_NAME_OFFSET = 0x4ba8;
 const CHECKSUM_OFFSET = 0x4b88;
+
+function getChecksum(dv: DataView) {
+  return dv.getUint32(CHECKSUM_OFFSET, true);
+}
+
+function computeChecksum(dv: DataView) {
+  let checksum = 0x38;
+  const arr = new Uint8Array(dv.buffer, dv.byteOffset, dv.buffer.byteLength);
+  for (let i = 0; i < arr.length; ++i) {
+    if (i == CHECKSUM_OFFSET) {
+      // Don't include the checksum itself in the checksum.
+      i += 3;
+      continue;
+    }
+    checksum += arr[i];
+  }
+  return checksum;
+}
 
 function maskSave(dv: DataView) {
   const mask = dv.getUint32(MASK_OFFSET, true);
@@ -170,20 +188,20 @@ export class Editor {
       throw "unknown game name: " + gn;
     }
 
+    if (computeChecksum(dv) != getChecksum(dv)) {
+      throw "checksum mismatch";
+    }
+
     return ["ROCKEXE4.5ROBR4J"];
   }
 
-  constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
+  constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
-
-    if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
-      throw "checksum does not match";
-    }
   }
 
   getChecksum() {
-    return this.dv.getUint32(CHECKSUM_OFFSET, true);
+    return getChecksum(this.dv);
   }
 
   rebuildChecksum() {
@@ -191,21 +209,7 @@ export class Editor {
   }
 
   computeChecksum() {
-    let checksum = 0x38;
-    const arr = new Uint8Array(
-      this.dv.buffer,
-      this.dv.byteOffset,
-      this.dv.buffer.byteLength
-    );
-    for (let i = 0; i < arr.length; ++i) {
-      if (i == CHECKSUM_OFFSET) {
-        // Don't include the checksum itself in the checksum.
-        i += 3;
-        continue;
-      }
-      checksum += arr[i];
-    }
-    return checksum;
+    return computeChecksum(this.dv);
   }
 
   rebuild() {

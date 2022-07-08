@@ -102,10 +102,9 @@ impl Replay {
                 } else {
                     break;
                 },
-                rx: vec![0u8; input_raw_size],
-                is_prediction: false,
+                packet: vec![0u8; input_raw_size],
             };
-            if zr.read_exact(&mut p1_input.rx).is_err() {
+            if zr.read_exact(&mut p1_input.packet).is_err() {
                 break;
             }
 
@@ -117,10 +116,9 @@ impl Replay {
                 } else {
                     break;
                 },
-                rx: vec![0u8; input_raw_size],
-                is_prediction: false,
+                packet: vec![0u8; input_raw_size],
             };
-            if zr.read_exact(&mut p2_input.rx).is_err() {
+            if zr.read_exact(&mut p2_input.packet).is_err() {
                 break;
             }
 
@@ -200,12 +198,12 @@ impl Writer {
             .as_mut()
             .unwrap()
             .write_u16::<byteorder::LittleEndian>(p1.joyflags)?;
-        self.encoder.as_mut().unwrap().write_all(&p1.rx)?;
+        self.encoder.as_mut().unwrap().write_all(&p1.packet)?;
         self.encoder
             .as_mut()
             .unwrap()
             .write_u16::<byteorder::LittleEndian>(p2.joyflags)?;
-        self.encoder.as_mut().unwrap().write_all(&p2.rx)?;
+        self.encoder.as_mut().unwrap().write_all(&p2.packet)?;
 
         self.num_inputs += 1;
         Ok(())

@@ -18,8 +18,9 @@ pub enum BattleResult {
 
 #[derive(Clone)]
 pub struct CommittedState {
-    state: mgba::state::State,
-    tick: u32,
+    pub state: mgba::state::State,
+    pub tick: u32,
+    pub packet: Vec<u8>,
 }
 
 pub struct MatchInit {
@@ -38,6 +39,7 @@ pub struct Settings {
     pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
     pub opponent_nickname: Option<String>,
+    pub max_queue_length: usize,
 }
 
 pub struct RoundState {
@@ -49,16 +51,9 @@ pub struct RoundState {
 
 impl RoundState {
     pub async fn end_round(&mut self) -> anyhow::Result<()> {
-        log::info!("round ended");
-
         match self.round.take() {
-            Some(mut round) => {
-                round
-                    .replay_writer
-                    .take()
-                    .unwrap()
-                    .finish()
-                    .expect("finish");
+            Some(round) => {
+                log::info!("round ended at {:x}", round.current_tick);
                 self.ipc_sender
                     .lock()
                     .send(ipc::protos::FromCoreMessage {
@@ -88,7 +83,7 @@ impl RoundState {
 }
 
 pub struct Match {
-    shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
+    shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
@@ -170,8 +165,6 @@ pub enum NegotiationProgress {
     Handshaking,
 }
 
-const MAX_QUEUE_LENGTH: usize = 1200;
-
 impl Match {
     pub fn new(
         rom: Vec<u8>,
@@ -195,7 +188,7 @@ impl Match {
             BattleResult::Loss
         };
         let match_ = std::sync::Arc::new(Self {
-            shadow: std::sync::Arc::new(tokio::sync::Mutex::new(shadow::Shadow::new(
+            shadow: std::sync::Arc::new(parking_lot::Mutex::new(shadow::Shadow::new(
                 &shadow_rom,
                 &settings.shadow_save_path,
                 settings.match_type,
@@ -228,16 +221,13 @@ impl Match {
     }
 
     pub async fn advance_shadow_until_round_end(&self) -> anyhow::Result<()> {
-        self.shadow.lock().await.advance_until_round_end()
+        self.shadow.lock().advance_until_round_end()
     }
 
     pub async fn advance_shadow_until_first_committed_state(
         &self,
     ) -> anyhow::Result<mgba::state::State> {
-        self.shadow
-            .lock()
-            .await
-            .advance_until_first_committed_state()
+        self.shadow.lock().advance_until_first_committed_state()
     }
 
     pub async fn run(
@@ -304,9 +294,7 @@ impl Match {
 
                     let mut round_state = self.round_state.lock().await;
                     if input.round_number != round_state.number {
-                        log::error!(
-                            "round number mismatch, dropping input: this is probably not what you"
-                        );
+                        log::error!("round number mismatch, dropping input: this is probably bad!");
                         continue;
                     }
 
@@ -351,7 +339,7 @@ impl Match {
         self.is_offerer
     }
 
-    pub async fn start_round(self: &std::sync::Arc<Self>, first_tx: &[u8]) -> anyhow::Result<()> {
+    pub async fn start_round(self: &std::sync::Arc<Self>) -> anyhow::Result<()> {
         let mut round_state = self.round_state.lock().await;
         round_state.number += 1;
         let local_player_index = match round_state.last_result.take().unwrap() {
@@ -374,15 +362,11 @@ impl Match {
 
         log::info!("preparing round state");
 
-        let (first_state_committed_tx, first_state_committed_rx) = tokio::sync::oneshot::channel();
+        let (first_state_committed_local_packet, first_state_committed_rx) =
+            tokio::sync::oneshot::channel();
 
-        let mut tx_queue = std::collections::VecDeque::with_capacity(MAX_QUEUE_LENGTH);
-        tx_queue.push_front(Tx {
-            for_tick: 0,
-            tx: first_tx.to_vec(),
-        });
-
-        let mut iq = input::PairQueue::new(MAX_QUEUE_LENGTH, self.settings.input_delay);
+        let mut iq =
+            input::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
         log::info!(
             "filling input delay: local = {}, remote = {}",
             self.settings.input_delay,
@@ -404,21 +388,20 @@ impl Match {
         }
 
         round_state.round = Some(Round {
+            hooks: self.hooks,
             number: round_state.number,
             local_player_index,
             current_tick: 0,
+            dtick: 0,
             iq,
-            tx_queue,
             remote_delay: self.settings.shadow_input_delay,
             last_committed_remote_input: input::Input {
                 local_tick: 0,
                 remote_tick: 0,
                 joyflags: 0,
-                rx: vec![0; self.hooks.rx_size()],
-                is_prediction: false,
+                packet: vec![0u8; self.hooks.packet_size()],
             },
-            last_input: None,
-            first_state_committed_tx: Some(first_state_committed_tx),
+            first_state_committed_local_packet: Some(first_state_committed_local_packet),
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
             replay_filename: replay_filename.to_owned(),
@@ -426,7 +409,7 @@ impl Match {
                 Box::new(replay_file),
                 &self.settings.replay_metadata,
                 local_player_index,
-                self.hooks.rx_size() as u8,
+                self.hooks.packet_size() as u8,
             )?),
             replayer: replayer::Fastforwarder::new(
                 &self.rom,
@@ -444,22 +427,16 @@ impl Match {
     }
 }
 
-#[derive(Clone)]
-struct Tx {
-    for_tick: u32,
-    tx: Vec<u8>,
-}
-
 pub struct Round {
+    hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     number: u8,
     local_player_index: u8,
     current_tick: u32,
+    dtick: i32,
     iq: input::PairQueue<input::PartialInput, input::PartialInput>,
-    tx_queue: std::collections::VecDeque<Tx>,
     remote_delay: u32,
     last_committed_remote_input: input::Input,
-    last_input: Option<input::Pair<input::Input, input::Input>>,
-    first_state_committed_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    first_state_committed_local_packet: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
     replay_writer: Option<replay::Writer>,
@@ -467,18 +444,10 @@ pub struct Round {
     replay_filename: std::path::PathBuf,
     primary_thread_handle: mgba::thread::Handle,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
-    shadow: std::sync::Arc<tokio::sync::Mutex<shadow::Shadow>>,
+    shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
 }
 
 impl Round {
-    pub fn on_draw_result(&self) -> BattleResult {
-        match self.local_player_index {
-            0 => BattleResult::Win,
-            1 => BattleResult::Loss,
-            _ => unreachable!(),
-        }
-    }
-
     pub fn current_tick(&self) -> u32 {
         self.current_tick
     }
@@ -499,6 +468,7 @@ impl Round {
         &mut self,
         state: mgba::state::State,
         remote_state: mgba::state::State,
+        first_packet: &[u8],
     ) {
         self.replay_writer
             .as_mut()
@@ -510,8 +480,12 @@ impl Round {
             .unwrap()
             .write_state(&remote_state)
             .expect("write remote state");
-        self.committed_state = Some(CommittedState { state, tick: 0 });
-        if let Some(tx) = self.first_state_committed_tx.take() {
+        self.committed_state = Some(CommittedState {
+            state,
+            tick: 0,
+            packet: first_packet.to_vec(),
+        });
+        if let Some(tx) = self.first_state_committed_local_packet.take() {
             let _ = tx.send(());
         }
     }
@@ -520,9 +494,9 @@ impl Round {
         &mut self,
         mut core: mgba::core::CoreMutRef<'_>,
         joyflags: u16,
-    ) -> bool {
+    ) -> anyhow::Result<Option<BattleResult>> {
         let local_tick = self.current_tick + self.local_delay();
-        let remote_tick = self.last_committed_remote_input().local_tick;
+        let remote_tick = self.last_committed_remote_input.local_tick;
 
         // We do it in this order such that:
         // 1. We make sure that the input buffer does not overflow if we were to add an input.
@@ -531,12 +505,10 @@ impl Round {
         //
         // This is all done while the self is locked, so there are no TOCTTOU issues.
         if !self.can_add_local_input() {
-            log::error!("local input buffer overflow!");
-            return false;
+            anyhow::bail!("local input buffer overflow!");
         }
 
-        if let Err(e) = self
-            .transport
+        self.transport
             .lock()
             .await
             .send_input(
@@ -545,11 +517,7 @@ impl Round {
                 (remote_tick as i32 - local_tick as i32) as i8,
                 joyflags,
             )
-            .await
-        {
-            log::error!("failed to send input: {}", e);
-            return false;
-        }
+            .await?;
 
         self.add_local_input(input::PartialInput {
             local_tick,
@@ -557,53 +525,142 @@ impl Round {
             joyflags,
         });
 
-        let (input_pairs, left) = match self.consume_and_peek_local().await {
-            Ok(r) => r,
-            Err(e) => {
-                log::error!("failed to consume input: {}", e);
-                return false;
-            }
-        };
+        let (committable, predict_required) = self.iq.consume_and_peek_local();
 
         let last_committed_state = self.committed_state.take().expect("committed state");
-        let last_committed_remote_input = self.last_committed_remote_input();
 
-        let (committed_state, dirty_state, last_input) = match self.replayer.fastforward(
+        let commit_tick = last_committed_state.tick + committable.len() as u32;
+        let dirty_tick = commit_tick + predict_required.len() as u32 - 1;
+
+        let input_pairs = committable
+            .into_iter()
+            .chain(predict_required.into_iter().map(|local| {
+                let local_tick = local.local_tick;
+                let remote_tick = local.remote_tick;
+                input::Pair {
+                    local,
+                    remote: input::PartialInput {
+                        local_tick,
+                        remote_tick,
+                        joyflags: {
+                            let mut joyflags = 0;
+                            if self.last_committed_remote_input.joyflags
+                                & mgba::input::keys::A as u16
+                                != 0
+                            {
+                                joyflags |= mgba::input::keys::A as u16;
+                            }
+                            if self.last_committed_remote_input.joyflags
+                                & mgba::input::keys::B as u16
+                                != 0
+                            {
+                                joyflags |= mgba::input::keys::B as u16;
+                            }
+                            joyflags
+                        },
+                    },
+                }
+            }))
+            .collect::<Vec<input::Pair<input::PartialInput, input::PartialInput>>>();
+        let last_local_input = input_pairs.last().unwrap().local.clone();
+
+        let ff_result = self.replayer.fastforward(
             &last_committed_state.state,
+            input_pairs,
             last_committed_state.tick,
-            &input_pairs,
-            last_committed_remote_input,
-            &left,
-        ) {
-            Ok(t) => t,
-            Err(e) => {
-                log::error!("replayer failed with error: {}", e);
-                return false;
+            commit_tick,
+            dirty_tick,
+            &last_committed_state.packet,
+            Box::new({
+                let shadow = self.shadow.clone();
+                let hooks = self.hooks;
+                let mut last_commit = self.last_committed_remote_input.packet.clone();
+                move |ip| {
+                    let local_tick = ip.local.local_tick;
+                    Ok(if ip.local.local_tick < commit_tick {
+                        let r = shadow.lock().apply_input(ip)?;
+                        assert!(
+                            r.tick == local_tick,
+                            "shadow input did not match current tick: {} != {}",
+                            r.tick,
+                            local_tick
+                        );
+                        last_commit = r.packet.clone();
+                        r.packet
+                    } else {
+                        hooks.predict_rx(&mut last_commit);
+                        last_commit.clone()
+                    })
+                }
+            }),
+        )?;
+
+        for ip in &ff_result.output_pairs {
+            if ip.local.local_tick >= commit_tick {
+                break;
             }
-        };
 
-        core.load_state(&dirty_state).expect("load dirty state");
+            if ff_result
+                .round_result
+                .map(|rr| ip.local.local_tick < rr.tick)
+                .unwrap_or(true)
+            {
+                if let Some(replay_writer) = self.replay_writer.as_mut() {
+                    replay_writer
+                        .write_input(self.local_player_index, ip)
+                        .expect("write input");
+                }
+            }
+            self.last_committed_remote_input = ip.remote.clone();
+        }
 
-        self.committed_state = Some(CommittedState {
-            state: committed_state,
-            tick: last_committed_state.tick + input_pairs.len() as u32,
-        });
-        self.last_input = Some(last_input);
+        core.load_state(&ff_result.dirty_state.state)
+            .expect("load dirty state");
+        self.committed_state = Some(ff_result.committed_state);
+
+        self.dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
 
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
             .set_fps_target(game::EXPECTED_FPS as f32 + self.tps_adjustment());
 
-        true
+        let round_result = if let Some(round_result) = ff_result.round_result {
+            round_result
+        } else {
+            return Ok(None);
+        };
+
+        if round_result.tick >= commit_tick {
+            return Ok(None);
+        }
+
+        if let Some(replay_writer) = self.replay_writer.take() {
+            replay_writer.finish().expect("finish");
+            log::info!(
+                "replay finished at {:x} (real tick {:x})",
+                round_result.tick,
+                self.current_tick
+            );
+        }
+
+        Ok(Some(match round_result.result {
+            replayer::BattleResult::Draw => self.on_draw_result(),
+            replayer::BattleResult::Loss => BattleResult::Loss,
+            replayer::BattleResult::Win => BattleResult::Win,
+        }))
+    }
+
+    pub fn on_draw_result(&self) -> BattleResult {
+        match self.local_player_index {
+            0 => BattleResult::Win,
+            1 => BattleResult::Loss,
+            _ => unreachable!(),
+        }
     }
 
     pub fn has_committed_state(&mut self) -> bool {
         self.committed_state.is_some()
-    }
-
-    pub fn peek_last_input(&self) -> &Option<input::Pair<input::Input, input::Input>> {
-        &self.last_input
     }
 
     pub fn local_delay(&self) -> u32 {
@@ -621,94 +678,9 @@ impl Round {
     pub fn remote_queue_length(&self) -> usize {
         self.iq.remote_queue_length()
     }
-    pub fn last_committed_remote_input(&self) -> input::Input {
-        self.last_committed_remote_input.clone()
-    }
-
-    pub fn queue_tx(&mut self, for_tick: u32, tx: Vec<u8>) {
-        self.tx_queue.push_back(Tx { for_tick, tx });
-    }
-
-    pub async fn consume_and_peek_local(
-        &mut self,
-    ) -> anyhow::Result<(
-        Vec<input::Pair<input::Input, input::Input>>,
-        Vec<input::Input>,
-    )> {
-        let (partial_input_pairs, left) = self.iq.consume_and_peek_local();
-
-        let partial_input_pairs_len = partial_input_pairs.len();
-        assert!(
-            self.tx_queue.len() >= partial_input_pairs_len + left.len(),
-            "not enough tx queue inputs"
-        );
-
-        let input_pairs = partial_input_pairs
-            .into_iter()
-            .zip(self.tx_queue.drain(..partial_input_pairs_len))
-            .map(|(pair, tx)| {
-                assert!(
-                    tx.for_tick == pair.local.local_tick,
-                    "tx input did not match current tick: {} != {}",
-                    tx.for_tick,
-                    pair.local.local_tick
-                );
-                input::Pair {
-                    local: input::Input {
-                        local_tick: pair.local.local_tick,
-                        remote_tick: pair.local.remote_tick,
-                        joyflags: pair.local.joyflags,
-                        rx: tx.tx,
-                        is_prediction: false,
-                    },
-                    remote: pair.remote,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let left = left
-            .into_iter()
-            .zip(self.tx_queue.iter().cloned())
-            .map(|(pi, tx)| {
-                assert!(
-                    tx.for_tick == pi.local_tick,
-                    "tx input did not match current tick: {} != {}",
-                    tx.for_tick,
-                    pi.local_tick
-                );
-                input::Input {
-                    local_tick: pi.local_tick,
-                    remote_tick: pi.remote_tick,
-                    joyflags: pi.joyflags,
-                    rx: tx.tx,
-                    is_prediction: true,
-                }
-            })
-            .collect::<Vec<_>>();
-
-        let mut shadow = self.shadow.lock().await;
-        let input_pairs = input_pairs
-            .into_iter()
-            .map(|pair| shadow.apply_input(pair))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if let Some(last) = input_pairs.last() {
-            self.last_committed_remote_input = last.remote.clone();
-        }
-
-        for ip in &input_pairs {
-            self.replay_writer
-                .as_mut()
-                .unwrap()
-                .write_input(self.local_player_index, ip)
-                .expect("write input");
-        }
-
-        Ok((input_pairs, left))
-    }
 
     pub fn can_add_local_input(&mut self) -> bool {
-        self.iq.local_queue_length() < MAX_QUEUE_LENGTH
+        self.iq.local_queue_length() < self.iq.max_length()
     }
 
     pub fn add_local_input(&mut self, input: input::PartialInput) {
@@ -717,7 +689,7 @@ impl Round {
     }
 
     pub fn can_add_remote_input(&mut self) -> bool {
-        self.iq.remote_queue_length() < MAX_QUEUE_LENGTH
+        self.iq.remote_queue_length() < self.iq.max_length()
     }
 
     pub fn add_remote_input(&mut self, input: input::PartialInput) {
@@ -726,15 +698,8 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        let last_local_input = match &self.last_input {
-            Some(input::Pair { local, .. }) => local,
-            None => {
-                return 0.0;
-            }
-        };
-        let dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
         let ddelay = self.local_delay() as i32 - self.remote_delay() as i32;
-        ((dtick + ddelay) * game::EXPECTED_FPS as i32) as f32 / MAX_QUEUE_LENGTH as f32
+        ((self.dtick + ddelay) * game::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
     }
 }
 

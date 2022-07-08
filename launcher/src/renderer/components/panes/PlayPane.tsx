@@ -6,8 +6,10 @@ import { Trans, useTranslation } from "react-i18next";
 import { TransitionGroup } from "react-transition-group";
 import semver from "semver";
 
+import { shell } from "@electron/remote";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CloseIcon from "@mui/icons-material/Close";
+import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import SportsEsportsOutlinedIcon from "@mui/icons-material/SportsEsportsOutlined";
 import WarningIcon from "@mui/icons-material/Warning";
@@ -54,6 +56,7 @@ function SaveSelector({
   onClose: () => void;
 }) {
   const { i18n } = useTranslation();
+  const { config } = useConfig();
 
   const getNetplayCompatibility = useGetNetplayCompatibility();
   const opponentAvailableGames =
@@ -202,6 +205,16 @@ function SaveSelector({
               ))}
             </Select>
           </FormControl>
+          <Tooltip title={<Trans i18nKey="play:open-dir" />}>
+            <IconButton
+              edge="end"
+              onClick={() => {
+                shell.openPath(config.paths.saves);
+              }}
+            >
+              <FolderOpenOutlinedIcon />
+            </IconButton>
+          </Tooltip>
           <Tooltip title={<Trans i18nKey="play:rescan" />}>
             <IconButton
               onClick={() => {
@@ -436,8 +449,7 @@ function SaveViewerWrapper({
           Editor.sramDumpToRaw(
             (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
-          romName,
-          false
+          romName
         )
       );
     })();
@@ -574,6 +586,7 @@ export default function SavesPane({ active }: { active: boolean }) {
               <OutlinedInput
                 label={<Trans i18nKey="play:select-save" />}
                 readOnly
+                disabled={battleReady}
                 value={selectedSave != null ? JSON.stringify(selectedSave) : ""}
                 inputComponent={React.forwardRef(
                   ({ value, className }, ref) => (
@@ -692,6 +705,7 @@ export default function SavesPane({ active }: { active: boolean }) {
                       sx={{ marginRight: "-10px" }}
                       size="small"
                       variant="contained"
+                      disabled={battleReady}
                       onClick={(e) => {
                         e.stopPropagation();
                         setSaveSelectorOpen(true);

@@ -406,6 +406,7 @@ const ENDS = [
   "experience",
   "extra",
   "faked",
+  "fartspin",
   "forme",
   "fortnite",
   "frenzy",

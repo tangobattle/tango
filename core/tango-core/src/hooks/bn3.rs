@@ -33,7 +33,7 @@ impl BN3 {
 
 fn bn3_match_type(match_type: u8, rng: &mut impl rand::Rng) -> u8 {
     match match_type {
-        0 => rng.gen_range(0..=2),
+        0 => rng.gen_range(0..3),
         1 => 3,
         _ => 0,
     }
@@ -53,7 +53,7 @@ fn step_rng(seed: u32) -> u32 {
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng1_state = 0;
-    for _ in 0..rng.gen_range(0..=0xffffusize) {
+    for _ in 0..rng.gen_range(0..0x10000) {
         rng1_state = step_rng(rng1_state);
     }
     rng1_state
@@ -61,7 +61,7 @@ fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
 
 fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng2_state = 0xa338244f;
-    for _ in 0..rng.gen_range(0..=0xffffusize) {
+    for _ in 0..rng.gen_range(0..0x10000) {
         rng2_state = step_rng(rng2_state);
     }
     rng2_state
@@ -118,14 +118,15 @@ impl hooks::Hooks for BN3 {
                 handle.block_on(async {
                     let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                     let match_ = match facade.match_().await {
                         Some(match_) => match_,
                         None => {
+                            core.gba_mut().cpu_mut().set_gpr(0, 0);
                             return;
                         }
                     };
+                    core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                     let mut round_state = match_.lock_round_state().await;
 
@@ -136,24 +137,17 @@ impl hooks::Hooks for BN3 {
                         }
                     };
 
-                    round.queue_tx(round.current_tick() + 1, munger.tx_packet(core).to_vec());
-
-                    let ip = round.peek_last_input().as_ref().unwrap();
-
-                    munger.set_rx_packet(
-                        core,
-                        round.local_player_index() as u32,
-                        &ip.local.rx.clone().try_into().unwrap(),
-                    );
-
-                    munger.set_rx_packet(
-                        core,
-                        round.remote_player_index() as u32,
-                        &ip.remote.rx.clone().try_into().unwrap(),
-                    );
+                    let current_tick = round.current_tick();
+                    if current_tick > 1 {
+                        let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                        munger.set_rx_packet(core, 0, &rx);
+                        munger.set_rx_packet(core, 1, &rx);
+                    }
                 });
             })
         };
+
         vec![
             {
                 let facade = facade.clone();
@@ -342,11 +336,10 @@ impl hooks::Hooks for BN3 {
             }),
             {
                 let facade = facade.clone();
-                let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
-                    Box::new(move |core| {
+                    Box::new(move |_core| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
                                 Some(match_) => match_,
@@ -354,10 +347,7 @@ impl hooks::Hooks for BN3 {
                                     return;
                                 }
                             };
-                            match_
-                                .start_round(&munger.tx_packet(core))
-                                .await
-                                .expect("start round");
+                            match_.start_round().await.expect("start round");
                         });
                     }),
                 )
@@ -451,6 +441,7 @@ impl hooks::Hooks for BN3 {
                                             .advance_shadow_until_first_committed_state()
                                             .await
                                             .expect("shadow save state"),
+                                        &munger.tx_packet(core),
                                     );
                                     log::info!(
                                         "primary rng1 state: {:08x}",
@@ -466,13 +457,14 @@ impl hooks::Hooks for BN3 {
                                     );
                                 }
 
-                                if !round
+                                if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
                                     )
                                     .await
                                 {
+                                    log::error!("failed to add local input: {}", e);
                                     break 'abort;
                                 }
                                 return;
@@ -482,6 +474,12 @@ impl hooks::Hooks for BN3 {
                     }),
                 )
             },
+            (
+                self.offsets.rom.process_battle_input_ret,
+                Box::new(move |mut core| {
+                    core.gba_mut().cpu_mut().set_gpr(0, 0);
+                }),
+            ),
             (
                 self.offsets.rom.handle_input_init_send_and_receive_call,
                 make_send_and_receive_call_hook(),
@@ -493,12 +491,6 @@ impl hooks::Hooks for BN3 {
             (
                 self.offsets.rom.handle_input_deinit_send_and_receive_call,
                 make_send_and_receive_call_hook(),
-            ),
-            (
-                self.offsets.rom.process_battle_input_ret,
-                Box::new(move |mut core| {
-                    core.gba_mut().cpu_mut().set_gpr(0, 0);
-                }),
             ),
             {
                 let munger = self.munger.clone();
@@ -528,7 +520,7 @@ impl hooks::Hooks for BN3 {
             {
                 let facade = facade.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
                             let match_ = match facade.match_().await {
@@ -570,19 +562,26 @@ impl hooks::Hooks for BN3 {
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                core.gba_mut().cpu_mut().set_gpr(0, 3);
 
                 let mut round_state = shadow_state.lock_round_state();
                 let round = match round_state.round.as_mut() {
                     Some(round) => round,
                     None => {
+                        core.gba_mut().cpu_mut().set_gpr(0, 0);
                         return;
                     }
                 };
+                core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                let ip = if let Some(ip) = round.peek_out_input_pair().as_ref() {
+                let current_tick = round.current_tick();
+
+                let ip = if let Some(ip) = round.take_shadow_input() {
                     ip
                 } else {
+                    let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                    byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                    munger.set_rx_packet(core, 0, &rx);
+                    munger.set_rx_packet(core, 1, &rx);
                     return;
                 };
 
@@ -594,11 +593,11 @@ impl hooks::Hooks for BN3 {
 
                 if ip.local.local_tick != ip.remote.local_tick {
                     shadow_state.set_anyhow_error(anyhow::anyhow!(
-                    "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-                    round.current_tick(),
-                    ip.local.local_tick,
-                    ip.remote.local_tick
-                ));
+                        "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                        round.current_tick(),
+                        ip.local.local_tick,
+                        ip.remote.local_tick
+                    ));
                     return;
                 }
 
@@ -611,18 +610,27 @@ impl hooks::Hooks for BN3 {
                     return;
                 }
 
+                let remote_packet = round.peek_remote_packet().unwrap();
+                if remote_packet.tick != round.current_tick() {
+                    shadow_state.set_anyhow_error(anyhow::anyhow!(
+                        "copy input data: local packet tick != in battle tick: {} != {}",
+                        remote_packet.tick,
+                        round.current_tick(),
+                    ));
+                    return;
+                }
+
                 munger.set_rx_packet(
                     core,
                     round.local_player_index() as u32,
-                    &ip.local.rx.clone().try_into().unwrap(),
+                    &ip.local.packet.try_into().unwrap(),
                 );
-
                 munger.set_rx_packet(
                     core,
                     round.remote_player_index() as u32,
-                    &ip.remote.rx.clone().try_into().unwrap(),
+                    &remote_packet.packet.clone().try_into().unwrap(),
                 );
-
+                round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
                 round.set_input_injected();
             })
         };
@@ -785,14 +793,17 @@ impl hooks::Hooks for BN3 {
                         }
 
                         if !round.has_first_committed_state() {
-                            round.set_first_committed_state(core.save_state().expect("save state"));
+                            round.set_first_committed_state(
+                                core.save_state().expect("save state"),
+                                &munger.tx_packet(core),
+                            );
                             log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
                             log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
                             log::info!("shadow state committed on {}", round.current_tick());
                             return;
                         }
 
-                        if let Some(ip) = round.take_in_input_pair() {
+                        if let Some(ip) = round.peek_shadow_input().clone() {
                             if ip.local.local_tick != ip.remote.local_tick {
                                 shadow_state.set_anyhow_error(anyhow::anyhow!(
                                     "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
@@ -811,17 +822,6 @@ impl hooks::Hooks for BN3 {
                                 ));
                                 return;
                             }
-
-                            round.set_out_input_pair(input::Pair {
-                                local: ip.local,
-                                remote: input::Input {
-                                    local_tick: ip.remote.local_tick,
-                                    remote_tick: ip.remote.remote_tick,
-                                    joyflags: ip.remote.joyflags,
-                                    rx: munger.tx_packet(core).to_vec(),
-                                    is_prediction: false,
-                                },
-                            });
 
                             core.gba_mut()
                                 .cpu_mut()
@@ -880,7 +880,7 @@ impl hooks::Hooks for BN3 {
             {
                 let shadow_state = shadow_state.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
+                    self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |mut core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = match round_state.round.as_mut() {
@@ -913,26 +913,35 @@ impl hooks::Hooks for BN3 {
             let munger = self.munger.clone();
             let replayer_state = replayer_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
+                let mut replayer_state = replayer_state.lock_inner();
+
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                 core.gba_mut().cpu_mut().set_gpr(0, 3);
 
+                if replayer_state.is_round_ending() {
+                    return;
+                }
+
                 let current_tick = replayer_state.current_tick();
 
-                let ip = match replayer_state.pop_input_pair() {
-                    Some(ip) => ip,
-                    None => {
-                        return;
-                    }
+                let ip = if let Some(ip) = replayer_state.pop_input_pair() {
+                    ip
+                } else {
+                    let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+                    byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                    munger.set_rx_packet(core, 0, &rx);
+                    munger.set_rx_packet(core, 1, &rx);
+                    return;
                 };
 
                 if ip.local.local_tick != ip.remote.local_tick {
                     replayer_state.set_anyhow_error(anyhow::anyhow!(
-                            "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-                            current_tick,
-                            ip.local.local_tick,
-                            ip.remote.local_tick
-                        ));
+                        "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                        current_tick,
+                        ip.local.local_tick,
+                        ip.remote.local_tick
+                    ));
                     return;
                 }
 
@@ -945,17 +954,34 @@ impl hooks::Hooks for BN3 {
                     return;
                 }
 
-                munger.set_rx_packet(
-                    core,
-                    replayer_state.local_player_index() as u32,
-                    &ip.local.rx.try_into().unwrap(),
-                );
+                let local_packet = replayer_state.peek_local_packet().unwrap().clone();
+                if local_packet.tick != current_tick {
+                    replayer_state.set_anyhow_error(anyhow::anyhow!(
+                        "copy input data: local packet tick != in battle tick: {} != {}",
+                        local_packet.tick,
+                        current_tick,
+                    ));
+                    return;
+                }
 
                 munger.set_rx_packet(
                     core,
-                    replayer_state.remote_player_index() as u32,
-                    &ip.remote.rx.try_into().unwrap(),
+                    replayer_state.local_player_index() as u32,
+                    &local_packet.packet.clone().try_into().unwrap(),
                 );
+                munger.set_rx_packet(
+                    core,
+                    replayer_state.remote_player_index() as u32,
+                    &replayer_state
+                        .apply_shadow_input(input::Pair {
+                            local: ip.local.with_packet(local_packet.packet),
+                            remote: ip.remote,
+                        })
+                        .expect("apply shadow input")
+                        .try_into()
+                        .unwrap(),
+                );
+                replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
             })
         };
 
@@ -965,6 +991,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.battle_is_p2_ret,
                     Box::new(move |mut core| {
+                        let replayer_state = replayer_state.lock_inner();
                         core.gba_mut()
                             .cpu_mut()
                             .set_gpr(0, replayer_state.local_player_index() as i32);
@@ -976,6 +1003,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
+                        let replayer_state = replayer_state.lock_inner();
                         core.gba_mut()
                             .cpu_mut()
                             .set_gpr(0, replayer_state.local_player_index() as i32);
@@ -985,9 +1013,23 @@ impl hooks::Hooks for BN3 {
             {
                 let replayer_state = replayer_state.clone();
                 (
+                    self.offsets.rom.round_ending_entry,
+                    Box::new(move |_core| {
+                        let mut replayer_state = replayer_state.lock_inner();
+                        if replayer_state.is_round_ending() {
+                            return;
+                        }
+                        replayer_state.set_round_ending();
+                    }),
+                )
+            },
+            {
+                let replayer_state = replayer_state.clone();
+                (
                     self.offsets.rom.round_end_entry,
                     Box::new(move |_core| {
-                        replayer_state.on_round_ended();
+                        let mut replayer_state = replayer_state.lock_inner();
+                        replayer_state.set_round_ended();
                     }),
                 )
             },
@@ -996,18 +1038,18 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         let current_tick = replayer_state.current_tick();
 
-                        if current_tick == replayer_state.commit_time() {
+                        if current_tick == replayer_state.commit_tick() {
                             replayer_state.set_committed_state(
                                 core.save_state().expect("save committed state"),
                             );
                         }
 
                         let ip = match replayer_state.peek_input_pair() {
-                            Some(ip) => ip,
+                            Some(ip) => ip.clone(),
                             None => {
-                                replayer_state.on_inputs_exhausted();
                                 return;
                             }
                         };
@@ -1035,7 +1077,7 @@ impl hooks::Hooks for BN3 {
                             .cpu_mut()
                             .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                        if current_tick == replayer_state.dirty_time() {
+                        if current_tick == replayer_state.dirty_tick() {
                             replayer_state
                                 .set_dirty_state(core.save_state().expect("save dirty state"));
                         }
@@ -1063,16 +1105,9 @@ impl hooks::Hooks for BN3 {
             {
                 let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.handle_input_post_call,
-                    Box::new(move |mut core| {
-                        // HACK: During the first few ticks, we do some wacky stuff that we can't let the game consume willy-nilly.
-                        // Only after the second tick when ingestion is complete can we start assuming that if the input queue runs out we're at the end of the match.
-                        if replayer_state.current_tick() > 2
-                            && replayer_state.peek_input_pair().is_none()
-                        {
-                            core.gba_mut().cpu_mut().set_gpr(0, 7);
-                        }
-
+                    self.offsets.rom.round_call_jump_table_ret,
+                    Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.increment_current_tick();
                     }),
                 )
@@ -1082,6 +1117,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
@@ -1091,6 +1127,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )
@@ -1100,6 +1137,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_win,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Win);
                     }),
                 )
@@ -1109,6 +1147,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_loss,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Loss);
                     }),
                 )
@@ -1118,6 +1157,7 @@ impl hooks::Hooks for BN3 {
                 (
                     self.offsets.rom.round_end_damage_judge_set_draw,
                     Box::new(move |_| {
+                        let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.set_round_result(replayer::BattleResult::Draw);
                     }),
                 )
@@ -1126,8 +1166,8 @@ impl hooks::Hooks for BN3 {
     }
 
     fn predict_rx(&self, rx: &mut Vec<u8>) {
-        let tick = byteorder::LittleEndian::read_u16(&rx[0x4..0x6]);
-        byteorder::LittleEndian::write_u16(&mut rx[0x4..0x6], tick.wrapping_add(1));
+        let tick = byteorder::LittleEndian::read_u32(&rx[0x4..0x8]);
+        byteorder::LittleEndian::write_u32(&mut rx[0x4..0x8], tick + 1);
     }
 
     fn prepare_for_fastforward(&self, mut core: mgba::core::CoreMutRef) {

@@ -13,6 +13,24 @@ const MASK_OFFSET = 0x1064;
 const GAME_NAME_OFFSET = 0x1c70;
 const CHECKSUM_OFFSET = 0x1c6c;
 
+function getChecksum(dv: DataView) {
+  return dv.getUint32(CHECKSUM_OFFSET, true);
+}
+
+function computeChecksum(dv: DataView, version: string) {
+  let checksum = CHECKSUM_START[version];
+  const arr = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
+  for (let i = 0; i < arr.length; ++i) {
+    if (i == CHECKSUM_OFFSET) {
+      // Don't include the checksum itself in the checksum.
+      i += 3;
+      continue;
+    }
+    checksum += arr[i];
+  }
+  return checksum;
+}
+
 function maskSave(dv: DataView) {
   const mask = dv.getUint32(MASK_OFFSET, true);
   const unmasked = new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength);
@@ -367,16 +385,19 @@ export class Editor {
       throw "unknown game name: " + gn;
     }
 
+    if (
+      getChecksum(dv) !=
+      computeChecksum(dv, GAME_INFOS[ROM_NAMES_BY_SAVE_GAME_NAME[gn]].version)
+    ) {
+      throw "checksum mismatch";
+    }
+
     return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
-  constructor(buffer: ArrayBuffer, romName: string, verifyChecksum = true) {
+  constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
-
-    if (verifyChecksum && this.getChecksum() != this.computeChecksum()) {
-      throw "checksum does not match";
-    }
 
     this.navicustDirty = false;
     this.modcardsDirty = false;
@@ -399,24 +420,6 @@ export class Editor {
     return this.dv.buffer;
   }
 
-  computeChecksum() {
-    let checksum = CHECKSUM_START[this.getGameInfo().version];
-    const arr = new Uint8Array(
-      this.dv.buffer,
-      this.dv.byteOffset,
-      this.dv.byteLength
-    );
-    for (let i = 0; i < arr.length; ++i) {
-      if (i == CHECKSUM_OFFSET) {
-        // Don't include the checksum itself in the checksum.
-        i += 3;
-        continue;
-      }
-      checksum += arr[i];
-    }
-    return checksum;
-  }
-
   rebuild() {
     this.rebuildNavicustTiles();
     this.rebuildModcardsLoaded();
@@ -424,7 +427,7 @@ export class Editor {
   }
 
   getChecksum() {
-    return this.dv.getUint32(CHECKSUM_OFFSET, true);
+    return getChecksum(this.dv);
   }
 
   getGameInfo() {
@@ -433,6 +436,10 @@ export class Editor {
 
   rebuildChecksum() {
     return this.dv.setUint32(CHECKSUM_OFFSET, this.computeChecksum(), true);
+  }
+
+  computeChecksum() {
+    return computeChecksum(this.dv, this.getGameInfo().version);
   }
 
   getFolderEditor() {
@@ -527,6 +534,10 @@ export class Editor {
 
   getCurrentNavi() {
     return this.dv.getUint8(0x1b81);
+  }
+
+  setCurrentNavi(i: number) {
+    this.dv.setUint8(0x1b81, i);
   }
 
   getRegMemory() {

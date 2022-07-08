@@ -19,6 +19,8 @@ export function useGetPatchPath() {
       config.paths.patches,
       patch.name,
       `v${patch.version}`,
-      `${rom}_${roms[rom].revision.toString().padStart(2, "0")}.bps`
+      `${rom.replace(/\0/g, "@")}_${roms[rom].revision
+        .toString()
+        .padStart(2, "0")}.bps`
     );
 }
