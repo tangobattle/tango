@@ -446,12 +446,9 @@ impl hooks::Hooks for BN3 {
                                         &munger.tx_packet(core),
                                     );
                                     log::info!(
-                                        "primary rng1 state: {:08x}",
-                                        munger.rng1_state(core)
-                                    );
-                                    log::info!(
-                                        "primary rng2 state: {:08x}",
-                                        munger.rng2_state(core)
+                                        "primary rng1 state: {:08x}, rng2 state: {:08x}",
+                                        munger.rng1_state(core),
+                                        munger.rng2_state(core),
                                     );
                                     log::info!(
                                         "battle state committed on {}",
@@ -801,8 +798,11 @@ impl hooks::Hooks for BN3 {
                                 core.save_state().expect("save state"),
                                 &munger.tx_packet(core),
                             );
-                            log::info!("shadow rng1 state: {:08x}", munger.rng1_state(core));
-                            log::info!("shadow rng2 state: {:08x}", munger.rng2_state(core));
+                            log::info!(
+                                "shadow rng1 state: {:08x}, rng2 state: {:08x}",
+                                munger.rng1_state(core),
+                                munger.rng2_state(core)
+                            );
                             log::info!("shadow state committed on {}", round.current_tick());
                             return;
                         }
