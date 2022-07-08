@@ -42,7 +42,7 @@
   "mismatching-match-type": "El tipo de pelea seleccionado no es el mismo del oponente.",
   "generate-random-code": "Generar código aleatorio",
   "connection-quality": "{{rtt}} ms",
-  "auto-input-delay": "Suggest",
+  "auto-input-delay": "Sugerir",
   "reveal-setup-title": "Build de {{opponentNickname}}",
   "missing-patch": "Parche desconocido \"{{name}}\"",
   "save-viewer-unsupported": "El visor de partidas guardadas no es compatible con este juego",
