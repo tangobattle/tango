@@ -465,6 +465,7 @@ const ENDS = [
   "swag",
   "swaggums",
   "swarm",
+  "symeseus",
   "tag",
   "technology",
   "tfc",
