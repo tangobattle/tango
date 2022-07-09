@@ -46,9 +46,7 @@ fn random_background(rng: &mut impl rand::Rng) -> u8 {
 
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
-    (((seed * std::num::Wrapping(2)) - (seed >> 0x1f) + std::num::Wrapping(1))
-        ^ std::num::Wrapping(0x873ca9e5))
-    .0
+    ((seed << 1) + (seed >> 0x1f) + std::num::Wrapping(1)).0 ^ 0x873ca9e5
 }
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
