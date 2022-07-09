@@ -135,6 +135,14 @@ export class Editor {
     return computeChecksum(this.dv, this.getGameInfo().version);
   }
 
+  getCurrentNavi() {
+    return this.dv.getUint8(0x2941);
+  }
+
+  setCurrentNavi(i: number) {
+    this.dv.setUint8(0x2941, i);
+  }
+
   rebuild() {
     this.rebuildChecksum();
   }
