@@ -71,6 +71,23 @@ const ROM_NAMES_BY_SAVE_GAME_NAME: { [key: string]: string } = {
   "REXE5TOK 20041104 JP": "ROCKEXE5_TOCBRKJ",
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+class FolderEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getChipCountRaw(id: number, variant: number) {
+    return this.editor.dv.getUint8(0x2eac + ((id * 0xc) | variant));
+  }
+
+  setChipCountRaw(id: number, variant: number, n: number) {
+    this.editor.dv.setUint8(0x2eac + ((id * 0xc) | variant), n);
+  }
+}
+
 export class Editor {
   dv: DataView;
   private romName: string;
