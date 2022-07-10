@@ -1,14 +1,10 @@
-import { BrowserWindow } from "@electron/remote";
-
-export function getMainWindow() {
-  return BrowserWindow.getAllWindows()[0];
-}
+import { getCurrentWindow } from "@electron/remote";
 
 export function requestAttention(app: Electron.App) {
   if (process.platform === "darwin") {
     app.dock.bounce("critical");
   } else {
-    const win = getMainWindow();
+    const win = getCurrentWindow();
     if (!win.isFocused()) {
       win.flashFrame(true);
     }

@@ -4,7 +4,7 @@ import { Trans, useTranslation } from "react-i18next";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 
-import { dialog, shell } from "@electron/remote";
+import { dialog, getCurrentWindow, shell } from "@electron/remote";
 import CloseIcon from "@mui/icons-material/Close";
 import FolderOpenIcon from "@mui/icons-material/FolderOpen";
 import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
@@ -33,7 +33,6 @@ import Typography from "@mui/material/Typography";
 import { walk } from "../../../fsutil";
 import { findPatchVersion } from "../../../patch";
 import { readReplayMetadata, ReplayInfo } from "../../../replay";
-import { getMainWindow } from "../../platform";
 import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
@@ -278,7 +277,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                     }}
                     onDumpClick={() => {
                       const replay = replays[props.index];
-                      const fn = dialog.showSaveDialogSync(getMainWindow(), {
+                      const fn = dialog.showSaveDialogSync(getCurrentWindow(), {
                         defaultPath: path.join(
                           config.paths.replays,
                           replay.filename.replace(/\.[^/.]+$/, "")

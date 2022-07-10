@@ -2,7 +2,7 @@ import { isEqual, sortBy } from "lodash-es";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
-import { app, dialog, shell } from "@electron/remote";
+import { app, dialog, getCurrentWindow, shell } from "@electron/remote";
 import AddIcon from "@mui/icons-material/Add";
 import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
 import KeyboardIcon from "@mui/icons-material/Keyboard";
@@ -33,7 +33,6 @@ import Typography from "@mui/material/Typography";
 import { Config } from "../../../config";
 import { captureInput } from "../../../input";
 import { LANGUAGES } from "../../i18n";
-import { getMainWindow } from "../../platform";
 import { useConfig } from "../ConfigContext";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
@@ -545,7 +544,7 @@ function DirectoryField(
   const { value, onPathChange, ...rest } = props;
   const onClick = React.useCallback(() => {
     const fn =
-      dialog.showOpenDialogSync(getMainWindow(), {
+      dialog.showOpenDialogSync(getCurrentWindow(), {
         defaultPath: value,
         properties: ["openDirectory"],
       }) || [];
