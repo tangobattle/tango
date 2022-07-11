@@ -1,10 +1,7 @@
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
-import { clipboard } from "@electron/remote";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -16,6 +13,7 @@ import useTheme from "@mui/system/useTheme";
 
 import { Chip as ChipInfo, FolderEditor } from "../../saveedit";
 import { fallbackLng } from "../i18n";
+import { CopyButtonWithLabel } from "./CopyButton";
 
 const MEGA_BG = {
   dark: "#52849c",
@@ -271,28 +269,22 @@ export default function FolderViewer({
             spacing={1}
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
-            <Button
-              startIcon={<ContentCopyIcon />}
-              onClick={() => {
-                clipboard.writeText(
-                  groupedChips
-                    .map(({ id, code, count, isRegular, isTag1, isTag2 }) => {
-                      const chip = chipData[id];
-                      const chipName =
-                        chip!.name[i18n.resolvedLanguage] ||
-                        chip!.name[fallbackLng];
-                      return `${count}\t${chipName}\t${code}\t${[
-                        ...(isRegular ? ["[REG]"] : []),
-                        ...(isTag1 ? ["[TAG]"] : []),
-                        ...(isTag2 ? ["[TAG]"] : []),
-                      ].join(" ")}`;
-                    })
-                    .join("\n")
-                );
-              }}
-            >
-              <Trans i18nKey="common:copy-to-clipboard" />
-            </Button>
+            <CopyButtonWithLabel
+              value={groupedChips
+                .map(({ id, code, count, isRegular, isTag1, isTag2 }) => {
+                  const chip = chipData[id];
+                  const chipName =
+                    chip!.name[i18n.resolvedLanguage] ||
+                    chip!.name[fallbackLng];
+                  return `${count}\t${chipName}\t${code}\t${[
+                    ...(isRegular ? ["[REG]"] : []),
+                    ...(isTag1 ? ["[TAG]"] : []),
+                    ...(isTag2 ? ["[TAG]"] : []),
+                  ].join(" ")}`;
+                })
+                .join("\n")}
+              TooltipProps={{ placement: "top" }}
+            />
           </Stack>
         </Box>
       </Stack>

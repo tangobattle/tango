@@ -1,10 +1,7 @@
 import React from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 
-import { clipboard } from "@electron/remote";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -14,6 +11,7 @@ import TableRow from "@mui/material/TableRow";
 
 import { ModcardsEditor } from "../../saveedit";
 import { fallbackLng } from "../i18n";
+import { CopyButtonWithLabel } from "./CopyButton";
 
 const DEBUFF_COLOR = "#b55ade";
 const BUFF_COLOR = "#ffbd18";
@@ -145,24 +143,18 @@ export default function ModcardsViewer({
             spacing={1}
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
-            <Button
-              startIcon={<ContentCopyIcon />}
-              onClick={() => {
-                clipboard.writeText(
-                  modcards
-                    .filter(({ enabled }) => enabled)
-                    .map(({ id }) => {
-                      const modcardName =
-                        modcardData[id]!.name[i18n.resolvedLanguage] ||
-                        modcardData[id]!.name[fallbackLng];
-                      return `${modcardName}\t${modcardData[id]!.mb}`;
-                    })
-                    .join("\n")
-                );
-              }}
-            >
-              <Trans i18nKey="common:copy-to-clipboard" />
-            </Button>
+            <CopyButtonWithLabel
+              value={modcards
+                .filter(({ enabled }) => enabled)
+                .map(({ id }) => {
+                  const modcardName =
+                    modcardData[id]!.name[i18n.resolvedLanguage] ||
+                    modcardData[id]!.name[fallbackLng];
+                  return `${modcardName}\t${modcardData[id]!.mb}`;
+                })
+                .join("\n")}
+              TooltipProps={{ placement: "top" }}
+            />
           </Stack>
         </Box>
       </Stack>

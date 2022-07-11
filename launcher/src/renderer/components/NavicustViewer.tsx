@@ -1,10 +1,7 @@
 import React from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 
-import { clipboard } from "@electron/remote";
-import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -16,6 +13,7 @@ import { lighten } from "@mui/system/colorManipulator";
 import array2d from "../../array2d";
 import { NavicustEditor, NavicustProgram } from "../../saveedit";
 import { fallbackLng } from "../i18n";
+import { CopyButtonWithLabel } from "./CopyButton";
 
 const NAVICUST_COLORS = {
   red: {
@@ -461,6 +459,24 @@ export default function NavicustViewer({
 
   const ncps = editor.getNavicustProgramData();
 
+  const solidBlocks = placements.filter(({ id }) => ncps[id]!.isSolid);
+  const plusBlocks = placements.filter(({ id }) => !ncps[id]!.isSolid);
+
+  const lines = [];
+  for (let i = 0; i < Math.max(solidBlocks.length, plusBlocks.length); ++i) {
+    const left =
+      i < solidBlocks.length
+        ? ncps[solidBlocks[i].id]!.name[i18n.resolvedLanguage] ||
+          ncps[solidBlocks[i].id]!.name[fallbackLng]
+        : "";
+    const right =
+      i < plusBlocks.length
+        ? ncps[plusBlocks[i].id]!.name[i18n.resolvedLanguage] ||
+          ncps[plusBlocks[i].id]!.name[fallbackLng]
+        : "";
+    lines.push(left + "\t" + right);
+  }
+
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
       <Stack sx={{ flexGrow: 1 }}>
@@ -575,40 +591,10 @@ export default function NavicustViewer({
             spacing={1}
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
-            <Button
-              startIcon={<ContentCopyIcon />}
-              onClick={() => {
-                const solidBlocks = placements.filter(
-                  ({ id }) => ncps[id]!.isSolid
-                );
-                const plusBlocks = placements.filter(
-                  ({ id }) => !ncps[id]!.isSolid
-                );
-
-                const lines = [];
-                for (
-                  let i = 0;
-                  i < Math.max(solidBlocks.length, plusBlocks.length);
-                  ++i
-                ) {
-                  const left =
-                    i < solidBlocks.length
-                      ? ncps[solidBlocks[i].id]!.name[i18n.resolvedLanguage] ||
-                        ncps[solidBlocks[i].id]!.name[fallbackLng]
-                      : "";
-                  const right =
-                    i < plusBlocks.length
-                      ? ncps[plusBlocks[i].id]!.name[i18n.resolvedLanguage] ||
-                        ncps[plusBlocks[i].id]!.name[fallbackLng]
-                      : "";
-                  lines.push(left + "\t" + right);
-                }
-
-                clipboard.writeText(lines.join("\n"));
-              }}
-            >
-              <Trans i18nKey="common:copy-to-clipboard" />
-            </Button>
+            <CopyButtonWithLabel
+              value={lines.join("\n")}
+              TooltipProps={{ placement: "top" }}
+            />
           </Stack>
         </Box>
       </Stack>
