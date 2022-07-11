@@ -17,11 +17,12 @@ export default function CopyButton({
   disabled?: boolean;
   TooltipProps?: Partial<TooltipProps>;
 } & IconButtonProps) {
-  const [clicked, setClicked] = React.useState(false);
+  const [currentTimeout, setCurrentTimeout] =
+    React.useState<NodeJS.Timeout | null>(null);
   return (
     <Tooltip
       title={
-        clicked ? (
+        currentTimeout != null ? (
           <Trans i18nKey="common:copied-to-clipboard" />
         ) : (
           <Trans i18nKey="common:copy-to-clipboard" />
@@ -32,10 +33,14 @@ export default function CopyButton({
       <IconButton
         onClick={() => {
           clipboard.writeText(value);
-          setClicked(true);
-          setTimeout(() => {
-            setClicked(false);
-          }, 1000);
+          if (currentTimeout != null) {
+            clearTimeout(currentTimeout);
+          }
+          setCurrentTimeout(
+            setTimeout(() => {
+              setCurrentTimeout(null);
+            }, 1000)
+          );
         }}
         edge="end"
         disabled={disabled}
@@ -57,20 +62,25 @@ export function CopyButtonWithLabel({
   disabled?: boolean;
   TooltipProps?: Partial<TooltipProps>;
 } & ButtonProps) {
-  const [clicked, setClicked] = React.useState(false);
+  const [currentTimeout, setCurrentTimeout] =
+    React.useState<NodeJS.Timeout | null>(null);
   return (
     <Tooltip
-      open={clicked}
+      open={currentTimeout != null}
       title={<Trans i18nKey="common:copied-to-clipboard" />}
       {...TooltipProps}
     >
       <Button
         onClick={() => {
           clipboard.writeText(value);
-          setClicked(true);
-          setTimeout(() => {
-            setClicked(false);
-          }, 1000);
+          if (currentTimeout != null) {
+            clearTimeout(currentTimeout);
+          }
+          setCurrentTimeout(
+            setTimeout(() => {
+              setCurrentTimeout(null);
+            }, 1000)
+          );
         }}
         startIcon={<ContentCopyIcon />}
         disabled={disabled}
