@@ -1649,7 +1649,7 @@ export default function BattleStarter({
                 />
               </Typography>
             </Stack>
-            <Box flexGrow={1} sx={{ display: "flex" }}>
+            <Box flexGrow={1} sx={{ display: "flex", py: 1 }}>
               <SaveViewer
                 editor={revealedSetupEditor}
                 allowFolderEdits={AllowFolderEdits.None}
