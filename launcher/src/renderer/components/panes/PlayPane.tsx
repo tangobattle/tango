@@ -548,13 +548,12 @@ export default function SavesPane({ active }: { active: boolean }) {
   return (
     <Box
       sx={{
-        my: 1,
         flexGrow: 1,
         display: active ? "flex" : "none",
       }}
     >
       <Stack sx={{ flexGrow: 1, width: 0 }}>
-        <Box flexGrow={0} flexShrink={0} sx={{ px: 1 }}>
+        <Box flexGrow={0} flexShrink={0} sx={{ px: 1, pt: 1 }}>
           <Stack spacing={1} flexGrow={0} flexShrink={0} direction="row">
             <Modal
               open={saveSelectorOpen}

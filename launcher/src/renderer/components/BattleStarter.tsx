@@ -1394,7 +1394,7 @@ export default function BattleStarter({
           direction="row"
           justifyContent="flex-end"
           spacing={1}
-          sx={{ px: 1, mb: 0, pt: 1 }}
+          sx={{ px: 1, mb: 0, py: 1 }}
           component="form"
           onSubmit={(e: any) => {
             e.preventDefault();

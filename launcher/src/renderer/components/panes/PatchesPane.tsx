@@ -7,16 +7,13 @@ import HealingIcon from "@mui/icons-material/Healing";
 import SyncIcon from "@mui/icons-material/Sync";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
-import Fab from "@mui/material/Fab";
 import List from "@mui/material/List";
 import ListItemButton from "@mui/material/ListItemButton";
 import ListItemText from "@mui/material/ListItemText";
 import Modal from "@mui/material/Modal";
 import Slide from "@mui/material/Slide";
 import Stack from "@mui/material/Stack";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
 import { PatchInfo } from "../../../patch";
@@ -49,94 +46,110 @@ export default function PatchesPane({ active }: { active: boolean }) {
         width: "100%",
         height: "100%",
         display: active ? "flex" : "none",
-        overflow: "auto",
       }}
     >
       {patchNames.length > 0 ? (
         <>
-          <List dense disablePadding sx={{ flexGrow: 1 }}>
-            <TransitionGroup>
-              {patchNames.map((patchName) => {
-                const version = semver.maxSatisfying(
-                  Object.keys(patches[patchName].versions),
-                  "*"
-                );
-
-                return (
-                  <Collapse key={`${patchName} ${version}`}>
-                    <ListItemButton
-                      onClick={() => {
-                        setPatchDialogPatch({
-                          name: patchName,
-                          info: patches[patchName],
-                        });
-                        setPatchDialogOpen(true);
-                      }}
-                    >
-                      <ListItemText
-                        primary={
-                          <>
-                            {patches[patchName].title} <small>v{version}</small>
-                          </>
-                        }
-                        primaryTypographyProps={{
-                          sx: {
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          },
-                        }}
-                        secondary={
-                          <Trans
-                            i18nKey="patches:byline"
-                            values={{
-                              authors: listFormatter.format(
-                                patches[patchName].authors.flatMap(({ name }) =>
-                                  name != null ? [name] : []
-                                )
-                              ),
-                            }}
-                          />
-                        }
-                        secondaryTypographyProps={{
-                          sx: {
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          },
-                        }}
-                      />
-                    </ListItemButton>
-                  </Collapse>
-                );
-              })}
-            </TransitionGroup>
-          </List>
-          <Tooltip title={<Trans i18nKey="patches:update" />}>
-            <Fab
-              color="primary"
-              sx={{
-                position: "fixed",
-                bottom: "16px",
-                right: "16px",
-                animation: updating ? "spin 2s linear infinite" : null,
-                "@keyframes spin": {
-                  "0%": {
-                    transform: "rotate(360deg)",
-                  },
-                  "100%": {
-                    transform: "rotate(0deg)",
-                  },
-                },
-              }}
-              disabled={updating}
-              onClick={() => {
-                update();
-              }}
+          <Stack sx={{ flexGrow: 1 }}>
+            <List
+              dense
+              disablePadding
+              sx={{ flexGrow: 1, height: 0, overflow: "auto" }}
             >
-              <SyncIcon />
-            </Fab>
-          </Tooltip>
+              <TransitionGroup>
+                {patchNames.map((patchName) => {
+                  const version = semver.maxSatisfying(
+                    Object.keys(patches[patchName].versions),
+                    "*"
+                  );
+
+                  return (
+                    <Collapse key={`${patchName} ${version}`}>
+                      <ListItemButton
+                        onClick={() => {
+                          setPatchDialogPatch({
+                            name: patchName,
+                            info: patches[patchName],
+                          });
+                          setPatchDialogOpen(true);
+                        }}
+                      >
+                        <ListItemText
+                          primary={
+                            <>
+                              {patches[patchName].title}{" "}
+                              <small>v{version}</small>
+                            </>
+                          }
+                          primaryTypographyProps={{
+                            sx: {
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            },
+                          }}
+                          secondary={
+                            <Trans
+                              i18nKey="patches:byline"
+                              values={{
+                                authors: listFormatter.format(
+                                  patches[patchName].authors.flatMap(
+                                    ({ name }) => (name != null ? [name] : [])
+                                  )
+                                ),
+                              }}
+                            />
+                          }
+                          secondaryTypographyProps={{
+                            sx: {
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            },
+                          }}
+                        />
+                      </ListItemButton>
+                    </Collapse>
+                  );
+                })}
+              </TransitionGroup>
+            </List>
+            <Box>
+              <Stack
+                flexGrow={0}
+                flexShrink={0}
+                direction="row"
+                justifyContent="flex-end"
+                spacing={1}
+                sx={{ px: 1, mb: 0, py: 1 }}
+              >
+                <Button
+                  variant="contained"
+                  startIcon={
+                    <SyncIcon
+                      sx={{
+                        animation: updating ? "spin 2s linear infinite" : null,
+                        "@keyframes spin": {
+                          "0%": {
+                            transform: "rotate(360deg)",
+                          },
+                          "100%": {
+                            transform: "rotate(0deg)",
+                          },
+                        },
+                      }}
+                    />
+                  }
+                  disabled={updating}
+                  onClick={() => {
+                    update();
+                  }}
+                >
+                  <Trans i18nKey="patches:update" />
+                </Button>
+              </Stack>
+            </Box>
+          </Stack>
         </>
       ) : (
         <Box
@@ -154,9 +167,19 @@ export default function PatchesPane({ active }: { active: boolean }) {
             <Button
               disabled={updating}
               startIcon={
-                updating ? (
-                  <CircularProgress color="inherit" size="1em" />
-                ) : null
+                <SyncIcon
+                  sx={{
+                    animation: updating ? "spin 2s linear infinite" : null,
+                    "@keyframes spin": {
+                      "0%": {
+                        transform: "rotate(360deg)",
+                      },
+                      "100%": {
+                        transform: "rotate(0deg)",
+                      },
+                    },
+                  }}
+                />
               }
               variant="contained"
               onClick={() => {
