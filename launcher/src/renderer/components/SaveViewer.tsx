@@ -9,11 +9,17 @@ import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 
 import { Editor } from "../../saveedit";
-import FolderViewer from "./FolderViewer";
+import FolderViewer, { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
 
-export default function SaveViewer({ editor }: { editor: Editor }) {
+export default function SaveViewer({
+  editor,
+  allowFolderEdits,
+}: {
+  editor: Editor;
+  allowFolderEdits: AllowFolderEdits;
+}) {
   const navicustEditor = editor.getNavicustEditor();
   const folderEditor = editor.getFolderEditor();
   const modcardsEditor = editor.getModcardsEditor();
@@ -72,6 +78,7 @@ export default function SaveViewer({ editor }: { editor: Editor }) {
           {folderEditor != null ? (
             <FolderViewer
               romName={editor.getROMName()}
+              allowEdits={allowFolderEdits}
               editor={folderEditor}
               active={tab == "folder"}
             />

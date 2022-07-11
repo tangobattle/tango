@@ -39,6 +39,7 @@ import { Editor, editorClassForGameFamily } from "../../../saveedit";
 import { fallbackLng } from "../../i18n";
 import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
 import { useConfig } from "../ConfigContext";
+import { AllowEdits as AllowFolderEdits } from "../FolderViewer";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
 import { useSaves } from "../SavesContext";
@@ -433,10 +434,12 @@ function SaveViewerWrapper({
   filename,
   romName,
   incarnation,
+  battleReady,
 }: {
   filename: string;
   romName: string;
   incarnation: number;
+  battleReady: boolean;
 }) {
   const { config } = useConfig();
   const [editor, setEditor] = React.useState<Editor | null>(null);
@@ -459,7 +462,14 @@ function SaveViewerWrapper({
     return null;
   }
 
-  return <SaveViewer editor={editor} />;
+  return (
+    <SaveViewer
+      allowFolderEdits={
+        battleReady ? AllowFolderEdits.None : AllowFolderEdits.All
+      }
+      editor={editor}
+    />
+  );
 }
 
 export default function SavesPane({ active }: { active: boolean }) {
@@ -1029,6 +1039,7 @@ export default function SavesPane({ active }: { active: boolean }) {
               romName={selectedSave.romName}
               filename={selectedSave.saveName}
               incarnation={incarnation}
+              battleReady={battleReady}
             />
           </Stack>
         ) : (

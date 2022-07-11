@@ -15,6 +15,12 @@ import { Chip as ChipInfo, FolderEditor } from "../../saveedit";
 import { fallbackLng } from "../i18n";
 import { CopyButtonWithLabel } from "./CopyButton";
 
+export enum AllowEdits {
+  None,
+  RegTagOnly,
+  All,
+}
+
 const MEGA_BG = {
   dark: "#52849c",
   light: "#adefef",
@@ -160,12 +166,17 @@ function FolderChipRow({
 export default function FolderViewer({
   romName,
   editor,
+  allowEdits,
   active,
 }: {
   romName: string;
   editor: FolderEditor;
+  allowEdits: AllowEdits;
   active: boolean;
 }) {
+  // TODO: Use this one day.
+  void allowEdits;
+
   const chips: ({ id: number; code: string } | null)[] = [];
   for (let i = 0; i < 30; i++) {
     const chip = editor.getChip(editor.getEquippedFolder(), i);

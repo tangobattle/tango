@@ -16,6 +16,7 @@ import { ReplayInfo } from "../../replay";
 import { FAMILY_BY_ROM_NAME } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useConfig } from "./ConfigContext";
+import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import SaveViewer from "./SaveViewer";
 
 export default function ReplayInfoDialog({
@@ -116,7 +117,10 @@ export default function ReplayInfoDialog({
       </Stack>
       <Box flexGrow={1} sx={{ display: "flex" }}>
         {editor != null ? (
-          <SaveViewer editor={editor} />
+          <SaveViewer
+            editor={editor}
+            allowFolderEdits={AllowFolderEdits.None}
+          />
         ) : (
           <Box
             sx={{

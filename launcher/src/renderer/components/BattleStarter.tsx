@@ -68,6 +68,7 @@ import { fallbackLng } from "../i18n";
 import { requestAttention } from "../platform";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
+import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
 import SaveViewer from "./SaveViewer";
@@ -1649,7 +1650,10 @@ export default function BattleStarter({
               </Typography>
             </Stack>
             <Box flexGrow={1} sx={{ display: "flex" }}>
-              <SaveViewer editor={revealedSetupEditor} />
+              <SaveViewer
+                editor={revealedSetupEditor}
+                allowFolderEdits={AllowFolderEdits.None}
+              />
             </Box>
           </Stack>
         </Modal>
