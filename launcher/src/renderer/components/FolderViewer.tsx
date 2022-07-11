@@ -1,8 +1,12 @@
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
 
+import { clipboard } from "@electron/remote";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
+import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -177,6 +181,8 @@ export default function FolderViewer({
     }
   }
 
+  const { i18n } = useTranslation();
+
   const groupedChips: {
     id: number;
     code: string;
@@ -237,25 +243,59 @@ export default function FolderViewer({
     }
   }
 
+  const chipData = editor.getChipData();
+
   return (
-    <Box
-      flexGrow={1}
-      display={active ? "block" : "none"}
-      overflow="auto"
-      sx={{ px: 1, height: 0 }}
-    >
-      <Table size="small">
-        <TableBody>
-          {groupedChips.map((groupedChip, i) => (
-            <FolderChipRow
-              key={i}
-              groupedChip={groupedChip}
-              romName={romName}
-              chipData={editor.getChipData()}
-            />
-          ))}
-        </TableBody>
-      </Table>
+    <Box display={active ? "flex" : "none"} flexGrow={1}>
+      <Stack sx={{ flexGrow: 1 }}>
+        <Box sx={{ overflow: "auto", height: 0, flexGrow: 1, px: 1 }}>
+          <Table size="small">
+            <TableBody>
+              {groupedChips.map((groupedChip, i) => (
+                <FolderChipRow
+                  key={i}
+                  groupedChip={groupedChip}
+                  romName={romName}
+                  chipData={chipData}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </Box>
+        <Box>
+          <Stack
+            flexGrow={0}
+            flexShrink={0}
+            direction="row"
+            justifyContent="flex-end"
+            spacing={1}
+            sx={{ px: 1, mb: 0 }}
+          >
+            <Button
+              startIcon={<ContentCopyIcon />}
+              onClick={() => {
+                clipboard.writeText(
+                  groupedChips
+                    .map(({ id, code, count, isRegular, isTag1, isTag2 }) => {
+                      const chip = chipData[id];
+                      const chipName =
+                        chip!.name[i18n.resolvedLanguage] ||
+                        chip!.name[fallbackLng];
+                      return `${count}\t${chipName}\t${code}\t${[
+                        ...(isRegular ? ["[REG]"] : []),
+                        ...(isTag1 ? ["[TAG]"] : []),
+                        ...(isTag2 ? ["[TAG]"] : []),
+                      ].join(" ")}`;
+                    })
+                    .join("\n")
+                );
+              }}
+            >
+              <Trans i18nKey="common:copy-to-clipboard" />
+            </Button>
+          </Stack>
+        </Box>
+      </Stack>
     </Box>
   );
 }

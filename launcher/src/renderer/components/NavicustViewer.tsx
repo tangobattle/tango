@@ -1,7 +1,10 @@
 import React from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
+import { clipboard } from "@electron/remote";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -459,113 +462,155 @@ export default function NavicustViewer({
   const ncps = editor.getNavicustProgramData();
 
   return (
-    <Box
-      display={active ? "flex" : "none"}
-      flexGrow={1}
-      sx={{
-        justifyContent: "center",
-        py: 1,
-        overflow: "auto",
-        height: 0,
-      }}
-    >
-      <Stack direction="column" spacing={1}>
-        <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <NavicustGrid
-            ncps={ncps}
-            placements={placements}
-            commandLine={editor.getCommandLine()}
-            hasOutOfBounds={editor.hasOutOfBounds()}
-            romName={romName}
-          />
+    <Box display={active ? "flex" : "none"} flexGrow={1}>
+      <Stack sx={{ flexGrow: 1 }}>
+        <Box sx={{ overflow: "auto", height: 0, flexGrow: 1, px: 1 }}>
+          <Stack direction="column" spacing={1}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <NavicustGrid
+                ncps={ncps}
+                placements={placements}
+                commandLine={editor.getCommandLine()}
+                hasOutOfBounds={editor.hasOutOfBounds()}
+                romName={romName}
+              />
+            </Box>
+            <Table
+              size="small"
+              sx={{
+                [`& .${tableCellClasses.root}`]: { borderBottom: "none" },
+                alignSelf: "center",
+                width: "400px",
+              }}
+            >
+              <TableBody>
+                <TableRow>
+                  <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
+                    <Stack spacing={0.5} flexGrow={1}>
+                      {placements.flatMap((placement, i) => {
+                        const ncp = ncps[placement.id]!;
+                        if (!ncp.isSolid) {
+                          return [];
+                        }
+                        return [
+                          <Chip
+                            key={i}
+                            size="small"
+                            sx={{
+                              fontSize: "0.9rem",
+                              justifyContent: "flex-start",
+                              color: "black",
+                              backgroundColor: lighten(
+                                NAVICUST_COLORS[
+                                  ncp.colors[
+                                    placement.variant
+                                  ] as keyof typeof NAVICUST_COLORS
+                                ].color,
+                                0.25
+                              ),
+                            }}
+                            label={
+                              ncp.name[
+                                i18n.resolvedLanguage as keyof typeof ncp.name
+                              ] ||
+                              ncp.name[fallbackLng as keyof typeof ncp.name]
+                            }
+                          />,
+                        ];
+                      })}
+                    </Stack>
+                  </TableCell>
+                  <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
+                    <Stack spacing={0.5} flexGrow={1}>
+                      {placements.flatMap((placement, i) => {
+                        const ncp = ncps[placement.id]!;
+                        if (ncp.isSolid) {
+                          return [];
+                        }
+                        return [
+                          <Chip
+                            key={i}
+                            size="small"
+                            sx={{
+                              fontSize: "0.9rem",
+                              justifyContent: "flex-start",
+                              color: "black",
+                              backgroundColor: lighten(
+                                NAVICUST_COLORS[
+                                  ncp.colors[
+                                    placement.variant
+                                  ] as keyof typeof NAVICUST_COLORS
+                                ].color,
+                                0.25
+                              ),
+                            }}
+                            label={
+                              ncp.name[
+                                i18n.resolvedLanguage as keyof typeof ncp.name
+                              ] ||
+                              ncp.name[fallbackLng as keyof typeof ncp.name]
+                            }
+                          />,
+                        ];
+                      })}
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </Stack>
         </Box>
-        <Table
-          size="small"
-          sx={{
-            [`& .${tableCellClasses.root}`]: { borderBottom: "none" },
-            alignSelf: "center",
-            width: "400px",
-          }}
-        >
-          <TableBody>
-            <TableRow>
-              <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
-                <Stack spacing={0.5} flexGrow={1}>
-                  {placements.flatMap((placement, i) => {
-                    const ncp = ncps[placement.id]!;
-                    if (!ncp.isSolid) {
-                      return [];
-                    }
-                    return [
-                      <Chip
-                        key={i}
-                        size="small"
-                        sx={{
-                          fontSize: "0.9rem",
-                          justifyContent: "flex-start",
-                          color: "black",
-                          backgroundColor: lighten(
-                            NAVICUST_COLORS[
-                              ncp.colors[
-                                placement.variant
-                              ] as keyof typeof NAVICUST_COLORS
-                            ].color,
-                            0.25
-                          ),
-                        }}
-                        label={
-                          ncp.name[
-                            i18n.resolvedLanguage as keyof typeof ncp.name
-                          ] || ncp.name[fallbackLng as keyof typeof ncp.name]
-                        }
-                      />,
-                    ];
-                  })}
-                </Stack>
-              </TableCell>
-              <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
-                <Stack spacing={0.5} flexGrow={1}>
-                  {placements.flatMap((placement, i) => {
-                    const ncp = ncps[placement.id]!;
-                    if (ncp.isSolid) {
-                      return [];
-                    }
-                    return [
-                      <Chip
-                        key={i}
-                        size="small"
-                        sx={{
-                          fontSize: "0.9rem",
-                          justifyContent: "flex-start",
-                          color: "black",
-                          backgroundColor: lighten(
-                            NAVICUST_COLORS[
-                              ncp.colors[
-                                placement.variant
-                              ] as keyof typeof NAVICUST_COLORS
-                            ].color,
-                            0.25
-                          ),
-                        }}
-                        label={
-                          ncp.name[
-                            i18n.resolvedLanguage as keyof typeof ncp.name
-                          ] || ncp.name[fallbackLng as keyof typeof ncp.name]
-                        }
-                      />,
-                    ];
-                  })}
-                </Stack>
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+        <Box>
+          <Stack
+            flexGrow={0}
+            flexShrink={0}
+            direction="row"
+            justifyContent="flex-end"
+            spacing={1}
+            sx={{ px: 1, mb: 0 }}
+          >
+            <Button
+              startIcon={<ContentCopyIcon />}
+              onClick={() => {
+                const solidBlocks = placements.filter(
+                  ({ id }) => ncps[id]!.isSolid
+                );
+                const plusBlocks = placements.filter(
+                  ({ id }) => !ncps[id]!.isSolid
+                );
+
+                const lines = [];
+                for (
+                  let i = 0;
+                  i < Math.max(solidBlocks.length, plusBlocks.length);
+                  ++i
+                ) {
+                  const left =
+                    i < solidBlocks.length
+                      ? ncps[solidBlocks[i].id]!.name[i18n.resolvedLanguage] ||
+                        ncps[solidBlocks[i].id]!.name[fallbackLng]
+                      : "";
+                  const right =
+                    i < plusBlocks.length
+                      ? ncps[plusBlocks[i].id]!.name[i18n.resolvedLanguage] ||
+                        ncps[plusBlocks[i].id]!.name[fallbackLng]
+                      : "";
+                  lines.push(left + "\t" + right);
+                }
+
+                clipboard.writeText(lines.join("\n"));
+              }}
+            >
+              <Trans i18nKey="common:copy-to-clipboard" />
+            </Button>
+          </Stack>
+        </Box>
       </Stack>
     </Box>
   );
