@@ -49,22 +49,24 @@ function romNameToAssetFolder(romName: string) {
 }
 
 function FolderChipRow({
-  groupedChip,
+  id,
+  code,
+  isRegular,
+  isTag1,
+  isTag2,
+  count,
   romName,
   chipData,
 }: {
-  groupedChip: {
-    id: number;
-    code: string;
-    isRegular: boolean;
-    isTag1: boolean;
-    isTag2: boolean;
-    count: number;
-  };
+  id: number;
+  code: string;
+  isRegular: boolean;
+  isTag1: boolean;
+  isTag2: boolean;
+  count: number;
   romName: string;
   chipData: (ChipInfo | null)[];
 }) {
-  const { id, code, isRegular, isTag1, isTag2, count } = groupedChip;
   const theme = useTheme();
 
   const { i18n } = useTranslation();
@@ -193,6 +195,7 @@ export default function FolderViewer({
   const { i18n } = useTranslation();
 
   const groupedChips: {
+    firstIndex: number;
     id: number;
     code: string;
     isRegular: boolean;
@@ -201,7 +204,8 @@ export default function FolderViewer({
     count: number;
   }[] = [];
   const chipCounter: { [key: string]: number } = {};
-  for (const chip of chips) {
+  for (let i = 0; i < chips.length; ++i) {
+    const chip = chips[i];
     if (chip == null) {
       continue;
     }
@@ -210,6 +214,7 @@ export default function FolderViewer({
       chipCounter[chipKey] = 0;
       groupedChips.push({
         ...chip,
+        firstIndex: i,
         isRegular: false,
         isTag1: false,
         isTag2: false,
@@ -260,10 +265,15 @@ export default function FolderViewer({
         <Box sx={{ overflow: "auto", height: 0, flexGrow: 1, px: 1 }}>
           <Table size="small">
             <TableBody>
-              {groupedChips.map((groupedChip, i) => (
+              {groupedChips.map((groupedChip) => (
                 <FolderChipRow
-                  key={i}
-                  groupedChip={groupedChip}
+                  key={groupedChip.firstIndex}
+                  id={groupedChip.id}
+                  code={groupedChip.code}
+                  isRegular={groupedChip.isRegular}
+                  isTag1={groupedChip.isTag1}
+                  isTag2={groupedChip.isTag2}
+                  count={groupedChip.count}
                   romName={romName}
                   chipData={chipData}
                 />
