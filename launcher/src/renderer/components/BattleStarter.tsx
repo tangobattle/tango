@@ -878,9 +878,11 @@ function isSettingsChangeTrivial(
   previousSettings: SetSettings,
   settings: SetSettings
 ) {
-  return isEqual(
-    trivializeSettings(previousSettings),
-    trivializeSettings(settings)
+  return (
+    isEqual(
+      trivializeSettings(previousSettings),
+      trivializeSettings(settings)
+    ) || settings.revealSetup
   );
 }
 
