@@ -33,6 +33,10 @@ const config: Configuration = {
         type: "javascript/auto",
       },
       {
+        test: /\.css$/i,
+        use: ["style-loader", "css-loader"],
+      },
+      {
         test: /\.(png|svg|jpg|jpeg|gif)$/i,
         exclude: [path.join(rootPath, "core")],
         type: "asset/resource",

@@ -1,3 +1,5 @@
+import "./style.css";
+
 import * as log from "electron-log";
 import React from "react";
 import { render } from "react-dom";
