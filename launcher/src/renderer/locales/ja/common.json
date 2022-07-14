@@ -1,5 +1,6 @@
 {
   "copy-to-clipboard": "クリップボードにコピー",
+  "copy-image-to-clipboard": "画像をクリップボードにコピー",
   "copied-to-clipboard": "コピーしました！",
   "close": "閉じる"
 }

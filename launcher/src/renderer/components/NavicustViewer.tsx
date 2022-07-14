@@ -1,13 +1,18 @@
+import { NativeImage } from "electron";
 import React from "react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
+import { clipboard, nativeImage } from "@electron/remote";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
 import Box from "@mui/material/Box";
+import Button, { ButtonProps } from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell, { tableCellClasses } from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
+import Tooltip, { TooltipProps } from "@mui/material/Tooltip";
 import { lighten } from "@mui/system/colorManipulator";
 
 import array2d, { Array2D } from "../../array2d";
@@ -99,14 +104,7 @@ function navicustBackground(romName: string) {
   throw `unknown rom name: ${romName}`;
 }
 
-function NavicustGrid({
-  ncps,
-  placements,
-  grid,
-  romName,
-  commandLine,
-  hasOutOfBounds,
-}: {
+interface NavicustGridProps {
   ncps: (NavicustProgram | null)[];
   placements: {
     id: number;
@@ -120,65 +118,123 @@ function NavicustGrid({
   commandLine: number;
   hasOutOfBounds: boolean;
   romName: string;
-}) {
-  const grid2d = React.useMemo(() => {
-    const grid2d = [];
-    for (let row = 0; row < grid.nrows; row++) {
-      grid2d.push(array2d.row(grid, row));
-    }
-    return grid2d;
-  }, [grid]);
+}
 
-  const colors = React.useMemo(() => {
-    const colors = [];
-    for (const placement of placements) {
-      const ncp = ncps[placement.id];
-      if (ncp == null) {
-        console.error("unrecognized ncp:", placement.id);
-        continue;
+const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
+  (
+    {
+      ncps,
+      placements,
+      grid,
+      romName,
+      commandLine,
+      hasOutOfBounds,
+    }: NavicustGridProps,
+    ref
+  ) => {
+    const grid2d = React.useMemo(() => {
+      const grid2d = [];
+      for (let row = 0; row < grid.nrows; row++) {
+        grid2d.push(array2d.row(grid, row));
       }
-      const color = ncp.colors[placement.variant];
-      if (colors.indexOf(color) != -1) {
-        continue;
-      }
-      colors.push(color);
-    }
-    return colors;
-  }, [ncps, placements]);
+      return grid2d;
+    }, [grid]);
 
-  return (
-    <div
-      style={{
-        padding: "20px",
-        background: navicustBackground(romName),
-        display: "inline-block",
-        borderRadius: "4px",
-        textAlign: "left",
-      }}
-    >
-      <div style={{ marginBottom: `${borderWidth * 2}px` }}>
-        <table
-          style={{
-            display: "inline-block",
-            background: borderColor,
-            boxSizing: "border-box",
-            borderStyle: "solid",
-            borderColor,
-            borderWidth: `${borderWidth / 4}px`,
-            borderSpacing: 0,
-            borderCollapse: "separate",
-          }}
-        >
-          <tbody>
-            <tr>
-              {[...colors.slice(0, 4), null, null, null, null]
-                .slice(0, 4)
-                .map((color, i) => (
+    const colors = React.useMemo(() => {
+      const colors = [];
+      for (const placement of placements) {
+        const ncp = ncps[placement.id];
+        if (ncp == null) {
+          console.error("unrecognized ncp:", placement.id);
+          continue;
+        }
+        const color = ncp.colors[placement.variant];
+        if (colors.indexOf(color) != -1) {
+          continue;
+        }
+        colors.push(color);
+      }
+      return colors;
+    }, [ncps, placements]);
+
+    return (
+      <div
+        ref={ref}
+        style={{
+          boxSizing: "border-box",
+          padding: "20px",
+          background: navicustBackground(romName),
+          display: "inline-block",
+          borderRadius: "4px",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ marginBottom: `${borderWidth * 2}px` }}>
+          <table
+            style={{
+              display: "inline-block",
+              background: borderColor,
+              boxSizing: "border-box",
+              borderStyle: "solid",
+              borderColor,
+              borderWidth: `${borderWidth / 4}px`,
+              borderSpacing: 0,
+              borderCollapse: "separate",
+            }}
+          >
+            <tbody>
+              <tr>
+                {[...colors.slice(0, 4), null, null, null, null]
+                  .slice(0, 4)
+                  .map((color, i) => (
+                    <td
+                      key={i}
+                      style={{
+                        borderStyle: "solid",
+                        borderColor,
+                        boxSizing: "border-box",
+                        borderWidth: `${borderWidth / 2}px`,
+                        width: `${borderWidth * 8}px`,
+                        height: `${borderWidth * 5}px`,
+                        padding: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          background:
+                            color != null
+                              ? NAVICUST_COLORS[
+                                  color as keyof typeof NAVICUST_COLORS
+                                ].plusColor
+                              : emptyColor,
+                        }}
+                      />
+                    </td>
+                  ))}
+              </tr>
+            </tbody>
+          </table>
+          <table
+            style={{
+              display: "inline-block",
+              borderStyle: "solid",
+              borderColor: "transparent",
+              boxSizing: "border-box",
+              borderWidth: `${borderWidth / 4}px`,
+              borderSpacing: 0,
+              borderCollapse: "separate",
+            }}
+          >
+            <tbody>
+              <tr>
+                {colors.slice(4).map((color, i) => (
                   <td
                     key={i}
                     style={{
                       borderStyle: "solid",
-                      borderColor,
+                      borderColor: "transparent",
                       boxSizing: "border-box",
                       borderWidth: `${borderWidth / 2}px`,
                       width: `${borderWidth * 8}px`,
@@ -200,243 +256,285 @@ function NavicustGrid({
                     />
                   </td>
                 ))}
-            </tr>
-          </tbody>
-        </table>
-        <table
-          style={{
-            display: "inline-block",
-            borderStyle: "solid",
-            borderColor: "transparent",
-            boxSizing: "border-box",
-            borderWidth: `${borderWidth / 4}px`,
-            borderSpacing: 0,
-            borderCollapse: "separate",
-          }}
-        >
-          <tbody>
-            <tr>
-              {colors.slice(4).map((color, i) => (
-                <td
-                  key={i}
-                  style={{
-                    borderStyle: "solid",
-                    borderColor: "transparent",
-                    boxSizing: "border-box",
-                    borderWidth: `${borderWidth / 2}px`,
-                    width: `${borderWidth * 8}px`,
-                    height: `${borderWidth * 5}px`,
-                    padding: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      background:
-                        color != null
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div style={{ position: "relative", display: "inline-block" }}>
+            <table
+              style={{
+                background: borderColor,
+                borderStyle: "solid",
+                borderColor,
+                borderWidth: `${borderWidth / 2}px`,
+                boxSizing: "border-box",
+                borderSpacing: 0,
+                borderCollapse: "separate",
+                borderRadius: "4px",
+              }}
+            >
+              <tbody>
+                {grid2d.map((row, i) => (
+                  <tr key={i}>
+                    {row.map((placementIdx, j) => {
+                      const placement =
+                        placementIdx != -1 ? placements[placementIdx] : null;
+
+                      const ncp = placement != null ? ncps[placement.id] : null;
+                      const ncpColor =
+                        ncp != null
                           ? NAVICUST_COLORS[
-                              color as keyof typeof NAVICUST_COLORS
-                            ].plusColor
-                          : emptyColor,
-                    }}
-                  />
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div>
-        <div style={{ position: "relative", display: "inline-block" }}>
-          <table
-            style={{
-              background: borderColor,
-              borderStyle: "solid",
-              borderColor,
-              borderWidth: `${borderWidth / 2}px`,
-              boxSizing: "border-box",
-              borderSpacing: 0,
-              borderCollapse: "separate",
-              borderRadius: "4px",
-            }}
-          >
-            <tbody>
-              {grid2d.map((row, i) => (
-                <tr key={i}>
-                  {row.map((placementIdx, j) => {
-                    const placement =
-                      placementIdx != -1 ? placements[placementIdx] : null;
+                              ncp.colors[
+                                placement!.variant
+                              ] as keyof typeof NAVICUST_COLORS
+                            ]
+                          : null;
 
-                    const ncp = placement != null ? ncps[placement.id] : null;
-                    const ncpColor =
-                      ncp != null
-                        ? NAVICUST_COLORS[
-                            ncp.colors[
-                              placement!.variant
-                            ] as keyof typeof NAVICUST_COLORS
-                          ]
-                        : null;
-
-                    // prettier-ignore
-                    const isCorner = hasOutOfBounds && (
+                      // prettier-ignore
+                      const isCorner = hasOutOfBounds && (
                       (i == 0 && j == 0) ||
                       (i == 0 && j == row.length - 1) ||
                       (i == grid2d.length - 1 && j == 0) ||
                       (i == grid2d.length - 1 && j == row.length - 1));
 
-                    const background = isCorner
-                      ? "transparent"
-                      : ncpColor != null
-                      ? ncp!.isSolid
-                        ? ncpColor.color
-                        : `conic-gradient(
+                      const background = isCorner
+                        ? "transparent"
+                        : ncpColor != null
+                        ? ncp!.isSolid
+                          ? ncpColor.color
+                          : `conic-gradient(
                                           from 90deg at ${borderWidth}px ${borderWidth}px,
                                           ${ncpColor.color} 90deg,
                                           ${ncpColor.plusColor} 0
                                       )
                                       calc(100% + ${borderWidth}px / 2) calc(100% + ${borderWidth}px / 2) /
                                       calc(50% + ${borderWidth}px) calc(50% + ${borderWidth}px)`
-                      : emptyColor;
+                        : emptyColor;
 
-                    const softBorders: string[] = [];
-                    const hardBorders: string[] = [];
+                      const softBorders: string[] = [];
+                      const hardBorders: string[] = [];
 
-                    if (
-                      placementIdx == -1 ||
-                      j <= 0 ||
-                      grid2d[i][j - 1] != placementIdx
-                    ) {
-                      hardBorders.push(
-                        `inset ${borderWidth / 2}px 0 ${borderColor}`
-                      );
-                    } else {
-                      softBorders.push(
-                        `inset ${borderWidth / 2}px 0 ${ncpColor!.plusColor}`
-                      );
-                    }
+                      if (
+                        placementIdx == -1 ||
+                        j <= 0 ||
+                        grid2d[i][j - 1] != placementIdx
+                      ) {
+                        hardBorders.push(
+                          `inset ${borderWidth / 2}px 0 ${borderColor}`
+                        );
+                      } else {
+                        softBorders.push(
+                          `inset ${borderWidth / 2}px 0 ${ncpColor!.plusColor}`
+                        );
+                      }
 
-                    if (
-                      placementIdx == -1 ||
-                      j >= grid2d.length - 1 ||
-                      grid2d[i][j + 1] != placementIdx
-                    ) {
-                      hardBorders.push(
-                        `inset ${-borderWidth / 2}px 0 ${borderColor}`
-                      );
-                    } else {
-                      softBorders.push(
-                        `inset ${-borderWidth / 2}px 0 ${ncpColor!.plusColor}`
-                      );
-                    }
+                      if (
+                        placementIdx == -1 ||
+                        j >= grid2d.length - 1 ||
+                        grid2d[i][j + 1] != placementIdx
+                      ) {
+                        hardBorders.push(
+                          `inset ${-borderWidth / 2}px 0 ${borderColor}`
+                        );
+                      } else {
+                        softBorders.push(
+                          `inset ${-borderWidth / 2}px 0 ${ncpColor!.plusColor}`
+                        );
+                      }
 
-                    if (
-                      placementIdx == -1 ||
-                      i <= 0 ||
-                      grid2d[i - 1][j] != placementIdx
-                    ) {
-                      hardBorders.push(
-                        `inset 0 ${borderWidth / 2}px ${borderColor}`
-                      );
-                    } else {
-                      softBorders.push(
-                        `inset 0 ${borderWidth / 2}px ${ncpColor!.plusColor}`
-                      );
-                    }
+                      if (
+                        placementIdx == -1 ||
+                        i <= 0 ||
+                        grid2d[i - 1][j] != placementIdx
+                      ) {
+                        hardBorders.push(
+                          `inset 0 ${borderWidth / 2}px ${borderColor}`
+                        );
+                      } else {
+                        softBorders.push(
+                          `inset 0 ${borderWidth / 2}px ${ncpColor!.plusColor}`
+                        );
+                      }
 
-                    if (
-                      placementIdx == -1 ||
-                      i >= row.length - 1 ||
-                      grid2d[i + 1][j] != placementIdx
-                    ) {
-                      hardBorders.push(
-                        `inset 0 ${-borderWidth / 2}px ${borderColor}`
-                      );
-                    } else {
-                      softBorders.push(
-                        `inset 0 ${-borderWidth / 2}px ${ncpColor!.plusColor}`
-                      );
-                    }
+                      if (
+                        placementIdx == -1 ||
+                        i >= row.length - 1 ||
+                        grid2d[i + 1][j] != placementIdx
+                      ) {
+                        hardBorders.push(
+                          `inset 0 ${-borderWidth / 2}px ${borderColor}`
+                        );
+                      } else {
+                        softBorders.push(
+                          `inset 0 ${-borderWidth / 2}px ${ncpColor!.plusColor}`
+                        );
+                      }
 
-                    return (
-                      <td
-                        style={{
-                          width: `${borderWidth * 9}px`,
-                          height: `${borderWidth * 9}px`,
-                          padding: 0,
-                          opacity:
-                            hasOutOfBounds &&
-                            (i == 0 ||
-                              i == grid.length - 1 ||
-                              j == 0 ||
-                              j == row.length - 1)
-                              ? 0.25
-                              : 1.0,
-                        }}
-                        key={j}
-                      >
-                        <div
+                      return (
+                        <td
                           style={{
-                            width: "100%",
-                            height: "100%",
-                            boxShadow: [...hardBorders, ...softBorders].join(
-                              ","
-                            ),
-                            background,
+                            width: `${borderWidth * 9}px`,
+                            height: `${borderWidth * 9}px`,
+                            padding: 0,
+                            opacity:
+                              hasOutOfBounds &&
+                              (i == 0 ||
+                                i == grid.length - 1 ||
+                                j == 0 ||
+                                j == row.length - 1)
+                                ? 0.25
+                                : 1.0,
                           }}
-                        />
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <hr
-            style={{
-              top: `${borderWidth * commandLine * 9 + borderWidth * 2.5}px`,
-              margin: 0,
-              padding: 0,
-              position: "absolute",
-              width: "100%",
-              borderColor,
-              borderLeftStyle: "none",
-              borderRightStyle: "none",
-              borderTopStyle: "none",
-              borderBottomStyle: "solid",
-              boxSizing: "border-box",
-              borderWidth: `${borderWidth}px`,
-              pointerEvents: "none",
-            }}
-          />
-          <hr
-            style={{
-              top: `${
-                borderWidth * commandLine * 9 +
-                borderWidth * 7 -
-                borderWidth / 2
-              }px`,
-              margin: 0,
-              padding: 0,
-              position: "absolute",
-              width: "100%",
-              borderColor,
-              borderLeftStyle: "none",
-              borderRightStyle: "none",
-              borderTopStyle: "solid",
-              borderBottomStyle: "none",
-              boxSizing: "border-box",
-              borderWidth: `${borderWidth}px`,
-              pointerEvents: "none",
-            }}
-          />
+                          key={j}
+                        >
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              boxShadow: [...hardBorders, ...softBorders].join(
+                                ","
+                              ),
+                              background,
+                            }}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <hr
+              style={{
+                top: `${borderWidth * commandLine * 9 + borderWidth * 2.5}px`,
+                margin: 0,
+                padding: 0,
+                position: "absolute",
+                width: "100%",
+                borderColor,
+                borderLeftStyle: "none",
+                borderRightStyle: "none",
+                borderTopStyle: "none",
+                borderBottomStyle: "solid",
+                boxSizing: "border-box",
+                borderWidth: `${borderWidth}px`,
+                pointerEvents: "none",
+              }}
+            />
+            <hr
+              style={{
+                top: `${
+                  borderWidth * commandLine * 9 +
+                  borderWidth * 7 -
+                  borderWidth / 2
+                }px`,
+                margin: 0,
+                padding: 0,
+                position: "absolute",
+                width: "100%",
+                borderColor,
+                borderLeftStyle: "none",
+                borderRightStyle: "none",
+                borderTopStyle: "solid",
+                borderBottomStyle: "none",
+                boxSizing: "border-box",
+                borderWidth: `${borderWidth}px`,
+                pointerEvents: "none",
+              }}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    );
+  }
+);
+
+const OFF_COLOR = "#bdbdbd";
+
+function CopyNodeImageToClipboardButton({
+  nodeRef,
+  disabled,
+  TooltipProps,
+  ...props
+}: {
+  nodeRef: React.MutableRefObject<HTMLElement | null>;
+  disabled?: boolean;
+  TooltipProps?: Partial<TooltipProps>;
+} & ButtonProps) {
+  const [currentTimeout, setCurrentTimeout] =
+    React.useState<NodeJS.Timeout | null>(null);
+  return (
+    <Tooltip
+      open={currentTimeout != null}
+      title={<Trans i18nKey="common:copied-to-clipboard" />}
+      {...TooltipProps}
+    >
+      <Button
+        onClick={() => {
+          if (nodeRef.current == null) {
+            return;
+          }
+
+          (async () => {
+            const img = await nodeToNativeImage(nodeRef.current!);
+            clipboard.writeImage(img);
+            if (currentTimeout != null) {
+              clearTimeout(currentTimeout);
+            }
+            setCurrentTimeout(
+              setTimeout(() => {
+                setCurrentTimeout(null);
+              }, 1000)
+            );
+          })();
+        }}
+        startIcon={<ContentCopyIcon />}
+        disabled={disabled}
+        {...props}
+      >
+        <Trans i18nKey="common:copy-image-to-clipboard" />
+      </Button>
+    </Tooltip>
   );
 }
 
-const OFF_COLOR = "#bdbdbd";
+function nodeToNativeImage(node: HTMLElement): Promise<NativeImage> {
+  return new Promise((resolve) => {
+    const img = document.createElement("img");
+    const xmlSerializer = new XMLSerializer();
+    img.src = `data:image/svg+xml;utf8,<svg
+      width="${node.offsetWidth}"
+      height="${node.offsetHeight}"
+      viewBox="0 0 ${node.offsetWidth} ${node.offsetHeight}"
+      xmlns="http://www.w3.org/2000/svg">
+          <foreignObject width="100%" height="100%">${xmlSerializer.serializeToString(
+            node
+          )}</foreignObject>
+      </svg>
+      `;
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = node.offsetWidth;
+      canvas.height = node.offsetHeight;
+
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(
+        img,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+        0,
+        0,
+        canvas.width,
+        canvas.height
+      );
+
+      resolve(nativeImage.createFromDataURL(canvas.toDataURL()));
+    };
+  });
+}
 
 export default function NavicustViewer({
   editor,
@@ -468,6 +566,8 @@ export default function NavicustViewer({
   const grid = placementsToArray2D(ncps, placements);
   const commandLinePlacements = array2d.row(grid, editor.getCommandLine());
 
+  const navicustGridRef = React.useRef<HTMLDivElement | null>(null);
+
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
       <Stack sx={{ flexGrow: 1 }}>
@@ -481,6 +581,7 @@ export default function NavicustViewer({
               }}
             >
               <NavicustGrid
+                ref={navicustGridRef}
                 ncps={ncps}
                 grid={grid}
                 placements={placements}
@@ -587,6 +688,10 @@ export default function NavicustViewer({
             spacing={1}
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
+            <CopyNodeImageToClipboardButton
+              nodeRef={navicustGridRef}
+              TooltipProps={{ placement: "top" }}
+            />
             <CopyButtonWithLabel
               value={(() => {
                 const lines = [];
