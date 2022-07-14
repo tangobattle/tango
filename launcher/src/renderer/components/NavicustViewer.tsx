@@ -10,7 +10,7 @@ import TableCell, { tableCellClasses } from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import { lighten } from "@mui/system/colorManipulator";
 
-import array2d from "../../array2d";
+import array2d, { Array2D } from "../../array2d";
 import { NavicustEditor, NavicustProgram } from "../../saveedit";
 import { fallbackLng } from "../i18n";
 import { CopyButtonWithLabel } from "./CopyButton";
@@ -102,6 +102,7 @@ function navicustBackground(romName: string) {
 function NavicustGrid({
   ncps,
   placements,
+  grid,
   romName,
   commandLine,
   hasOutOfBounds,
@@ -115,18 +116,18 @@ function NavicustGrid({
     col: number;
     compressed: boolean;
   }[];
+  grid: Array2D<number>;
   commandLine: number;
   hasOutOfBounds: boolean;
   romName: string;
 }) {
-  const grid = React.useMemo(() => {
-    const grid = [];
-    const arr2d = placementsToArray2D(ncps, placements);
-    for (let row = 0; row < arr2d.nrows; row++) {
-      grid.push(array2d.row(arr2d, row));
+  const grid2d = React.useMemo(() => {
+    const grid2d = [];
+    for (let row = 0; row < grid.nrows; row++) {
+      grid2d.push(array2d.row(grid, row));
     }
-    return grid;
-  }, [ncps, placements]);
+    return grid2d;
+  }, [grid]);
 
   const colors = React.useMemo(() => {
     const colors = [];
@@ -261,7 +262,7 @@ function NavicustGrid({
             }}
           >
             <tbody>
-              {grid.map((row, i) => (
+              {grid2d.map((row, i) => (
                 <tr key={i}>
                   {row.map((placementIdx, j) => {
                     const placement =
@@ -281,8 +282,8 @@ function NavicustGrid({
                     const isCorner = hasOutOfBounds && (
                       (i == 0 && j == 0) ||
                       (i == 0 && j == row.length - 1) ||
-                      (i == grid.length - 1 && j == 0) ||
-                      (i == grid.length - 1 && j == row.length - 1));
+                      (i == grid2d.length - 1 && j == 0) ||
+                      (i == grid2d.length - 1 && j == row.length - 1));
 
                     const background = isCorner
                       ? "transparent"
@@ -304,7 +305,7 @@ function NavicustGrid({
                     if (
                       placementIdx == -1 ||
                       j <= 0 ||
-                      grid[i][j - 1] != placementIdx
+                      grid2d[i][j - 1] != placementIdx
                     ) {
                       hardBorders.push(
                         `inset ${borderWidth / 2}px 0 ${borderColor}`
@@ -317,8 +318,8 @@ function NavicustGrid({
 
                     if (
                       placementIdx == -1 ||
-                      j >= grid.length - 1 ||
-                      grid[i][j + 1] != placementIdx
+                      j >= grid2d.length - 1 ||
+                      grid2d[i][j + 1] != placementIdx
                     ) {
                       hardBorders.push(
                         `inset ${-borderWidth / 2}px 0 ${borderColor}`
@@ -332,7 +333,7 @@ function NavicustGrid({
                     if (
                       placementIdx == -1 ||
                       i <= 0 ||
-                      grid[i - 1][j] != placementIdx
+                      grid2d[i - 1][j] != placementIdx
                     ) {
                       hardBorders.push(
                         `inset 0 ${borderWidth / 2}px ${borderColor}`
@@ -346,7 +347,7 @@ function NavicustGrid({
                     if (
                       placementIdx == -1 ||
                       i >= row.length - 1 ||
-                      grid[i + 1][j] != placementIdx
+                      grid2d[i + 1][j] != placementIdx
                     ) {
                       hardBorders.push(
                         `inset 0 ${-borderWidth / 2}px ${borderColor}`
@@ -464,10 +465,8 @@ export default function NavicustViewer({
   const solidBlocks = placements.filter(({ id }) => ncps[id]!.isSolid);
   const plusBlocks = placements.filter(({ id }) => !ncps[id]!.isSolid);
 
-  const commandLinePlacements = array2d.row(
-    placementsToArray2D(ncps, placements),
-    editor.getCommandLine()
-  );
+  const grid = placementsToArray2D(ncps, placements);
+  const commandLinePlacements = array2d.row(grid, editor.getCommandLine());
 
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
@@ -483,6 +482,7 @@ export default function NavicustViewer({
             >
               <NavicustGrid
                 ncps={ncps}
+                grid={grid}
                 placements={placements}
                 commandLine={editor.getCommandLine()}
                 hasOutOfBounds={editor.hasOutOfBounds()}

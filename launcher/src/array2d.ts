@@ -1,4 +1,4 @@
-interface Array2D<T> extends Array<T> {
+export interface Array2D<T> extends Array<T> {
   nrows: number;
   ncols: number;
 }
