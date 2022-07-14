@@ -435,6 +435,8 @@ function NavicustGrid({
   );
 }
 
+const OFF_COLOR = "#bdbdbd";
+
 export default function NavicustViewer({
   editor,
   romName,
@@ -462,20 +464,10 @@ export default function NavicustViewer({
   const solidBlocks = placements.filter(({ id }) => ncps[id]!.isSolid);
   const plusBlocks = placements.filter(({ id }) => !ncps[id]!.isSolid);
 
-  const lines = [];
-  for (let i = 0; i < Math.max(solidBlocks.length, plusBlocks.length); ++i) {
-    const left =
-      i < solidBlocks.length
-        ? ncps[solidBlocks[i].id]!.name[i18n.resolvedLanguage] ||
-          ncps[solidBlocks[i].id]!.name[fallbackLng]
-        : "";
-    const right =
-      i < plusBlocks.length
-        ? ncps[plusBlocks[i].id]!.name[i18n.resolvedLanguage] ||
-          ncps[plusBlocks[i].id]!.name[fallbackLng]
-        : "";
-    lines.push(left + "\t" + right);
-  }
+  const commandLinePlacements = array2d.row(
+    placementsToArray2D(ncps, placements),
+    editor.getCommandLine()
+  );
 
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
@@ -514,6 +506,13 @@ export default function NavicustViewer({
                         if (!ncp.isSolid) {
                           return [];
                         }
+                        const name =
+                          ncp.name[
+                            i18n.resolvedLanguage as keyof typeof ncp.name
+                          ] || ncp.name[fallbackLng as keyof typeof ncp.name];
+
+                        const isActive = commandLinePlacements.indexOf(i) != -1;
+
                         return [
                           <Chip
                             key={i}
@@ -522,21 +521,18 @@ export default function NavicustViewer({
                               fontSize: "0.9rem",
                               justifyContent: "flex-start",
                               color: "black",
-                              backgroundColor: lighten(
-                                NAVICUST_COLORS[
-                                  ncp.colors[
-                                    placement.variant
-                                  ] as keyof typeof NAVICUST_COLORS
-                                ].color,
-                                0.25
-                              ),
+                              backgroundColor: isActive
+                                ? lighten(
+                                    NAVICUST_COLORS[
+                                      ncp.colors[
+                                        placement.variant
+                                      ] as keyof typeof NAVICUST_COLORS
+                                    ].color,
+                                    0.25
+                                  )
+                                : OFF_COLOR,
                             }}
-                            label={
-                              ncp.name[
-                                i18n.resolvedLanguage as keyof typeof ncp.name
-                              ] ||
-                              ncp.name[fallbackLng as keyof typeof ncp.name]
-                            }
+                            label={isActive ? name : <del>{name}</del>}
                           />,
                         ];
                       })}
@@ -592,7 +588,27 @@ export default function NavicustViewer({
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
             <CopyButtonWithLabel
-              value={lines.join("\n")}
+              value={(() => {
+                const lines = [];
+                for (
+                  let i = 0;
+                  i < Math.max(solidBlocks.length, plusBlocks.length);
+                  ++i
+                ) {
+                  const left =
+                    i < solidBlocks.length
+                      ? ncps[solidBlocks[i].id]!.name[i18n.resolvedLanguage] ||
+                        ncps[solidBlocks[i].id]!.name[fallbackLng]
+                      : "";
+                  const right =
+                    i < plusBlocks.length
+                      ? ncps[plusBlocks[i].id]!.name[i18n.resolvedLanguage] ||
+                        ncps[plusBlocks[i].id]!.name[fallbackLng]
+                      : "";
+                  lines.push(left + "\t" + right);
+                }
+                return lines.join("\n");
+              })()}
               TooltipProps={{ placement: "top" }}
             />
           </Stack>

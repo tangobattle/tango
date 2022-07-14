@@ -57,16 +57,21 @@ export default function ModcardsViewer({
                   return null;
                 }
 
+                const name =
+                  modcard.name[
+                    i18n.resolvedLanguage as keyof typeof modcard.name
+                  ] || modcard.name[fallbackLng as keyof typeof modcard.name];
+
+                const formattedName = (
+                  <>
+                    {name} <small>{modcard.mb}MB</small>
+                  </>
+                );
+
                 return (
                   <TableRow key={i}>
                     <TableCell>
-                      {modcard.name[
-                        i18n.resolvedLanguage as keyof typeof modcard.name
-                      ] ||
-                        modcard.name[
-                          fallbackLng as keyof typeof modcard.name
-                        ]}{" "}
-                      <small>{modcard.mb}MB</small>
+                      {enabled ? formattedName : <del>{formattedName}</del>}
                     </TableCell>
                     <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                       <Stack spacing={0.5}>
