@@ -169,12 +169,17 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
           textAlign: "left",
         }}
       >
-        <div style={{ marginBottom: `${borderWidth * 2}px` }}>
+        <div
+          style={{
+            display: "flex",
+            boxSizing: "border-box",
+            marginBottom: `${borderWidth * 2}px`,
+          }}
+        >
           <table
             style={{
-              display: "inline-block",
-              background: borderColor,
               boxSizing: "border-box",
+              background: borderColor,
               borderStyle: "solid",
               borderColor,
               borderWidth: `${borderWidth / 4}px`,
@@ -218,7 +223,6 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
           </table>
           <table
             style={{
-              display: "inline-block",
               borderStyle: "solid",
               borderColor: "transparent",
               boxSizing: "border-box",
@@ -261,7 +265,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
           </table>
         </div>
         <div>
-          <div style={{ position: "relative", display: "inline-block" }}>
+          <div style={{ position: "relative" }}>
             <table
               style={{
                 background: borderColor,
@@ -502,17 +506,23 @@ function CopyNodeImageToClipboardButton({
 function nodeToNativeImage(node: HTMLElement): Promise<NativeImage> {
   return new Promise((resolve) => {
     const img = document.createElement("img");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("width", `${node.offsetWidth}`);
+    svg.setAttribute("height", `${node.offsetHeight}`);
+    svg.setAttribute("viewBox", `0 0 ${node.offsetWidth} ${node.offsetHeight}`);
+
+    const foreignObject = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "foreignObject"
+    );
+    svg.appendChild(foreignObject);
+    foreignObject.setAttribute("width", "100%");
+    foreignObject.setAttribute("height", "100%");
+    foreignObject.appendChild(node.cloneNode(true));
+
     const xmlSerializer = new XMLSerializer();
-    img.src = `data:image/svg+xml;utf8,<svg
-      width="${node.offsetWidth}"
-      height="${node.offsetHeight}"
-      viewBox="0 0 ${node.offsetWidth} ${node.offsetHeight}"
-      xmlns="http://www.w3.org/2000/svg">
-          <foreignObject width="100%" height="100%">${xmlSerializer.serializeToString(
-            node
-          )}</foreignObject>
-      </svg>
-      `;
+
+    img.src = `data:image/svg+xml;utf8,${xmlSerializer.serializeToString(svg)}`;
     img.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = node.offsetWidth;
