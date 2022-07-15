@@ -1,0 +1,18 @@
+{
+  "viewing": "Wiedergabe läuft...",
+  "exporting": "Exportvorgang läuft...",
+  "export-complete": "Aufzeichnung erfolgreich exportiert.",
+  "no-replays": "(Noch) keine Aufzeichnungen",
+  "incomplete": "Diese Aufzeichnung ist unvollständig.",
+  "play": "Abspielen",
+  "show-info": "Infos anzeigen",
+  "show-file": "Im Ordner anzeigen",
+  "export-video": "Video exportieren",
+  "replay-title": "{{linkCode}}: vs {{nickname}}",
+  "crash": "Hoppla, es sieht so aus, als ob der Aufzeichnungs-Viewer abgestürzt ist! Bitte gib diesen Log an, wenn du einen Fehler meldest!",
+  "export-settings": "Export Einstellungen",
+  "output-path": "Speichern unter",
+  "scale-factor": "Skalierungsfaktor",
+  "scale-factor-suffix": "x",
+  "start-export": "Los!"
+}

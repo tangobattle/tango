@@ -1,0 +1,15 @@
+{
+  "welcome": "Es sieht danach aus, als ob du zum ersten Mal Tango startest. Willkommen!",
+  "welcome-2": "Es gibt nur ein paar Schritte, die erforderlich sind, bevor du anfangen kannst zu spielen.",
+  "nickname": "Nickname",
+  "nickname-step-title": "Wähle deinen Benutzernamen",
+  "nickname-step-description": "Du kannst dies jederzeit ändern.",
+  "roms-step-title": "Lege deine ROMs in {{path}}",
+  "roms-step-description": "Stelle sicher, dass es unbearbeitete ROMs ohne Patches sind.",
+  "roms-step-error": "Keine unterstützen ROMs gefunden. Stelle sicher, dass sie keine Patches beinhalten!",
+  "saves-step-title": "Lege deine Saves in {{path}}",
+  "saves-step-description": "Stelle sicher, dass sie kompatibel mit den Spielen sind, die du in den ROMs Ordner platziert hast. Sie sollten .sav oder .sa1 Dateien sein.",
+  "saves-step-error": "Keine unterstützen Saves gefunden. Stelle sicher, dass sie kompatibel sind.",
+  "open-folder": "Ordner öffnen",
+  "next": "Fertig!"
+}
