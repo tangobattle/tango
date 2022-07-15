@@ -1,6 +1,6 @@
 {
-  "copy-to-clipboard": "Copy to clipboard",
-  "copy-image-to-clipboard": "Copy image to clipboard",
-  "copied-to-clipboard": "Copied!",
-  "close": "Close"
+  "copy-to-clipboard": "In Zwischenablage kopieren",
+  "copy-image-to-clipboard": "Bild in Zwischenablage kopieren",
+  "copied-to-clipboard": "Kopiert!",
+  "close": "Schließen"
 }
