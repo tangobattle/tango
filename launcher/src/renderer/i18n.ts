@@ -73,4 +73,5 @@ export const LANGUAGES = [
   { code: "es", name: "Español" },
   { code: "pt-BR", name: "Português (Brasil)" },
   { code: "fr", name: "Français" },
+  { code: "de", name: "Deutsch" },
 ];

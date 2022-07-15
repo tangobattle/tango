@@ -218,6 +218,12 @@ function AboutTab({ active }: { active: boolean }) {
               for the French translation.
             </li>
             <li>
+              <Link href="https://www.twitch.tv/kendeep_fgc" target="_blank">
+                KenDeep
+              </Link>{" "}
+              for the German translation.
+            </li>
+            <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
               </Link>
