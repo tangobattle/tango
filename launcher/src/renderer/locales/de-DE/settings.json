@@ -39,11 +39,11 @@
     "update-channel.disabled": "Deaktiviert",
     "rust-log-filter": "RUST_LOG Filter",
     "open-logs-folder": "Log-Ordner öffnen",
-    "replaycollector-endpoint": "Replay collector endpoint",
-    "signaling-endpoint": "Signaling endpoint",
-    "iceconfig-endpoint": "ICE configuration endpoint",
+    "replaycollector-endpoint": "Aufzeichnungenskollektor-Endpunkt",
+    "signaling-endpoint": "Signalisierungsendpunkt",
+    "iceconfig-endpoint": "ICE-Konfigurationsendpunkt",
     "patch-repo": "Patch-Repository",
     "window-scale": "Fenstergröße",
     "window-scale-suffix": "x",
-    "max-queue-length": "Max queue length"
+    "max-queue-length": "Maximale Warteschlangenlänge"
 }
