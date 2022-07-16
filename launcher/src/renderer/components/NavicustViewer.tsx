@@ -384,7 +384,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                             opacity:
                               hasOutOfBounds &&
                               (i == 0 ||
-                                i == grid.length - 1 ||
+                                i == grid2d.length - 1 ||
                                 j == 0 ||
                                 j == row.length - 1)
                                 ? 0.25
