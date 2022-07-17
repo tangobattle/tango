@@ -49,6 +49,8 @@ const NAVICUST_COLORS = {
 
 function placementsToArray2D(
   ncps: (NavicustProgram | null)[],
+  width: number,
+  height: number,
   placements: {
     id: number;
     rot: number;
@@ -57,7 +59,7 @@ function placementsToArray2D(
     compressed: boolean;
   }[]
 ) {
-  const cust = array2d.full(-1, 7, 7);
+  const cust = array2d.full(-1, width, height);
   for (let idx = 0; idx < placements.length; ++idx) {
     const placement = placements[idx];
     const ncp = ncps[placement.id]!;
@@ -166,7 +168,9 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
           console.error("unrecognized ncp:", placement.id);
           continue;
         }
-        const color = ncp.colors[placement.variant];
+        const color = ncp.isSolid
+          ? ncp.colors[0]
+          : ncp.colors[placement.variant];
         if (colors.indexOf(color) != -1) {
           continue;
         }
@@ -304,14 +308,17 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                         placementIdx != -1 ? placements[placementIdx] : null;
 
                       const ncp = placement != null ? ncps[placement.id] : null;
-                      const ncpColor =
+                      const color =
                         ncp != null
-                          ? NAVICUST_COLORS[
-                              ncp.colors[
-                                placement!.variant
-                              ] as keyof typeof NAVICUST_COLORS
-                            ]
+                          ? ((ncp.isSolid
+                              ? ncp.colors[0]
+                              : ncp.colors[
+                                  placement!.variant
+                                ]) as keyof typeof NAVICUST_COLORS)
                           : null;
+
+                      const ncpColor =
+                        ncp != null ? NAVICUST_COLORS[color!] : null;
 
                       // prettier-ignore
                       const isCorner = hasOutOfBounds && (
@@ -591,7 +598,12 @@ export default function NavicustViewer({
   const solidBlocks = placements.filter(({ id }) => ncps[id]!.isSolid);
   const plusBlocks = placements.filter(({ id }) => !ncps[id]!.isSolid);
 
-  const grid = placementsToArray2D(ncps, placements);
+  const grid = placementsToArray2D(
+    ncps,
+    editor.getWidth(),
+    editor.getHeight(),
+    placements
+  );
   const commandLinePlacements = array2d.row(grid, editor.getCommandLine());
 
   const navicustGridRef = React.useRef<HTMLDivElement | null>(null);
@@ -640,6 +652,12 @@ export default function NavicustViewer({
                             i18n.resolvedLanguage as keyof typeof ncp.name
                           ] || ncp.name[fallbackLng as keyof typeof ncp.name];
 
+                        const color = (
+                          ncp.isSolid
+                            ? ncp.colors[0]
+                            : ncp.colors[placement.variant]
+                        ) as keyof typeof NAVICUST_COLORS;
+
                         const isActive = commandLinePlacements.indexOf(i) != -1;
 
                         return [
@@ -651,14 +669,7 @@ export default function NavicustViewer({
                               justifyContent: "flex-start",
                               color: "black",
                               backgroundColor: isActive
-                                ? lighten(
-                                    NAVICUST_COLORS[
-                                      ncp.colors[
-                                        placement.variant
-                                      ] as keyof typeof NAVICUST_COLORS
-                                    ].color,
-                                    0.25
-                                  )
+                                ? lighten(NAVICUST_COLORS[color].color, 0.25)
                                 : OFF_COLOR,
                             }}
                             label={isActive ? name : <del>{name}</del>}

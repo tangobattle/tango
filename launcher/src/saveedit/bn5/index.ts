@@ -1,4 +1,6 @@
+import array2d from "../../array2d";
 import CHIPS from "./data/chips.json";
+import NCPS from "./data/ncps.json";
 
 export interface GameInfo {
   region: "US" | "JP";
@@ -74,6 +76,69 @@ const ROM_NAMES_BY_SAVE_GAME_NAME: { [key: string]: string } = {
   "REXE5TOB 20041104 JP": "ROCKEXE5_TOBBRBJ",
   "REXE5TOK 20041104 JP": "ROCKEXE5_TOCBRKJ",
 };
+
+class NavicustEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getNavicustProgramData() {
+    return NCPS;
+  }
+
+  getCommandLine() {
+    return 2;
+  }
+
+  hasOutOfBounds() {
+    return false;
+  }
+
+  getWidth() {
+    return 5;
+  }
+
+  getHeight() {
+    return 5;
+  }
+
+  getNavicustBlock(i: number) {
+    const offset = 0x4d6c + i * 8;
+    const blockConstant = this.editor.dv.getUint8(offset);
+    if (blockConstant == 0) {
+      return null;
+    }
+
+    return {
+      id: blockConstant >> 2,
+      variant: blockConstant & 0x3,
+      col: this.editor.dv.getUint8(offset + 2),
+      row: this.editor.dv.getUint8(offset + 3),
+      rot: this.editor.dv.getUint8(offset + 4),
+      compressed: !!this.editor.dv.getUint8(offset + 5),
+    };
+  }
+
+  setNavicustBlock(
+    i: number,
+    id: number,
+    variant: number,
+    col: number,
+    row: number,
+    rot: number,
+    compressed: boolean
+  ) {
+    const offset = 0x4d6c + i * 8;
+    this.editor.dv.setUint8(offset, (id << 2) | variant);
+    this.editor.dv.setUint8(offset + 3, col);
+    this.editor.dv.setUint8(offset + 4, row);
+    this.editor.dv.setUint8(offset + 5, rot);
+    this.editor.dv.setUint8(offset + 6, compressed ? 1 : 0);
+    this.editor.navicustDirty = true;
+  }
+}
 
 class FolderEditor {
   private editor: Editor;
@@ -173,10 +238,13 @@ class FolderEditor {
 export class Editor {
   dv: DataView;
   private romName: string;
+  navicustDirty: boolean;
 
   constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
+
+    this.navicustDirty = false;
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -242,11 +310,53 @@ export class Editor {
     this.dv.setUint8(0x2941, i);
   }
 
+  rebuildNavicustTiles() {
+    const navicustEditor = this.getNavicustEditor();
+
+    const arr = new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x4d48, 25);
+
+    for (let i = 0; i < arr.length; ++i) {
+      arr[i] = 0;
+    }
+
+    for (let idx = 0; idx < 30; ++idx) {
+      const placement = navicustEditor.getNavicustBlock(idx);
+      if (placement == null) {
+        continue;
+      }
+
+      let squares = array2d.from(NCPS[placement.id]!.squares, 5, 5);
+      for (let i = 0; i < placement.rot; ++i) {
+        squares = array2d.rot90(squares);
+      }
+
+      for (let i = 0; i < squares.nrows; ++i) {
+        for (let j = 0; j < squares.nrows; ++j) {
+          const i2 = i + placement.row - 2;
+          const j2 = j + placement.col - 2;
+          if (i2 >= 5 || j2 >= 5) {
+            continue;
+          }
+          const v = squares[i * squares.ncols + j];
+          if (v == 0) {
+            continue;
+          }
+          if (placement.compressed && v != 1) {
+            continue;
+          }
+          arr[i2 * 5 + j2] = idx + 1;
+        }
+      }
+    }
+    this.navicustDirty = false;
+  }
+
   rebuild() {
     this.rebuildChecksum();
   }
 
   getChecksum() {
+    this.rebuildNavicustTiles();
     return getChecksum(this.dv);
   }
 
@@ -263,7 +373,7 @@ export class Editor {
   }
 
   getNavicustEditor() {
-    return null;
+    return new NavicustEditor(this);
   }
 
   getModcardsEditor() {

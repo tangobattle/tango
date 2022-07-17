@@ -3,8 +3,6 @@ import CHIPS from "./data/chips.json";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
 
-export { CHIPS, MODCARDS, NCPS };
-
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_START_OFFSET = 0x0100;
@@ -255,8 +253,16 @@ class NavicustEditor {
     return true;
   }
 
+  getWidth() {
+    return 7;
+  }
+
+  getHeight() {
+    return 7;
+  }
+
   getNavicustBlock(i: number) {
-    const offset = this.editor.getNaviCustOffset() + i * 8;
+    const offset = this.editor.getNavicustOffset() + i * 8;
     const blockConstant = this.editor.dv.getUint8(offset);
     if (blockConstant == 0) {
       return null;
@@ -281,7 +287,7 @@ class NavicustEditor {
     rot: number,
     compressed: boolean
   ) {
-    const offset = this.editor.getNaviCustOffset() + i * 8;
+    const offset = this.editor.getNavicustOffset() + i * 8;
     this.editor.dv.setUint8(offset, (id << 2) | variant);
     this.editor.dv.setUint8(offset + 3, col);
     this.editor.dv.setUint8(offset + 4, row);
@@ -464,11 +470,11 @@ export class Editor {
     );
   }
 
-  getNaviCustOffset() {
+  getNavicustOffset() {
     return this.getGameInfo().region == "JP" ? 0x4150 : 0x4190;
   }
 
-  getNaviCustTilesOffset() {
+  getNavicustTilesOffset() {
     return this.getGameInfo().region == "JP" ? 0x410c : 0x414c;
   }
 
@@ -477,7 +483,7 @@ export class Editor {
 
     const arr = new Uint8Array(
       this.dv.buffer,
-      this.dv.byteOffset + this.getNaviCustTilesOffset(),
+      this.dv.byteOffset + this.getNavicustTilesOffset(),
       49
     );
 

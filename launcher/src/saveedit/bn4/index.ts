@@ -1,7 +1,5 @@
 import CHIPS from "./data/chips.json";
 
-export { CHIPS };
-
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_SIZE = 0x73d2;
