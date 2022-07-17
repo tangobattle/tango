@@ -226,6 +226,12 @@ function AboutTab({ active }: { active: boolean }) {
             <li>
               <Link href="https://twitter.com/saladdammit" target="_blank">
                 saladdammit
+              </Link>{" "}
+              for the logo.
+            </li>
+            <li>
+              <Link href="https://twitter.com/saladdammit" target="_blank">
+                saladdammit
               </Link>
               ,{" "}
               <Link href="https://twitter.com/Playerzero_exe" target="_blank">
