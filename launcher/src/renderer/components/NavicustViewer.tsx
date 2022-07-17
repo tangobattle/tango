@@ -100,6 +100,12 @@ function navicustBackground(romName: string) {
     case "MEGAMAN6_GXXBR5E":
     case "ROCKEXE6_GXXBR5J":
       return "#08BD73";
+    case "MEGAMAN5_TP_BRBE":
+    case "ROCKEXE5_TOBBRBJ":
+      return "#5BADC6";
+    case "MEGAMAN5_TC_BRKE":
+    case "ROCKEXE5_TOCBRKJ":
+      return "#8C8C7B";
   }
   throw `unknown rom name: ${romName}`;
 }
