@@ -1,7 +1,11 @@
+import CHIPS from "./data/chips.json";
+
 export interface GameInfo {
   region: "US" | "JP";
   version: "protoman" | "colonel";
 }
+
+const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_START_OFFSET = 0x0100;
 const SRAM_SIZE = 0x7c14;
@@ -71,12 +75,50 @@ const ROM_NAMES_BY_SAVE_GAME_NAME: { [key: string]: string } = {
   "REXE5TOK 20041104 JP": "ROCKEXE5_TOCBRKJ",
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 class FolderEditor {
   private editor: Editor;
 
   constructor(editor: Editor) {
     this.editor = editor;
+  }
+
+  getFolderCount() {
+    return 3; // TODO
+  }
+
+  getEquippedFolder() {
+    return this.editor.dv.getUint8(0x52d5);
+  }
+
+  setEquippedFolder(i: number) {
+    return this.editor.dv.setUint8(0x52d5, i);
+  }
+
+  isRegularChipInPlace() {
+    return true;
+  }
+
+  getRegularChipIndex(folderIdx: number) {
+    const i = this.editor.dv.getUint8(0x52d6 + folderIdx);
+    return i != 0xff ? i : null;
+  }
+
+  setRegularChipIndex(folderIdx: number, i: number | null) {
+    this.editor.dv.setUint8(0x52d6 + folderIdx, i == null ? 0xff : i);
+  }
+
+  getTagChip1Index() {
+    // Not supported.
+    return null;
+  }
+
+  getTagChip2Index() {
+    // Not supported.
+    return null;
+  }
+
+  getChipData() {
+    return CHIPS;
   }
 
   getChipCountRaw(id: number, variant: number) {
@@ -85,6 +127,46 @@ class FolderEditor {
 
   setChipCountRaw(id: number, variant: number, n: number) {
     this.editor.dv.setUint8(0x2eac + ((id * 0xc) | variant), n);
+  }
+
+  getChipRaw(folderIdx: number, chipIdx: number) {
+    const chipConstant = this.editor.dv.getUint16(
+      0x2df4 + folderIdx * (30 * 2) + chipIdx * 2,
+      true
+    );
+
+    if (chipConstant == 0) {
+      return null;
+    }
+
+    return {
+      id: chipConstant & 0x1ff,
+      variant: chipConstant >> 9,
+    };
+  }
+
+  getChip(folderIdx: number, chipIdx: number) {
+    const rawChip = this.getChipRaw(folderIdx, chipIdx);
+    if (rawChip == null) {
+      return null;
+    }
+
+    return {
+      id: rawChip.id,
+      code: CHIP_CODES[rawChip.variant],
+    };
+  }
+
+  setChipRaw(folderIdx: number, chipIdx: number, id: number, variant: number) {
+    this.editor.dv.setUint16(
+      0x2df4 + folderIdx * (30 * 2) + chipIdx * 2,
+      id | (variant << 9),
+      true
+    );
+  }
+
+  setChip(folderIdx: number, chipIdx: number, id: number, code: string) {
+    this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
   }
 }
 
@@ -177,7 +259,7 @@ export class Editor {
   }
 
   getFolderEditor() {
-    return null;
+    return new FolderEditor(this);
   }
 
   getNavicustEditor() {

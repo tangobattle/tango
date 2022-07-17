@@ -38,6 +38,11 @@ function romNameToAssetFolder(romName: string) {
     case "ROCKEXE6_RXXBR6J":
     case "ROCKEXE6_GXXBR5J":
       return "bn6";
+    case "MEGAMAN5_TP_BRBE":
+    case "MEGAMAN5_TC_BRKE":
+    case "ROCKEXE5_TOBBRBJ":
+    case "ROCKEXE5_TOCBRKJ":
+      return "bn5";
     case "MEGAMANBN4BMB4BE":
     case "MEGAMANBN4RSB4WE":
     case "ROCK_EXE4_BMB4BJ":
