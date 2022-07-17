@@ -10,10 +10,10 @@ Tango is rollback netplay for Mega Man Battle Network.
 | `MEGAMAN6_GXXBR5E` | Mega Man Battle Network 6: Cybeast Gregar (US)        | ✅ Works great!             | 🤷 Folder, NaviCust           |
 | `ROCKEXE6_RXXBR6J` | Rockman EXE 6: Dennoujuu Falzer (JP)                  | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
 | `ROCKEXE6_GXXBR5J` | Rockman EXE 6: Dennoujuu Glaga (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
-| `MEGAMAN5_TP_BRBE` | Mega Man Battle Network 5: Team Protoman (US)         | ✅ Works great!             | 🤷 Folder                     |
-| `MEGAMAN5_TC_BRKE` | Mega Man Battle Network 5: Team Colonel (US)          | ✅ Works great!             | 🤷 Folder                     |
-| `ROCKEXE5_TOBBRBJ` | Rockman EXE 5: Team of Blues (JP)                     | ✅ Works great!             | 🤷 Folder                     |
-| `ROCKEXE5_TOCBRKJ` | Rockman EXE 5: Team of Colonel (JP)                   | ✅ Works great!             | 🤷 Folder                     |
+| `MEGAMAN5_TP_BRBE` | Mega Man Battle Network 5: Team Protoman (US)         | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `MEGAMAN5_TC_BRKE` | Mega Man Battle Network 5: Team Colonel (US)          | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCKEXE5_TOBBRBJ` | Rockman EXE 5: Team of Blues (JP)                     | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCKEXE5_TOCBRKJ` | Rockman EXE 5: Team of Colonel (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust           |
 | `ROCKEXE4.5ROBR4J` | Rockman EXE 4.5: Real Operation (JP)                  | ✅ Works great!             | 🤷 Folder                     |
 | `MEGAMANBN4BMB4BE` | Mega Man Battle Network 4: Blue Moon (US)             | ✅ Works great!             | 🤷 Folder                     |
 | `MEGAMANBN4RSB4WE` | Mega Man Battle Network 4: Red Sun (US)               | ✅ Works great!             | 🤷 Folder                     |
