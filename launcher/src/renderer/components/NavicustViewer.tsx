@@ -102,10 +102,22 @@ function navicustBackground(romName: string) {
       return "#08BD73";
     case "MEGAMAN5_TP_BRBE":
     case "ROCKEXE5_TOBBRBJ":
-      return "#5BADC6";
+      return "#218CA5";
     case "MEGAMAN5_TC_BRKE":
     case "ROCKEXE5_TOCBRKJ":
-      return "#8C8C7B";
+      return "#5A5A4A";
+    case "MEGAMANBN4BMB4BE":
+    case "ROCK_EXE4_BMB4BJ":
+      return "#4252AD";
+    case "MEGAMANBN4RSB4WE":
+    case "ROCK_EXE4_RSB4WJ":
+      return "#BD3139";
+    case "MEGA_EXE3_BLA3XE":
+    case "ROCK_EXE3_BKA3XJ":
+      return "#5A5A5A";
+    case "MEGA_EXE3_WHA6BE":
+    case "ROCKMAN_EXE3A6BJ":
+      return "#4A637B";
   }
   throw `unknown rom name: ${romName}`;
 }
