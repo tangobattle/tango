@@ -76,17 +76,14 @@ function FolderChipRow({
 
   const { i18n } = useTranslation();
 
+  const chipInfo = chipData[id];
+
   const backgroundColor =
-    chipData[id]!.class == "giga"
+    chipInfo != null && chipInfo.class == "giga"
       ? GIGA_BG[theme.palette.mode]
-      : chipData[id]!.class == "mega"
+      : chipInfo != null && chipInfo.class == "mega"
       ? MEGA_BG[theme.palette.mode]
       : null;
-
-  const chipInfo = chipData[id];
-  if (chipInfo == null) {
-    return null;
-  }
 
   return (
     <TableRow sx={{ backgroundColor }}>
@@ -112,7 +109,7 @@ function FolderChipRow({
       <TableCell component="th">
         <Tooltip
           title={
-            chipInfo.description != null
+            chipInfo != null && chipInfo.description != null
               ? chipInfo.description[
                   i18n.resolvedLanguage as keyof typeof chipInfo.description
                 ] ||
@@ -124,9 +121,11 @@ function FolderChipRow({
           placement="right"
         >
           <span>
-            {chipInfo.name[
-              i18n.resolvedLanguage as keyof typeof chipInfo.name
-            ] || chipInfo.name[fallbackLng as keyof typeof chipInfo.name]}{" "}
+            {chipInfo != null
+              ? chipInfo.name[
+                  i18n.resolvedLanguage as keyof typeof chipInfo.name
+                ] || chipInfo.name[fallbackLng as keyof typeof chipInfo.name]
+              : "???"}{" "}
             {code}
           </span>
         </Tooltip>{" "}
@@ -158,15 +157,25 @@ function FolderChipRow({
           width="28"
           src={require(`../../../static/images/games/${romNameToAssetFolder(
             romName
-          )}/elements/${chipInfo.element ?? "null"}.png`)}
+          )}/elements/${
+            chipInfo != null && chipInfo.element != null
+              ? chipInfo.element
+              : "null"
+          }.png`)}
           style={{ imageRendering: "pixelated" }}
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
-        <strong>{(chipInfo.damage ?? 0) > 0 ? chipInfo.damage : null}</strong>
+        <strong>
+          {chipInfo != null
+            ? (chipInfo.damage ?? 0) > 0
+              ? chipInfo.damage
+              : ""
+            : "???"}
+        </strong>
       </TableCell>
       <TableCell sx={{ width: "64px", textAlign: "right" }}>
-        {chipInfo.mb ?? 0}MB
+        {chipInfo != null ? chipInfo.mb : "??"}MB
       </TableCell>
     </TableRow>
   );
@@ -299,16 +308,20 @@ export default function FolderViewer({
           >
             <CopyButtonWithLabel
               value={groupedChips
-                .map(({ id, code, count, isRegular, isTag1, isTag2 }) => {
-                  const chip = chipData[id];
+                .flatMap(({ id, code, count, isRegular, isTag1, isTag2 }) => {
+                  const chipInfo = chipData[id];
                   const chipName =
-                    chip!.name[i18n.resolvedLanguage] ||
-                    chip!.name[fallbackLng];
-                  return `${count}\t${chipName}\t${code}\t${[
-                    ...(isRegular ? ["[REG]"] : []),
-                    ...(isTag1 ? ["[TAG]"] : []),
-                    ...(isTag2 ? ["[TAG]"] : []),
-                  ].join(" ")}`;
+                    chipInfo != null
+                      ? chipInfo.name[i18n.resolvedLanguage] ||
+                        chipInfo.name[fallbackLng]
+                      : "???";
+                  return [
+                    `${count}\t${chipName}\t${code}\t${[
+                      ...(isRegular ? ["[REG]"] : []),
+                      ...(isTag1 ? ["[TAG]"] : []),
+                      ...(isTag2 ? ["[TAG]"] : []),
+                    ].join(" ")}`,
+                  ];
                 })
                 .join("\n")}
               TooltipProps={{ placement: "top" }}
