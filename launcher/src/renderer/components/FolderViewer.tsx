@@ -84,7 +84,7 @@ function FolderChipRow({
       : null;
 
   const chipInfo = chipData[id];
-  if (chipInfo == null || chipInfo.description == null) {
+  if (chipInfo == null) {
     return null;
   }
 
@@ -112,12 +112,14 @@ function FolderChipRow({
       <TableCell component="th">
         <Tooltip
           title={
-            chipInfo.description[
-              i18n.resolvedLanguage as keyof typeof chipInfo.description
-            ] ||
-            chipInfo.description[
-              fallbackLng as keyof typeof chipInfo.description
-            ]
+            chipInfo.description != null
+              ? chipInfo.description[
+                  i18n.resolvedLanguage as keyof typeof chipInfo.description
+                ] ||
+                chipInfo.description[
+                  fallbackLng as keyof typeof chipInfo.description
+                ]
+              : ""
           }
           placement="right"
         >

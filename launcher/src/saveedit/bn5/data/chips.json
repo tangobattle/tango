@@ -5177,64 +5177,154 @@
     "class": "mega"
   },
   {
+    "section": "gate",
+    "index": 1,
     "name": {
       "en": "CannMode",
       "ja": "キャノンモード"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 10,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 2,
     "name": {
       "en": "CannBall",
       "ja": "ホウガンモード"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 30,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 3,
     "name": {
       "en": "SwrdMode",
       "ja": "ソードモード"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 40,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 4,
     "name": {
       "en": "YoYoMode",
       "ja": "ヨーヨーモード"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 50,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 5,
     "name": {
       "en": "DrilMode",
       "ja": "ドリルモード"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 6,
     "name": {
       "en": "LCrsShld",
       "ja": "Lカースシールド"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 7,
     "name": {
       "en": "LStepSwd",
       "ja": "Lフミコミザン"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 8,
     "name": {
       "en": "LCounter",
       "ja": "Lカウンター"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 9,
     "name": {
       "en": "ElemPowr",
       "ja": "エレメントパワー"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 64,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "standard"
   },
   {
+    "section": "gate",
+    "index": 10,
     "name": {
       "en": "FinalGun",
       "ja": "ファイナルガン"
-    }
+    },
+    "element": "null",
+    "codes": "A",
+    "mb": 80,
+    "version": null,
+    "stars": 5,
+    "damage": 0,
+    "class": "giga"
   },
   null,
   null,
