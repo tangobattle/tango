@@ -1429,7 +1429,9 @@ export default function BattleStarter({
                         direction="row"
                         sx={{ alignItems: "center" }}
                       >
-                        <Typography sx={{ whiteSpace: "nowrap" }}>
+                        <Typography
+                          sx={{ whiteSpace: "nowrap", userSelect: "none" }}
+                        >
                           {state == FromCoreMessage_StateEvent_State.RUNNING ? (
                             <Trans i18nKey="supervisor:status.running" />
                           ) : state ==

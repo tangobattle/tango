@@ -10,7 +10,13 @@ export default function Spinner({
   return (
     <img
       src={require("../../../static/images/spinner.gif")}
-      style={{ ...style, width: size, height: size }}
+      style={{
+        ...style,
+        width: size,
+        height: size,
+        userSelect: "none",
+        pointerEvents: "none",
+      }}
     />
   );
 }
