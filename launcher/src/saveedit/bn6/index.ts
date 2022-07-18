@@ -99,7 +99,17 @@ class FolderEditor {
   }
 
   getChipInfo(id: number) {
-    return CHIPS[id] ?? null;
+    const oldCi = CHIPS[id] ?? null;
+    if (oldCi == null) {
+      return null;
+    }
+    const ci = this.editor.romViewer.getChipInfo(id);
+    return {
+      ...oldCi,
+      damage: ci.damage,
+      mb: ci.mb,
+      class: ci.class == 1 ? "mega" : ci.class == 2 ? "giga" : "standard",
+    };
   }
 
   getChipCount(id: number, code: string) {
@@ -350,7 +360,7 @@ class ModcardsEditor {
 
 export class Editor {
   dv: DataView;
-  private romViewer: ROMViewer;
+  romViewer: ROMViewer;
   navicustDirty: boolean;
   modcardsDirty: boolean;
 
@@ -580,9 +590,8 @@ interface ROMOffsets {
 }
 
 interface ChipInfo {
-  name: string;
   element: number;
-  library: number;
+  class: number;
   mb: number;
   damage: number;
 }
@@ -616,12 +625,11 @@ class ROMViewer {
     throw `unknown rom: ${this.romName}`;
   }
 
-  getChipInfo(id: number) {
+  getChipInfo(id: number): ChipInfo {
     const offset = this.getOffsets().chipData + id * 0x2c;
     return {
-      name: "PLACEHOLDER",
       element: this.dv.getUint8(offset + 0x04),
-      library: this.dv.getUint8(offset + 0x07),
+      class: this.dv.getUint8(offset + 0x07),
       mb: this.dv.getUint8(offset + 0x08),
       damage: this.dv.getUint8(offset + 0x1a),
     };
