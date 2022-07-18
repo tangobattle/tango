@@ -98,8 +98,8 @@ class FolderEditor {
     this.editor = editor;
   }
 
-  getChipData() {
-    return CHIPS;
+  getChipInfo(id: number) {
+    return CHIPS[id] ?? null;
   }
 
   getChipCount(id: number, code: string) {
@@ -241,8 +241,8 @@ class NavicustEditor {
     this.editor = editor;
   }
 
-  getNavicustProgramData() {
-    return NCPS;
+  getNavicustProgramInfo(id: number) {
+    return NCPS[id] ?? null;
   }
 
   getCommandLine() {
@@ -304,8 +304,8 @@ class ModcardsEditor {
     this.editor = editor;
   }
 
-  getModcardData() {
-    return MODCARDS;
+  getModcardInfo(id: number) {
+    return MODCARDS[id] ?? null;
   }
 
   getModcardCount() {
@@ -571,5 +571,59 @@ export class Editor {
       this.getNaviStatsOffset(this.getCurrentNavi()) + 0x42,
       true
     );
+  }
+}
+
+interface ROMOffsets {
+  chipData: number;
+  chipIconPalette: number;
+}
+
+interface ChipInfo {
+  name: string;
+  element: number;
+  library: number;
+  mb: number;
+  damage: number;
+}
+
+class ROMViewer {
+  private dv: DataView;
+  private romName: string;
+
+  constructor(buffer: ArrayBuffer, romName: string) {
+    this.dv = new DataView(buffer);
+    this.romName = romName;
+  }
+
+  getOffsets(): ROMOffsets {
+    switch (this.romName) {
+      case "ROCKEXE6_RXXBR6J":
+      case "ROCKEXE6_GXXBR5J":
+        return {
+          chipData: 0x000221e8,
+          chipIconPalette: 0x0001f144,
+        };
+      case "MEGAMAN6_FXXBR6E":
+      case "MEGAMAN6_GXXBR5E":
+      case "MEGAMAN6_FXXBR6P":
+      case "MEGAMAN6_GXXBR5P":
+        return {
+          chipData: 0x00021dd4,
+          chipIconPalette: 0x0001ed20,
+        };
+    }
+    throw `unknown rom: ${this.romName}`;
+  }
+
+  getChipInfo(id: number) {
+    const offset = this.getOffsets().chipData + id * 0x2c;
+    return {
+      name: "PLACEHOLDER",
+      element: this.dv.getUint8(offset + 0x04),
+      library: this.dv.getUint8(offset + 0x07),
+      mb: this.dv.getUint8(offset + 0x08),
+      damage: this.dv.getUint8(offset + 0x1a),
+    };
   }
 }

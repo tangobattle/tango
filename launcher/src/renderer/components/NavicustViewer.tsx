@@ -48,7 +48,7 @@ const NAVICUST_COLORS = {
 };
 
 function placementsToArray2D(
-  ncps: (NavicustProgram | null)[],
+  getNavicustProgramInfo: (id: number) => NavicustProgram | null,
   width: number,
   height: number,
   placements: {
@@ -62,7 +62,11 @@ function placementsToArray2D(
   const cust = array2d.full(-1, width, height);
   for (let idx = 0; idx < placements.length; ++idx) {
     const placement = placements[idx];
-    const ncp = ncps[placement.id]!;
+    const ncp = getNavicustProgramInfo(placement.id);
+
+    if (ncp == null) {
+      continue;
+    }
 
     let squares = array2d.from(ncp.squares, 5, 5);
     for (let i = 0; i < placement.rot; ++i) {
@@ -125,7 +129,7 @@ function navicustBackground(romName: string) {
 }
 
 interface NavicustGridProps {
-  ncps: (NavicustProgram | null)[];
+  getNavicustProgramInfo: (id: number) => NavicustProgram | null;
   placements: {
     id: number;
     variant: number;
@@ -143,7 +147,7 @@ interface NavicustGridProps {
 const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
   (
     {
-      ncps,
+      getNavicustProgramInfo,
       placements,
       grid,
       romName,
@@ -163,7 +167,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
     const colors = React.useMemo(() => {
       const colors = [];
       for (const placement of placements) {
-        const ncp = ncps[placement.id];
+        const ncp = getNavicustProgramInfo(placement.id);
         if (ncp == null) {
           console.error("unrecognized ncp:", placement.id);
           continue;
@@ -177,7 +181,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
         colors.push(color);
       }
       return colors;
-    }, [ncps, placements]);
+    }, [getNavicustProgramInfo, placements]);
 
     return (
       <div
@@ -307,7 +311,10 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                       const placement =
                         placementIdx != -1 ? placements[placementIdx] : null;
 
-                      const ncp = placement != null ? ncps[placement.id] : null;
+                      const ncp =
+                        placement != null
+                          ? getNavicustProgramInfo(placement.id)
+                          : null;
                       const color =
                         ncp != null
                           ? ((ncp.isSolid
@@ -593,13 +600,15 @@ export default function NavicustViewer({
     return placements;
   }, [editor]);
 
-  const ncps = editor.getNavicustProgramData();
-
-  const solidBlocks = placements.filter(({ id }) => ncps[id]!.isSolid);
-  const plusBlocks = placements.filter(({ id }) => !ncps[id]!.isSolid);
+  const solidBlocks = placements.filter(
+    ({ id }) => editor.getNavicustProgramInfo(id)!.isSolid
+  );
+  const plusBlocks = placements.filter(
+    ({ id }) => !editor.getNavicustProgramInfo(id)!.isSolid
+  );
 
   const grid = placementsToArray2D(
-    ncps,
+    editor.getNavicustProgramInfo.bind(editor),
     editor.getWidth(),
     editor.getHeight(),
     placements
@@ -622,7 +631,9 @@ export default function NavicustViewer({
             >
               <NavicustGrid
                 ref={navicustGridRef}
-                ncps={ncps}
+                getNavicustProgramInfo={editor.getNavicustProgramInfo.bind(
+                  editor
+                )}
                 grid={grid}
                 placements={placements}
                 commandLine={editor.getCommandLine()}
@@ -643,7 +654,9 @@ export default function NavicustViewer({
                   <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                     <Stack spacing={0.5} flexGrow={1}>
                       {placements.flatMap((placement, i) => {
-                        const ncp = ncps[placement.id]!;
+                        const ncp = editor.getNavicustProgramInfo(
+                          placement.id
+                        )!;
                         if (!ncp.isSolid) {
                           return [];
                         }
@@ -681,7 +694,9 @@ export default function NavicustViewer({
                   <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                     <Stack spacing={0.5} flexGrow={1}>
                       {placements.flatMap((placement, i) => {
-                        const ncp = ncps[placement.id]!;
+                        const ncp = editor.getNavicustProgramInfo(
+                          placement.id
+                        )!;
                         if (ncp.isSolid) {
                           return [];
                         }
@@ -739,15 +754,22 @@ export default function NavicustViewer({
                   i < Math.max(solidBlocks.length, plusBlocks.length);
                   ++i
                 ) {
+                  const leftNCP = editor.getNavicustProgramInfo(
+                    solidBlocks[i].id
+                  )!;
                   const left =
                     i < solidBlocks.length
-                      ? ncps[solidBlocks[i].id]!.name[i18n.resolvedLanguage] ||
-                        ncps[solidBlocks[i].id]!.name[fallbackLng]
+                      ? leftNCP.name[i18n.resolvedLanguage] ||
+                        leftNCP.name[fallbackLng]
                       : "";
+
+                  const rightNCP = editor.getNavicustProgramInfo(
+                    plusBlocks[i].id
+                  )!;
                   const right =
                     i < plusBlocks.length
-                      ? ncps[plusBlocks[i].id]!.name[i18n.resolvedLanguage] ||
-                        ncps[plusBlocks[i].id]!.name[fallbackLng]
+                      ? rightNCP.name[i18n.resolvedLanguage] ||
+                        rightNCP.name[fallbackLng]
                       : "";
                   lines.push(left + "\t" + right);
                 }

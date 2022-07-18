@@ -72,7 +72,7 @@ export interface Editor {
 }
 
 export interface FolderEditor {
-  getChipData(): (Chip | null)[];
+  getChipInfo(id: number): Chip | null;
   getEquippedFolder(): number;
   getChip(
     folderIdx: number,
@@ -92,7 +92,7 @@ export interface NavicustEditor {
   hasOutOfBounds(): boolean;
   getWidth(): number;
   getHeight(): number;
-  getNavicustProgramData(): (NavicustProgram | null)[];
+  getNavicustProgramInfo(id: number): NavicustProgram | null;
   getNavicustBlock(i: number): {
     id: number;
     variant: number;
@@ -104,7 +104,7 @@ export interface NavicustEditor {
 }
 
 export interface ModcardsEditor {
-  getModcardData(): (Modcard | null)[];
+  getModcardInfo(id: number): Modcard | null;
   getModcardCount(): number;
   setModcardCount(n: number): void;
   getModcard(i: number): { id: number; enabled: boolean } | null;

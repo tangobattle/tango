@@ -43,8 +43,6 @@ export default function ModcardsViewer({
     modcards.push(editor.getModcard(i)!);
   }
 
-  const modcardData = editor.getModcardData();
-
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
       <Stack sx={{ flexGrow: 1 }}>
@@ -52,7 +50,7 @@ export default function ModcardsViewer({
           <Table size="small">
             <TableBody>
               {modcards.map(({ id, enabled }, i) => {
-                const modcard = modcardData[id];
+                const modcard = editor.getModcardInfo(id);
                 if (modcard == null) {
                   return null;
                 }
@@ -151,11 +149,15 @@ export default function ModcardsViewer({
             <CopyButtonWithLabel
               value={modcards
                 .filter(({ enabled }) => enabled)
-                .map(({ id }) => {
+                .flatMap(({ id }) => {
+                  const modcard = editor.getModcardInfo(id);
+                  if (modcard == null) {
+                    return [];
+                  }
                   const modcardName =
-                    modcardData[id]!.name[i18n.resolvedLanguage] ||
-                    modcardData[id]!.name[fallbackLng];
-                  return `${modcardName}\t${modcardData[id]!.mb}`;
+                    modcard!.name[i18n.resolvedLanguage] ||
+                    modcard!.name[fallbackLng];
+                  return [`${modcardName}\t${modcard.mb}`];
                 })
                 .join("\n")}
               TooltipProps={{ placement: "top" }}

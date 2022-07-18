@@ -117,8 +117,8 @@ class FolderEditor {
     return null;
   }
 
-  getChipData() {
-    return CHIPS;
+  getChipInfo(id: number) {
+    return CHIPS[id] ?? null;
   }
 
   getChipCount(id: number, code: string) {

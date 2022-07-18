@@ -84,8 +84,8 @@ class NavicustEditor {
     this.editor = editor;
   }
 
-  getNavicustProgramData() {
-    return NCPS;
+  getNavicustProgramInfo(id: number) {
+    return NCPS[id] ?? null;
   }
 
   getCommandLine() {
@@ -183,8 +183,8 @@ class FolderEditor {
     return null;
   }
 
-  getChipData() {
-    return CHIPS;
+  getChipInfo(id: number) {
+    return CHIPS[id] ?? null;
   }
 
   getChipCountRaw(id: number, variant: number) {

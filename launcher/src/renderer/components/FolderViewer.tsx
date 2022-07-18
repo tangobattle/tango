@@ -61,7 +61,7 @@ function FolderChipRow({
   isTag2,
   count,
   romName,
-  chipData,
+  chipInfo,
 }: {
   id: number;
   code: string;
@@ -70,13 +70,11 @@ function FolderChipRow({
   isTag2: boolean;
   count: number;
   romName: string;
-  chipData: (ChipInfo | null)[];
+  chipInfo: ChipInfo | null;
 }) {
   const theme = useTheme();
 
   const { i18n } = useTranslation();
-
-  const chipInfo = chipData[id];
 
   const backgroundColor =
     chipInfo != null && chipInfo.class == "giga"
@@ -273,8 +271,6 @@ export default function FolderViewer({
     }
   }
 
-  const chipData = editor.getChipData();
-
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
       <Stack sx={{ flexGrow: 1 }}>
@@ -291,7 +287,7 @@ export default function FolderViewer({
                   isTag2={groupedChip.isTag2}
                   count={groupedChip.count}
                   romName={romName}
-                  chipData={chipData}
+                  chipInfo={editor.getChipInfo(groupedChip.id)}
                 />
               ))}
             </TableBody>
@@ -309,7 +305,7 @@ export default function FolderViewer({
             <CopyButtonWithLabel
               value={groupedChips
                 .flatMap(({ id, code, count, isRegular, isTag1, isTag2 }) => {
-                  const chipInfo = chipData[id];
+                  const chipInfo = editor.getChipInfo(id);
                   const chipName =
                     chipInfo != null
                       ? chipInfo.name[i18n.resolvedLanguage] ||
