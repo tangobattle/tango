@@ -107,12 +107,13 @@ class NavicustEditor {
   getNavicustBlock(i: number) {
     const offset = 0x4d6c + i * 8;
     const blockConstant = this.editor.dv.getUint8(offset);
-    if (blockConstant == 0) {
+    const id = blockConstant >> 2;
+    if (id == 0) {
       return null;
     }
 
     return {
-      id: blockConstant >> 2,
+      id,
       variant: blockConstant & 0x3,
       col: this.editor.dv.getUint8(offset + 2),
       row: this.editor.dv.getUint8(offset + 3),

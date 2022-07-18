@@ -221,8 +221,8 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                         borderColor,
                         boxSizing: "border-box",
                         borderWidth: `${borderWidth / 2}px`,
-                        width: `${borderWidth * 8}px`,
-                        height: `${borderWidth * 5}px`,
+                        width: `${borderWidth * 6}px`,
+                        height: `${borderWidth * 4}px`,
                         padding: 0,
                       }}
                     >
@@ -263,8 +263,8 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                       borderColor: "transparent",
                       boxSizing: "border-box",
                       borderWidth: `${borderWidth / 2}px`,
-                      width: `${borderWidth * 8}px`,
-                      height: `${borderWidth * 5}px`,
+                      width: `${borderWidth * 6}px`,
+                      height: `${borderWidth * 4}px`,
                       padding: 0,
                     }}
                   >
