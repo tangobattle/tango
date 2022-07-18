@@ -5,6 +5,12 @@ import NCPS from "./data/ncps.json";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
+const CHARS_EN =
+  " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz�����ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!&,゜.・;'\"~/()「」�_�����あいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱぅぁぃぉぇゅょっゃ容量全木�無現実◯✗緑道不止彩起父集院一二三四五六七八陽十百千万脳上下左右手来日目月獣各人入出山口光電気綾科次名前学校省祐室世界高朗枚野悪路闇大小中自分間系花問究門城王兄化葉行街屋水見終新桜先生長今了点井子言太属風会性持時勝赤代年火改計画職体波回外地員正造値合戦川秋原町晴用金郎作数方社攻撃力同武何発少教以白早暮面組後文字本階明才者向犬々ヶ連射舟戸切土炎伊夫鉄国男天老師堀杉士悟森霧麻剛垣★[].";
+
+const CHARS_JP =
+  ' 0123456789ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+■�ー!��&、゜.・;’"~/()「」����_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱぅぁぃぉぇゅょっゃabcdefghijklmnopqrstuvwxyz容量全木�無現実◯✗緑道不止彩起父集院一二三四五六七八陽十百千万脳上下左右手来日目月獣各人入出山口光電気綾科次名前学校省祐室世界高朗枚野悪路闇大小中自分間系花問究門城王兄化葉行街屋水見終新桜先生長今了点井子言太属風会性持時勝赤代年火改計画職体波回外地員正造値合戦川秋原町晴用金郎作数方社攻撃力同武何発少教以白早暮面組後文字本階明才者向犬々ヶ連射舟戸切土炎伊夫鉄国男天老師堀杉士悟森霧麻剛垣';
+
 const SRAM_START_OFFSET = 0x0100;
 const SRAM_SIZE = 0x6710;
 const MASK_OFFSET = 0x1064;
@@ -106,6 +112,7 @@ class FolderEditor {
     const ci = this.editor.romViewer.getChipInfo(id);
     return {
       ...oldCi,
+      name: { en: ci.name },
       damage: ci.damage,
       mb: ci.mb,
       class: ci.class == 1 ? "mega" : ci.class == 2 ? "giga" : "standard",
@@ -587,9 +594,11 @@ export class Editor {
 interface ROMOffsets {
   chipData: number;
   chipIconPalette: number;
+  chipNamesPointers: number;
 }
 
 interface ChipInfo {
+  name: string;
   element: number;
   class: number;
   mb: number;
@@ -599,19 +608,22 @@ interface ChipInfo {
 class ROMViewer {
   private dv: DataView;
   romName: string;
+  private offsets: ROMOffsets;
 
   constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
+    this.offsets = this._getOffsets();
   }
 
-  getOffsets(): ROMOffsets {
+  private _getOffsets(): ROMOffsets {
     switch (this.romName) {
       case "ROCKEXE6_RXXBR6J":
       case "ROCKEXE6_GXXBR5J":
         return {
           chipData: 0x000221e8,
           chipIconPalette: 0x0001f144,
+          chipNamesPointers: 0x00028140,
         };
       case "MEGAMAN6_FXXBR6E":
       case "MEGAMAN6_GXXBR5E":
@@ -620,18 +632,55 @@ class ROMViewer {
         return {
           chipData: 0x00021dd4,
           chipIconPalette: 0x0001ed20,
+          chipNamesPointers: 0x00027d2c,
         };
     }
     throw `unknown rom: ${this.romName}`;
   }
 
   getChipInfo(id: number): ChipInfo {
-    const offset = this.getOffsets().chipData + id * 0x2c;
+    const dataOffset = this.offsets.chipData + id * 0x2c;
+
+    let scriptID = id;
+    let scriptPointerOffset = this.offsets.chipNamesPointers;
+    if (id > 0xff) {
+      scriptPointerOffset += 4;
+      scriptID -= 0x100;
+    }
+
+    const scriptOffset =
+      this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000;
+
+    let offset =
+      scriptOffset + this.dv.getUint16(scriptOffset + scriptID * 0x2, true);
+    const nextOffset =
+      scriptOffset +
+      this.dv.getUint16(scriptOffset + (scriptID + 1) * 0x2, true);
+
+    const chars =
+      this.romName == "ROCKEXE6_RXXBR6J" || this.romName == "ROCKEXE6_GXXBR5J"
+        ? CHARS_JP
+        : CHARS_EN;
+
+    const nameBuf: string[] = [];
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const c = this.dv.getUint8(offset++);
+      if (c == 0 || c == 0xe6 || offset >= nextOffset) {
+        break;
+      }
+      nameBuf.push(chars[c]);
+    }
+
+    const iconOffset = this.dv.getUint32(dataOffset + 0x20, true);
+    void iconOffset;
+
     return {
-      element: this.dv.getUint8(offset + 0x04),
-      class: this.dv.getUint8(offset + 0x07),
-      mb: this.dv.getUint8(offset + 0x08),
-      damage: this.dv.getUint8(offset + 0x1a),
+      name: nameBuf.join(""),
+      element: this.dv.getUint8(dataOffset + 0x04),
+      class: this.dv.getUint8(dataOffset + 0x07),
+      mb: this.dv.getUint8(dataOffset + 0x08),
+      damage: this.dv.getUint8(dataOffset + 0x1a),
     };
   }
 }
