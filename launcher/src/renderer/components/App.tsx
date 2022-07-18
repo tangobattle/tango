@@ -5,7 +5,6 @@ import { shell } from "@electron/remote";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
 import CssBaseline from "@mui/material/CssBaseline";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
@@ -29,6 +28,7 @@ import SettingsPane from "./panes/SettingsPane";
 import { PatchesProvider } from "./PatchesContext";
 import { ROMsProvider, useROMs } from "./ROMsContext";
 import { SavesProvider, useSaves } from "./SavesContext";
+import Spinner from "./Spinner";
 import { TempDirProvider } from "./TempDirContext";
 import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
@@ -275,7 +275,7 @@ const AppWrapper = withTranslation()(() => {
               alignItems: "center",
             }}
           >
-            <CircularProgress />
+            <Spinner />
           </Box>
         }
       >
@@ -312,7 +312,7 @@ export default function App() {
                 alignItems: "center",
               }}
             >
-              <CircularProgress />
+              <Spinner />
             </Box>
           }
         >

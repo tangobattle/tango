@@ -14,7 +14,6 @@ import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
 import ListItem from "@mui/material/ListItem";
@@ -39,6 +38,7 @@ import ReplaydumpSupervisor from "../ReplaydumpSupervisor";
 import ReplayInfoDialog from "../ReplayInfoDialog";
 import ReplayviewSupervisor from "../ReplayviewSupervisor";
 import { useROMs } from "../ROMsContext";
+import Spinner from "../Spinner";
 
 function ReplayItem({
   ListChildProps: { style },
@@ -329,7 +329,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
             alignItems: "center",
           }}
         >
-          <CircularProgress />
+          <Spinner />
         </Box>
       )}
       {viewingReplay != null ? (

@@ -5,7 +5,6 @@ import { Trans, useTranslation } from "react-i18next";
 import { app } from "@electron/remote";
 import CloseIcon from "@mui/icons-material/Close";
 import Box from "@mui/material/Box";
-import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
@@ -18,6 +17,7 @@ import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useConfig } from "./ConfigContext";
 import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import SaveViewer from "./SaveViewer";
+import Spinner from "./Spinner";
 
 export default function ReplayInfoDialog({
   filename,
@@ -131,7 +131,7 @@ export default function ReplayInfoDialog({
               alignItems: "center",
             }}
           >
-            <CircularProgress />
+            <Spinner />
           </Box>
         )}
       </Box>

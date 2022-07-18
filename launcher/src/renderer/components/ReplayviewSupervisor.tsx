@@ -5,7 +5,6 @@ import { Trans } from "react-i18next";
 import { app } from "@electron/remote";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
-import CircularProgress from "@mui/material/CircularProgress";
 import Modal from "@mui/material/Modal";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
@@ -16,6 +15,7 @@ import { spawn } from "../../process";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
+import Spinner from "./Spinner";
 import { useTempDir } from "./TempDirContext";
 
 export default function ReplayviewSupervisor({
@@ -160,10 +160,7 @@ export default function ReplayviewSupervisor({
                 alignItems="center"
                 spacing={2}
               >
-                <CircularProgress
-                  sx={{ flexGrow: 0, flexShrink: 0 }}
-                  size="2rem"
-                />
+                <Spinner style={{ flexGrow: 0, flexShrink: 0 }} size="2rem" />
                 <Typography>
                   <Trans i18nKey="replays:viewing" />
                 </Typography>

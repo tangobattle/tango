@@ -26,7 +26,6 @@ import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
-import CircularProgress from "@mui/material/CircularProgress";
 import Collapse from "@mui/material/Collapse";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
@@ -72,6 +71,7 @@ import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
 import SaveViewer from "./SaveViewer";
+import Spinner from "./Spinner";
 import { useTempDir } from "./TempDirContext";
 
 const MATCH_TYPES = ["single", "triple"];
@@ -1447,7 +1447,7 @@ export default function BattleStarter({
                             <Trans i18nKey="supervisor:status.unknown" />
                           )}
                         </Typography>
-                        <CircularProgress size="1rem" color="inherit" />
+                        <Spinner size="1em" />
                       </Stack>
                     ) : (
                       <GenerateRandomCodeButton
