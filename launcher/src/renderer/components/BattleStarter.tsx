@@ -1018,8 +1018,11 @@ export default function BattleStarter({
   const myPendingState = pendingStates?.own;
 
   React.useEffect(() => {
-    onReadyChange(myPendingState?.negotiatedState != null);
-  }, [myPendingState, onReadyChange]);
+    onReadyChange(
+      myPendingState?.negotiatedState != null ||
+        state == FromCoreMessage_StateEvent_State.RUNNING
+    );
+  }, [myPendingState, onReadyChange, state]);
 
   const runCallbackData = {
     coreRef,
