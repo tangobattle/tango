@@ -241,7 +241,7 @@ export class Editor {
   private romName: string;
   navicustDirty: boolean;
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
 

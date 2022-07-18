@@ -1,3 +1,4 @@
+import { writeFile } from "fs/promises";
 import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
@@ -64,7 +65,8 @@ export default function ReplayviewSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        await makeROM(romPath!, patchPath, outROMPath);
+        const outROM = await makeROM(romPath!, patchPath);
+        await writeFile(outROMPath, Buffer.from(outROM));
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());

@@ -350,7 +350,7 @@ class ModcardsEditor {
 
 export class Editor {
   dv: DataView;
-  private romName: string;
+  private romViewer: ROMViewer;
   navicustDirty: boolean;
   modcardsDirty: boolean;
 
@@ -401,16 +401,16 @@ export class Editor {
     return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
-    this.romName = romName;
+    this.romViewer = new ROMViewer(romBuffer, romName);
 
     this.navicustDirty = false;
     this.modcardsDirty = false;
   }
 
   getROMName() {
-    return this.romName;
+    return this.romViewer.romName;
   }
 
   getRawBufferForSave() {
@@ -437,7 +437,7 @@ export class Editor {
   }
 
   getGameInfo() {
-    return GAME_INFOS[this.romName];
+    return GAME_INFOS[this.getROMName()];
   }
 
   rebuildChecksum() {
@@ -589,7 +589,7 @@ interface ChipInfo {
 
 class ROMViewer {
   private dv: DataView;
-  private romName: string;
+  romName: string;
 
   constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);

@@ -195,7 +195,7 @@ export class Editor {
     return ["ROCKEXE4.5ROBR4J"];
   }
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
   }

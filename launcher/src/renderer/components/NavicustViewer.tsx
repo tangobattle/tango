@@ -754,20 +754,22 @@ export default function NavicustViewer({
                   i < Math.max(solidBlocks.length, plusBlocks.length);
                   ++i
                 ) {
-                  const leftNCP = editor.getNavicustProgramInfo(
-                    solidBlocks[i].id
-                  )!;
-                  const left =
+                  const leftNCP =
                     i < solidBlocks.length
+                      ? editor.getNavicustProgramInfo(solidBlocks[i].id)
+                      : null;
+                  const left =
+                    leftNCP != null
                       ? leftNCP.name[i18n.resolvedLanguage] ||
                         leftNCP.name[fallbackLng]
                       : "";
 
-                  const rightNCP = editor.getNavicustProgramInfo(
-                    plusBlocks[i].id
-                  )!;
-                  const right =
+                  const rightNCP =
                     i < plusBlocks.length
+                      ? editor.getNavicustProgramInfo(plusBlocks[i].id)
+                      : null;
+                  const right =
+                    rightNCP != null
                       ? rightNCP.name[i18n.resolvedLanguage] ||
                         rightNCP.name[fallbackLng]
                       : "";

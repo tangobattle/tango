@@ -33,9 +33,11 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { makeROM } from "../../../game";
 import { SetSettings } from "../../../protos/generated/lobby";
 import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../../rom";
 import { Editor, editorClassForGameFamily } from "../../../saveedit";
+import { useGetPatchPath, useGetROMPath } from "../../hooks";
 import { fallbackLng } from "../../i18n";
 import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
 import { useConfig } from "../ConfigContext";
@@ -433,16 +435,24 @@ function SaveSelector({
 function SaveViewerWrapper({
   filename,
   romName,
+  patch,
   incarnation,
   battleReady,
 }: {
   filename: string;
   romName: string;
+  patch: { name: string; version: string } | null;
   incarnation: number;
   battleReady: boolean;
 }) {
   const { config } = useConfig();
   const [editor, setEditor] = React.useState<Editor | null>(null);
+
+  const getROMPath = useGetROMPath();
+  const getPatchPath = useGetPatchPath();
+
+  const romPath = getROMPath(romName);
+  const patchPath = patch != null ? getPatchPath(romName, patch) : null;
 
   React.useEffect(() => {
     (async () => {
@@ -452,11 +462,12 @@ function SaveViewerWrapper({
           Editor.sramDumpToRaw(
             (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
+          await makeROM(romPath, patchPath),
           romName
         )
       );
     })();
-  }, [config.paths.saves, filename, romName, incarnation]);
+  }, [config.paths.saves, filename, romName, incarnation, romPath, patchPath]);
 
   if (editor == null) {
     return null;
@@ -1037,6 +1048,14 @@ export default function SavesPane({ active }: { active: boolean }) {
           <Stack direction="column" flexGrow={1}>
             <SaveViewerWrapper
               romName={selectedSave.romName}
+              patch={
+                patchVersion != null
+                  ? {
+                      name: patchName!,
+                      version: patchVersion,
+                    }
+                  : null
+              }
               filename={selectedSave.saveName}
               incarnation={incarnation}
               battleReady={battleReady}

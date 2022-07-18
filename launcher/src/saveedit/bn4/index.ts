@@ -264,7 +264,7 @@ export class Editor {
     return romNames;
   }
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";

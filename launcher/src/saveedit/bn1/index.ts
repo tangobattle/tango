@@ -24,7 +24,7 @@ export class Editor {
   dv: DataView;
   private romName: string;
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
   }

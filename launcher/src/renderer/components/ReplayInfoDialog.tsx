@@ -10,10 +10,12 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
+import { makeROM } from "../../game";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
 import { FAMILY_BY_ROM_NAME } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
+import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import SaveViewer from "./SaveViewer";
@@ -28,6 +30,18 @@ export default function ReplayInfoDialog({
   replayInfo: ReplayInfo;
   onClose: () => void;
 }) {
+  const getROMPath = useGetROMPath();
+  const getPatchPath = useGetPatchPath();
+
+  const romPath = getROMPath(replayInfo.metadata.localSide!.gameInfo!.rom);
+  const patchPath =
+    replayInfo.metadata.localSide!.gameInfo!.patch != null
+      ? getPatchPath(
+          replayInfo.metadata.localSide!.gameInfo!.rom,
+          replayInfo.metadata.localSide!.gameInfo!.patch
+        )
+      : null;
+
   const [editor, setEditor] = React.useState<Editor | null>(null);
   const { config } = useConfig();
   const { i18n } = useTranslation();
@@ -68,14 +82,17 @@ export default function ReplayInfoDialog({
         FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
       );
 
+      const outROM = await makeROM(romPath!, patchPath);
+
       setEditor(
         new Editor(
           new Uint8Array(buf).buffer,
+          outROM,
           replayInfo.metadata.localSide!.gameInfo!.rom
         )
       );
     })();
-  }, [config, filename, replayInfo]);
+  }, [config, filename, replayInfo, romPath, patchPath]);
 
   return (
     <Stack

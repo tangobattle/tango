@@ -1,3 +1,4 @@
+import { writeFile } from "fs/promises";
 import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
@@ -75,7 +76,8 @@ export default function ReplaydumpSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        await makeROM(romPath!, patchPath || null, outROMPath);
+        const rom = await makeROM(romPath!, patchPath || null);
+        await writeFile(outROMPath, Buffer.from(rom));
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());

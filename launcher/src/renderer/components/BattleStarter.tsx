@@ -427,16 +427,16 @@ async function runCallback(
       ref.current.tempDir,
       `${outFullROMName.replace(/\0/g, "@")}.gba`
     );
-    await makeROM(
+    const outROM = await makeROM(
       ref.current.getROMPath(ref.current.gameInfo!.rom),
       ref.current.gameInfo!.patch != null
         ? ref.current.getPatchPath(
             ref.current.gameInfo!.rom,
             ref.current.gameInfo!.patch
           )
-        : null,
-      outROMPath
+        : null
     );
+    await writeFile(outROMPath, Buffer.from(outROM));
 
     await core.send({
       smuggleReq: undefined,
@@ -667,13 +667,13 @@ async function runCallback(
       ref.current.tempDir,
       `${ownFullROMName.replace(/\0/g, "@")}.gba`
     );
-    await makeROM(
+    const outOwnROM = await makeROM(
       ref.current.getROMPath(ownGameInfo.rom),
       ownGameInfo.patch != null
         ? ref.current.getPatchPath(ownGameInfo.rom, ownGameInfo.patch)
-        : null,
-      outOwnROMPath
+        : null
     );
+    await writeFile(outOwnROMPath, Buffer.from(outOwnROM));
 
     const opponentGameSettings = ref.current.pendingStates!.opponent!.settings;
     const opponentGameInfo = opponentGameSettings.gameInfo!;
@@ -687,13 +687,13 @@ async function runCallback(
       ref.current.tempDir,
       `${opponentFullROMName.replace(/\0/g, "@")}.gba`
     );
-    await makeROM(
+    const outOpponentROM = await makeROM(
       ref.current.getROMPath(opponentGameInfo.rom),
       opponentGameInfo.patch != null
         ? ref.current.getPatchPath(opponentGameInfo.rom, opponentGameInfo.patch)
-        : null,
-      outOpponentROMPath
+        : null
     );
+    await writeFile(outOwnROMPath, Buffer.from(outOpponentROM));
 
     const now = new Date();
 
@@ -714,6 +714,7 @@ async function runCallback(
       ref.current.setRevealedSetupEditor(
         new Editor(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
+          outOpponentROM,
           opponentGameInfo.rom
         )
       );
