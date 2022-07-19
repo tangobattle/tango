@@ -30,6 +30,11 @@ const GIGA_BG = {
   light: "#f7cee7",
 };
 
+const DARK_BG = {
+  dark: "#31395A",
+  light: "#B58CD6",
+};
+
 function romNameToAssetFolder(romName: string) {
   switch (romName) {
     case "MEGAMAN6_FXXBR6E":
@@ -80,6 +85,8 @@ function FolderChipRow({
       ? GIGA_BG[theme.palette.mode]
       : chipInfo != null && chipInfo.class == "mega"
       ? MEGA_BG[theme.palette.mode]
+      : chipInfo != null && chipInfo.class == "dark"
+      ? DARK_BG[theme.palette.mode]
       : null;
 
   const iconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
