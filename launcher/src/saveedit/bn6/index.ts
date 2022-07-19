@@ -605,51 +605,11 @@ class ROMViewer {
     this.dv = new DataView(buffer);
     this.romName = romName;
     this.lang = lang;
-    this.offsets = this._getOffsets();
-    this.palette = this._getPalette();
-  }
-
-  private _getOffsets(): ROMOffsets {
-    switch (this.romName) {
-      case "ROCKEXE6_RXXBR6J":
-      case "ROCKEXE6_GXXBR5J":
-        return {
-          chipData: 0x000221bc,
-          chipIconPalettePointer: 0x0001f144,
-          chipNamesPointers: 0x00028140,
-          chipDescriptionsPointers: 0x00028164,
-        };
-      case "MEGAMAN6_FXXBR6E":
-      case "MEGAMAN6_GXXBR5E":
-      case "MEGAMAN6_FXXBR6P":
-      case "MEGAMAN6_GXXBR5P":
-        return {
-          chipData: 0x00021da8,
-          chipIconPalettePointer: 0x0001ed20,
-          chipNamesPointers: 0x00027d2c,
-          chipDescriptionsPointers: 0x00027d50,
-        };
-    }
-    throw `unknown rom: ${this.romName}`;
-  }
-
-  private _getPalette(): Uint32Array {
-    const raw = new Uint16Array(
-      this.dv.buffer,
-      this.dv.getUint32(this.offsets.chipIconPalettePointer, true) &
-        ~0x08000000,
-      16
+    this.offsets = getOffsets(romName);
+    this.palette = getPalette(
+      this.dv,
+      this.dv.getUint32(this.offsets.chipIconPalettePointer, true) & ~0x08000000
     );
-    const palette = new Uint32Array(raw.length);
-    for (let i = 0; i < raw.length; ++i) {
-      const c = raw[i];
-      const r = ((c & 0b11111) * 0xff) / 0b11111;
-      const g = (((c >> 5) & 0b11111) * 0xff) / 0b11111;
-      const b = (((c >> 10) & 0b11111) * 0xff) / 0b11111;
-      const a = 0xff;
-      palette[i] = (a << 24) | (b << 16) | (g << 8) | r;
-    }
-    return palette;
   }
 
   getChipInfo(id: number): Chip {
@@ -688,6 +648,46 @@ class ROMViewer {
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
     };
   }
+}
+
+function getOffsets(romName: string): ROMOffsets {
+  switch (romName) {
+    case "ROCKEXE6_RXXBR6J":
+    case "ROCKEXE6_GXXBR5J":
+      return {
+        chipData: 0x000221bc,
+        chipIconPalettePointer: 0x0001f144,
+        chipNamesPointers: 0x00028140,
+        chipDescriptionsPointers: 0x00028164,
+      };
+    case "MEGAMAN6_FXXBR6E":
+    case "MEGAMAN6_GXXBR5E":
+    case "MEGAMAN6_FXXBR6P":
+    case "MEGAMAN6_GXXBR5P":
+      return {
+        chipData: 0x00021da8,
+        chipIconPalettePointer: 0x0001ed20,
+        chipNamesPointers: 0x00027d2c,
+        chipDescriptionsPointers: 0x00027d50,
+      };
+  }
+  throw `unknown rom: ${romName}`;
+}
+
+function getPalette(dv: DataView, offset: number): Uint32Array {
+  const raw = new Uint16Array(dv.buffer, offset, 16);
+
+  const palette = new Uint32Array(raw.length);
+  for (let i = 0; i < raw.length; ++i) {
+    const c = raw[i];
+    const r = ((c & 0b11111) * 0xff) / 0b11111;
+    const g = (((c >> 5) & 0b11111) * 0xff) / 0b11111;
+    const b = (((c >> 10) & 0b11111) * 0xff) / 0b11111;
+    const a = 0xff;
+    // endianness more like smendianness lmao
+    palette[i] = (a << 24) | (b << 16) | (g << 8) | r;
+  }
+  return palette;
 }
 
 function getChipString(
