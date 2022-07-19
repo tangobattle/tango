@@ -16,6 +16,7 @@ export interface Chip {
   name: {
     [lang: string]: string;
   };
+  icon?: ImageData;
   description?: {
     [lang: string]: string;
   };

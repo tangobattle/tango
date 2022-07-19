@@ -113,6 +113,7 @@ class FolderEditor {
     return {
       ...oldCi,
       name: { en: ci.name },
+      icon: ci.icon,
       damage: ci.damage,
       mb: ci.mb,
       class: ci.class == 1 ? "mega" : ci.class == 2 ? "giga" : "standard",
@@ -593,12 +594,14 @@ export class Editor {
 
 interface ROMOffsets {
   chipData: number;
-  chipIconPalette: number;
+  chipIconPalettePointer: number;
   chipNamesPointers: number;
+  chipDescriptionsPointers: number;
 }
 
 interface ChipInfo {
   name: string;
+  icon: ImageData;
   element: number;
   class: number;
   mb: number;
@@ -609,11 +612,13 @@ class ROMViewer {
   private dv: DataView;
   romName: string;
   private offsets: ROMOffsets;
+  private palette: Uint32Array;
 
   constructor(buffer: ArrayBuffer, romName: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
     this.offsets = this._getOffsets();
+    this.palette = this._getPalette();
   }
 
   private _getOffsets(): ROMOffsets {
@@ -621,66 +626,127 @@ class ROMViewer {
       case "ROCKEXE6_RXXBR6J":
       case "ROCKEXE6_GXXBR5J":
         return {
-          chipData: 0x000221e8,
-          chipIconPalette: 0x0001f144,
+          chipData: 0x000221bc,
+          chipIconPalettePointer: 0x0001f144,
           chipNamesPointers: 0x00028140,
+          chipDescriptionsPointers: 0x00028164,
         };
       case "MEGAMAN6_FXXBR6E":
       case "MEGAMAN6_GXXBR5E":
       case "MEGAMAN6_FXXBR6P":
       case "MEGAMAN6_GXXBR5P":
         return {
-          chipData: 0x00021dd4,
-          chipIconPalette: 0x0001ed20,
+          chipData: 0x00021da8,
+          chipIconPalettePointer: 0x0001ed20,
           chipNamesPointers: 0x00027d2c,
+          chipDescriptionsPointers: 0x00027d50,
         };
     }
     throw `unknown rom: ${this.romName}`;
   }
 
+  private _getPalette(): Uint32Array {
+    const raw = new Uint16Array(
+      this.dv.buffer,
+      this.dv.getUint32(this.offsets.chipIconPalettePointer, true) &
+        ~0x08000000,
+      16
+    );
+    const palette = new Uint32Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) {
+      const c = raw[i];
+      const r = ((c & 0b11111) * 0xff) / 0b11111;
+      const g = (((c >> 5) & 0b11111) * 0xff) / 0b11111;
+      const b = (((c >> 10) & 0b11111) * 0xff) / 0b11111;
+      const a = 0xff;
+      palette[i] = (a << 24) | (b << 16) | (g << 8) | r;
+    }
+    return palette;
+  }
+
   getChipInfo(id: number): ChipInfo {
     const dataOffset = this.offsets.chipData + id * 0x2c;
-
-    let scriptID = id;
-    let scriptPointerOffset = this.offsets.chipNamesPointers;
-    if (id > 0xff) {
-      scriptPointerOffset += 4;
-      scriptID -= 0x100;
-    }
-
-    const scriptOffset =
-      this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000;
-
-    let offset =
-      scriptOffset + this.dv.getUint16(scriptOffset + scriptID * 0x2, true);
-    const nextOffset =
-      scriptOffset +
-      this.dv.getUint16(scriptOffset + (scriptID + 1) * 0x2, true);
-
-    const chars =
-      this.romName == "ROCKEXE6_RXXBR6J" || this.romName == "ROCKEXE6_GXXBR5J"
-        ? CHARS_JP
-        : CHARS_EN;
-
-    const nameBuf: string[] = [];
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const c = this.dv.getUint8(offset++);
-      if (c == 0 || c == 0xe6 || offset >= nextOffset) {
-        break;
-      }
-      nameBuf.push(chars[c]);
-    }
 
     const iconOffset = this.dv.getUint32(dataOffset + 0x20, true);
     void iconOffset;
 
     return {
-      name: nameBuf.join(""),
+      name: getChipString(
+        this.dv,
+        this.romName,
+        this.offsets.chipNamesPointers,
+        id
+      ),
+      icon: getChipIcon(this.dv, this.palette, iconOffset),
       element: this.dv.getUint8(dataOffset + 0x04),
       class: this.dv.getUint8(dataOffset + 0x07),
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: this.dv.getUint8(dataOffset + 0x1a),
     };
   }
+}
+
+function getChipString(
+  dv: DataView,
+  romName: string,
+  scriptPointerOffset: number,
+  id: number
+): string {
+  let scriptID = id;
+  if (id > 0xff) {
+    scriptPointerOffset += 4;
+    scriptID -= 0x100;
+  }
+
+  const scriptOffset = dv.getUint32(scriptPointerOffset, true) & ~0x08000000;
+
+  let offset = scriptOffset + dv.getUint16(scriptOffset + scriptID * 0x2, true);
+  const nextOffset =
+    scriptOffset + dv.getUint16(scriptOffset + (scriptID + 1) * 0x2, true);
+
+  const chars =
+    romName == "ROCKEXE6_RXXBR6J" || romName == "ROCKEXE6_GXXBR5J"
+      ? CHARS_JP
+      : CHARS_EN;
+
+  const nameBuf: string[] = [];
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const c = dv.getUint8(offset++);
+    if (c == 0xe6 || offset >= nextOffset) {
+      break;
+    }
+    nameBuf.push(chars[c]);
+  }
+
+  return nameBuf.join("");
+}
+
+function getChipIcon(
+  dv: DataView,
+  palette: Uint32Array,
+  chipIconOffset: number
+) {
+  const pixels = new Uint32Array(16 * 16);
+  const tileBytes = (8 * 8) / 2;
+
+  for (let tileI = 0; tileI < 4; ++tileI) {
+    const offset = (chipIconOffset & ~0x08000000) + tileBytes * tileI;
+    const tile = new Uint8Array(dv.buffer, offset, tileBytes);
+
+    const tileX = tileI % 2;
+    const tileY = Math.floor(tileI / 2);
+
+    for (let i = 0; i < tile.length * 2; ++i) {
+      const subI = Math.floor(i / 2);
+      const paletteIndex = i % 2 == 0 ? tile[subI] & 0xf : tile[subI] >> 4;
+
+      const x = tileX * 8 + (i % 8);
+      const y = tileY * 8 + Math.floor(i / 8);
+
+      pixels[y * 16 + x] = palette[paletteIndex];
+    }
+  }
+
+  return new ImageData(new Uint8ClampedArray(pixels.buffer), 16, 16);
 }

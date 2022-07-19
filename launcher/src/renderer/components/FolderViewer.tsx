@@ -83,26 +83,48 @@ function FolderChipRow({
       ? MEGA_BG[theme.palette.mode]
       : null;
 
+  const iconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  React.useEffect(() => {
+    if (chipInfo == null || chipInfo.icon == null) {
+      return;
+    }
+    const ctx = iconCanvasRef.current!.getContext("2d")!;
+    ctx.putImageData(chipInfo.icon, -1, -1);
+  });
+
   return (
     <TableRow sx={{ backgroundColor }}>
       <TableCell sx={{ width: "28px", textAlign: "right" }}>
         <strong>{count}x</strong>
       </TableCell>
       <TableCell sx={{ width: 0 }}>
-        <img
-          height="28"
-          width="28"
-          src={(() => {
-            try {
-              return require(`../../../static/images/games/${romNameToAssetFolder(
-                romName
-              )}/chipicons/${id}.png`);
-            } catch (e) {
-              return "";
-            }
-          })()}
-          style={{ imageRendering: "pixelated" }}
-        />
+        {chipInfo != null && chipInfo.icon != null ? (
+          <canvas
+            width={14}
+            height={14}
+            style={{
+              width: "28px",
+              height: "28px",
+              imageRendering: "pixelated",
+            }}
+            ref={iconCanvasRef}
+          ></canvas>
+        ) : (
+          <img
+            height="28"
+            width="28"
+            src={(() => {
+              try {
+                return require(`../../../static/images/games/${romNameToAssetFolder(
+                  romName
+                )}/chipicons/${id}.png`);
+              } catch (e) {
+                return "";
+              }
+            })()}
+            style={{ imageRendering: "pixelated" }}
+          />
+        )}
       </TableCell>
       <TableCell component="th">
         <Tooltip
