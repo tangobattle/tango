@@ -1,7 +1,6 @@
 import type { Chip } from "..";
 
 import array2d from "../../array2d";
-import CHIPS from "./data/chips.json";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
 
@@ -110,7 +109,8 @@ class FolderEditor {
   }
 
   getChipCount(id: number, code: string) {
-    return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
+    const chip = this.getChipInfo(id);
+    return this.getChipCountRaw(id, chip.codes!.indexOf(code));
   }
 
   getChipCountRaw(id: number, variant: number) {
@@ -118,7 +118,8 @@ class FolderEditor {
   }
 
   setChipCount(id: number, code: string, n: number) {
-    this.setChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code), n);
+    const chip = this.getChipInfo(id);
+    this.setChipCountRaw(id, chip.codes!.indexOf(code), n);
   }
 
   setChipCountRaw(id: number, variant: number, n: number) {
@@ -654,6 +655,14 @@ class ROMViewer {
   getChipInfo(id: number): Chip {
     const dataOffset = this.offsets.chipData + id * 0x2c;
 
+    const codes = [];
+    for (let i = 0; i < 4; ++i) {
+      const code = this.dv.getUint8(dataOffset + 0x00 + i);
+      if (code == 0xff) {
+        continue;
+      }
+      codes.push(CHIP_CODES[code]);
+    }
     const element = this.dv.getUint8(dataOffset + 0x06);
     const class_ = this.dv.getUint8(dataOffset + 0x07);
     const flags = this.dv.getUint8(dataOffset + 0x09);
@@ -667,24 +676,13 @@ class ROMViewer {
           id
         ),
       },
+      codes: codes.join(""),
       icon: getChipIcon(
         this.dv,
         this.palette,
         this.dv.getUint32(dataOffset + 0x20, true)
       ),
-      element: [
-        "fire",
-        "aqua",
-        "elec",
-        "wood",
-        "plus",
-        "sword",
-        "cursor",
-        "obstacle",
-        "wind",
-        "break",
-        "null",
-      ][element],
+      element: element.toString(),
       class: class_ == 1 ? "mega" : class_ == 2 ? "giga" : "standard",
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,

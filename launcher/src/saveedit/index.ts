@@ -15,6 +15,7 @@ export interface Chip {
   name: {
     [lang: string]: string;
   };
+  codes?: string;
   icon?: ImageData;
   element?: string;
   damage?: number;
