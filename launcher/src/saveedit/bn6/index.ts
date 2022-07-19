@@ -431,9 +431,14 @@ export class Editor {
     return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
+  constructor(
+    buffer: ArrayBuffer,
+    romBuffer: ArrayBuffer,
+    romName: string,
+    lang: string | null
+  ) {
     this.dv = new DataView(buffer);
-    this.romViewer = new ROMViewer(romBuffer, romName);
+    this.romViewer = new ROMViewer(romBuffer, romName, lang);
 
     this.navicustDirty = false;
     this.modcardsDirty = false;
@@ -625,10 +630,21 @@ class ROMViewer {
   romName: string;
   private offsets: ROMOffsets;
   private palette: Uint32Array;
+  private lang: string;
 
-  constructor(buffer: ArrayBuffer, romName: string) {
+  constructor(
+    buffer: ArrayBuffer,
+    romName: string,
+    lang: string | null = null
+  ) {
     this.dv = new DataView(buffer);
     this.romName = romName;
+    this.lang =
+      lang != null
+        ? lang
+        : romName == "ROCKEXE6_RXXBR6J" || romName == "ROCKEXE6_GXXBR5J"
+        ? "ja"
+        : "en";
     this.offsets = this._getOffsets();
     this.palette = this._getPalette();
   }
@@ -684,7 +700,7 @@ class ROMViewer {
     return {
       name: getChipString(
         this.dv,
-        this.romName,
+        this.lang,
         this.offsets.chipNamesPointers,
         id
       ),
@@ -703,7 +719,7 @@ class ROMViewer {
 
 function getChipString(
   dv: DataView,
-  romName: string,
+  lang: string,
   scriptPointerOffset: number,
   id: number
 ): string {
@@ -719,12 +735,7 @@ function getChipString(
   const nextOffset =
     scriptOffset + dv.getUint16(scriptOffset + (scriptID + 1) * 0x2, true);
 
-  const lang =
-    romName == "ROCKEXE6_RXXBR6J" || romName == "ROCKEXE6_GXXBR5J"
-      ? "ja"
-      : "en";
-
-  const charset = CHARSETS[lang];
+  const charset = CHARSETS[lang as keyof typeof CHARSETS];
 
   const nameBuf: string[] = [];
   // eslint-disable-next-line no-constant-condition

@@ -715,7 +715,8 @@ async function runCallback(
         new Editor(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
           outOpponentROM,
-          opponentGameInfo.rom
+          opponentGameInfo.rom,
+          null
         )
       );
     }

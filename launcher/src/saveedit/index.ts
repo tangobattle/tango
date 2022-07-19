@@ -59,7 +59,12 @@ export interface Modcard {
 }
 
 export interface EditorClass {
-  new (buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string): Editor;
+  new (
+    buffer: ArrayBuffer,
+    romBuffer: ArrayBuffer,
+    romName: string,
+    lang: string | null
+  ): Editor;
   sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
   sniff(buffer: ArrayBuffer): string[];
 }
