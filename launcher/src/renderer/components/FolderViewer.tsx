@@ -108,7 +108,7 @@ function FolderChipRow({
               imageRendering: "pixelated",
             }}
             ref={iconCanvasRef}
-          ></canvas>
+          />
         ) : (
           <img
             height="28"
