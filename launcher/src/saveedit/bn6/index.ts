@@ -1,7 +1,7 @@
 import type { Chip } from "..";
 
 import array2d from "../../array2d";
-import { getChipText, getPalette } from "../rom";
+import { getChipIcon, getChipText, getPalette } from "../rom";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
 
@@ -641,7 +641,7 @@ class ROMViewer {
       icon: getChipIcon(
         this.dv,
         this.palette,
-        this.dv.getUint32(dataOffset + 0x20, true)
+        this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
       ),
       element: element.toString(),
       class: class_ == 1 ? "mega" : class_ == 2 ? "giga" : "standard",
@@ -700,33 +700,4 @@ function getChipString(
       }
       return c;
     });
-}
-
-function getChipIcon(
-  dv: DataView,
-  palette: Uint32Array,
-  chipIconOffset: number
-) {
-  const pixels = new Uint32Array(16 * 16);
-  const tileBytes = (8 * 8) / 2;
-
-  for (let tileI = 0; tileI < 4; ++tileI) {
-    const offset = (chipIconOffset & ~0x08000000) + tileBytes * tileI;
-    const tile = new Uint8Array(dv.buffer, offset, tileBytes);
-
-    const tileX = tileI % 2;
-    const tileY = Math.floor(tileI / 2);
-
-    for (let i = 0; i < tile.length * 2; ++i) {
-      const subI = Math.floor(i / 2);
-      const paletteIndex = i % 2 == 0 ? tile[subI] & 0xf : tile[subI] >> 4;
-
-      const x = tileX * 8 + (i % 8);
-      const y = tileY * 8 + Math.floor(i / 8);
-
-      pixels[y * 16 + x] = palette[paletteIndex];
-    }
-  }
-
-  return new ImageData(new Uint8ClampedArray(pixels.buffer), 16, 16);
 }
