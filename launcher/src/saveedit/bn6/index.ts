@@ -1,6 +1,7 @@
 import type { Chip } from "..";
 
 import array2d from "../../array2d";
+import { getChipText, getPalette } from "../rom";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
 
@@ -674,53 +675,14 @@ function getOffsets(romName: string): ROMOffsets {
   throw `unknown rom: ${romName}`;
 }
 
-function getPalette(dv: DataView, offset: number): Uint32Array {
-  const raw = new Uint16Array(dv.buffer, offset, 16);
-
-  const palette = new Uint32Array(raw.length);
-  for (let i = 0; i < raw.length; ++i) {
-    const c = raw[i];
-    const r = ((c & 0b11111) * 0xff) / 0b11111;
-    const g = (((c >> 5) & 0b11111) * 0xff) / 0b11111;
-    const b = (((c >> 10) & 0b11111) * 0xff) / 0b11111;
-    const a = 0xff;
-    // endianness more like smendianness lmao
-    palette[i] = (a << 24) | (b << 16) | (g << 8) | r;
-  }
-  return palette;
-}
-
 function getChipString(
   dv: DataView,
   lang: string,
   scriptPointerOffset: number,
   id: number
 ): string {
-  let scriptID = id;
-  if (id > 0xff) {
-    scriptPointerOffset += 4;
-    scriptID -= 0x100;
-  }
-
-  const scriptOffset = dv.getUint32(scriptPointerOffset, true) & ~0x08000000;
-
-  let offset = scriptOffset + dv.getUint16(scriptOffset + scriptID * 0x2, true);
-  const nextOffset =
-    scriptOffset + dv.getUint16(scriptOffset + (scriptID + 1) * 0x2, true);
-
   const charset = CHARSETS[lang as keyof typeof CHARSETS];
-
-  const nameBuf: number[] = [];
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const c = dv.getUint8(offset++);
-    if (c == 0xe6 || offset >= nextOffset) {
-      break;
-    }
-    nameBuf.push(c);
-  }
-
-  return nameBuf
+  return getChipText(dv, scriptPointerOffset, id)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {
