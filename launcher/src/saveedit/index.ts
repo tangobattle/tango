@@ -63,7 +63,7 @@ export interface EditorClass {
     buffer: ArrayBuffer,
     romBuffer: ArrayBuffer,
     romName: string,
-    lang: string | null
+    lang: string
   ): Editor;
   sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
   sniff(buffer: ArrayBuffer): string[];

@@ -464,7 +464,7 @@ function SaveViewerWrapper({
           ),
           await makeROM(romPath, patchPath),
           romName,
-          null
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].lang
         )
       );
     })();

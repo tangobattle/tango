@@ -716,7 +716,7 @@ async function runCallback(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
           outOpponentROM,
           opponentGameInfo.rom,
-          null
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[opponentGameInfo.rom]].lang
         )
       );
     }

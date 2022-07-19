@@ -13,7 +13,7 @@ import Typography from "@mui/material/Typography";
 import { makeROM } from "../../game";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
-import { FAMILY_BY_ROM_NAME } from "../../rom";
+import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
@@ -89,7 +89,9 @@ export default function ReplayInfoDialog({
           new Uint8Array(buf).buffer,
           outROM,
           replayInfo.metadata.localSide!.gameInfo!.rom,
-          null
+          KNOWN_ROM_FAMILIES[
+            FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
+          ].lang
         )
       );
     })();

@@ -435,7 +435,7 @@ export class Editor {
     buffer: ArrayBuffer,
     romBuffer: ArrayBuffer,
     romName: string,
-    lang: string | null
+    lang: string
   ) {
     this.dv = new DataView(buffer);
     this.romViewer = new ROMViewer(romBuffer, romName, lang);
@@ -632,19 +632,10 @@ class ROMViewer {
   private palette: Uint32Array;
   private lang: string;
 
-  constructor(
-    buffer: ArrayBuffer,
-    romName: string,
-    lang: string | null = null
-  ) {
+  constructor(buffer: ArrayBuffer, romName: string, lang: string) {
     this.dv = new DataView(buffer);
     this.romName = romName;
-    this.lang =
-      lang != null
-        ? lang
-        : romName == "ROCKEXE6_RXXBR6J" || romName == "ROCKEXE6_GXXBR5J"
-        ? "ja"
-        : "en";
+    this.lang = lang;
     this.offsets = this._getOffsets();
     this.palette = this._getPalette();
   }

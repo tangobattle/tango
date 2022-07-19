@@ -64,7 +64,7 @@ export class Editor {
     buffer: ArrayBuffer,
     romBuffer: ArrayBuffer,
     romName: string,
-    _lang: string | null
+    _lang: string
   ) {
     this.dv = new DataView(buffer);
     this.romName = romName;

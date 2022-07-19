@@ -268,7 +268,7 @@ export class Editor {
     buffer: ArrayBuffer,
     romBuffer: ArrayBuffer,
     romName: string,
-    _lang: string | null
+    _lang: string
   ) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
