@@ -143,7 +143,7 @@ export default function ReplayInfoDialog({
           </IconButton>
         </Tooltip>
       </Stack>
-      <Box flexGrow={1} sx={{ display: "flex" }}>
+      <Box flexGrow={1} sx={{ display: "flex", py: 1 }}>
         {editor != null ? (
           <SaveViewer
             editor={editor}
