@@ -728,31 +728,34 @@ function getChipString(
 
   const charset = CHARSETS[lang as keyof typeof CHARSETS];
 
-  const nameBuf: string[] = [];
+  const nameBuf: number[] = [];
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const c = dv.getUint8(offset++);
     if (c == 0xe6 || offset >= nextOffset) {
       break;
     }
-    nameBuf.push(charset[c]);
+    nameBuf.push(c);
   }
 
-  return nameBuf.join("").replace(/[\u3000-\ue004]/g, (c) => {
-    switch (c) {
-      case "\ue000":
-        return "RV";
-      case "\ue001":
-        return "BX";
-      case "\ue002":
-        return "EX";
-      case "\ue003":
-        return "SP";
-      case "\ue004":
-        return "FZ";
-    }
-    return c;
-  });
+  return nameBuf
+    .map((c) => charset[c])
+    .join("")
+    .replace(/[\u3000-\ue004]/g, (c) => {
+      switch (c) {
+        case "\ue000":
+          return "RV";
+        case "\ue001":
+          return "BX";
+        case "\ue002":
+          return "EX";
+        case "\ue003":
+          return "SP";
+        case "\ue004":
+          return "FZ";
+      }
+      return c;
+    });
 }
 
 function getChipIcon(
