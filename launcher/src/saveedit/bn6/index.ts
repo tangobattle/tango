@@ -115,6 +115,19 @@ class FolderEditor {
       name: { en: ci.name },
       icon: ci.icon,
       damage: ci.damage,
+      element: [
+        "fire",
+        "aqua",
+        "elec",
+        "wood",
+        "plus",
+        "sword",
+        "cursor",
+        "wind",
+        "obstacle",
+        "break",
+        "null",
+      ][ci.element],
       mb: ci.mb,
       class: ci.class == 1 ? "mega" : ci.class == 2 ? "giga" : "standard",
     };
@@ -667,8 +680,7 @@ class ROMViewer {
   getChipInfo(id: number): ChipInfo {
     const dataOffset = this.offsets.chipData + id * 0x2c;
 
-    const iconOffset = this.dv.getUint32(dataOffset + 0x20, true);
-    void iconOffset;
+    const flags = this.dv.getUint8(dataOffset + 0x09);
 
     return {
       name: getChipString(
@@ -677,11 +689,15 @@ class ROMViewer {
         this.offsets.chipNamesPointers,
         id
       ),
-      icon: getChipIcon(this.dv, this.palette, iconOffset),
-      element: this.dv.getUint8(dataOffset + 0x04),
+      icon: getChipIcon(
+        this.dv,
+        this.palette,
+        this.dv.getUint32(dataOffset + 0x20, true)
+      ),
+      element: this.dv.getUint8(dataOffset + 0x06),
       class: this.dv.getUint8(dataOffset + 0x07),
       mb: this.dv.getUint8(dataOffset + 0x08),
-      damage: this.dv.getUint8(dataOffset + 0x1a),
+      damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
     };
   }
 }
