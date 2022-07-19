@@ -1,3 +1,5 @@
+import type { Chip } from "..";
+
 import array2d from "../../array2d";
 import CHIPS from "./data/chips.json";
 import MODCARDS from "./data/modcards.json";
@@ -104,32 +106,7 @@ class FolderEditor {
   }
 
   getChipInfo(id: number) {
-    const oldCi = CHIPS[id] ?? null;
-    if (oldCi == null) {
-      return null;
-    }
-    const ci = this.editor.romViewer.getChipInfo(id);
-    return {
-      ...oldCi,
-      name: { en: ci.name },
-      icon: ci.icon,
-      damage: ci.damage,
-      element: [
-        "fire",
-        "aqua",
-        "elec",
-        "wood",
-        "plus",
-        "sword",
-        "cursor",
-        "obstacle",
-        "wind",
-        "break",
-        "null",
-      ][ci.element],
-      mb: ci.mb,
-      class: ci.class == 1 ? "mega" : ci.class == 2 ? "giga" : "standard",
-    };
+    return this.editor.romViewer.getChipInfo(id);
   }
 
   getChipCount(id: number, code: string) {
@@ -616,15 +593,6 @@ interface ROMOffsets {
   chipDescriptionsPointers: number;
 }
 
-interface ChipInfo {
-  name: string;
-  icon: ImageData;
-  element: number;
-  class: number;
-  mb: number;
-  damage: number;
-}
-
 class ROMViewer {
   private dv: DataView;
   romName: string;
@@ -683,25 +651,41 @@ class ROMViewer {
     return palette;
   }
 
-  getChipInfo(id: number): ChipInfo {
+  getChipInfo(id: number): Chip {
     const dataOffset = this.offsets.chipData + id * 0x2c;
 
+    const element = this.dv.getUint8(dataOffset + 0x06);
+    const class_ = this.dv.getUint8(dataOffset + 0x07);
     const flags = this.dv.getUint8(dataOffset + 0x09);
 
     return {
-      name: getChipString(
-        this.dv,
-        this.lang,
-        this.offsets.chipNamesPointers,
-        id
-      ),
+      name: {
+        en: getChipString(
+          this.dv,
+          this.lang,
+          this.offsets.chipNamesPointers,
+          id
+        ),
+      },
       icon: getChipIcon(
         this.dv,
         this.palette,
         this.dv.getUint32(dataOffset + 0x20, true)
       ),
-      element: this.dv.getUint8(dataOffset + 0x06),
-      class: this.dv.getUint8(dataOffset + 0x07),
+      element: [
+        "fire",
+        "aqua",
+        "elec",
+        "wood",
+        "plus",
+        "sword",
+        "cursor",
+        "obstacle",
+        "wind",
+        "break",
+        "null",
+      ][element],
+      class: class_ == 1 ? "mega" : class_ == 2 ? "giga" : "standard",
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
     };

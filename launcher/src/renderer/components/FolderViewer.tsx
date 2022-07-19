@@ -8,7 +8,6 @@ import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
-import Tooltip from "@mui/material/Tooltip";
 import useTheme from "@mui/system/useTheme";
 
 import { Chip as ChipInfo, FolderEditor } from "../../saveedit";
@@ -127,28 +126,14 @@ function FolderChipRow({
         )}
       </TableCell>
       <TableCell component="th">
-        <Tooltip
-          title={
-            chipInfo != null && chipInfo.description != null
-              ? chipInfo.description[
-                  i18n.resolvedLanguage as keyof typeof chipInfo.description
-                ] ||
-                chipInfo.description[
-                  fallbackLng as keyof typeof chipInfo.description
-                ]
-              : ""
-          }
-          placement="right"
-        >
-          <span>
-            {chipInfo != null
-              ? chipInfo.name[
-                  i18n.resolvedLanguage as keyof typeof chipInfo.name
-                ] || chipInfo.name[fallbackLng as keyof typeof chipInfo.name]
-              : "???"}{" "}
-            {code}
-          </span>
-        </Tooltip>{" "}
+        <span>
+          {chipInfo != null
+            ? chipInfo.name[
+                i18n.resolvedLanguage as keyof typeof chipInfo.name
+              ] || chipInfo.name[fallbackLng as keyof typeof chipInfo.name]
+            : "???"}{" "}
+          {code}
+        </span>{" "}
         {isRegular ? (
           <Chip
             label={<Trans i18nKey="play:folder.regular-chip" />}

@@ -12,17 +12,11 @@ export interface GameInfo {
 }
 
 export interface Chip {
-  index?: number;
   name: {
     [lang: string]: string;
   };
   icon?: ImageData;
-  description?: {
-    [lang: string]: string;
-  };
   element?: string;
-  codes?: string;
-  version?: string | null;
   damage?: number;
   mb?: number;
   class?: string;
