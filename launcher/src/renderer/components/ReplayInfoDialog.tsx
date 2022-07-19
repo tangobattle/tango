@@ -18,6 +18,7 @@ import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
 import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
+import { usePatches } from "./PatchesContext";
 import SaveViewer from "./SaveViewer";
 import Spinner from "./Spinner";
 
@@ -32,6 +33,7 @@ export default function ReplayInfoDialog({
 }) {
   const getROMPath = useGetROMPath();
   const getPatchPath = useGetPatchPath();
+  const { patches } = usePatches();
 
   const romPath = getROMPath(replayInfo.metadata.localSide!.gameInfo!.rom);
   const patchPath =
@@ -49,6 +51,14 @@ export default function ReplayInfoDialog({
     dateStyle: "medium",
     timeStyle: "medium",
   });
+
+  const romLang =
+    replayInfo.metadata.localSide!.gameInfo!.patch != null &&
+    patches[replayInfo.metadata.localSide!.gameInfo!.patch.name].lang != null
+      ? patches[replayInfo.metadata.localSide!.gameInfo!.patch.name].lang!
+      : KNOWN_ROM_FAMILIES[
+          FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
+        ].lang;
 
   React.useEffect(() => {
     (async () => {
@@ -89,13 +99,11 @@ export default function ReplayInfoDialog({
           new Uint8Array(buf).buffer,
           outROM,
           replayInfo.metadata.localSide!.gameInfo!.rom,
-          KNOWN_ROM_FAMILIES[
-            FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
-          ].lang
+          romLang
         )
       );
     })();
-  }, [config, filename, replayInfo, romPath, patchPath]);
+  }, [config, filename, replayInfo, romPath, patchPath, romLang]);
 
   return (
     <Stack

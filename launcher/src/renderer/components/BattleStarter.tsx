@@ -51,6 +51,7 @@ import { Config } from "../../config";
 import * as discord from "../../discord";
 import { makeROM } from "../../game";
 import * as ipc from "../../ipc";
+import { PatchInfo } from "../../patch";
 import { GetRequest, GetResponse } from "../../protos/generated/iceconfig";
 import {
     FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest
@@ -78,6 +79,16 @@ const MATCH_TYPES = ["single", "triple"];
 
 function removeBadPathCharacters(s: string): string {
   return s.replace(/[/\\?%*:|"<>. ]/g, "_");
+}
+
+function useGetPatchInfo() {
+  const { patches } = usePatches();
+  return React.useCallback(
+    (name: string) => {
+      return patches[name] ?? null;
+    },
+    [patches]
+  );
 }
 
 function useGetPatchName() {
@@ -278,6 +289,7 @@ async function runCallback(
     availableGames: SetSettings["availableGames"];
     getGameTitle: (gameInfo: GameInfo) => string;
     getGameFamilyTitle: (gameInfo: GameInfo) => string;
+    getPatchInfo: (patchName: string) => PatchInfo | null;
     getPatchPath: (
       rom: string,
       patch: { name: string; version: string }
@@ -693,7 +705,7 @@ async function runCallback(
         ? ref.current.getPatchPath(opponentGameInfo.rom, opponentGameInfo.patch)
         : null
     );
-    await writeFile(outOwnROMPath, Buffer.from(outOpponentROM));
+    await writeFile(outOpponentROMPath, Buffer.from(outOpponentROM));
 
     const now = new Date();
 
@@ -708,6 +720,18 @@ async function runCallback(
     await writeFile(shadowSavePath, remoteState.saveData);
 
     if (opponentGameSettings.revealSetup) {
+      const patchInfo =
+        opponentGameInfo.patch != null
+          ? ref.current.getPatchInfo(opponentGameInfo.patch.name)
+          : null;
+
+      const romLang =
+        opponentGameInfo.patch != null &&
+        patchInfo != null &&
+        patchInfo.lang != null
+          ? patchInfo.lang!
+          : KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[opponentGameInfo.rom]].lang;
+
       const Editor = editorClassForGameFamily(
         FAMILY_BY_ROM_NAME[opponentGameInfo.rom]
       );
@@ -716,7 +740,7 @@ async function runCallback(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
           outOpponentROM,
           opponentGameInfo.rom,
-          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[opponentGameInfo.rom]].lang
+          romLang
         )
       );
     }
@@ -906,6 +930,7 @@ export default function BattleStarter({
   const { tempDir } = useTempDir();
   const getROMPath = useGetROMPath();
   const getPatchPath = useGetPatchPath();
+  const getPatchInfo = useGetPatchInfo();
 
   const availableGames = useAvailableGames();
   const isNetplayCompatible = useIsNetplayCompatible();
@@ -1032,6 +1057,7 @@ export default function BattleStarter({
     getGameTitle,
     getGameFamilyTitle,
     getPatchPath,
+    getPatchInfo,
     getROMPath,
     onOpponentSettingsChange,
     pendingStates,

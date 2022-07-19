@@ -450,9 +450,15 @@ function SaveViewerWrapper({
 
   const getROMPath = useGetROMPath();
   const getPatchPath = useGetPatchPath();
+  const { patches } = usePatches();
 
   const romPath = getROMPath(romName);
   const patchPath = patch != null ? getPatchPath(romName, patch) : null;
+
+  const romLang =
+    patch != null && patches[patch.name].lang != null
+      ? patches[patch.name].lang!
+      : KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].lang;
 
   React.useEffect(() => {
     (async () => {
@@ -464,11 +470,19 @@ function SaveViewerWrapper({
           ),
           await makeROM(romPath, patchPath),
           romName,
-          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].lang
+          romLang
         )
       );
     })();
-  }, [config.paths.saves, filename, romName, incarnation, romPath, patchPath]);
+  }, [
+    config.paths.saves,
+    filename,
+    romName,
+    incarnation,
+    romPath,
+    patchPath,
+    romLang,
+  ]);
 
   if (editor == null) {
     return null;

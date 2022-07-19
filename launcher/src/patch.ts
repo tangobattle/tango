@@ -28,6 +28,7 @@ export interface PatchInfo {
   authors: { name: string; email: string | null }[];
   source?: string;
   license?: string;
+  lang?: string;
   versions: {
     [version: string]: PatchVersionInfo;
   };
@@ -39,6 +40,7 @@ interface RawPatchInfo {
     authors: string[];
     source?: string;
     license?: string;
+    lang?: string;
   };
   versions: {
     [version: string]: {
@@ -188,6 +190,7 @@ export async function scan(dir: string) {
                   ];
                 })
               : [],
+          lang: info.patch.lang,
           source: info.patch.source,
           license: info.patch.license,
           versions,
