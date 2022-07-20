@@ -1,6 +1,7 @@
 import type { Chip } from "..";
 
 import array2d from "../../array2d";
+import { ROMInfo } from "../../rom";
 import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
@@ -595,7 +596,7 @@ class ROMViewer extends ROMViewerBase {
 
   constructor(buffer: ArrayBuffer, lang: string) {
     super(buffer, lang);
-    this.offsets = getOffsets(this.getROMInfo().name);
+    this.offsets = getOffsets(this.getROMInfo());
     this.palette = getPalette(
       this.dv,
       this.dv.getUint32(this.offsets.chipIconPalettePointer, true) & ~0x08000000
@@ -640,8 +641,8 @@ class ROMViewer extends ROMViewerBase {
   }
 }
 
-function getOffsets(romName: string): ROMOffsets {
-  switch (romName) {
+function getOffsets(romInfo: ROMInfo): ROMOffsets {
+  switch (romInfo.name) {
     case "ROCKEXE6_RXXBR6J":
     case "ROCKEXE6_GXXBR5J":
       return {
@@ -659,7 +660,7 @@ function getOffsets(romName: string): ROMOffsets {
         chipNamesPointers: 0x00027d2c,
       };
   }
-  throw `unknown rom: ${romName}`;
+  throw `unknown rom: ${romInfo.name}`;
 }
 
 function getChipString(
