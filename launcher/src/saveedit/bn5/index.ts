@@ -398,9 +398,6 @@ class ROMViewer extends ROMViewerBase {
   constructor(buffer: ArrayBuffer, saveeditInfo: SaveeditInfo) {
     super(buffer);
     this.saveeditInfo = saveeditInfo;
-    console.log(
-      this.dv.getUint32(this.saveeditInfo.offsets.chipIconPalettePointer, true)
-    );
     this.palette = getPalette(
       this.dv,
       this.dv.getUint32(
