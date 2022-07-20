@@ -1,6 +1,5 @@
 import type { Chip } from "..";
 import array2d from "../../array2d";
-import { ROMInfo } from "../../rom";
 import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 import NCPS from "./data/ncps.json";
 
@@ -383,24 +382,33 @@ export class Editor {
   }
 }
 
-interface ROMOffsets {
-  chipData: number;
-  chipIconPalette: number;
-  chipNamesPointers: number;
+interface SaveeditInfo {
+  charset: string;
+  offsets: {
+    chipData: number;
+    chipIconPalettePointer: number;
+    chipNamesPointers: number;
+  };
 }
 
-class ROMViewer extends ROMViewerBase {
-  private offsets: ROMOffsets;
+class ROMViewer extends ROMViewerBase<SaveeditInfo> {
   private palette: Uint32Array;
 
   constructor(buffer: ArrayBuffer, lang: string) {
     super(buffer, lang);
-    this.offsets = getOffsets(this.getROMInfo());
-    this.palette = getPalette(this.dv, this.offsets.chipIconPalette);
+    this.palette = getPalette(
+      this.dv,
+      this.dv.getUint32(
+        this.getSaveeditInfo().offsets.chipIconPalettePointer,
+        true
+      ) & ~0x08000000
+    );
   }
 
   getChipInfo(id: number): Chip {
-    const dataOffset = this.offsets.chipData + id * 0x2c;
+    const saveeditInfo = this.getSaveeditInfo();
+
+    const dataOffset = saveeditInfo.offsets.chipData + id * 0x2c;
 
     const codes = [];
     for (let i = 0; i < 4; ++i) {
@@ -416,8 +424,8 @@ class ROMViewer extends ROMViewerBase {
       name: {
         en: getChipString(
           this.dv,
-          this.lang,
-          this.offsets.chipNamesPointers,
+          saveeditInfo.charset,
+          saveeditInfo.offsets.chipNamesPointers,
           id
         ),
       },
@@ -438,41 +446,12 @@ class ROMViewer extends ROMViewerBase {
   }
 }
 
-function getOffsets(romInfo: ROMInfo): ROMOffsets {
-  switch (
-    `${romInfo.name}_${romInfo.revision
-      .toString(16)
-      .toUpperCase()
-      .padStart(2, "0")}`
-  ) {
-    case "MEGAMAN5_TP_BRBE_00":
-      return {
-        chipData: 0x0001e214,
-        chipIconPalette: 0x0074aab8,
-        chipNamesPointers: 0x00023b1c,
-      };
-    case "MEGAMAN5_TC_BRKE_00":
-      return {
-        chipData: 0x0001e210,
-        chipIconPalette: 0x0074bdbc,
-        chipNamesPointers: 0x00023b18,
-      };
-  }
-  throw `unknown rom: ${romInfo.name}`;
-}
-
-const CHARSETS = {
-  en: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyzウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!�&,。.・;'\"~/()「」αβ�■_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ究んをわ",
-  ja: ' 0123456789ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+■�ー!�&、゜.・;’"~/()「」����_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ究んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱ',
-};
-
 function getChipString(
   dv: DataView,
-  lang: string,
+  charset: string,
   scriptPointerOffset: number,
   id: number
 ): string {
-  const charset = CHARSETS[lang as keyof typeof CHARSETS];
   return getChipText(dv, scriptPointerOffset, id)
     .map((c) => charset[c])
     .join("")

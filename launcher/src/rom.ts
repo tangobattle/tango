@@ -42,7 +42,12 @@ export function getROMInfo(buffer: ArrayBuffer): ROMInfo {
 export interface KnownROM {
   title: { [language: string]: string } | null;
   order: number;
-  revisions: { [key: number]: { crc32: number } };
+  revisions: {
+    [key: number]: {
+      crc32: number;
+      saveedit?: any;
+    };
+  };
 }
 
 export async function scan(dir: string) {

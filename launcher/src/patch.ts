@@ -16,6 +16,7 @@ export interface PatchInfos {
 
 export interface PatchVersionInfo {
   netplayCompatibility: string;
+  saveeditOverrides?: any;
   forROMs: {
     name: string;
     revision: number;
@@ -45,6 +46,7 @@ interface RawPatchInfo {
   versions: {
     [version: string]: {
       netplay_compatibility: string;
+      saveedit_overrides?: any;
     };
   };
 }
@@ -152,6 +154,7 @@ export async function scan(dir: string) {
 
           versions[versionName] = {
             netplayCompatibility: version.netplay_compatibility,
+            saveeditOverrides: version.saveedit_overrides,
             forROMs: patchFiles.flatMap((pf) => {
               if (path.extname(pf) != ".bps") {
                 return [];

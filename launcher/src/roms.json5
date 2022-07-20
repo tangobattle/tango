@@ -5,7 +5,6 @@
       ja: "ロックマンエグゼ6（英語版）",
       "zh-Hans": "洛克人EXE6（英文版）",
     },
-    lang: "en",
 
     versions: {
       MEGAMAN6_GXXBR5E: {
@@ -16,7 +15,17 @@
         },
         order: 0,
         revisions: {
-          "0": { crc32: 0x79452182 },
+          "0": {
+            crc32: 0x79452182,
+            saveedit: {
+              charset: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz���ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!&,゜.・;'\"~/()「」�_�����あいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ",
+              offsets: {
+                chipData: 0x00021da8,
+                chipIconPalettePointer: 0x001ed20,
+                chipNamesPointers: 0x00027d2c,
+              },
+            },
+          },
         },
       },
       MEGAMAN6_FXXBR6E: {
@@ -27,7 +36,17 @@
         },
         order: 1,
         revisions: {
-          "0": { crc32: 0xdee6f2a9 },
+          "0": {
+            crc32: 0xdee6f2a9,
+            saveedit: {
+              charset: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz���ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!&,゜.・;'\"~/()「」�_�����あいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ",
+              offsets: {
+                chipData: 0x00021da8,
+                chipIconPalettePointer: 0x001ed20,
+                chipNamesPointers: 0x00027d2c,
+              },
+            },
+          },
         },
       },
     },
@@ -49,7 +68,17 @@
         },
         order: 0,
         revisions: {
-          "0": { crc32: 0x6285918a },
+          "0": {
+            crc32: 0x6285918a,
+            saveedit: {
+              charset: ' 0123456789ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+■�ー!��&、゜.・;’"~/()「」��_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱ',
+              offsets: {
+                chipData: 0x000221bc,
+                chipIconPalettePointer: 0x0001f144,
+                chipNamesPointers: 0x00028140,
+              },
+            },
+          },
         },
       },
       ROCKEXE6_RXXBR6J: {
@@ -60,7 +89,17 @@
         },
         order: 1,
         revisions: {
-          "0": { crc32: 0x2dfb603e },
+          "0": {
+            crc32: 0x2dfb603e,
+            saveedit: {
+              charset: ' 0123456789ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+■�ー!��&、゜.・;’"~/()「」��_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱ',
+              offsets: {
+                chipData: 0x000221bc,
+                chipIconPalettePointer: 0x0001f144,
+                chipNamesPointers: 0x00028140,
+              },
+            },
+          },
         },
       },
     },
@@ -83,7 +122,17 @@
         },
         order: 0,
         revisions: {
-          "0": { crc32: 0xa73e83a4 },
+          "0": {
+            crc32: 0xa73e83a4,
+            saveedit: {
+              charset: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyzウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!�&,。.・;'\"~/()「」αβ�■_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ究んをわ",
+              offsets: {
+                chipData: 0x0001e214,
+                chipIconPalettePointer: 0x0004a0f0,
+                chipNamesPointers: 0x00023b1c,
+              },
+            },
+          },
         },
       },
       MEGAMAN5_TC_BRKE: {
@@ -94,7 +143,17 @@
         },
         order: 1,
         revisions: {
-          "0": { crc32: 0xa552f683 },
+          "0": {
+            crc32: 0xa552f683,
+            saveedit: {
+              charset: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyzウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!�&,。.・;'\"~/()「」αβ�■_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ究んをわ",
+              offsets: {
+                chipData: 0x0001e210,
+                chipIconPalettePointer: 0x0004a0f8,
+                chipNamesPointers: 0x00023b18,
+              },
+            },
+          },
         },
       },
     },
@@ -145,7 +204,17 @@
         title: null,
         order: 0,
         revisions: {
-          "0": { crc32: 0xa646601b },
+          "0": {
+            crc32: 0xa646601b,
+            saveedit: {
+              charset: ' 0123456789アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ熱斗ヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョヴABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+÷�ー!現実&、。.・;’"~/()「」����_�周あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわ研究をんがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ�����',
+              offsets: {
+                chipData: 0x0001af0c,
+                chipIconPalettePointer: 0x000168ec,
+                chipNamesPointers: 0x0001f7f0,
+              },
+            },
+          },
         },
       },
     },

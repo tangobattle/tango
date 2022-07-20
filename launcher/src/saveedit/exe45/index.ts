@@ -238,27 +238,33 @@ export class Editor {
   }
 }
 
-const CHARSETS = {
-  en: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyzÿŸŒœ?+-×ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖýØÙÚÛÜÝÞßàáâãäåæçèéêëìíîïðñòóôõöþøùúûü�÷���¿@<>����=:%¡�█�ー!��&,。.・;'\"~/()「」αβΩ■_�����������������������⋯$€£¥¢#←↑→↓��������������わ�����",
-  ja: ' 0123456789アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ熱斗ヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョヴABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+÷�ー!現実&、。.・;’"~/()「」����_�周あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわ研究をんがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ�����',
-};
+interface SaveeditInfo {
+  charset: string;
+  offsets: {
+    chipData: number;
+    chipIconPalettePointer: number;
+    chipNamesPointers: number;
+  };
+}
 
-const OFFSETS = {
-  chipData: 0x0001af0c,
-  chipIconPalette: 0x00764fb0,
-  chipNamesPointers: 0x0001f7f0,
-};
-
-class ROMViewer extends ROMViewerBase {
+class ROMViewer extends ROMViewerBase<SaveeditInfo> {
   private palette: Uint32Array;
 
   constructor(buffer: ArrayBuffer, lang: string) {
     super(buffer, lang);
-    this.palette = getPalette(this.dv, OFFSETS.chipIconPalette);
+    this.palette = getPalette(
+      this.dv,
+      this.dv.getUint32(
+        this.getSaveeditInfo().offsets.chipIconPalettePointer,
+        true
+      ) & ~0x08000000
+    );
   }
 
   getChipInfo(id: number): Chip {
-    const dataOffset = OFFSETS.chipData + id * 0x2c;
+    const saveeditInfo = this.getSaveeditInfo();
+
+    const dataOffset = saveeditInfo.offsets.chipData + id * 0x2c;
 
     const codes = [];
     for (let i = 0; i < 4; ++i) {
@@ -272,7 +278,12 @@ class ROMViewer extends ROMViewerBase {
 
     return {
       name: {
-        en: getChipString(this.dv, this.lang, OFFSETS.chipNamesPointers, id),
+        en: getChipString(
+          this.dv,
+          saveeditInfo.charset,
+          saveeditInfo.offsets.chipNamesPointers,
+          id
+        ),
       },
       codes: codes.join(""),
       icon: getChipIcon(
@@ -290,11 +301,10 @@ class ROMViewer extends ROMViewerBase {
 
 function getChipString(
   dv: DataView,
-  lang: string,
+  charset: string,
   scriptPointerOffset: number,
   id: number
 ): string {
-  const charset = CHARSETS[lang as keyof typeof CHARSETS];
   return getChipText(dv, scriptPointerOffset, id)
     .map((c) => charset[c])
     .join("")

@@ -315,4 +315,4 @@ export class Editor {
   }
 }
 
-class ROMViewer extends ROMViewerBase {}
+class ROMViewer extends ROMViewerBase<void> {}
