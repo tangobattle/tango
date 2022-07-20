@@ -641,18 +641,23 @@ class ROMViewer extends ROMViewerBase {
 }
 
 function getOffsets(romInfo: ROMInfo): ROMOffsets {
-  switch (romInfo.name) {
-    case "ROCKEXE6_RXXBR6J":
-    case "ROCKEXE6_GXXBR5J":
+  switch (
+    `${romInfo.name}_${romInfo.revision
+      .toString(16)
+      .toUpperCase()
+      .padStart(2, "0")}`
+  ) {
+    case "ROCKEXE6_RXXBR6J_00":
+    case "ROCKEXE6_GXXBR5J_00":
       return {
         chipData: 0x000221bc,
         chipIconPalettePointer: 0x0001f144,
         chipNamesPointers: 0x00028140,
       };
-    case "MEGAMAN6_FXXBR6E":
-    case "MEGAMAN6_GXXBR5E":
-    case "MEGAMAN6_FXXBR6P":
-    case "MEGAMAN6_GXXBR5P":
+    case "MEGAMAN6_FXXBR6E_00":
+    case "MEGAMAN6_GXXBR5E_00":
+    case "MEGAMAN6_FXXBR6P_00":
+    case "MEGAMAN6_GXXBR5P_00":
       return {
         chipData: 0x00021da8,
         chipIconPalettePointer: 0x0001ed20,
