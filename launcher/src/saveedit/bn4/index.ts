@@ -1,5 +1,5 @@
-import { ROMViewerBase } from "../rom";
-import CHIPS from "./data/chips.json";
+import { Chip } from "../";
+import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -119,11 +119,12 @@ class FolderEditor {
   }
 
   getChipInfo(id: number) {
-    return CHIPS[id] ?? null;
+    return this.editor.romViewer.getChipInfo(id);
   }
 
   getChipCount(id: number, code: string) {
-    return this.getChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code));
+    const chip = this.getChipInfo(id);
+    return this.getChipCountRaw(id, chip.codes!.indexOf(code));
   }
 
   getChipCountRaw(id: number, variant: number) {
@@ -131,7 +132,8 @@ class FolderEditor {
   }
 
   setChipCount(id: number, code: string, n: number) {
-    this.setChipCountRaw(id, CHIPS[id]!.codes!.indexOf(code), n);
+    const chip = this.getChipInfo(id);
+    this.setChipCountRaw(id, chip.codes!.indexOf(code), n);
   }
 
   setChipCountRaw(id: number, variant: number, n: number) {
@@ -181,7 +183,7 @@ class FolderEditor {
 
 export class Editor {
   dv: DataView;
-  private romViewer: ROMViewer;
+  romViewer: ROMViewer;
 
   getROMInfo() {
     return this.romViewer.getROMInfo();
@@ -265,14 +267,14 @@ export class Editor {
     return romNames;
   }
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, _saveeditInfo: any) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
     }
 
     this.dv = new DataView(buffer, startOffset);
-    this.romViewer = new ROMViewer(romBuffer);
+    this.romViewer = new ROMViewer(romBuffer, saveeditInfo);
   }
 
   getGameInfo() {
@@ -315,4 +317,81 @@ export class Editor {
   }
 }
 
-class ROMViewer extends ROMViewerBase {}
+interface SaveeditInfo {
+  charset: string;
+  offsets: {
+    chipData: number;
+    chipIconPalettePointer: number;
+    chipNamesPointers: number;
+  };
+}
+
+class ROMViewer extends ROMViewerBase {
+  private palette: Uint32Array;
+  private saveeditInfo: SaveeditInfo;
+
+  constructor(buffer: ArrayBuffer, saveeditInfo: SaveeditInfo) {
+    super(buffer);
+    this.saveeditInfo = saveeditInfo;
+    this.palette = getPalette(
+      this.dv,
+      this.dv.getUint32(
+        this.saveeditInfo.offsets.chipIconPalettePointer,
+        true
+      ) & ~0x08000000
+    );
+  }
+
+  getChipInfo(id: number): Chip {
+    const dataOffset = this.saveeditInfo.offsets.chipData + id * 0x2c;
+
+    const codes = [];
+    for (let i = 0; i < 4; ++i) {
+      const code = this.dv.getUint8(dataOffset + 0x00 + i);
+      if (code == 0xff) {
+        continue;
+      }
+      codes.push(CHIP_CODES[code]);
+    }
+    const flags = this.dv.getUint8(dataOffset + 0x09);
+
+    return {
+      name: getChipString(
+        this.dv,
+        this.saveeditInfo.charset,
+        this.saveeditInfo.offsets.chipNamesPointers,
+        id
+      ),
+      codes: codes.join(""),
+      icon: getChipIcon(
+        this.dv,
+        this.palette,
+        this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
+      ),
+      element: this.dv.getUint8(dataOffset + 0x07),
+      class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x08)],
+      mb: this.dv.getUint8(dataOffset + 0x06),
+      damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+}
+
+function getChipString(
+  dv: DataView,
+  charset: string,
+  scriptPointerOffset: number,
+  id: number
+): string {
+  return getChipText(dv, scriptPointerOffset, id)
+    .map((c) => charset[c])
+    .join("")
+    .replace(/[\u3000-\ue004]/g, (c) => {
+      switch (c) {
+        case "\ue001":
+          return "SP";
+        case "\ue002":
+          return "DS";
+      }
+      return c;
+    });
+}

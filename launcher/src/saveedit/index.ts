@@ -13,15 +13,13 @@ export interface GameInfo {
 }
 
 export interface Chip {
-  name: {
-    [lang: string]: string;
-  };
-  codes?: string;
-  icon?: ImageData;
-  element?: string;
-  damage?: number;
-  mb?: number;
-  class?: string;
+  name: string;
+  codes: string;
+  icon: ImageData;
+  element: number;
+  damage: number;
+  mb: number;
+  class: string;
 }
 
 export interface NavicustProgram {
@@ -69,7 +67,7 @@ export interface Editor {
 }
 
 export interface FolderEditor {
-  getChipInfo(id: number): Chip | null;
+  getChipInfo(id: number): Chip;
   getEquippedFolder(): number;
   getChip(
     folderIdx: number,

@@ -277,21 +277,19 @@ class ROMViewer extends ROMViewerBase {
     const flags = this.dv.getUint8(dataOffset + 0x09);
 
     return {
-      name: {
-        en: getChipString(
-          this.dv,
-          this.saveeditInfo.charset,
-          this.saveeditInfo.offsets.chipNamesPointers,
-          id
-        ),
-      },
+      name: getChipString(
+        this.dv,
+        this.saveeditInfo.charset,
+        this.saveeditInfo.offsets.chipNamesPointers,
+        id
+      ),
       codes: codes.join(""),
       icon: getChipIcon(
         this.dv,
         this.palette,
         this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
       ),
-      element: this.dv.getUint8(dataOffset + 0x07).toString(),
+      element: this.dv.getUint8(dataOffset + 0x07),
       class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x08)],
       mb: this.dv.getUint8(dataOffset + 0x06),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,

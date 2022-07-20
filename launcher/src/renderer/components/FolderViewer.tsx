@@ -1,5 +1,5 @@
 import React from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { Trans } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -11,7 +11,6 @@ import TableRow from "@mui/material/TableRow";
 import useTheme from "@mui/system/useTheme";
 
 import { Chip as ChipInfo, FolderEditor } from "../../saveedit";
-import { fallbackLng } from "../i18n";
 import { CopyButtonWithLabel } from "./CopyButton";
 
 export enum AllowEdits {
@@ -58,7 +57,6 @@ function romNameToAssetFolder(romName: string) {
 }
 
 function FolderChipRow({
-  id,
   code,
   isRegular,
   isTag1,
@@ -67,18 +65,15 @@ function FolderChipRow({
   romName,
   chipInfo,
 }: {
-  id: number;
   code: string;
   isRegular: boolean;
   isTag1: boolean;
   isTag2: boolean;
   count: number;
   romName: string;
-  chipInfo: ChipInfo | null;
+  chipInfo: ChipInfo;
 }) {
   const theme = useTheme();
-
-  const { i18n } = useTranslation();
 
   const backgroundColor =
     chipInfo != null && chipInfo.class == "giga"
@@ -91,9 +86,6 @@ function FolderChipRow({
 
   const iconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   React.useEffect(() => {
-    if (chipInfo == null || chipInfo.icon == null) {
-      return;
-    }
     const ctx = iconCanvasRef.current!.getContext("2d")!;
     ctx.putImageData(chipInfo.icon, -1, -1);
   });
@@ -104,42 +96,20 @@ function FolderChipRow({
         <strong>{count}x</strong>
       </TableCell>
       <TableCell sx={{ width: 0 }}>
-        {chipInfo != null && chipInfo.icon != null ? (
-          <canvas
-            width={14}
-            height={14}
-            style={{
-              width: "28px",
-              height: "28px",
-              imageRendering: "pixelated",
-            }}
-            ref={iconCanvasRef}
-          />
-        ) : (
-          <img
-            height="28"
-            width="28"
-            src={(() => {
-              try {
-                return require(`../../../static/images/games/${romNameToAssetFolder(
-                  romName
-                )}/chipicons/${id}.png`);
-              } catch (e) {
-                return "";
-              }
-            })()}
-            style={{ imageRendering: "pixelated" }}
-          />
-        )}
+        <canvas
+          width={14}
+          height={14}
+          style={{
+            width: "28px",
+            height: "28px",
+            imageRendering: "pixelated",
+          }}
+          ref={iconCanvasRef}
+        />
       </TableCell>
       <TableCell component="th">
         <span>
-          {chipInfo != null
-            ? chipInfo.name[
-                i18n.resolvedLanguage as keyof typeof chipInfo.name
-              ] || chipInfo.name[fallbackLng as keyof typeof chipInfo.name]
-            : "???"}{" "}
-          {code}
+          {chipInfo.name} {code}
         </span>{" "}
         {isRegular ? (
           <Chip
@@ -220,8 +190,6 @@ export default function FolderViewer({
     }
   }
 
-  const { i18n } = useTranslation();
-
   const groupedChips: {
     firstIndex: number;
     id: number;
@@ -294,7 +262,6 @@ export default function FolderViewer({
               {groupedChips.map((groupedChip) => (
                 <FolderChipRow
                   key={groupedChip.firstIndex}
-                  id={groupedChip.id}
                   code={groupedChip.code}
                   isRegular={groupedChip.isRegular}
                   isTag1={groupedChip.isTag1}
@@ -320,13 +287,8 @@ export default function FolderViewer({
               value={groupedChips
                 .flatMap(({ id, code, count, isRegular, isTag1, isTag2 }) => {
                   const chipInfo = editor.getChipInfo(id);
-                  const chipName =
-                    chipInfo != null
-                      ? chipInfo.name[i18n.resolvedLanguage] ||
-                        chipInfo.name[fallbackLng]
-                      : "???";
                   return [
-                    `${count}\t${chipName}\t${code}\t${[
+                    `${count}\t${chipInfo.name}\t${code}\t${[
                       ...(isRegular ? ["[REG]"] : []),
                       ...(isTag1 ? ["[TAG]"] : []),
                       ...(isTag2 ? ["[TAG]"] : []),
