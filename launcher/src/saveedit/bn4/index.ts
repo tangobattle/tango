@@ -328,8 +328,8 @@ interface SaveeditInfo {
 
 class ROMViewer extends ROMViewerBase {
   private palette: Uint32Array;
-  private saveeditInfo: SaveeditInfo;
   private saveDv: DataView;
+  private saveeditInfo: SaveeditInfo;
 
   constructor(
     buffer: ArrayBuffer,
