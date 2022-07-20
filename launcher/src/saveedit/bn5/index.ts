@@ -1,5 +1,7 @@
+import type { Chip } from "..";
 import array2d from "../../array2d";
-import { ROMViewerBase } from "../rom";
+import { ROMInfo } from "../../rom";
+import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 import CHIPS from "./data/chips.json";
 import NCPS from "./data/ncps.json";
 
@@ -185,7 +187,7 @@ class FolderEditor {
   }
 
   getChipInfo(id: number) {
-    return CHIPS[id] ?? null;
+    return this.editor.romViewer.getChipInfo(id);
   }
 
   getChipCountRaw(id: number, variant: number) {
@@ -239,7 +241,7 @@ class FolderEditor {
 
 export class Editor {
   dv: DataView;
-  private romViewer: ROMViewer;
+  romViewer: ROMViewer;
   navicustDirty: boolean;
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
@@ -382,4 +384,104 @@ export class Editor {
   }
 }
 
-class ROMViewer extends ROMViewerBase {}
+interface ROMOffsets {
+  chipData: number;
+  chipIconPalette: number;
+  chipNamesPointers: number;
+}
+
+class ROMViewer extends ROMViewerBase {
+  private offsets: ROMOffsets;
+  private palette: Uint32Array;
+
+  constructor(buffer: ArrayBuffer, lang: string) {
+    super(buffer, lang);
+    this.offsets = getOffsets(this.getROMInfo());
+    this.palette = getPalette(this.dv, this.offsets.chipIconPalette);
+  }
+
+  getChipInfo(id: number): Chip {
+    const dataOffset = this.offsets.chipData + id * 0x2c;
+
+    const codes = [];
+    for (let i = 0; i < 4; ++i) {
+      const code = this.dv.getUint8(dataOffset + 0x00 + i);
+      if (code == 0xff) {
+        continue;
+      }
+      codes.push(CHIP_CODES[code]);
+    }
+    const element = this.dv.getUint8(dataOffset + 0x06);
+    const flags = this.dv.getUint8(dataOffset + 0x09);
+
+    return {
+      name: {
+        en: getChipString(
+          this.dv,
+          this.lang,
+          this.offsets.chipNamesPointers,
+          id
+        ),
+      },
+      codes: codes.join(""),
+      icon: getChipIcon(
+        this.dv,
+        this.palette,
+        this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
+      ),
+      element: element.toString(),
+      class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x07)],
+      mb: this.dv.getUint8(dataOffset + 0x08),
+      damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+}
+
+function getOffsets(romInfo: ROMInfo): ROMOffsets {
+  switch (
+    `${romInfo.name}_${romInfo.revision
+      .toString(16)
+      .toUpperCase()
+      .padStart(2, "0")}`
+  ) {
+    case "MEGAMAN5_TP_BRBE_00":
+      return {
+        chipData: 0x0001e214,
+        chipIconPalette: 0x0074aab8,
+        chipNamesPointers: 0x00023b1c,
+      };
+    case "MEGAMAN5_TC_BRKE_00":
+      return {
+        chipData: 0x0001e210,
+        chipIconPalette: 0x0074bdbc,
+        chipNamesPointers: 0x00023b18,
+      };
+  }
+  throw `unknown rom: ${romInfo.name}`;
+}
+
+const CHARSETS = {
+  en: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyzウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!\ue000\ue001&,゜.・;'\"~/()「」�_�����あいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱぅぁぃぉぇゅょっゃ容量全木�無現実◯✗緑道不止彩起父集院一二三四五六七八陽十百千万脳上下左右手来日目月獣各人入出山口光電気綾科次名前学校省祐室世界高朗枚野悪路闇大小中自分間系花問究門城王兄化葉行街屋水見終新桜先生長今了点井子言太属風会性持時勝赤代年火改計画職体波回外地員正造値合戦川秋原町晴用金郎作数方社攻撃力同武何発少教以白早暮面組後文字本階明才者向犬々ヶ連射舟戸切土炎伊夫鉄国男天老師堀杉士悟森霧麻剛垣★[].",
+  ja: ' 0123456789ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+■�ー!\ue000\ue001&、゜.・;’"~/()「」����_�周えおうあいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ研げぐごがぎぜずじぞざでどづだぢべばびぼぶぽぷぴぺぱぅぁぃぉぇゅょっゃabcdefghijklmnopqrstuvwxyz容量全木�無現実◯✗緑道不止彩起父集院一二三四五六七八陽十百千万脳上下左右手来日目月獣各人入出山口光電気綾科次名前学校省祐室世界高朗枚野悪路闇大小中自分間系花問究門城王兄化葉行街屋水見終新桜先生長今了点井子言太属風会性持時勝赤代年火改計画職体波回外地員正造値合戦川秋原町晴用金郎作数方社攻撃力同武何発少教以白早暮面組後文字本階明才者向犬々ヶ連射舟戸切土炎伊夫鉄国男天老師堀杉士悟森霧麻剛垣',
+};
+
+function getChipString(
+  dv: DataView,
+  lang: string,
+  scriptPointerOffset: number,
+  id: number
+): string {
+  const charset = CHARSETS[lang as keyof typeof CHARSETS];
+  return getChipText(dv, scriptPointerOffset, id)
+    .map((c) => charset[c])
+    .join("")
+    .replace(/[\u3000-\ue004]/g, (c) => {
+      switch (c) {
+        case "\ue000":
+          return "SP";
+        case "\ue001":
+          return "DS";
+      }
+      return c;
+    });
+}
