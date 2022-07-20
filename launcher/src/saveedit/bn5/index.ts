@@ -2,7 +2,6 @@ import type { Chip } from "..";
 import array2d from "../../array2d";
 import { ROMInfo } from "../../rom";
 import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
-import CHIPS from "./data/chips.json";
 import NCPS from "./data/ncps.json";
 
 export interface GameInfo {
