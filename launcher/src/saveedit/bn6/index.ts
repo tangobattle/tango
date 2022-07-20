@@ -406,7 +406,7 @@ export class Editor {
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
     this.dv = new DataView(buffer);
-    this.romViewer = new ROMViewer(romBuffer, saveeditInfo);
+    this.romViewer = new ROMViewer(romBuffer, this.dv, saveeditInfo);
 
     this.navicustDirty = false;
     this.modcardsDirty = false;
@@ -588,10 +588,16 @@ interface SaveeditInfo {
 
 class ROMViewer extends ROMViewerBase {
   private palette: Uint32Array;
+  private saveDv: DataView;
   private saveeditInfo: SaveeditInfo;
 
-  constructor(buffer: ArrayBuffer, saveeditInfo: SaveeditInfo) {
+  constructor(
+    buffer: ArrayBuffer,
+    saveDv: DataView,
+    saveeditInfo: SaveeditInfo
+  ) {
     super(buffer);
+    this.saveDv = saveDv;
     this.saveeditInfo = saveeditInfo;
     this.palette = getPalette(
       this.dv,
@@ -612,6 +618,7 @@ class ROMViewer extends ROMViewerBase {
       codes.push(CHIP_CODES[code]);
     }
     const flags = this.dv.getUint8(dataOffset + 0x09);
+    const iconPtr = this.dv.getUint32(dataOffset + 0x20, true);
 
     return {
       name: getChipString(
@@ -621,11 +628,11 @@ class ROMViewer extends ROMViewerBase {
         id
       ),
       codes: codes.join(""),
-      icon: getChipIcon(
-        this.dv,
-        this.palette,
-        this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
-      ),
+      icon:
+        iconPtr >= 0x08000000
+          ? getChipIcon(this.dv, this.palette, iconPtr & ~0x08000000)
+          : getChipIcon(this.saveDv, this.palette, iconPtr & ~0x02000000),
+
       element: this.dv.getUint8(dataOffset + 0x06),
       class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x07)],
       mb: this.dv.getUint8(dataOffset + 0x08),
