@@ -3,7 +3,7 @@ import * as datefns from "date-fns";
 import { clipboard } from "electron";
 import { createReadStream } from "fs";
 import { readFile, writeFile } from "fs/promises";
-import { isEqual } from "lodash-es";
+import { isEqual, merge } from "lodash-es";
 import fetch from "node-fetch";
 import path from "path";
 import React from "react";
@@ -61,7 +61,7 @@ import {
 } from "../../protos/generated/lobby";
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
-import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
+import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { fallbackLng } from "../i18n";
@@ -725,12 +725,16 @@ async function runCallback(
           ? ref.current.getPatchInfo(opponentGameInfo.patch.name)
           : null;
 
-      const romLang =
-        opponentGameInfo.patch != null &&
-        patchInfo != null &&
-        patchInfo.lang != null
-          ? patchInfo.lang!
-          : KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[opponentGameInfo.rom]].lang;
+      const romInfo = getROMInfo(outOpponentROM);
+
+      const saveeditInfo = merge(
+        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[opponentGameInfo.rom]].versions[
+          opponentGameInfo.rom
+        ].revisions[romInfo.revision].saveedit,
+        opponentGameInfo.patch != null && patchInfo != null
+          ? patchInfo.versions[opponentGameInfo.patch.version].saveeditOverrides
+          : undefined
+      );
 
       const Editor = editorClassForGameFamily(
         FAMILY_BY_ROM_NAME[opponentGameInfo.rom]
@@ -739,7 +743,7 @@ async function runCallback(
         new Editor(
           Editor.sramDumpToRaw(new Uint8Array(remoteState.saveData).buffer),
           outOpponentROM,
-          romLang
+          saveeditInfo
         )
       );
     }

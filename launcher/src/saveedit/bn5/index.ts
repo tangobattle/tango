@@ -242,9 +242,9 @@ export class Editor {
   romViewer: ROMViewer;
   navicustDirty: boolean;
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
     this.dv = new DataView(buffer);
-    this.romViewer = new ROMViewer(romBuffer, lang);
+    this.romViewer = new ROMViewer(romBuffer, saveeditInfo);
     this.navicustDirty = false;
   }
 
@@ -391,24 +391,24 @@ interface SaveeditInfo {
   };
 }
 
-class ROMViewer extends ROMViewerBase<SaveeditInfo> {
+class ROMViewer extends ROMViewerBase {
   private palette: Uint32Array;
+  private saveeditInfo: SaveeditInfo;
 
-  constructor(buffer: ArrayBuffer, lang: string) {
-    super(buffer, lang);
+  constructor(buffer: ArrayBuffer, saveeditInfo: SaveeditInfo) {
+    super(buffer);
+    this.saveeditInfo = saveeditInfo;
     this.palette = getPalette(
       this.dv,
       this.dv.getUint32(
-        this.getSaveeditInfo().offsets.chipIconPalettePointer,
+        this.saveeditInfo.offsets.chipIconPalettePointer,
         true
       ) & ~0x08000000
     );
   }
 
   getChipInfo(id: number): Chip {
-    const saveeditInfo = this.getSaveeditInfo();
-
-    const dataOffset = saveeditInfo.offsets.chipData + id * 0x2c;
+    const dataOffset = this.saveeditInfo.offsets.chipData + id * 0x2c;
 
     const codes = [];
     for (let i = 0; i < 4; ++i) {
@@ -424,8 +424,8 @@ class ROMViewer extends ROMViewerBase<SaveeditInfo> {
       name: {
         en: getChipString(
           this.dv,
-          saveeditInfo.charset,
-          saveeditInfo.offsets.chipNamesPointers,
+          this.saveeditInfo.charset,
+          this.saveeditInfo.offsets.chipNamesPointers,
           id
         ),
       },

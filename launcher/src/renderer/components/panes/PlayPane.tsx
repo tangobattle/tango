@@ -1,5 +1,5 @@
 import { readFile } from "fs/promises";
-import { sortBy } from "lodash-es";
+import { merge, sortBy } from "lodash-es";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -35,7 +35,7 @@ import Typography from "@mui/material/Typography";
 
 import { makeROM } from "../../../game";
 import { SetSettings } from "../../../protos/generated/lobby";
-import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../../rom";
+import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../../rom";
 import { Editor, editorClassForGameFamily } from "../../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../../hooks";
 import { fallbackLng } from "../../i18n";
@@ -455,21 +455,27 @@ function SaveViewerWrapper({
   const romPath = getROMPath(romName);
   const patchPath = patch != null ? getPatchPath(romName, patch) : null;
 
-  const romLang =
-    patch != null && patches[patch.name].lang != null
-      ? patches[patch.name].lang!
-      : KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].lang;
-
   React.useEffect(() => {
     (async () => {
+      const rom = await makeROM(romPath, patchPath);
+      const romInfo = getROMInfo(rom);
+
+      const saveeditInfo = merge(
+        KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].versions[romName]
+          .revisions[romInfo.revision].saveedit,
+        patch != null && patches[patch.name] != null
+          ? patches[patch.name].versions[patch.version].saveeditOverrides
+          : undefined
+      );
+
       const Editor = editorClassForGameFamily(FAMILY_BY_ROM_NAME[romName]);
       setEditor(
         new Editor(
           Editor.sramDumpToRaw(
             (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
-          await makeROM(romPath, patchPath),
-          romLang
+          rom,
+          saveeditInfo
         )
       );
     })();
@@ -480,7 +486,8 @@ function SaveViewerWrapper({
     incarnation,
     romPath,
     patchPath,
-    romLang,
+    patch,
+    patches,
   ]);
 
   if (editor == null) {

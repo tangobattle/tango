@@ -1,4 +1,4 @@
-import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../rom";
+import { getROMInfo } from "../rom";
 
 export function getPalette(dv: DataView, offset: number): Uint32Array {
   const raw = new Uint16Array(dv.buffer, offset, 16);
@@ -79,23 +79,14 @@ export function getChipIcon(
   return new ImageData(new Uint8ClampedArray(pixels.buffer), 16, 16);
 }
 
-export abstract class ROMViewerBase<T> {
+export abstract class ROMViewerBase {
   protected dv: DataView;
-  protected lang: string;
 
-  constructor(buffer: ArrayBuffer, lang: string) {
+  constructor(buffer: ArrayBuffer) {
     this.dv = new DataView(buffer);
-    this.lang = lang;
   }
 
   public getROMInfo() {
     return getROMInfo(this.dv.buffer);
-  }
-
-  protected getSaveeditInfo(): T {
-    const romInfo = this.getROMInfo();
-    return KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romInfo.name]].versions[
-      romInfo.name
-    ].revisions[romInfo.revision].saveedit as T;
   }
 }

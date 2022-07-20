@@ -265,14 +265,14 @@ export class Editor {
     return romNames;
   }
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, _saveeditInfo: any) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
     }
 
     this.dv = new DataView(buffer, startOffset);
-    this.romViewer = new ROMViewer(romBuffer, lang);
+    this.romViewer = new ROMViewer(romBuffer);
   }
 
   getGameInfo() {
@@ -315,4 +315,4 @@ export class Editor {
   }
 }
 
-class ROMViewer extends ROMViewerBase<void> {}
+class ROMViewer extends ROMViewerBase {}

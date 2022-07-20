@@ -62,9 +62,9 @@ export class Editor {
   dv: DataView;
   private romViewer: ROMViewer;
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, _saveeditInfo: any) {
     this.dv = new DataView(buffer);
-    this.romViewer = new ROMViewer(romBuffer, lang);
+    this.romViewer = new ROMViewer(romBuffer);
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -157,4 +157,4 @@ export class Editor {
   }
 }
 
-class ROMViewer extends ROMViewerBase<void> {}
+class ROMViewer extends ROMViewerBase {}

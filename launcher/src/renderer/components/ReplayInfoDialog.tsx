@@ -1,3 +1,4 @@
+import { merge } from "lodash-es";
 import path from "path";
 import React from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -13,7 +14,7 @@ import Typography from "@mui/material/Typography";
 import { makeROM } from "../../game";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
-import { FAMILY_BY_ROM_NAME, KNOWN_ROM_FAMILIES } from "../../rom";
+import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
@@ -52,14 +53,6 @@ export default function ReplayInfoDialog({
     timeStyle: "medium",
   });
 
-  const romLang =
-    replayInfo.metadata.localSide!.gameInfo!.patch != null &&
-    patches[replayInfo.metadata.localSide!.gameInfo!.patch.name].lang != null
-      ? patches[replayInfo.metadata.localSide!.gameInfo!.patch.name].lang!
-      : KNOWN_ROM_FAMILIES[
-          FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
-        ].lang;
-
   React.useEffect(() => {
     (async () => {
       const proc = spawn(
@@ -92,11 +85,25 @@ export default function ReplayInfoDialog({
         FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
       );
 
-      const outROM = await makeROM(romPath!, patchPath);
+      const rom = await makeROM(romPath!, patchPath);
+      const romInfo = getROMInfo(rom);
 
-      setEditor(new Editor(new Uint8Array(buf).buffer, outROM, romLang));
+      const patch = replayInfo.metadata.localSide!.gameInfo!.patch;
+
+      const saveeditInfo = merge(
+        KNOWN_ROM_FAMILIES[
+          FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
+        ].versions[replayInfo.metadata.localSide!.gameInfo!.rom].revisions[
+          romInfo.revision
+        ].saveedit,
+        patch != null && patches[patch.name] != null
+          ? patches[patch.name].versions[patch.version].saveeditOverrides
+          : undefined
+      );
+
+      setEditor(new Editor(new Uint8Array(buf).buffer, rom, saveeditInfo));
     })();
-  }, [config, filename, replayInfo, romPath, patchPath, romLang]);
+  }, [config, filename, replayInfo, romPath, patchPath, patches]);
 
   return (
     <Stack
