@@ -1,3 +1,5 @@
+import { ROMViewerBase } from "../rom";
+
 export interface GameInfo {
   region: "US" | "JP";
   version: "white" | "blue";
@@ -58,16 +60,11 @@ function computeChecksumRaw(dv: DataView) {
 
 export class Editor {
   dv: DataView;
-  private romName: string;
+  private romViewer: ROMViewer;
 
-  constructor(
-    buffer: ArrayBuffer,
-    romBuffer: ArrayBuffer,
-    romName: string,
-    _lang: string
-  ) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
     this.dv = new DataView(buffer);
-    this.romName = romName;
+    this.romViewer = new ROMViewer(romBuffer, lang);
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -81,8 +78,8 @@ export class Editor {
     return arr.buffer;
   }
 
-  getROMName() {
-    return this.romName;
+  getROMInfo() {
+    return this.romViewer.getROMInfo();
   }
 
   static sniff(buffer: ArrayBuffer) {
@@ -144,7 +141,7 @@ export class Editor {
   }
 
   getGameInfo() {
-    return GAME_INFOS[this.romName];
+    return GAME_INFOS[this.getROMInfo().name];
   }
 
   getFolderEditor() {
@@ -159,3 +156,5 @@ export class Editor {
     return null;
   }
 }
+
+class ROMViewer extends ROMViewerBase {}

@@ -1,3 +1,4 @@
+import { ROMViewerBase } from "../rom";
 import CHIPS from "./data/chips.json";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -180,10 +181,10 @@ class FolderEditor {
 
 export class Editor {
   dv: DataView;
-  private romName: string;
+  private romViewer: ROMViewer;
 
-  getROMName() {
-    return this.romName;
+  getROMInfo() {
+    return this.romViewer.getROMInfo();
   }
 
   static getStartOffset(buffer: ArrayBuffer) {
@@ -264,23 +265,18 @@ export class Editor {
     return romNames;
   }
 
-  constructor(
-    buffer: ArrayBuffer,
-    romBuffer: ArrayBuffer,
-    romName: string,
-    _lang: string
-  ) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
     }
 
     this.dv = new DataView(buffer, startOffset);
-    this.romName = romName;
+    this.romViewer = new ROMViewer(romBuffer, lang);
   }
 
   getGameInfo() {
-    return GAME_INFOS[this.romName];
+    return GAME_INFOS[this.getROMInfo().name];
   }
 
   getChecksum() {
@@ -318,3 +314,5 @@ export class Editor {
     return null;
   }
 }
+
+class ROMViewer extends ROMViewerBase {}

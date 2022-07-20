@@ -1,7 +1,7 @@
 import type { Chip } from "..";
 
 import array2d from "../../array2d";
-import { getChipIcon, getChipText, getPalette } from "../rom";
+import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 import MODCARDS from "./data/modcards.json";
 import NCPS from "./data/ncps.json";
 
@@ -410,21 +410,16 @@ export class Editor {
     return [ROM_NAMES_BY_SAVE_GAME_NAME[gn]];
   }
 
-  constructor(
-    buffer: ArrayBuffer,
-    romBuffer: ArrayBuffer,
-    romName: string,
-    lang: string
-  ) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
     this.dv = new DataView(buffer);
-    this.romViewer = new ROMViewer(romBuffer, romName, lang);
+    this.romViewer = new ROMViewer(romBuffer, lang);
 
     this.navicustDirty = false;
     this.modcardsDirty = false;
   }
 
-  getROMName() {
-    return this.romViewer.romName;
+  getROMInfo() {
+    return this.romViewer.getROMInfo();
   }
 
   getRawBufferForSave() {
@@ -451,7 +446,7 @@ export class Editor {
   }
 
   getGameInfo() {
-    return GAME_INFOS[this.getROMName()];
+    return GAME_INFOS[this.getROMInfo().name];
   }
 
   rebuildChecksum() {
@@ -594,18 +589,13 @@ interface ROMOffsets {
   chipNamesPointers: number;
 }
 
-class ROMViewer {
-  private dv: DataView;
-  romName: string;
+class ROMViewer extends ROMViewerBase {
   private offsets: ROMOffsets;
   private palette: Uint32Array;
-  private lang: string;
 
-  constructor(buffer: ArrayBuffer, romName: string, lang: string) {
-    this.dv = new DataView(buffer);
-    this.romName = romName;
-    this.lang = lang;
-    this.offsets = getOffsets(romName);
+  constructor(buffer: ArrayBuffer, lang: string) {
+    super(buffer, lang);
+    this.offsets = getOffsets(this.getROMInfo().name);
     this.palette = getPalette(
       this.dv,
       this.dv.getUint32(this.offsets.chipIconPalettePointer, true) & ~0x08000000

@@ -1,3 +1,5 @@
+import { ROMViewerBase } from "../rom";
+
 const SRAM_SIZE = 0x2308;
 const GAME_NAME_OFFSET = 0x03fc;
 const CHECKSUM_OFFSET = 0x03f0;
@@ -22,16 +24,11 @@ function computeChecksum(dv: DataView) {
 
 export class Editor {
   dv: DataView;
-  private romName: string;
+  private romViewer: ROMViewer;
 
-  constructor(
-    buffer: ArrayBuffer,
-    romBuffer: ArrayBuffer,
-    romName: string,
-    _lang: string
-  ) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
     this.dv = new DataView(buffer);
-    this.romName = romName;
+    this.romViewer = new ROMViewer(romBuffer, lang);
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -49,8 +46,8 @@ export class Editor {
     return getChecksum(dv);
   }
 
-  getROMName() {
-    return this.romName;
+  getROMInfo() {
+    return this.romViewer.getROMInfo();
   }
 
   rebuildChecksum() {
@@ -110,3 +107,5 @@ export class Editor {
     return null;
   }
 }
+
+class ROMViewer extends ROMViewerBase {}

@@ -1,3 +1,4 @@
+import { ROMInfo } from "../rom";
 import * as bn1 from "./bn1";
 import * as bn2 from "./bn2";
 import * as bn3 from "./bn3";
@@ -54,18 +55,13 @@ export interface Modcard {
 }
 
 export interface EditorClass {
-  new (
-    buffer: ArrayBuffer,
-    romBuffer: ArrayBuffer,
-    romName: string,
-    lang: string
-  ): Editor;
+  new (buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string): Editor;
   sramDumpToRaw(buffer: ArrayBuffer): ArrayBuffer;
   sniff(buffer: ArrayBuffer): string[];
 }
 
 export interface Editor {
-  getROMName(): string;
+  getROMInfo(): ROMInfo;
   getFolderEditor(): FolderEditor | null;
   getNavicustEditor(): NavicustEditor | null;
   getModcardsEditor(): ModcardsEditor | null;

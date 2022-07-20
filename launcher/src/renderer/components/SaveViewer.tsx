@@ -70,14 +70,14 @@ export default function SaveViewer({
           </Tabs>
           {navicustEditor != null ? (
             <NavicustViewer
-              romName={editor.getROMName()}
+              romName={editor.getROMInfo().name}
               editor={navicustEditor}
               active={tab == "navicust"}
             />
           ) : null}
           {folderEditor != null ? (
             <FolderViewer
-              romName={editor.getROMName()}
+              romName={editor.getROMInfo().name}
               allowEdits={allowFolderEdits}
               editor={folderEditor}
               active={tab == "folder"}
@@ -85,7 +85,7 @@ export default function SaveViewer({
           ) : null}
           {modcardsEditor != null ? (
             <ModcardsViewer
-              romName={editor.getROMName()}
+              romName={editor.getROMInfo().name}
               editor={modcardsEditor}
               active={tab == "modcards"}
             />

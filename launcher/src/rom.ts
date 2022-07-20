@@ -26,18 +26,16 @@ export const FAMILY_BY_ROM_NAME = (() => {
 export interface ROMInfo {
   name: string;
   revision: number;
-  crc32: number;
 }
 
 const decoder = new TextDecoder("ascii");
 
-export function getROMInfo(buffer: ArrayBuffer) {
+export function getROMInfo(buffer: ArrayBuffer): ROMInfo {
   const dv = new DataView(buffer);
   const name = decoder.decode(new Uint8Array(buffer, 0x000000a0, 16));
   return {
     name,
     revision: dv.getUint8(0x000000bc),
-    crc32: crc32.buf(new Uint8Array(buffer)) >>> 0,
   };
 }
 
@@ -71,9 +69,9 @@ export async function scan(dir: string) {
   for (const result of await Promise.allSettled(
     filenames.map(async (filename) => {
       try {
-        const romInfo = getROMInfo(
-          (await readFile(path.join(dir, filename))).buffer
-        );
+        const romBuffer = (await readFile(path.join(dir, filename))).buffer;
+        const romInfo = getROMInfo(romBuffer);
+        const crc32Checksum = crc32.buf(new Uint8Array(romBuffer)) >>> 0;
         if (
           !Object.prototype.hasOwnProperty.call(
             FAMILY_BY_ROM_NAME,
@@ -87,12 +85,12 @@ export async function scan(dir: string) {
         const family = KNOWN_ROM_FAMILIES[familyName];
         const rom = family.versions[romInfo.name];
 
-        if (romInfo.crc32 != rom.revisions[romInfo.revision].crc32) {
+        if (crc32Checksum != rom.revisions[romInfo.revision].crc32) {
           throw `mismatched crc32: expected ${rom.revisions[
             romInfo.revision
           ].crc32
             .toString(16)
-            .padStart(8, "0")}, got ${romInfo.crc32
+            .padStart(8, "0")}, got ${crc32Checksum
             .toString(16)
             .padStart(8, "0")}`;
         }

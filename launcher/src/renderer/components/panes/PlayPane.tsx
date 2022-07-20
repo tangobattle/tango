@@ -469,7 +469,6 @@ function SaveViewerWrapper({
             (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
           await makeROM(romPath, patchPath),
-          romName,
           romLang
         )
       );

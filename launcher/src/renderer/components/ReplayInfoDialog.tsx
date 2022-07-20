@@ -94,14 +94,7 @@ export default function ReplayInfoDialog({
 
       const outROM = await makeROM(romPath!, patchPath);
 
-      setEditor(
-        new Editor(
-          new Uint8Array(buf).buffer,
-          outROM,
-          replayInfo.metadata.localSide!.gameInfo!.rom,
-          romLang
-        )
-      );
+      setEditor(new Editor(new Uint8Array(buf).buffer, outROM, romLang));
     })();
   }, [config, filename, replayInfo, romPath, patchPath, romLang]);
 

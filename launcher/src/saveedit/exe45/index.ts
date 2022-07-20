@@ -1,4 +1,5 @@
 import CHIPS from "../bn4/data/chips.json";
+import { ROMViewerBase } from "../rom";
 
 export { CHIPS };
 
@@ -147,10 +148,10 @@ class FolderEditor {
 
 export class Editor {
   dv: DataView;
-  private romName: string;
+  private romViewer: ROMViewer;
 
-  getROMName() {
-    return this.romName;
+  getROMInfo() {
+    return this.romViewer.getROMInfo();
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -195,9 +196,9 @@ export class Editor {
     return ["ROCKEXE4.5ROBR4J"];
   }
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, romName: string) {
+  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, lang: string) {
     this.dv = new DataView(buffer);
-    this.romName = romName;
+    this.romViewer = new ROMViewer(romBuffer, lang);
   }
 
   getChecksum() {
@@ -235,3 +236,5 @@ export class Editor {
     return null;
   }
 }
+
+class ROMViewer extends ROMViewerBase {}

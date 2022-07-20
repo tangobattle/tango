@@ -1,3 +1,5 @@
+import { getROMInfo } from "../rom";
+
 export function getPalette(dv: DataView, offset: number): Uint32Array {
   const raw = new Uint16Array(dv.buffer, offset, 16);
 
@@ -75,4 +77,18 @@ export function getChipIcon(
   }
 
   return new ImageData(new Uint8ClampedArray(pixels.buffer), 16, 16);
+}
+
+export abstract class ROMViewerBase {
+  protected dv: DataView;
+  protected lang: string;
+
+  constructor(buffer: ArrayBuffer, lang: string) {
+    this.dv = new DataView(buffer);
+    this.lang = lang;
+  }
+
+  public getROMInfo() {
+    return getROMInfo(this.dv.buffer);
+  }
 }
