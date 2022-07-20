@@ -592,7 +592,6 @@ interface ROMOffsets {
   chipData: number;
   chipIconPalettePointer: number;
   chipNamesPointers: number;
-  chipDescriptionsPointers: number;
 }
 
 class ROMViewer {
@@ -659,7 +658,6 @@ function getOffsets(romName: string): ROMOffsets {
         chipData: 0x000221bc,
         chipIconPalettePointer: 0x0001f144,
         chipNamesPointers: 0x00028140,
-        chipDescriptionsPointers: 0x00028164,
       };
     case "MEGAMAN6_FXXBR6E":
     case "MEGAMAN6_GXXBR5E":
@@ -669,7 +667,6 @@ function getOffsets(romName: string): ROMOffsets {
         chipData: 0x00021da8,
         chipIconPalettePointer: 0x0001ed20,
         chipNamesPointers: 0x00027d2c,
-        chipDescriptionsPointers: 0x00027d50,
       };
   }
   throw `unknown rom: ${romName}`;
