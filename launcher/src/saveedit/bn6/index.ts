@@ -615,7 +615,6 @@ class ROMViewer extends ROMViewerBase {
       codes.push(CHIP_CODES[code]);
     }
     const element = this.dv.getUint8(dataOffset + 0x06);
-    const class_ = this.dv.getUint8(dataOffset + 0x07);
     const flags = this.dv.getUint8(dataOffset + 0x09);
 
     return {
@@ -634,7 +633,7 @@ class ROMViewer extends ROMViewerBase {
         this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
       ),
       element: element.toString(),
-      class: class_ == 1 ? "mega" : class_ == 2 ? "giga" : "standard",
+      class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x07)],
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
     };
