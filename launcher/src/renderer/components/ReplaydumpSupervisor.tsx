@@ -1,4 +1,4 @@
-import { writeFile } from "fs/promises";
+import { readFile, writeFile } from "fs/promises";
 import path from "path";
 import React from "react";
 import { Trans } from "react-i18next";
@@ -12,7 +12,7 @@ import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 
-import { makeROM } from "../../game";
+import applyBPS from "../../bps";
 import { getBinPath } from "../../paths";
 import { spawn } from "../../process";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
@@ -76,8 +76,13 @@ export default function ReplaydumpSupervisor({
   React.useEffect(() => {
     (async () => {
       try {
-        const rom = await makeROM(romPath!, patchPath || null);
-        await writeFile(outROMPath, Buffer.from(rom));
+        let rom = await readFile(romPath!);
+        if (patchPath != null) {
+          rom = Buffer.from(
+            applyBPS(rom, new Uint8Array(await readFile(patchPath)))
+          );
+        }
+        await writeFile(outROMPath, rom);
       } catch (e) {
         setStderr((stderr) => {
           stderr.push((e as any).toString());

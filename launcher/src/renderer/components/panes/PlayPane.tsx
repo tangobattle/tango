@@ -33,7 +33,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { makeROM } from "../../../game";
+import applyBPS from "../../../bps";
 import { SetSettings } from "../../../protos/generated/lobby";
 import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../../rom";
 import { Editor, editorClassForGameFamily } from "../../../saveedit";
@@ -457,8 +457,14 @@ function SaveViewerWrapper({
 
   React.useEffect(() => {
     (async () => {
-      const rom = await makeROM(romPath, patchPath);
-      const romInfo = getROMInfo(rom);
+      const originalROM = await readFile(romPath!);
+      let rom = originalROM;
+      if (patchPath != null) {
+        rom = Buffer.from(
+          applyBPS(rom, new Uint8Array(await readFile(patchPath)))
+        );
+      }
+      const romInfo = getROMInfo(originalROM.buffer);
 
       const saveeditInfo = merge(
         {},
@@ -475,7 +481,7 @@ function SaveViewerWrapper({
           Editor.sramDumpToRaw(
             (await readFile(path.join(config.paths.saves, filename))).buffer
           ),
-          rom,
+          new Uint8Array(rom).buffer,
           saveeditInfo
         )
       );

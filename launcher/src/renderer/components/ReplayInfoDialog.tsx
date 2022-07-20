@@ -1,3 +1,4 @@
+import { readFile } from "fs/promises";
 import { merge } from "lodash-es";
 import path from "path";
 import React from "react";
@@ -11,7 +12,7 @@ import Stack from "@mui/material/Stack";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { makeROM } from "../../game";
+import applyBPS from "../../bps";
 import { spawn } from "../../process";
 import { ReplayInfo } from "../../replay";
 import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../rom";
@@ -85,8 +86,14 @@ export default function ReplayInfoDialog({
         FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
       );
 
-      const rom = await makeROM(romPath!, patchPath);
-      const romInfo = getROMInfo(rom);
+      const originalROM = await readFile(romPath!);
+      let rom = originalROM;
+      if (patchPath != null) {
+        rom = Buffer.from(
+          applyBPS(rom, new Uint8Array(await readFile(patchPath)))
+        );
+      }
+      const romInfo = getROMInfo(originalROM.buffer);
 
       const patch = replayInfo.metadata.localSide!.gameInfo!.patch;
 
@@ -102,7 +109,13 @@ export default function ReplayInfoDialog({
           : undefined
       );
 
-      setEditor(new Editor(new Uint8Array(buf).buffer, rom, saveeditInfo));
+      setEditor(
+        new Editor(
+          new Uint8Array(buf).buffer,
+          new Uint8Array(rom).buffer,
+          saveeditInfo
+        )
+      );
     })();
   }, [config, filename, replayInfo, romPath, patchPath, patches]);
 
