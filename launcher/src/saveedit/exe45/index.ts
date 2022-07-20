@@ -1,5 +1,6 @@
+import type { Chip } from "..";
 import CHIPS from "../bn4/data/chips.json";
-import { ROMViewerBase } from "../rom";
+import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 
 export { CHIPS };
 
@@ -84,7 +85,7 @@ class FolderEditor {
   }
 
   getChipInfo(id: number) {
-    return CHIPS[id] ?? null;
+    return this.editor.romViewer.getChipInfo(id);
   }
 
   getChipCount(id: number, code: string) {
@@ -148,7 +149,7 @@ class FolderEditor {
 
 export class Editor {
   dv: DataView;
-  private romViewer: ROMViewer;
+  romViewer: ROMViewer;
 
   getROMInfo() {
     return this.romViewer.getROMInfo();
@@ -237,4 +238,73 @@ export class Editor {
   }
 }
 
-class ROMViewer extends ROMViewerBase {}
+const CHARSETS = {
+  en: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz-×=:%?+÷+ー!&,。.・;'\"~/()「」αβΩ�_�����■⋯…#��><★♥♦♣♠�������������������������������������������������������������������������������������������������������������������������",
+  ja: ' 0123456789アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ熱斗ヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョヴABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+空港ー!現実&、。.・;’"~/()「」����_�周あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわ研究をんがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽ�����',
+};
+
+const OFFSETS = {
+  chipData: 0x0001af0c,
+  chipIconPalette: 0x00764fb0,
+  chipNamesPointers: 0x0001f7f0,
+};
+
+class ROMViewer extends ROMViewerBase {
+  private palette: Uint32Array;
+
+  constructor(buffer: ArrayBuffer, lang: string) {
+    super(buffer, lang);
+    this.palette = getPalette(this.dv, OFFSETS.chipIconPalette);
+  }
+
+  getChipInfo(id: number): Chip {
+    const dataOffset = OFFSETS.chipData + id * 0x2c;
+
+    const codes = [];
+    for (let i = 0; i < 4; ++i) {
+      const code = this.dv.getUint8(dataOffset + 0x00 + i);
+      if (code == 0xff) {
+        continue;
+      }
+      codes.push(CHIP_CODES[code]);
+    }
+    const flags = this.dv.getUint8(dataOffset + 0x09);
+
+    return {
+      name: {
+        en: getChipString(this.dv, this.lang, OFFSETS.chipNamesPointers, id),
+      },
+      codes: codes.join(""),
+      icon: getChipIcon(
+        this.dv,
+        this.palette,
+        this.dv.getUint32(dataOffset + 0x20, true) & ~0x08000000
+      ),
+      element: this.dv.getUint8(dataOffset + 0x07).toString(),
+      class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x08)],
+      mb: this.dv.getUint8(dataOffset + 0x06),
+      damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+}
+
+function getChipString(
+  dv: DataView,
+  lang: string,
+  scriptPointerOffset: number,
+  id: number
+): string {
+  const charset = CHARSETS[lang as keyof typeof CHARSETS];
+  return getChipText(dv, scriptPointerOffset, id)
+    .map((c) => charset[c])
+    .join("")
+    .replace(/[\u3000-\ue004]/g, (c) => {
+      switch (c) {
+        case "\ue001":
+          return "SP";
+        case "\ue002":
+          return "DS";
+      }
+      return c;
+    });
+}
