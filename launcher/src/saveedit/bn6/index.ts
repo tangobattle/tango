@@ -586,7 +586,7 @@ export class Editor {
 
 interface ROMOffsets {
   chipData: number;
-  chipIconPalettePointer: number;
+  chipIconPalette: number;
   chipNamesPointers: number;
 }
 
@@ -597,10 +597,7 @@ class ROMViewer extends ROMViewerBase {
   constructor(buffer: ArrayBuffer, lang: string) {
     super(buffer, lang);
     this.offsets = getOffsets(this.getROMInfo());
-    this.palette = getPalette(
-      this.dv,
-      this.dv.getUint32(this.offsets.chipIconPalettePointer, true) & ~0x08000000
-    );
+    this.palette = getPalette(this.dv, this.offsets.chipIconPalette);
   }
 
   getChipInfo(id: number): Chip {
@@ -648,19 +645,27 @@ function getOffsets(romInfo: ROMInfo): ROMOffsets {
       .padStart(2, "0")}`
   ) {
     case "ROCKEXE6_RXXBR6J_00":
+      return {
+        chipData: 0x000221bc,
+        chipIconPalette: 0x00751718,
+        chipNamesPointers: 0x00028140,
+      };
     case "ROCKEXE6_GXXBR5J_00":
       return {
         chipData: 0x000221bc,
-        chipIconPalettePointer: 0x0001f144,
+        chipIconPalette: 0x0074f64c,
         chipNamesPointers: 0x00028140,
       };
     case "MEGAMAN6_FXXBR6E_00":
-    case "MEGAMAN6_GXXBR5E_00":
-    case "MEGAMAN6_FXXBR6P_00":
-    case "MEGAMAN6_GXXBR5P_00":
       return {
         chipData: 0x00021da8,
-        chipIconPalettePointer: 0x0001ed20,
+        chipIconPalette: 0x0072cfd4,
+        chipNamesPointers: 0x00027d2c,
+      };
+    case "MEGAMAN6_GXXBR5E_00":
+      return {
+        chipData: 0x00021da8,
+        chipIconPalette: 0x0072af10,
         chipNamesPointers: 0x00027d2c,
       };
   }
