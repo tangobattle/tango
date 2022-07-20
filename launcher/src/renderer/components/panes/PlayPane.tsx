@@ -461,6 +461,7 @@ function SaveViewerWrapper({
       const romInfo = getROMInfo(rom);
 
       const saveeditInfo = merge(
+        {},
         KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[romName]].versions[romName]
           .revisions[romInfo.revision].saveedit,
         patch != null && patches[patch.name] != null

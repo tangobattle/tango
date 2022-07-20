@@ -728,6 +728,7 @@ async function runCallback(
       const romInfo = getROMInfo(outOpponentROM);
 
       const saveeditInfo = merge(
+        {},
         KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[opponentGameInfo.rom]].versions[
           opponentGameInfo.rom
         ].revisions[romInfo.revision].saveedit,

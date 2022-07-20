@@ -91,6 +91,7 @@ export default function ReplayInfoDialog({
       const patch = replayInfo.metadata.localSide!.gameInfo!.patch;
 
       const saveeditInfo = merge(
+        {},
         KNOWN_ROM_FAMILIES[
           FAMILY_BY_ROM_NAME[replayInfo.metadata.localSide!.gameInfo!.rom]
         ].versions[replayInfo.metadata.localSide!.gameInfo!.rom].revisions[
