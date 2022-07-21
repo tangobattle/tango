@@ -719,7 +719,7 @@ async function runCallback(
     );
 
     const originalOpponentROM = await readFile(
-      ref.current.getROMPath(ownGameInfo.rom)
+      ref.current.getROMPath(opponentGameInfo.rom)
     );
     let outOpponentROM = originalOpponentROM;
     if (opponentGameInfo.patch != null) {
