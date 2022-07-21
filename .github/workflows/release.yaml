@@ -7,7 +7,7 @@ on:
 
 jobs:
     release-win32-x64:
-        runs-on: ubuntu-22.04
+        runs-on: ubuntu-20.04
 
         steps:
             - uses: actions/checkout@v2
@@ -34,7 +34,7 @@ jobs:
             - run: >
                   sudo dpkg --add-architecture i386 &&
                   sudo apt-get update &&
-                  sudo apt-get install -y wine-stable wine64 wine32:i386 mingw-w64
+                  sudo aptitude install -y wine-stable wine64 wine32:i386 mingw-w64
 
             - run: >
                   sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60 &&
