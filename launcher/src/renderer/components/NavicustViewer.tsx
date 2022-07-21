@@ -575,7 +575,7 @@ export default function NavicustViewer({
 }) {
   const placements = React.useMemo(() => {
     const placements = [];
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < editor.getNavicustBlockCount(); i++) {
       const placement = editor.getNavicustBlock(i);
       if (placement == null) {
         continue;

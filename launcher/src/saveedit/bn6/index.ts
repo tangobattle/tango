@@ -247,6 +247,10 @@ class NavicustEditor {
     this.editor = editor;
   }
 
+  getNavicustBlockCount() {
+    return 28;
+  }
+
   getNavicustProgramInfo(id: number, variant: number) {
     return this.editor.romViewer.getNavicustProgramInfo(id, variant);
   }
@@ -685,16 +689,7 @@ class ROMViewer extends ROMViewerBase {
         id
       )
         .map((c) => this.saveeditInfo.charset[c])
-        .join("")
-        .replace(/[\u3000-\ue004]/g, (c) => {
-          switch (c) {
-            case "\ue000":
-              return "EX";
-            case "\ue001":
-              return "SP";
-          }
-          return c;
-        }),
+        .join(""),
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
       ] as NavicustProgram["color"],

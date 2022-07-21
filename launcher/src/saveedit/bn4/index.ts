@@ -1,5 +1,6 @@
-import { Chip } from "../";
-import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
+import type { Chip, NavicustProgram } from "../";
+import array2d from "../../array2d";
+import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -74,6 +75,74 @@ function computeChecksumRaw(dv: DataView) {
     checksum += arr[i];
   }
   return checksum;
+}
+
+class NavicustEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getNavicustBlockCount() {
+    return 28;
+  }
+
+  getNavicustProgramInfo(id: number, variant: number) {
+    return this.editor.romViewer.getNavicustProgramInfo(id, variant);
+  }
+
+  getCommandLine() {
+    return 2;
+  }
+
+  hasOutOfBounds() {
+    return false;
+  }
+
+  getWidth() {
+    return 5;
+  }
+
+  getHeight() {
+    return 5;
+  }
+
+  getNavicustBlock(i: number) {
+    const offset = 0x4564 + i * 8;
+    const blockConstant = this.editor.dv.getUint8(offset);
+    const id = blockConstant >> 2;
+    if (id == 0) {
+      return null;
+    }
+
+    return {
+      id,
+      variant: blockConstant & 0x3,
+      col: this.editor.dv.getUint8(offset + 2),
+      row: this.editor.dv.getUint8(offset + 3),
+      rot: this.editor.dv.getUint8(offset + 4),
+      compressed: !!this.editor.dv.getUint8(offset + 5),
+    };
+  }
+
+  setNavicustBlock(
+    i: number,
+    id: number,
+    variant: number,
+    col: number,
+    row: number,
+    rot: number,
+    compressed: boolean
+  ) {
+    const offset = 0x4564 + i * 8;
+    this.editor.dv.setUint8(offset, (id << 2) | variant);
+    this.editor.dv.setUint8(offset + 3, col);
+    this.editor.dv.setUint8(offset + 4, row);
+    this.editor.dv.setUint8(offset + 5, rot);
+    this.editor.dv.setUint8(offset + 6, compressed ? 1 : 0);
+    this.editor.navicustDirty = true;
+  }
 }
 
 class FolderEditor {
@@ -188,6 +257,7 @@ class FolderEditor {
 export class Editor {
   dv: DataView;
   romViewer: ROMViewer;
+  navicustDirty: boolean;
 
   getROMInfo() {
     return this.romViewer.getROMInfo();
@@ -279,6 +349,7 @@ export class Editor {
 
     this.dv = new DataView(buffer, startOffset);
     this.romViewer = new ROMViewer(romBuffer, this.dv, saveeditInfo);
+    this.navicustDirty = false;
   }
 
   getGameInfo() {
@@ -313,7 +384,7 @@ export class Editor {
   }
 
   getNavicustEditor() {
-    return null;
+    return new NavicustEditor(this);
   }
 
   getModcardsEditor() {
@@ -327,6 +398,8 @@ interface SaveeditInfo {
     chipData: number;
     chipIconPalettePointer: number;
     chipNamesPointers: number;
+    ncpData: number;
+    ncpNamesPointer: number;
     elementIconPalettePointer: number;
     elementIconsPointer: number;
   };
@@ -407,6 +480,49 @@ class ROMViewer extends ROMViewerBase {
       class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x08)],
       mb: this.dv.getUint8(dataOffset + 0x06),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+
+  getNavicustProgramInfo(id: number, variant: number): NavicustProgram {
+    const dataOffset = this.saveeditInfo.offsets.ncpData + id * 0x40;
+
+    const subdataOffset = dataOffset + variant * 0x10;
+
+    return {
+      name: getText(
+        this.dv,
+        this.dv.getUint32(this.saveeditInfo.offsets.ncpNamesPointer, true) &
+          ~0x08000000,
+        id
+      )
+        .map((c) => this.saveeditInfo.charset[c])
+        .join(""),
+      color: [null, "white", "yellow", "pink", "red", "blue", "green"][
+        this.dv.getUint8(subdataOffset + 0x3)
+      ] as NavicustProgram["color"],
+      isSolid: this.dv.getUint8(subdataOffset + 0x1) == 0,
+      uncompressed: array2d.from(
+        [
+          ...new Uint8Array(
+            this.dv.buffer,
+            this.dv.getUint32(subdataOffset + 0x8, true) & ~0x08000000,
+            5 * 5
+          ),
+        ].map((v) => !!v),
+        5,
+        5
+      ),
+      compressed: array2d.from(
+        [
+          ...new Uint8Array(
+            this.dv.buffer,
+            this.dv.getUint32(subdataOffset + 0xc, true) & ~0x08000000,
+            5 * 5
+          ),
+        ].map((v) => !!v),
+        5,
+        5
+      ),
     };
   }
 }
