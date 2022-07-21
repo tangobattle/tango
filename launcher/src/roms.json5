@@ -22,8 +22,9 @@
               offsets: {
                 chipData: 0x00021da8,
                 chipIconPalettePointer: 0x0001ed20,
-                chipNamesPointers: 0x00027d2c,
+                chipNamesPointers: 0x00042038,
                 ncpData: 0x0013b22c,
+                ncpNamesPointer: 0x00042048,
               },
             },
           },
@@ -44,8 +45,9 @@
               offsets: {
                 chipData: 0x00021da8,
                 chipIconPalettePointer: 0x0001ed20,
-                chipNamesPointers: 0x00027d2c,
+                chipNamesPointers: 0x00042068,
                 ncpData: 0x0013944c,
+                ncpNamesPointer: 0x00042078,
               },
             },
           },

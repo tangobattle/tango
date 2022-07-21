@@ -1,6 +1,6 @@
 import type { Chip, NavicustProgram } from "..";
 import array2d from "../../array2d";
-import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
+import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
 import MODCARDS from "./data/modcards.json";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -585,6 +585,7 @@ interface SaveeditInfo {
     chipIconPalettePointer: number;
     chipNamesPointers: number;
     ncpData: number;
+    ncpNamesPointer: number;
   };
 }
 
@@ -648,7 +649,23 @@ class ROMViewer extends ROMViewerBase {
     const subdataOffset = dataOffset + variant * 0x10;
 
     return {
-      name: "PLACEHOLDER",
+      name: getText(
+        this.dv,
+        this.dv.getUint32(this.saveeditInfo.offsets.ncpNamesPointer, true) &
+          ~0x08000000,
+        id
+      )
+        .map((c) => this.saveeditInfo.charset[c])
+        .join("")
+        .replace(/[\u3000-\ue004]/g, (c) => {
+          switch (c) {
+            case "\ue000":
+              return "EX";
+            case "\ue001":
+              return "SP";
+          }
+          return c;
+        }),
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
       ] as NavicustProgram["color"],
