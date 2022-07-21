@@ -236,7 +236,7 @@ class FolderEditor {
   }
 
   getElementIcons() {
-    return [];
+    return this.editor.romViewer.getElementIcons();
   }
 }
 
@@ -395,11 +395,14 @@ interface SaveeditInfo {
     chipNamesPointers: number;
     ncpData: number;
     ncpNamesPointer: number;
+    elementIconPalettePointer: number;
+    elementIconsPointer: number;
   };
 }
 
 class ROMViewer extends ROMViewerBase {
-  private palette: Uint32Array;
+  private chipIconPalette: Uint32Array;
+  private elementIconPalette: Uint32Array;
   private saveDv: DataView;
   private saveeditInfo: SaveeditInfo;
 
@@ -411,13 +414,31 @@ class ROMViewer extends ROMViewerBase {
     super(buffer);
     this.saveDv = saveDv;
     this.saveeditInfo = saveeditInfo;
-    this.palette = getPalette(
+    this.chipIconPalette = getPalette(
       this.dv,
       this.dv.getUint32(
         this.saveeditInfo.offsets.chipIconPalettePointer,
         true
       ) & ~0x08000000
     );
+    this.elementIconPalette = getPalette(
+      this.dv,
+      this.dv.getUint32(saveeditInfo.offsets.elementIconPalettePointer, true) &
+        ~0x08000000
+    );
+  }
+
+  getElementIcons(): ImageData[] {
+    const icons: ImageData[] = [];
+    const start =
+      this.dv.getUint32(this.saveeditInfo.offsets.elementIconsPointer, true) &
+      ~0x08000000;
+    for (let i = 0; i < 13; ++i) {
+      icons.push(
+        getChipIcon(this.dv, this.elementIconPalette, start + i * 0x80)
+      );
+    }
+    return icons;
   }
 
   getChipInfo(id: number): Chip {
@@ -444,8 +465,12 @@ class ROMViewer extends ROMViewerBase {
       codes: codes.join(""),
       icon:
         iconPtr >= 0x08000000
-          ? getChipIcon(this.dv, this.palette, iconPtr & ~0x08000000)
-          : getChipIcon(this.saveDv, this.palette, iconPtr & ~0x02000000),
+          ? getChipIcon(this.dv, this.chipIconPalette, iconPtr & ~0x08000000)
+          : getChipIcon(
+              this.saveDv,
+              this.chipIconPalette,
+              iconPtr & ~0x02000000
+            ),
       element: this.dv.getUint8(dataOffset + 0x06),
       class:
         (flags & 0x20) != 0
