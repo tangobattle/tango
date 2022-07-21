@@ -357,11 +357,11 @@ export class Editor {
   }
 
   rebuild() {
+    this.rebuildNavicustTiles();
     this.rebuildChecksum();
   }
 
   getChecksum() {
-    this.rebuildNavicustTiles();
     return getChecksum(this.dv);
   }
 

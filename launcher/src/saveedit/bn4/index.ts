@@ -363,13 +363,64 @@ export class Editor {
     return computeChecksum(this.dv, this.getGameInfo());
   }
 
+  rebuildNavicustTiles() {
+    const navicustEditor = this.getNavicustEditor();
+
+    const arr = new Uint8Array(
+      this.dv.buffer,
+      this.dv.byteOffset + 0 /* TODO */,
+      25
+    );
+
+    for (let i = 0; i < arr.length; ++i) {
+      arr[i] = 0;
+    }
+
+    for (let idx = 0; idx < 25; ++idx) {
+      const placement = navicustEditor.getNavicustBlock(idx);
+      if (placement == null) {
+        continue;
+      }
+
+      const ncp = this.romViewer.getNavicustProgramInfo(
+        placement.id,
+        placement.variant
+      );
+
+      let squares = placement.compressed ? ncp.compressed : ncp.uncompressed;
+      for (let i = 0; i < placement.rot; ++i) {
+        squares = array2d.rot90(squares);
+      }
+
+      for (let i = 0; i < squares.nrows; ++i) {
+        for (let j = 0; j < squares.nrows; ++j) {
+          const i2 = i + placement.row - 2;
+          const j2 = j + placement.col - 2;
+          if (i2 >= 5 || j2 >= 5) {
+            continue;
+          }
+          const v = squares[i * squares.ncols + j];
+          if (!v) {
+            continue;
+          }
+          arr[i2 * 5 + j2] = idx + 1;
+        }
+      }
+    }
+    this.navicustDirty = false;
+  }
+
   rebuild() {
+    this.rebuildNavicustTiles();
     this.rebuildChecksum();
   }
 
   getRawBufferForSave() {
     if (this.getChecksum() != this.computeChecksum()) {
       throw "checksum does not match";
+    }
+    if (this.navicustDirty) {
+      throw "navicust must be rebuilt first";
     }
     return this.dv.buffer;
   }
