@@ -1,8 +1,7 @@
-import type { Chip } from "..";
+import type { Chip, NavicustProgram } from "..";
 import array2d from "../../array2d";
 import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 import MODCARDS from "./data/modcards.json";
-import NCPS from "./data/ncps.json";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -244,8 +243,8 @@ class NavicustEditor {
     this.editor = editor;
   }
 
-  getNavicustProgramInfo(id: number) {
-    return NCPS[id] ?? null;
+  getNavicustProgramInfo(id: number, variant: number) {
+    return this.editor.romViewer.getNavicustProgramInfo(id, variant);
   }
 
   getCommandLine() {
@@ -500,23 +499,25 @@ export class Editor {
         continue;
       }
 
-      let squares = array2d.from(NCPS[placement.id]!.squares, 5, 5);
+      const ncp = this.romViewer.getNavicustProgramInfo(
+        placement.id,
+        placement.variant
+      );
+
+      let squares = placement.compressed ? ncp.compressed : ncp.uncompressed;
       for (let i = 0; i < placement.rot; ++i) {
         squares = array2d.rot90(squares);
       }
 
       for (let i = 0; i < squares.nrows; ++i) {
         for (let j = 0; j < squares.nrows; ++j) {
-          const i2 = i + placement.row - 2;
-          const j2 = j + placement.col - 2;
+          const i2 = i + placement.row - 3;
+          const j2 = j + placement.col - 3;
           if (i2 >= 7 || j2 >= 7) {
             continue;
           }
           const v = squares[i * squares.ncols + j];
-          if (v == 0) {
-            continue;
-          }
-          if (placement.compressed && v != 1) {
+          if (!v) {
             continue;
           }
           arr[i2 * 7 + j2] = idx + 1;
@@ -583,6 +584,7 @@ interface SaveeditInfo {
     chipData: number;
     chipIconPalettePointer: number;
     chipNamesPointers: number;
+    ncpData: number;
   };
 }
 
@@ -637,6 +639,42 @@ class ROMViewer extends ROMViewerBase {
       class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x07)],
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+
+  getNavicustProgramInfo(id: number, variant: number): NavicustProgram {
+    const dataOffset = this.saveeditInfo.offsets.ncpData + id * 0x40;
+
+    const subdataOffset = dataOffset + variant * 0x10;
+
+    return {
+      name: "PLACEHOLDER",
+      color: [null, "white", "yellow", "pink", "red", "blue", "green"][
+        this.dv.getUint8(subdataOffset + 0x3)
+      ] as NavicustProgram["color"],
+      isSolid: this.dv.getUint8(subdataOffset + 0x1) == 0,
+      uncompressed: array2d.from(
+        [
+          ...new Uint8Array(
+            this.dv.buffer,
+            this.dv.getUint32(subdataOffset + 0x8, true) & ~0x08000000,
+            7 * 7
+          ),
+        ].map((v) => !!v),
+        7,
+        7
+      ),
+      compressed: array2d.from(
+        [
+          ...new Uint8Array(
+            this.dv.buffer,
+            this.dv.getUint32(subdataOffset + 0xc, true) & ~0x08000000,
+            7 * 7
+          ),
+        ].map((v) => !!v),
+        7,
+        7
+      ),
     };
   }
 }

@@ -17,7 +17,6 @@ import { lighten } from "@mui/system/colorManipulator";
 
 import array2d, { Array2D } from "../../array2d";
 import { NavicustEditor, NavicustProgram } from "../../saveedit";
-import { fallbackLng } from "../i18n";
 import { CopyButtonWithLabel } from "./CopyButton";
 
 const NAVICUST_COLORS = {
@@ -48,11 +47,12 @@ const NAVICUST_COLORS = {
 };
 
 function placementsToArray2D(
-  getNavicustProgramInfo: (id: number) => NavicustProgram | null,
+  getNavicustProgramInfo: (id: number, variant: number) => NavicustProgram,
   width: number,
   height: number,
   placements: {
     id: number;
+    variant: number;
     rot: number;
     row: number;
     col: number;
@@ -62,29 +62,26 @@ function placementsToArray2D(
   const cust = array2d.full(-1, width, height);
   for (let idx = 0; idx < placements.length; ++idx) {
     const placement = placements[idx];
-    const ncp = getNavicustProgramInfo(placement.id);
+    const ncp = getNavicustProgramInfo(placement.id, placement.variant);
 
     if (ncp == null) {
       continue;
     }
 
-    let squares = array2d.from(ncp.squares, 5, 5);
+    let squares = placement.compressed ? ncp.compressed : ncp.uncompressed;
     for (let i = 0; i < placement.rot; ++i) {
       squares = array2d.rot90(squares);
     }
 
     for (let i = 0; i < squares.nrows; ++i) {
       for (let j = 0; j < squares.ncols; ++j) {
-        const i2 = i + placement.row - 2;
-        const j2 = j + placement.col - 2;
+        const i2 = i + placement.row - 3;
+        const j2 = j + placement.col - 3;
         if (i2 >= cust.nrows || j2 >= cust.ncols) {
           continue;
         }
         const v = squares[i * squares.ncols + j];
-        if (v == 0) {
-          continue;
-        }
-        if (placement.compressed && v != 1) {
+        if (!v) {
           continue;
         }
         cust[i2 * cust.ncols + j2] = idx;
@@ -129,7 +126,7 @@ function navicustBackground(romName: string) {
 }
 
 interface NavicustGridProps {
-  getNavicustProgramInfo: (id: number) => NavicustProgram | null;
+  getNavicustProgramInfo: (id: number, variant: number) => NavicustProgram;
   placements: {
     id: number;
     variant: number;
@@ -165,20 +162,17 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
     }, [grid]);
 
     const colors = React.useMemo(() => {
-      const colors = [];
+      const colors: Array<NavicustProgram["color"]> = [];
       for (const placement of placements) {
-        const ncp = getNavicustProgramInfo(placement.id);
+        const ncp = getNavicustProgramInfo(placement.id, placement.variant);
         if (ncp == null) {
           console.error("unrecognized ncp:", placement.id);
           continue;
         }
-        const color = ncp.isSolid
-          ? ncp.colors[0]
-          : ncp.colors[placement.variant];
-        if (colors.indexOf(color) != -1) {
+        if (colors.indexOf(ncp.color!) != -1) {
           continue;
         }
-        colors.push(color);
+        colors.push(ncp.color);
       }
       return colors;
     }, [getNavicustProgramInfo, placements]);
@@ -236,9 +230,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                           height: "100%",
                           background:
                             color != null
-                              ? NAVICUST_COLORS[
-                                  color as keyof typeof NAVICUST_COLORS
-                                ].plusColor
+                              ? NAVICUST_COLORS[color!].plusColor
                               : emptyColor,
                         }}
                       />
@@ -278,9 +270,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                         height: "100%",
                         background:
                           color != null
-                            ? NAVICUST_COLORS[
-                                color as keyof typeof NAVICUST_COLORS
-                              ].plusColor
+                            ? NAVICUST_COLORS[color!].plusColor
                             : emptyColor,
                       }}
                     />
@@ -313,16 +303,12 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
 
                       const ncp =
                         placement != null
-                          ? getNavicustProgramInfo(placement.id)
+                          ? getNavicustProgramInfo(
+                              placement.id,
+                              placement.variant
+                            )
                           : null;
-                      const color =
-                        ncp != null
-                          ? ((ncp.isSolid
-                              ? ncp.colors[0]
-                              : ncp.colors[
-                                  placement!.variant
-                                ]) as keyof typeof NAVICUST_COLORS)
-                          : null;
+                      const color = ncp != null ? ncp.color : null;
 
                       const ncpColor =
                         ncp != null ? NAVICUST_COLORS[color!] : null;
@@ -601,10 +587,10 @@ export default function NavicustViewer({
   }, [editor]);
 
   const solidBlocks = placements.filter(
-    ({ id }) => editor.getNavicustProgramInfo(id)!.isSolid
+    ({ id, variant }) => editor.getNavicustProgramInfo(id, variant)!.isSolid
   );
   const plusBlocks = placements.filter(
-    ({ id }) => !editor.getNavicustProgramInfo(id)!.isSolid
+    ({ id, variant }) => !editor.getNavicustProgramInfo(id, variant)!.isSolid
   );
 
   const grid = placementsToArray2D(
@@ -655,22 +641,12 @@ export default function NavicustViewer({
                     <Stack spacing={0.5} flexGrow={1}>
                       {placements.flatMap((placement, i) => {
                         const ncp = editor.getNavicustProgramInfo(
-                          placement.id
+                          placement.id,
+                          placement.variant
                         )!;
                         if (!ncp.isSolid) {
                           return [];
                         }
-                        const name =
-                          ncp.name[
-                            i18n.resolvedLanguage as keyof typeof ncp.name
-                          ] || ncp.name[fallbackLng as keyof typeof ncp.name];
-
-                        const color = (
-                          ncp.isSolid
-                            ? ncp.colors[0]
-                            : ncp.colors[placement.variant]
-                        ) as keyof typeof NAVICUST_COLORS;
-
                         const isActive = commandLinePlacements.indexOf(i) != -1;
 
                         return [
@@ -682,10 +658,13 @@ export default function NavicustViewer({
                               justifyContent: "flex-start",
                               color: "black",
                               backgroundColor: isActive
-                                ? lighten(NAVICUST_COLORS[color].color, 0.25)
+                                ? lighten(
+                                    NAVICUST_COLORS[ncp.color!].color,
+                                    0.25
+                                  )
                                 : OFF_COLOR,
                             }}
-                            label={isActive ? name : <del>{name}</del>}
+                            label={isActive ? ncp.name : <del>{ncp.name}</del>}
                           />,
                         ];
                       })}
@@ -695,7 +674,8 @@ export default function NavicustViewer({
                     <Stack spacing={0.5} flexGrow={1}>
                       {placements.flatMap((placement, i) => {
                         const ncp = editor.getNavicustProgramInfo(
-                          placement.id
+                          placement.id,
+                          placement.variant
                         )!;
                         if (ncp.isSolid) {
                           return [];
@@ -709,20 +689,11 @@ export default function NavicustViewer({
                               justifyContent: "flex-start",
                               color: "black",
                               backgroundColor: lighten(
-                                NAVICUST_COLORS[
-                                  ncp.colors[
-                                    placement.variant
-                                  ] as keyof typeof NAVICUST_COLORS
-                                ].color,
+                                NAVICUST_COLORS[ncp.color!].color,
                                 0.25
                               ),
                             }}
-                            label={
-                              ncp.name[
-                                i18n.resolvedLanguage as keyof typeof ncp.name
-                              ] ||
-                              ncp.name[fallbackLng as keyof typeof ncp.name]
-                            }
+                            label={ncp.name}
                           />,
                         ];
                       })}
@@ -756,23 +727,21 @@ export default function NavicustViewer({
                 ) {
                   const leftNCP =
                     i < solidBlocks.length
-                      ? editor.getNavicustProgramInfo(solidBlocks[i].id)
+                      ? editor.getNavicustProgramInfo(
+                          solidBlocks[i].id,
+                          solidBlocks[i].variant
+                        )
                       : null;
-                  const left =
-                    leftNCP != null
-                      ? leftNCP.name[i18n.resolvedLanguage] ||
-                        leftNCP.name[fallbackLng]
-                      : "";
+                  const left = leftNCP != null ? leftNCP.name : "";
 
                   const rightNCP =
                     i < plusBlocks.length
-                      ? editor.getNavicustProgramInfo(plusBlocks[i].id)
+                      ? editor.getNavicustProgramInfo(
+                          plusBlocks[i].id,
+                          plusBlocks[i].variant
+                        )
                       : null;
-                  const right =
-                    rightNCP != null
-                      ? rightNCP.name[i18n.resolvedLanguage] ||
-                        rightNCP.name[fallbackLng]
-                      : "";
+                  const right = rightNCP != null ? rightNCP.name : "";
                   lines.push(left + "\t" + right);
                 }
                 return lines.join("\n");

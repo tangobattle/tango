@@ -10,7 +10,7 @@ export default function array2d<T>(nrows: number, ncols: number): Array2D<T> {
   return arr2d;
 }
 
-array2d.from = function <T>(data: Array<T>, nrows: number, ncols: number) {
+array2d.from = function <T>(data: Iterable<T>, nrows: number, ncols: number) {
   const arr2d = [...data] as Array2D<T>;
   arr2d.nrows = nrows;
   arr2d.ncols = ncols;

@@ -21,8 +21,9 @@
               charset: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz���ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!&,゜.・;'\"~/()「」�_�����あいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ",
               offsets: {
                 chipData: 0x00021da8,
-                chipIconPalettePointer: 0x001ed20,
+                chipIconPalettePointer: 0x0001ed20,
                 chipNamesPointers: 0x00027d2c,
+                ncpData: 0x0013b22c,
               },
             },
           },
@@ -42,8 +43,9 @@
               charset: " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ*abcdefghijklmnopqrstuvwxyz���ウアイオエケコカクキセサソシステトツタチネノヌナニヒヘホハフミマメムモヤヨユロルリレラン熱斗ワヲギガゲゴグゾジゼズザデドヅダヂベビボバブピパペプポゥァィォェュヴッョャ-×=:%?+█�ー!&,゜.・;'\"~/()「」�_�����あいけくきこかせそすさしつとてたちねのなぬにへふほはひめむみもまゆよやるらりろれ�んをわ",
               offsets: {
                 chipData: 0x00021da8,
-                chipIconPalettePointer: 0x001ed20,
+                chipIconPalettePointer: 0x0001ed20,
                 chipNamesPointers: 0x00027d2c,
+                ncpData: 0x0013944c,
               },
             },
           },

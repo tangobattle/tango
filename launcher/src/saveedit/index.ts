@@ -1,3 +1,4 @@
+import { Array2D } from "../array2d";
 import { ROMInfo } from "../rom";
 import * as bn1 from "./bn1";
 import * as bn2 from "./bn2";
@@ -23,12 +24,11 @@ export interface Chip {
 }
 
 export interface NavicustProgram {
-  name: {
-    [lang: string]: string;
-  };
-  colors: string[];
+  name: string;
+  color: "white" | "yellow" | "pink" | "red" | "blue" | "green" | null;
   isSolid: boolean;
-  squares: number[];
+  compressed: Array2D<boolean>;
+  uncompressed: Array2D<boolean>;
 }
 
 export interface Modcard {
@@ -87,7 +87,7 @@ export interface NavicustEditor {
   hasOutOfBounds(): boolean;
   getWidth(): number;
   getHeight(): number;
-  getNavicustProgramInfo(id: number): NavicustProgram | null;
+  getNavicustProgramInfo(id: number, variant: number): NavicustProgram;
   getNavicustBlock(i: number): {
     id: number;
     variant: number;

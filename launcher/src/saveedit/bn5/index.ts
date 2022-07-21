@@ -312,43 +312,44 @@ export class Editor {
   }
 
   rebuildNavicustTiles() {
-    const navicustEditor = this.getNavicustEditor();
+    return null;
+    // const navicustEditor = this.getNavicustEditor();
 
-    const arr = new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x4d48, 25);
+    // const arr = new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x4d48, 25);
 
-    for (let i = 0; i < arr.length; ++i) {
-      arr[i] = 0;
-    }
+    // for (let i = 0; i < arr.length; ++i) {
+    //   arr[i] = 0;
+    // }
 
-    for (let idx = 0; idx < 30; ++idx) {
-      const placement = navicustEditor.getNavicustBlock(idx);
-      if (placement == null) {
-        continue;
-      }
+    // for (let idx = 0; idx < 30; ++idx) {
+    //   const placement = navicustEditor.getNavicustBlock(idx);
+    //   if (placement == null) {
+    //     continue;
+    //   }
 
-      let squares = array2d.from(NCPS[placement.id]!.squares, 5, 5);
-      for (let i = 0; i < placement.rot; ++i) {
-        squares = array2d.rot90(squares);
-      }
+    //   let squares = array2d.from(NCPS[placement.id]!.squares, 5, 5);
+    //   for (let i = 0; i < placement.rot; ++i) {
+    //     squares = array2d.rot90(squares);
+    //   }
 
-      for (let i = 0; i < squares.nrows; ++i) {
-        for (let j = 0; j < squares.nrows; ++j) {
-          const i2 = i + placement.row - 2;
-          const j2 = j + placement.col - 2;
-          if (i2 >= 5 || j2 >= 5) {
-            continue;
-          }
-          const v = squares[i * squares.ncols + j];
-          if (v == 0) {
-            continue;
-          }
-          if (placement.compressed && v != 1) {
-            continue;
-          }
-          arr[i2 * 5 + j2] = idx + 1;
-        }
-      }
-    }
+    //   for (let i = 0; i < squares.nrows; ++i) {
+    //     for (let j = 0; j < squares.nrows; ++j) {
+    //       const i2 = i + placement.row - 2;
+    //       const j2 = j + placement.col - 2;
+    //       if (i2 >= 5 || j2 >= 5) {
+    //         continue;
+    //       }
+    //       const v = squares[i * squares.ncols + j];
+    //       if (v == 0) {
+    //         continue;
+    //       }
+    //       if (placement.compressed && v != 1) {
+    //         continue;
+    //       }
+    //       arr[i2 * 5 + j2] = idx + 1;
+    //     }
+    //   }
+    // }
     this.navicustDirty = false;
   }
 
@@ -374,7 +375,8 @@ export class Editor {
   }
 
   getNavicustEditor() {
-    return new NavicustEditor(this);
+    return null;
+    // return new NavicustEditor(this);
   }
 
   getModcardsEditor() {
