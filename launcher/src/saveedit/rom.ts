@@ -37,8 +37,9 @@ export function getText(
     }
     if (c == 0xe5) {
       // Only the Chinese patch does this?
-      c += dv.getUint8(offset++);
-      c += dv.getUint8(offset++);
+      const hi = dv.getUint8(offset++);
+      const lo = dv.getUint8(offset++);
+      c = 0xe4 + 0x100 + ((hi << 8) | lo);
     }
     buf.push(c);
   }

@@ -722,7 +722,6 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  console.log(getChipText(dv, scriptPointerOffset, id));
   return getChipText(dv, scriptPointerOffset, id)
     .map((c) => charset[c])
     .join("")
