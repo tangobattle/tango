@@ -366,11 +366,7 @@ export class Editor {
   rebuildNavicustTiles() {
     const navicustEditor = this.getNavicustEditor();
 
-    const arr = new Uint8Array(
-      this.dv.buffer,
-      this.dv.byteOffset + 0 /* TODO */,
-      25
-    );
+    const arr = new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x4540, 25);
 
     for (let i = 0; i < arr.length; ++i) {
       arr[i] = 0;
