@@ -14,7 +14,8 @@ jobs:
                   sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
                   sudo dpkg --add-architecture i386 &&
                   sudo apt-get update &&
-                  sudo apt install -y libwine:i386 &&
+                  sudo apt install -y aptitude &&
+                  sudo aptitude install libwine:i386 &&
                   sudo apt install -y wine-stable wine64 wine32 mingw-w64
 
             - uses: actions/checkout@v2
