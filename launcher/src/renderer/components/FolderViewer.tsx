@@ -34,44 +34,22 @@ const DARK_BG = {
   light: "#B58CD6",
 };
 
-function romNameToAssetFolder(romName: string) {
-  switch (romName) {
-    case "MEGAMAN6_FXXBR6E":
-    case "MEGAMAN6_GXXBR5E":
-    case "ROCKEXE6_RXXBR6J":
-    case "ROCKEXE6_GXXBR5J":
-      return "bn6";
-    case "MEGAMAN5_TP_BRBE":
-    case "MEGAMAN5_TC_BRKE":
-    case "ROCKEXE5_TOBBRBJ":
-    case "ROCKEXE5_TOCBRKJ":
-      return "bn5";
-    case "MEGAMANBN4BMB4BE":
-    case "MEGAMANBN4RSB4WE":
-    case "ROCK_EXE4_BMB4BJ":
-    case "ROCK_EXE4_RSB4WJ":
-    case "ROCKEXE4.5ROBR4J":
-      return "bn4";
-  }
-  throw `unknown rom name: ${romName}`;
-}
-
 function FolderChipRow({
   code,
   isRegular,
   isTag1,
   isTag2,
   count,
-  romName,
   chipInfo,
+  elementIcons,
 }: {
   code: string;
   isRegular: boolean;
   isTag1: boolean;
   isTag2: boolean;
   count: number;
-  romName: string;
   chipInfo: ChipInfo;
+  elementIcons: ImageData[];
 }) {
   const theme = useTheme();
 
@@ -88,7 +66,13 @@ function FolderChipRow({
   React.useEffect(() => {
     const ctx = iconCanvasRef.current!.getContext("2d")!;
     ctx.putImageData(chipInfo.icon, -1, -1);
-  });
+  }, [chipInfo]);
+
+  const elementIconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  React.useEffect(() => {
+    const ctx = elementIconCanvasRef.current!.getContext("2d")!;
+    ctx.putImageData(elementIcons[chipInfo.element], -1, -1);
+  }, [chipInfo, elementIcons]);
 
   return (
     <TableRow sx={{ backgroundColor }}>
@@ -134,17 +118,15 @@ function FolderChipRow({
         ) : null}
       </TableCell>
       <TableCell sx={{ width: 0 }}>
-        <img
-          height="28"
-          width="28"
-          src={require(`../../../static/images/games/${romNameToAssetFolder(
-            romName
-          )}/elements/${
-            chipInfo != null && chipInfo.element != null
-              ? chipInfo.element
-              : "null"
-          }.png`)}
-          style={{ imageRendering: "pixelated" }}
+        <canvas
+          width={14}
+          height={14}
+          style={{
+            width: "28px",
+            height: "28px",
+            imageRendering: "pixelated",
+          }}
+          ref={elementIconCanvasRef}
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
@@ -164,12 +146,10 @@ function FolderChipRow({
 }
 
 export default function FolderViewer({
-  romName,
   editor,
   allowEdits,
   active,
 }: {
-  romName: string;
   editor: FolderEditor;
   allowEdits: AllowEdits;
   active: boolean;
@@ -253,6 +233,8 @@ export default function FolderViewer({
     }
   }
 
+  const elementIcons = React.useMemo(() => editor.getElementIcons(), [editor]);
+
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
       <Stack sx={{ flexGrow: 1 }}>
@@ -261,13 +243,13 @@ export default function FolderViewer({
             <TableBody>
               {groupedChips.map((groupedChip) => (
                 <FolderChipRow
+                  elementIcons={elementIcons}
                   key={groupedChip.firstIndex}
                   code={groupedChip.code}
                   isRegular={groupedChip.isRegular}
                   isTag1={groupedChip.isTag1}
                   isTag2={groupedChip.isTag2}
                   count={groupedChip.count}
-                  romName={romName}
                   chipInfo={editor.getChipInfo(groupedChip.id)}
                 />
               ))}

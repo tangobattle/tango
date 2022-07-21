@@ -77,7 +77,6 @@ export default function SaveViewer({
           ) : null}
           {folderEditor != null ? (
             <FolderViewer
-              romName={editor.getROMInfo().name}
               allowEdits={allowFolderEdits}
               editor={folderEditor}
               active={tab == "folder"}

@@ -80,6 +80,7 @@ export interface FolderEditor {
   getRegularChipIndex(folderIdx: number): number | null;
   getTagChip1Index(folderIdx: number): number | null;
   getTagChip2Index(folderIdx: number): number | null;
+  getElementIcons(): ImageData[];
 }
 
 export interface NavicustEditor {

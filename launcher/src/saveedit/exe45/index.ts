@@ -144,6 +144,10 @@ class FolderEditor {
   setChip(folderIdx: number, chipIdx: number, id: number, code: string) {
     this.setChipRaw(folderIdx, chipIdx, id, CHIP_CODES.indexOf(code));
   }
+
+  getElementIcons() {
+    return [];
+  }
 }
 
 export class Editor {
