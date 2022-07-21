@@ -31,11 +31,9 @@ export function getText(
     let c = dv.getUint8(offset++);
     if (c == 0xe6 || offset >= nextOffset) {
       break;
-    }
-    if (c == 0xe4) {
+    } else if (c == 0xe4) {
       c += dv.getUint8(offset++);
-    }
-    if (c == 0xe5) {
+    } else if (c == 0xe5) {
       // Only the Chinese patch does this?
       const hi = dv.getUint8(offset++);
       const lo = dv.getUint8(offset++);
