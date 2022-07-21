@@ -15,10 +15,10 @@ Tango is rollback netplay for Mega Man Battle Network.
 | `ROCKEXE5_TOBBRBJ` | Rockman EXE 5: Team of Blues (JP)                     | ✅ Works great!             | 🤷 Folder, NaviCust           |
 | `ROCKEXE5_TOCBRKJ` | Rockman EXE 5: Team of Colonel (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust           |
 | `ROCKEXE4.5ROBR4J` | Rockman EXE 4.5: Real Operation (JP)                  | ✅ Works great!             | 🤷 Folder                     |
-| `MEGAMANBN4BMB4BE` | Mega Man Battle Network 4: Blue Moon (US)             | ✅ Works great!             | 🤷 Folder                     |
-| `MEGAMANBN4RSB4WE` | Mega Man Battle Network 4: Red Sun (US)               | ✅ Works great!             | 🤷 Folder                     |
-| `ROCK_EXE4_BMB4BJ` | Rockman EXE 4: Tournament Blue Moon (Rev 0 only) (JP) | ✅ Works great!             | 🤷 Folder                     |
-| `ROCK_EXE4_RSB4WJ` | Rockman EXE 4: Tournament Red Sun (Rev 0 and 1) (JP)  | ✅ Works great!             | 🤷 Folder                     |
+| `MEGAMANBN4BMB4BE` | Mega Man Battle Network 4: Blue Moon (US)             | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `MEGAMANBN4RSB4WE` | Mega Man Battle Network 4: Red Sun (US)               | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCK_EXE4_BMB4BJ` | Rockman EXE 4: Tournament Blue Moon (Rev 0 only) (JP) | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCK_EXE4_RSB4WJ` | Rockman EXE 4: Tournament Red Sun (Rev 0 and 1) (JP)  | ✅ Works great!             | 🤷 Folder, NaviCust           |
 | `MEGA_EXE3_BLA3XE` | Megaman Battle Network 3: Blue (US)                   | ✅ Works great!             | ❌ None                       |
 | `MEGA_EXE3_WHA6BE` | Megaman Battle Network 3: White (US)                  | ✅ Works great!             | ❌ None                       |
 | `ROCK_EXE3_BKA3XJ` | Battle Network Rockman EXE 3: Black (Rev 1 only) (JP) | ✅ Works great!             | ❌ None                       |
