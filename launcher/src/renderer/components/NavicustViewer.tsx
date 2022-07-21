@@ -75,8 +75,8 @@ function placementsToArray2D(
 
     for (let i = 0; i < squares.nrows; ++i) {
       for (let j = 0; j < squares.ncols; ++j) {
-        const i2 = i + placement.row - 3;
-        const j2 = j + placement.col - 3;
+        const i2 = i + placement.row - Math.floor(squares.nrows / 2);
+        const j2 = j + placement.col - Math.floor(squares.ncols / 2);
         if (i2 >= cust.nrows || j2 >= cust.ncols) {
           continue;
         }
