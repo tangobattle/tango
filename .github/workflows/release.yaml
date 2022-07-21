@@ -10,6 +10,13 @@ jobs:
         runs-on: ubuntu-20.04
 
         steps:
+            - run: >
+                  sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
+                  sudo dpkg --add-architecture i386 &&
+                  sudo apt-get update &&
+                  sudo apt install -y libwine:i386 &&
+                  sudo apt install -y wine-stable wine64 wine32 mingw-w64
+
             - uses: actions/checkout@v2
               with:
                   submodules: recursive
@@ -21,12 +28,6 @@ jobs:
                       ~/.cargo/git
                       core/target
                   key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-            - run: >
-                  sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
-                  sudo dpkg --add-architecture i386 &&
-                  sudo apt-get update &&
-                  sudo apt install -y wine-stable wine64 wine32 mingw-w64
 
             - uses: actions/setup-node@v1
               with:
