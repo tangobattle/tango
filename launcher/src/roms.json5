@@ -86,7 +86,7 @@
                 chipNamesPointers: 0x00043274,
                 ncpData: 0x001460cc,
                 ncpNamesPointer: 0x00043284,
-                elementIconPalettePointer: 0x001213bc,
+                elementIconPalettePointer: 0x001226e4,
                 elementIconsPointer: 0x001226dc,
               },
             },
