@@ -15,7 +15,7 @@ jobs:
                   sudo dpkg --add-architecture i386 &&
                   sudo apt-get update &&
                   sudo apt install -y aptitude &&
-                  sudo apt remove -y libpcre2-8-0 libgd3 &&
+                  sudo aptitude remove libpcre2-8-0 libgd3 &&
                   sudo aptitude install libwine:i386 &&
                   sudo apt install -y wine-stable wine64 wine32 mingw-w64
 
