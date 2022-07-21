@@ -297,7 +297,9 @@
               offsets: {
                 chipData: 0x000197ec,
                 chipIconPalettePointer: 0x00015a78,
-                chipNamesPointers: 0x0001fd9c,
+                chipNamesPointers: 0x0004fb74,
+                ncpNamesPointer: 0x0004fb90,
+                ncpData: 0x0004fb84,
                 elementIconPalettePointer: 0x00106bd8,
                 elementIconsPointer: 0x001099cc,
               },
@@ -320,7 +322,9 @@
               offsets: {
                 chipData: 0x000197ec,
                 chipIconPalettePointer: 0x00015a78,
-                chipNamesPointers: 0x0001fd9c,
+                chipNamesPointers: 0x0004fb80,
+                ncpNamesPointer: 0x0004fb90,
+                ncpData: 0x00045644,
                 elementIconPalettePointer: 0x001099e4,
                 elementIconsPointer: 0x001099d8,
               },
