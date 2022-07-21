@@ -10,6 +10,12 @@ jobs:
         runs-on: ubuntu-20.04
 
         steps:
+            - run: >
+                  sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
+                  sudo dpkg --add-architecture i386 &&
+                  sudo apt-get update &&
+                  sudo apt install -y wine-stable wine64 wine32 mingw-w64
+
             - uses: actions/checkout@v2
               with:
                   submodules: recursive
@@ -30,13 +36,6 @@ jobs:
               with:
                   toolchain: stable
                   target: x86_64-pc-windows-gnu
-
-            - run: >
-                  sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
-                  sudo dpkg --add-architecture i386 &&
-                  sudo apt-get update &&
-                  sudo apt install -y aptitude &&
-                  sudo aptitude install -y wine-stable wine64 wine32:i386 mingw-w64
 
             - run: >
                   sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60 &&
