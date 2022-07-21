@@ -1,7 +1,6 @@
-import type { Chip } from "..";
+import type { Chip, NavicustProgram } from "..";
 import array2d from "../../array2d";
-import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
-import NCPS from "./data/ncps.json";
+import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
 
 export interface GameInfo {
   region: "US" | "JP";
@@ -85,8 +84,8 @@ class NavicustEditor {
     this.editor = editor;
   }
 
-  getNavicustProgramInfo(id: number) {
-    return NCPS[id] ?? null;
+  getNavicustProgramInfo(id: number, variant: number) {
+    return this.editor.romViewer.getNavicustProgramInfo(id, variant);
   }
 
   getCommandLine() {
@@ -312,44 +311,45 @@ export class Editor {
   }
 
   rebuildNavicustTiles() {
-    return null;
-    // const navicustEditor = this.getNavicustEditor();
+    const navicustEditor = this.getNavicustEditor();
 
-    // const arr = new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x4d48, 25);
+    const arr = new Uint8Array(this.dv.buffer, this.dv.byteOffset + 0x4d48, 25);
 
-    // for (let i = 0; i < arr.length; ++i) {
-    //   arr[i] = 0;
-    // }
+    for (let i = 0; i < arr.length; ++i) {
+      arr[i] = 0;
+    }
 
-    // for (let idx = 0; idx < 30; ++idx) {
-    //   const placement = navicustEditor.getNavicustBlock(idx);
-    //   if (placement == null) {
-    //     continue;
-    //   }
+    for (let idx = 0; idx < 30; ++idx) {
+      const placement = navicustEditor.getNavicustBlock(idx);
+      if (placement == null) {
+        continue;
+      }
 
-    //   let squares = array2d.from(NCPS[placement.id]!.squares, 5, 5);
-    //   for (let i = 0; i < placement.rot; ++i) {
-    //     squares = array2d.rot90(squares);
-    //   }
+      const ncp = this.romViewer.getNavicustProgramInfo(
+        placement.id,
+        placement.variant
+      );
 
-    //   for (let i = 0; i < squares.nrows; ++i) {
-    //     for (let j = 0; j < squares.nrows; ++j) {
-    //       const i2 = i + placement.row - 2;
-    //       const j2 = j + placement.col - 2;
-    //       if (i2 >= 5 || j2 >= 5) {
-    //         continue;
-    //       }
-    //       const v = squares[i * squares.ncols + j];
-    //       if (v == 0) {
-    //         continue;
-    //       }
-    //       if (placement.compressed && v != 1) {
-    //         continue;
-    //       }
-    //       arr[i2 * 5 + j2] = idx + 1;
-    //     }
-    //   }
-    // }
+      let squares = placement.compressed ? ncp.compressed : ncp.uncompressed;
+      for (let i = 0; i < placement.rot; ++i) {
+        squares = array2d.rot90(squares);
+      }
+
+      for (let i = 0; i < squares.nrows; ++i) {
+        for (let j = 0; j < squares.nrows; ++j) {
+          const i2 = i + placement.row - 2;
+          const j2 = j + placement.col - 2;
+          if (i2 >= 5 || j2 >= 5) {
+            continue;
+          }
+          const v = squares[i * squares.ncols + j];
+          if (!v) {
+            continue;
+          }
+          arr[i2 * 5 + j2] = idx + 1;
+        }
+      }
+    }
     this.navicustDirty = false;
   }
 
@@ -375,8 +375,7 @@ export class Editor {
   }
 
   getNavicustEditor() {
-    return null;
-    // return new NavicustEditor(this);
+    return new NavicustEditor(this);
   }
 
   getModcardsEditor() {
@@ -390,6 +389,8 @@ interface SaveeditInfo {
     chipData: number;
     chipIconPalettePointer: number;
     chipNamesPointers: number;
+    ncpData: number;
+    ncpNamesPointer: number;
   };
 }
 
@@ -448,6 +449,58 @@ class ROMViewer extends ROMViewerBase {
           : ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x07)],
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+
+  getNavicustProgramInfo(id: number, variant: number): NavicustProgram {
+    const dataOffset = this.saveeditInfo.offsets.ncpData + id * 0x40;
+
+    const subdataOffset = dataOffset + variant * 0x10;
+
+    return {
+      name: getText(
+        this.dv,
+        this.dv.getUint32(this.saveeditInfo.offsets.ncpNamesPointer, true) &
+          ~0x08000000,
+        id
+      )
+        .map((c) => this.saveeditInfo.charset[c])
+        .join("")
+        .replace(/[\u3000-\ue004]/g, (c) => {
+          switch (c) {
+            case "\ue000":
+              return "EX";
+            case "\ue001":
+              return "SP";
+          }
+          return c;
+        }),
+      color: [null, "white", "yellow", "pink", "red", "blue", "green"][
+        this.dv.getUint8(subdataOffset + 0x3)
+      ] as NavicustProgram["color"],
+      isSolid: this.dv.getUint8(subdataOffset + 0x1) == 0,
+      uncompressed: array2d.from(
+        [
+          ...new Uint8Array(
+            this.dv.buffer,
+            this.dv.getUint32(subdataOffset + 0x8, true) & ~0x08000000,
+            5 * 5
+          ),
+        ].map((v) => !!v),
+        5,
+        5
+      ),
+      compressed: array2d.from(
+        [
+          ...new Uint8Array(
+            this.dv.buffer,
+            this.dv.getUint32(subdataOffset + 0xc, true) & ~0x08000000,
+            5 * 5
+          ),
+        ].map((v) => !!v),
+        5,
+        5
+      ),
     };
   }
 }

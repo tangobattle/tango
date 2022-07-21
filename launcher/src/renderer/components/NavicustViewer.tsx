@@ -1,6 +1,6 @@
 import { NativeImage } from "electron";
 import React from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { Trans } from "react-i18next";
 
 import { clipboard, nativeImage } from "@electron/remote";
 import ContentCopyIcon from "@mui/icons-material/ContentCopy";
@@ -573,7 +573,6 @@ export default function NavicustViewer({
   romName: string;
   active: boolean;
 }) {
-  const { i18n } = useTranslation();
   const placements = React.useMemo(() => {
     const placements = [];
     for (let i = 0; i < 30; i++) {
