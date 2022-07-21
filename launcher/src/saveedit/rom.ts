@@ -28,9 +28,16 @@ export function getText(
   const buf: number[] = [];
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const c = dv.getUint8(offset++);
+    let c = dv.getUint8(offset++);
     if (c == 0xe6 || offset >= nextOffset) {
       break;
+    }
+    if (c == 0xe4) {
+      c += dv.getUint8(offset++);
+    }
+    if (c == 0xe5) {
+      c += dv.getUint8(offset++);
+      c += dv.getUint8(offset++);
     }
     buf.push(c);
   }
