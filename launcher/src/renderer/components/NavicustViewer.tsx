@@ -576,10 +576,10 @@ export default function NavicustViewer({
   const placements = React.useMemo(() => {
     const placements = [];
     // eslint-disable-next-line no-constant-condition
-    for (let i = 0; ; ++i) {
+    for (let i = 0; i < 25; ++i) {
       const placement = editor.getNavicustBlock(i);
       if (placement == null) {
-        break;
+        continue;
       }
       placements.push(placement);
     }

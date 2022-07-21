@@ -497,10 +497,10 @@ export class Editor {
       arr[i] = 0;
     }
 
-    for (let idx = 0; ; ++idx) {
+    for (let idx = 0; idx < 25; ++idx) {
       const placement = navicustEditor.getNavicustBlock(idx);
       if (placement == null) {
-        break;
+        continue;
       }
 
       const ncp = this.romViewer.getNavicustProgramInfo(
