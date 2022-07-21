@@ -263,7 +263,7 @@
               offsets: {
                 chipData: 0x0001af0c,
                 chipIconPalettePointer: 0x000168ec,
-                chipNamesPointers: 0x0001f7f0,
+                chipNamesPointers: 0x0003cb98,
                 elementIconPalettePointer: 0x000d4ca0,
                 elementIconsPointer: 0x0000d4c94,
               },
