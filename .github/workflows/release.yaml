@@ -15,8 +15,8 @@ jobs:
                   sudo dpkg --add-architecture i386 &&
                   sudo apt-get update &&
                   sudo apt install -y aptitude &&
-                  sudo aptitude remove libpcre2-8-0 libgd3 &&
-                  sudo aptitude install libwine:i386 &&
+                  sudo aptitude remove -y libpcre2-8-0 libgd3 &&
+                  sudo aptitude install -y libwine:i386 &&
                   sudo apt install -y wine-stable wine64 wine32 mingw-w64
 
             - uses: actions/checkout@v2
