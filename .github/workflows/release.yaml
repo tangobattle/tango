@@ -33,7 +33,11 @@ jobs:
 
             - run: >
                   sudo dpkg --add-architecture i386 &&
-                  sudo apt-get install -y --allow-downgrades libpcre2-posix3 wine-stable wine64 wine32:i386 wine64 mingw-w64
+                  sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 86B72ED9 &&
+                  sudo add-apt-repository 'deb [arch=amd64] https://mirror.mxe.cc/repos/apt focal main' &&
+                  sudo apt -qq update &&
+                  sudo apt install -y --allow-downgrades libpcre2-8-0=10.34-7 &&
+                  sudo apt-get install -y wine-stable wine64 wine32:i386 mingw-w64
 
             - run: >
                   sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60 &&
