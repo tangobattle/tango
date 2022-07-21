@@ -88,10 +88,6 @@ class NavicustEditor {
     return this.editor.romViewer.getNavicustProgramInfo(id, variant);
   }
 
-  getNavicustBlockCount() {
-    return 28;
-  }
-
   getCommandLine() {
     return 2;
   }
@@ -111,13 +107,12 @@ class NavicustEditor {
   getNavicustBlock(i: number) {
     const offset = 0x4d6c + i * 8;
     const blockConstant = this.editor.dv.getUint8(offset);
-    const id = blockConstant >> 2;
-    if (id == 0) {
+    if (blockConstant == 0) {
       return null;
     }
 
     return {
-      id,
+      id: blockConstant >> 2,
       variant: blockConstant & 0x3,
       col: this.editor.dv.getUint8(offset + 2),
       row: this.editor.dv.getUint8(offset + 3),

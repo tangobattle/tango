@@ -247,10 +247,6 @@ class NavicustEditor {
     this.editor = editor;
   }
 
-  getNavicustBlockCount() {
-    return 28;
-  }
-
   getNavicustProgramInfo(id: number, variant: number) {
     return this.editor.romViewer.getNavicustProgramInfo(id, variant);
   }
