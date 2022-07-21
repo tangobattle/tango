@@ -32,8 +32,10 @@ jobs:
                   target: x86_64-pc-windows-gnu
 
             - run: >
+                  sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
                   sudo dpkg --add-architecture i386 &&
                   sudo apt-get update &&
+                  sudo apt install -y aptitude &&
                   sudo aptitude install -y wine-stable wine64 wine32:i386 mingw-w64
 
             - run: >
@@ -66,47 +68,47 @@ jobs:
               env:
                   NODE_OPTIONS: --max-old-space-size=8192
 
-    release-linux-x64:
-        runs-on: ubuntu-20.04
+    # release-linux-x64:
+    #     runs-on: ubuntu-20.04
 
-        steps:
-            - uses: actions/checkout@v2
-              with:
-                  submodules: recursive
+    #     steps:
+    #         - uses: actions/checkout@v2
+    #           with:
+    #               submodules: recursive
 
-            - uses: pat-s/always-upload-cache@v2
-              with:
-                  path: |
-                      ~/.cargo/registry
-                      ~/.cargo/git
-                      core/target
-                  key: linux-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
+    #         - uses: pat-s/always-upload-cache@v2
+    #           with:
+    #               path: |
+    #                   ~/.cargo/registry
+    #                   ~/.cargo/git
+    #                   core/target
+    #               key: linux-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-            - uses: actions/setup-node@v1
-              with:
-                  node-version: 18
+    #         - uses: actions/setup-node@v1
+    #           with:
+    #               node-version: 18
 
-            - uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  target: x86_64-unknown-linux-gnu
+    #         - uses: actions-rs/toolchain@v1
+    #           with:
+    #               toolchain: stable
+    #               target: x86_64-unknown-linux-gnu
 
-            - run: >
-                  sudo apt-get update -y &&
-                  sudo apt-get upgrade -y &&
-                  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl git libnss3 libsdl2-dev libsdl2-ttf-dev pkgconf sudo
+    #         - run: >
+    #               sudo apt-get update -y &&
+    #               sudo apt-get upgrade -y &&
+    #               sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl git libnss3 libsdl2-dev libsdl2-ttf-dev pkgconf sudo
 
-            - run: >
-                  cd core &&
-                  cargo build --release --target x86_64-unknown-linux-gnu
+    #         - run: >
+    #               cd core &&
+    #               cargo build --release --target x86_64-unknown-linux-gnu
 
-            - run: >
-                  mkdir launcher/bin &&
-                  cp core/target/x86_64-unknown-linux-gnu/release/{tango-core,replayview,replaydump,keymaptool} ./launcher/bin/
+    #         - run: >
+    #               mkdir launcher/bin &&
+    #               cp core/target/x86_64-unknown-linux-gnu/release/{tango-core,replayview,replaydump,keymaptool} ./launcher/bin/
 
-            - run: >
-                  cd launcher &&
-                  npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:linux -- --publish always
-              env:
-                  NODE_OPTIONS: --max-old-space-size=8192
+    #         - run: >
+    #               cd launcher &&
+    #               npm install &&
+    #               GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:linux -- --publish always
+    #           env:
+    #               NODE_OPTIONS: --max-old-space-size=8192
