@@ -97,3 +97,41 @@ export abstract class ROMViewerBase {
     return getROMInfo(this.dv.buffer);
   }
 }
+
+export function unlz77(dv: DataView) {
+  const out: number[] = [];
+
+  let pos = 0;
+
+  const header = dv.getUint32(pos, true);
+  pos += 4;
+
+  if ((header & 0xff) != 0x10) {
+    throw "invalid lz77 data";
+  }
+
+  const n = header >> 8;
+  while (out.length < n) {
+    const ref = dv.getUint8(pos);
+    pos += 1;
+
+    for (let i = 0; i < 8 && out.length < n; ++i) {
+      if ((ref & (0x80 >> i)) == 0) {
+        out.push(dv.getUint8(pos));
+        pos += 1;
+      }
+
+      const info = dv.getUint16(pos, false);
+      pos += 2;
+
+      const m = info >> 12;
+      const offset = info & 0x0fff;
+
+      for (let j = 0; j < m + 3; ++j) {
+        out.push(out[out.length - offset - 1]);
+      }
+    }
+  }
+
+  return new Uint8Array(out).buffer;
+}
