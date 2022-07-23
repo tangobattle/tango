@@ -592,6 +592,7 @@ interface SaveeditInfo {
     ncpNamesPointer: number;
     elementIconPalettePointer: number;
     elementIconsPointer: number;
+    modcardData: number | null;
     modcardNamesPointer: number | null;
     modcardDetailsNamesPointer: number | null;
   };
@@ -664,11 +665,16 @@ class ROMViewer extends ROMViewerBase {
 
   getModcardInfo(id: number): Modcard | null {
     if (
+      this.saveeditInfo.offsets.modcardData == null ||
       this.modcardTextArchive == null ||
       this.modcardDetailsTextArchive == null
     ) {
       return null;
     }
+
+    const modcardOffset =
+      this.saveeditInfo.offsets.modcardData +
+      this.dv.getUint16(this.saveeditInfo.offsets.modcardData + id * 2, true);
 
     const detailsDv = new DataView(this.modcardDetailsTextArchive);
 
@@ -678,6 +684,7 @@ class ROMViewer extends ROMViewerBase {
     }
     return {
       ...mc,
+      mb: this.dv.getUint8(modcardOffset + 0x01),
       name: {
         en: getText(new DataView(this.modcardTextArchive), 4, id)
           .map((c) => this.saveeditInfo.charset[c])
