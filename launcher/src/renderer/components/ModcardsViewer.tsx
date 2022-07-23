@@ -62,7 +62,9 @@ export default function ModcardsViewer({
 
                 const formattedName = (
                   <>
-                    {name} <small>{modcard.mb}MB</small>
+                    {name}
+                    <br />
+                    <small>{modcard.mb}MB</small>
                   </>
                 );
 
