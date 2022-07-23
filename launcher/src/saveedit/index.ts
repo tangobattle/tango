@@ -32,22 +32,12 @@ export interface NavicustProgram {
 }
 
 export interface Modcard {
-  name: {
-    [lang: string]: string;
-  };
+  name: string;
   mb: number;
-  parameters: {
-    name: {
-      [lang: string]: string;
-    };
-    version: string | null;
-    debuff: boolean;
-  }[];
   abilities: {
-    name: {
-      [lang: string]: string;
-    };
-    version: string | null;
+    id: number;
+    name: string;
+    parameter: number;
     debuff: boolean;
   }[];
 }

@@ -1,5 +1,4 @@
 import React from "react";
-import { useTranslation } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import Chip from "@mui/material/Chip";
@@ -10,34 +9,19 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 
 import { ModcardsEditor } from "../../saveedit";
-import { fallbackLng } from "../i18n";
 import { CopyButtonWithLabel } from "./CopyButton";
 
 const DEBUFF_COLOR = "#b55ade";
 const BUFF_COLOR = "#ffbd18";
 const OFF_COLOR = "#bdbdbd";
 
-function gameVersion(romName: string) {
-  switch (romName) {
-    case "ROCKEXE6_RXXBR6J":
-      return "falzar";
-    case "ROCKEXE6_GXXBR5J":
-      return "gregar";
-  }
-  throw `unknown rom name: ${romName}`;
-}
-
 export default function ModcardsViewer({
   editor,
-  romName,
   active,
 }: {
   editor: ModcardsEditor;
-  romName: string;
   active: boolean;
 }) {
-  const { i18n } = useTranslation();
-
   const modcards: { id: number; enabled: boolean }[] = [];
   for (let i = 0; i < editor.getModcardCount(); i++) {
     modcards.push(editor.getModcard(i)!);
@@ -55,14 +39,9 @@ export default function ModcardsViewer({
                   return null;
                 }
 
-                const name =
-                  modcard.name[
-                    i18n.resolvedLanguage as keyof typeof modcard.name
-                  ] || modcard.name[fallbackLng as keyof typeof modcard.name];
-
                 const formattedName = (
                   <>
-                    {name}
+                    {modcard.name}
                     <br />
                     <small>{modcard.mb}MB</small>
                   </>
@@ -75,62 +54,48 @@ export default function ModcardsViewer({
                     </TableCell>
                     <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                       <Stack spacing={0.5}>
-                        {modcard.parameters.flatMap((l, i) =>
-                          l.version == null || l.version == gameVersion(romName)
-                            ? [
-                                <Chip
-                                  key={i}
-                                  label={
-                                    l.name[
-                                      i18n.resolvedLanguage as keyof typeof l.name
-                                    ] ||
-                                    l.name[fallbackLng as keyof typeof l.name]
-                                  }
-                                  size="small"
-                                  sx={{
-                                    fontSize: "0.9rem",
-                                    justifyContent: "flex-start",
-                                    color: "black",
-                                    backgroundColor: enabled
-                                      ? l.debuff
-                                        ? DEBUFF_COLOR
-                                        : BUFF_COLOR
-                                      : OFF_COLOR,
-                                  }}
-                                />,
-                              ]
-                            : []
-                        )}
+                        {modcard.abilities
+                          .filter((a) => a.parameter != a.id)
+                          .map((a) => (
+                            <Chip
+                              key={a.id}
+                              label={a.name}
+                              size="small"
+                              sx={{
+                                fontSize: "0.9rem",
+                                justifyContent: "flex-start",
+                                color: "black",
+                                backgroundColor: enabled
+                                  ? a.debuff
+                                    ? DEBUFF_COLOR
+                                    : BUFF_COLOR
+                                  : OFF_COLOR,
+                              }}
+                            />
+                          ))}
                       </Stack>
                     </TableCell>
                     <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                       <Stack spacing={0.5}>
-                        {modcard.abilities.flatMap((l, i) =>
-                          l.version == null || l.version == gameVersion(romName)
-                            ? [
-                                <Chip
-                                  key={i}
-                                  label={
-                                    l.name[
-                                      i18n.resolvedLanguage as keyof typeof l.name
-                                    ] ||
-                                    l.name[fallbackLng as keyof typeof l.name]
-                                  }
-                                  size="small"
-                                  sx={{
-                                    fontSize: "0.9rem",
-                                    justifyContent: "flex-start",
-                                    color: "black",
-                                    backgroundColor: enabled
-                                      ? l.debuff
-                                        ? DEBUFF_COLOR
-                                        : BUFF_COLOR
-                                      : OFF_COLOR,
-                                  }}
-                                />,
-                              ]
-                            : []
-                        )}
+                        {modcard.abilities
+                          .filter((a) => a.parameter == a.id)
+                          .map((a) => (
+                            <Chip
+                              key={a.id}
+                              label={a.name}
+                              size="small"
+                              sx={{
+                                fontSize: "0.9rem",
+                                justifyContent: "flex-start",
+                                color: "black",
+                                backgroundColor: enabled
+                                  ? a.debuff
+                                    ? DEBUFF_COLOR
+                                    : BUFF_COLOR
+                                  : OFF_COLOR,
+                              }}
+                            />
+                          ))}
                       </Stack>
                     </TableCell>
                   </TableRow>
@@ -156,10 +121,7 @@ export default function ModcardsViewer({
                   if (modcard == null) {
                     return [];
                   }
-                  const modcardName =
-                    modcard!.name[i18n.resolvedLanguage] ||
-                    modcard!.name[fallbackLng];
-                  return [`${modcardName}\t${modcard.mb}`];
+                  return [`${modcard.name}\t${modcard.mb}`];
                 })
                 .join("\n")}
               TooltipProps={{ placement: "top" }}

@@ -84,7 +84,6 @@ export default function SaveViewer({
           ) : null}
           {modcardsEditor != null ? (
             <ModcardsViewer
-              romName={editor.getROMInfo().name}
               editor={modcardsEditor}
               active={tab == "modcards"}
             />

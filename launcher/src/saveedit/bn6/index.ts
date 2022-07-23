@@ -1,7 +1,6 @@
 import type { Chip, Modcard, NavicustProgram } from "..";
 import array2d from "../../array2d";
 import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase, unlz77 } from "../rom";
-import MODCARDS from "./data/modcards.json";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -537,7 +536,7 @@ export class Editor {
       return;
     }
 
-    for (let i = 1; i < MODCARDS.length; ++i) {
+    for (let i = 1; i < 118; ++i) {
       modcardsEditor.setModcardLoaded(i, false);
     }
     for (let i = 0; i < modcardsEditor.getModcardCount(); ++i) {
@@ -672,24 +671,63 @@ class ROMViewer extends ROMViewerBase {
       return null;
     }
 
-    const modcardOffset =
-      this.saveeditInfo.offsets.modcardData +
-      this.dv.getUint16(this.saveeditInfo.offsets.modcardData + id * 2, true);
+    const modcardStart = this.dv.getUint16(
+      this.saveeditInfo.offsets.modcardData + id * 2,
+      true
+    );
+
+    const modcardEnd = this.dv.getUint16(
+      this.saveeditInfo.offsets.modcardData + (id + 1) * 2,
+      true
+    );
 
     const detailsDv = new DataView(this.modcardDetailsTextArchive);
 
-    const mc = MODCARDS[id];
-    if (mc == null) {
-      return null;
+    const abilities = [];
+
+    for (let offset = modcardStart + 3; offset < modcardEnd; offset += 3) {
+      const id = this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + offset
+      );
+      const parameter = this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + offset + 1
+      );
+      const debuff = !!this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + offset + 2
+      );
+
+      const nameBuf = [];
+      const raw = getText(detailsDv, 4, id);
+      for (let i = 0; i < raw.length; ++i) {
+        if (raw[i] == 0xfa) {
+          ++i;
+          ++i;
+          ++i;
+          let p = parameter;
+          if (id == 0x00 || id == 0x02) {
+            p = p * 10;
+          }
+          nameBuf.push(p.toString());
+          continue;
+        }
+        nameBuf.push(this.saveeditInfo.charset[raw[i]]);
+      }
+      abilities.push({
+        id,
+        name: nameBuf.join(""),
+        parameter,
+        debuff,
+      });
     }
+
     return {
-      ...mc,
-      mb: this.dv.getUint8(modcardOffset + 0x01),
-      name: {
-        en: getText(new DataView(this.modcardTextArchive), 4, id)
-          .map((c) => this.saveeditInfo.charset[c])
-          .join(""),
-      },
+      name: getText(new DataView(this.modcardTextArchive), 4, id)
+        .map((c) => this.saveeditInfo.charset[c])
+        .join(""),
+      mb: this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + modcardStart + 0x01
+      ),
+      abilities,
     };
   }
 
