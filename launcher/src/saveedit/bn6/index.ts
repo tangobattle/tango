@@ -700,6 +700,7 @@ class ROMViewer extends ROMViewerBase {
       const raw = getText(detailsDv, 4, id);
       for (let i = 0; i < raw.length; ++i) {
         if (raw[i] == 0xfa) {
+          // refusing to do any real interpreting of textpet
           ++i;
           ++i;
           ++i;
