@@ -593,6 +593,7 @@ interface SaveeditInfo {
     elementIconPalettePointer: number;
     elementIconsPointer: number;
     modcardNamesPointer: number | null;
+    modcardDetailsNamesPointer: number | null;
   };
 }
 
@@ -602,6 +603,7 @@ class ROMViewer extends ROMViewerBase {
   private saveDv: DataView;
   private saveeditInfo: SaveeditInfo;
   private modcardTextArchive: ArrayBuffer | null;
+  private modcardDetailsTextArchive: ArrayBuffer | null;
 
   constructor(
     buffer: ArrayBuffer,
@@ -633,6 +635,18 @@ class ROMViewer extends ROMViewerBase {
             )
           )
         : null;
+    this.modcardDetailsTextArchive =
+      saveeditInfo.offsets.modcardDetailsNamesPointer != null
+        ? unlz77(
+            new DataView(
+              buffer,
+              this.dv.getUint32(
+                saveeditInfo.offsets.modcardDetailsNamesPointer,
+                true
+              ) & ~0x88000000
+            )
+          )
+        : null;
   }
 
   getElementIcons(): ImageData[] {
@@ -649,11 +663,14 @@ class ROMViewer extends ROMViewerBase {
   }
 
   getModcardInfo(id: number): Modcard | null {
-    if (this.modcardTextArchive == null) {
+    if (
+      this.modcardTextArchive == null ||
+      this.modcardDetailsTextArchive == null
+    ) {
       return null;
     }
 
-    const dv = new DataView(this.modcardTextArchive);
+    const detailsDv = new DataView(this.modcardDetailsTextArchive);
 
     const mc = MODCARDS[id];
     if (mc == null) {
@@ -662,7 +679,7 @@ class ROMViewer extends ROMViewerBase {
     return {
       ...mc,
       name: {
-        en: getText(dv, 4, id)
+        en: getText(new DataView(this.modcardTextArchive), 4, id)
           .map((c) => this.saveeditInfo.charset[c])
           .join(""),
       },
