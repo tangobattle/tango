@@ -717,6 +717,7 @@ class ROMViewer extends ROMViewerBase {
         id,
         name: nameBuf.join(""),
         parameter,
+        isAbility: id > 0x15,
         debuff,
       });
     }

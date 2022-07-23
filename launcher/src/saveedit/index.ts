@@ -38,6 +38,7 @@ export interface Modcard {
     id: number;
     name: string;
     parameter: number;
+    isAbility: boolean;
     debuff: boolean;
   }[];
 }

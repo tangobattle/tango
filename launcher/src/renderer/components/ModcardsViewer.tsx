@@ -47,14 +47,6 @@ export default function ModcardsViewer({
                   </>
                 );
 
-                const parameters = modcard.effects.filter(
-                  (a) => a.parameter != a.id
-                );
-
-                const abilities = modcard.effects.filter(
-                  (a) => a.parameter == a.id
-                );
-
                 return (
                   <TableRow key={i}>
                     <TableCell>
@@ -62,44 +54,48 @@ export default function ModcardsViewer({
                     </TableCell>
                     <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                       <Stack spacing={0.5}>
-                        {parameters.map((a) => (
-                          <Chip
-                            key={a.id}
-                            label={a.name}
-                            size="small"
-                            sx={{
-                              fontSize: "0.9rem",
-                              justifyContent: "flex-start",
-                              color: "black",
-                              backgroundColor: enabled
-                                ? a.debuff
-                                  ? DEBUFF_COLOR
-                                  : BUFF_COLOR
-                                : OFF_COLOR,
-                            }}
-                          />
-                        ))}
+                        {modcard.effects
+                          .filter((e) => !e.isAbility)
+                          .map((a) => (
+                            <Chip
+                              key={a.id}
+                              label={a.name}
+                              size="small"
+                              sx={{
+                                fontSize: "0.9rem",
+                                justifyContent: "flex-start",
+                                color: "black",
+                                backgroundColor: enabled
+                                  ? a.debuff
+                                    ? DEBUFF_COLOR
+                                    : BUFF_COLOR
+                                  : OFF_COLOR,
+                              }}
+                            />
+                          ))}
                       </Stack>
                     </TableCell>
                     <TableCell sx={{ verticalAlign: "top", width: "25%" }}>
                       <Stack spacing={0.5}>
-                        {abilities.map((a) => (
-                          <Chip
-                            key={a.id}
-                            label={a.name}
-                            size="small"
-                            sx={{
-                              fontSize: "0.9rem",
-                              justifyContent: "flex-start",
-                              color: "black",
-                              backgroundColor: enabled
-                                ? a.debuff
-                                  ? DEBUFF_COLOR
-                                  : BUFF_COLOR
-                                : OFF_COLOR,
-                            }}
-                          />
-                        ))}
+                        {modcard.effects
+                          .filter((e) => e.isAbility)
+                          .map((a) => (
+                            <Chip
+                              key={a.id}
+                              label={a.name}
+                              size="small"
+                              sx={{
+                                fontSize: "0.9rem",
+                                justifyContent: "flex-start",
+                                color: "black",
+                                backgroundColor: enabled
+                                  ? a.debuff
+                                    ? DEBUFF_COLOR
+                                    : BUFF_COLOR
+                                  : OFF_COLOR,
+                              }}
+                            />
+                          ))}
                       </Stack>
                     </TableCell>
                   </TableRow>
