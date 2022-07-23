@@ -683,7 +683,7 @@ class ROMViewer extends ROMViewerBase {
 
     const detailsDv = new DataView(this.modcardDetailsTextArchive);
 
-    const abilities = [];
+    const effects = [];
 
     for (let offset = modcardStart + 3; offset < modcardEnd; offset += 3) {
       const id = this.dv.getUint8(
@@ -712,7 +712,7 @@ class ROMViewer extends ROMViewerBase {
         }
         nameBuf.push(this.saveeditInfo.charset[raw[i]]);
       }
-      abilities.push({
+      effects.push({
         id,
         name: nameBuf.join(""),
         parameter,
@@ -727,7 +727,7 @@ class ROMViewer extends ROMViewerBase {
       mb: this.dv.getUint8(
         this.saveeditInfo.offsets.modcardData + modcardStart + 0x01
       ),
-      abilities,
+      effects,
     };
   }
 

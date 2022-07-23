@@ -34,7 +34,7 @@ export interface NavicustProgram {
 export interface Modcard {
   name: string;
   mb: number;
-  abilities: {
+  effects: {
     id: number;
     name: string;
     parameter: number;
