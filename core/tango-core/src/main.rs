@@ -340,7 +340,7 @@ fn main() -> Result<(), anyhow::Error> {
                     replays_path: settings.replays_path.into(),
                     shadow_save_path: settings.shadow_save_path.into(),
                     shadow_rom_path: settings.shadow_rom_path.into(),
-                    match_type: settings.match_type as u8,
+                    match_type: (settings.match_type as u8, settings.match_subtype as u8),
                     input_delay: settings.input_delay,
                     shadow_input_delay: settings.shadow_input_delay,
                     rng_seed: settings.rng_seed,

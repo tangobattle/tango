@@ -5,6 +5,12 @@
       ja: "ロックマンエグゼ6（英語版）",
       "zh-Hans": "洛克人EXE6（英文版）",
     },
+    lang: "en",
+
+    matchTypes: [
+      { name: "single", subtypes: ["single"] },
+      { name: "triple", subtypes: ["triple"] },
+    ],
 
     versions: {
       MEGAMAN6_GXXBR5E: {
@@ -66,6 +72,11 @@
       "zh-Hans": "洛克人EXE6（日文版）",
     },
     lang: "ja",
+
+    matchTypes: [
+      { name: "single", subtypes: ["single"] },
+      { name: "triple", subtypes: ["triple"] },
+    ],
 
     versions: {
       ROCKEXE6_GXXBR5J: {
@@ -135,6 +146,11 @@
     },
     lang: "en",
 
+    matchTypes: [
+      { name: "single", subtypes: ["normal", "extended"] },
+      { name: "triple", subtypes: ["normal", "extended"] },
+    ],
+
     versions: {
       MEGAMAN5_TP_BRBE: {
         title: {
@@ -195,6 +211,11 @@
       "zh-Hans": "洛克人EXE5（日文版）",
     },
     lang: "ja",
+
+    matchTypes: [
+      { name: "single", subtypes: ["normal", "all-fields"] },
+      { name: "triple", subtypes: ["normal", "all-fields"] },
+    ],
 
     versions: {
       ROCKEXE5_TOBBRBJ: {
@@ -257,6 +278,11 @@
     },
     lang: "ja",
 
+    matchTypes: [
+      { name: "single", subtypes: ["single"] },
+      { name: "triple", subtypes: ["triple"] },
+    ],
+
     versions: {
       "ROCKEXE4.5ROBR4J": {
         title: null,
@@ -286,6 +312,11 @@
       "zh-Hans": "洛克人EXE4（英文版）",
     },
     lang: "en",
+
+    matchTypes: [
+      { name: "single", subtypes: ["single"] },
+      { name: "triple", subtypes: ["triple"] },
+    ],
 
     versions: {
       MEGAMANBN4RSB4WE: {
@@ -347,6 +378,11 @@
       "zh-Hans": "洛克人EXE4（日文版）",
     },
     lang: "ja",
+
+    matchTypes: [
+      { name: "single", subtypes: ["single"] },
+      { name: "triple", subtypes: ["triple"] },
+    ],
 
     versions: {
       ROCK_EXE4_RSB4WJ: {
@@ -425,6 +461,14 @@
     },
     lang: "en",
 
+    matchTypes: [
+      {
+        name: "single",
+        subtypes: ["lightweight", "mediumweight", "heavyweight"],
+      },
+      { name: "triple", subtypes: ["triple"] },
+    ],
+
     versions: {
       MEGA_EXE3_WHA6BE: {
         title: {
@@ -457,6 +501,14 @@
       "zh-Hans": "洛克人EXE3（日文版）",
     },
     lang: "ja",
+
+    matchTypes: [
+      {
+        name: "single",
+        subtypes: ["lightweight", "mediumweight", "heavyweight"],
+      },
+      { name: "triple", subtypes: ["triple"] },
+    ],
 
     versions: {
       ROCKMAN_EXE3A6BJ: {
@@ -492,6 +544,8 @@
     },
     lang: "en",
 
+    matchTypes: [{ name: "single", subtypes: ["single"] }],
+
     versions: {
       MEGAMAN_EXE2AE2E: {
         title: null,
@@ -510,6 +564,8 @@
       "zh-Hans": "洛克人EXE2（日文版）",
     },
     lang: "ja",
+
+    matchTypes: [{ name: "single", subtypes: ["single"] }],
 
     versions: {
       ROCKMAN_EXE2AE2J: {
@@ -530,6 +586,8 @@
     },
     lang: "en",
 
+    matchTypes: [{ name: "single", subtypes: ["single"] }],
+
     versions: {
       "MEGAMAN_BN\0\0AREE": {
         title: null,
@@ -548,6 +606,8 @@
       "zh-Hans": "洛克人EXE（日文版）",
     },
     lang: "ja",
+
+    matchTypes: [{ name: "single", subtypes: ["single"] }],
 
     versions: {
       "ROCKMAN_EXE\0AREJ": {

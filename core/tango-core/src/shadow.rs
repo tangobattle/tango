@@ -88,7 +88,7 @@ struct AppliedState {
 }
 
 struct InnerState {
-    match_type: u8,
+    match_type: (u8, u8),
     is_offerer: bool,
     round_state: parking_lot::Mutex<RoundState>,
     rng: parking_lot::Mutex<rand_pcg::Mcg128Xsl64>,
@@ -107,7 +107,7 @@ pub struct State(std::sync::Arc<InnerState>);
 
 impl State {
     pub fn new(
-        match_type: u8,
+        match_type: (u8, u8),
         is_offerer: bool,
         rng: rand_pcg::Mcg128Xsl64,
         last_result: battle::BattleResult,
@@ -125,7 +125,7 @@ impl State {
         }))
     }
 
-    pub fn match_type(&self) -> u8 {
+    pub fn match_type(&self) -> (u8, u8) {
         self.0.match_type
     }
 
@@ -180,7 +180,7 @@ impl Shadow {
     pub fn new(
         rom: &[u8],
         save_path: &std::path::Path,
-        match_type: u8,
+        match_type: (u8, u8),
         is_offerer: bool,
         battle_result: battle::BattleResult,
         rng: rand_pcg::Mcg128Xsl64,

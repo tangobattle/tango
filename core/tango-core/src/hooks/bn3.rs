@@ -31,10 +31,12 @@ impl BN3 {
     }
 }
 
-fn bn3_match_type(match_type: u8, rng: &mut impl rand::Rng) -> u8 {
+fn bn3_match_type(match_type: (u8, u8)) -> u8 {
     match match_type {
-        0 => rng.gen_range(0..3),
-        1 => 3,
+        (0, 0) => 0,
+        (0, 1) => 1,
+        (0, 2) => 2,
+        (2, _) => 3,
         _ => 0,
     }
 }
@@ -166,7 +168,7 @@ impl hooks::Hooks for BN3 {
 
                             munger.start_battle_from_comm_menu(
                                 core,
-                                bn3_match_type(match_.match_type(), &mut *rng),
+                                bn3_match_type(match_.match_type()),
                                 random_background(&mut *rng),
                             );
                         });
@@ -643,7 +645,7 @@ impl hooks::Hooks for BN3 {
 
                         munger.start_battle_from_comm_menu(
                             core,
-                            bn3_match_type(shadow_state.match_type(), &mut *rng),
+                            bn3_match_type(shadow_state.match_type()),
                             random_background(&mut *rng),
                         );
                     }),

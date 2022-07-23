@@ -134,12 +134,12 @@ impl hooks::Hooks for BN4 {
                             let (battle_settings, background) =
                                 random_battle_settings_and_background(
                                     &mut *rng,
-                                    match_.match_type(),
+                                    match_.match_type().0,
                                 );
 
                             munger.start_battle_from_comm_menu(
                                 core,
-                                match_.match_type(),
+                                match_.match_type().0,
                                 battle_settings,
                                 background,
                             );
@@ -518,12 +518,12 @@ impl hooks::Hooks for BN4 {
 
                         let (battle_settings, background) = random_battle_settings_and_background(
                             &mut *rng,
-                            shadow_state.match_type(),
+                            shadow_state.match_type().0,
                         );
 
                         munger.start_battle_from_comm_menu(
                             core,
-                            shadow_state.match_type(),
+                            shadow_state.match_type().0,
                             battle_settings,
                             background,
                         );

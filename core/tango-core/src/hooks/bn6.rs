@@ -123,7 +123,7 @@ impl hooks::Hooks for BN6 {
                                 }
                             };
 
-                            munger.start_battle_from_comm_menu(core, match_.match_type());
+                            munger.start_battle_from_comm_menu(core, match_.match_type().0);
                         });
                     }),
                 )
@@ -353,7 +353,7 @@ impl hooks::Hooks for BN6 {
                                 core,
                                 random_battle_settings_and_background(
                                     &mut *rng,
-                                    match_.match_type(),
+                                    match_.match_type().0,
                                 ),
                             );
                         });
@@ -548,7 +548,7 @@ impl hooks::Hooks for BN6 {
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
-                        munger.start_battle_from_comm_menu(core, shadow_state.match_type());
+                        munger.start_battle_from_comm_menu(core, shadow_state.match_type().0);
                     }),
                 )
             },
@@ -675,7 +675,7 @@ impl hooks::Hooks for BN6 {
                             core,
                             random_battle_settings_and_background(
                                 &mut *rng,
-                                shadow_state.match_type(),
+                                shadow_state.match_type().0,
                             ),
                         );
                     }),

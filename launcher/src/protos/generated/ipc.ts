@@ -150,6 +150,7 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   inputDelay: number;
   shadowInputDelay: number;
   matchType: number;
+  matchSubtype: number;
   replaysPath: string;
   replayMetadata: Uint8Array;
   rngSeed: Uint8Array;
@@ -763,6 +764,7 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     inputDelay: 0,
     shadowInputDelay: 0,
     matchType: 0,
+    matchSubtype: 0,
     replaysPath: "",
     replayMetadata: new Uint8Array(),
     rngSeed: new Uint8Array(),
@@ -791,20 +793,23 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     if (message.matchType !== 0) {
       writer.uint32(40).uint32(message.matchType);
     }
+    if (message.matchSubtype !== 0) {
+      writer.uint32(48).uint32(message.matchSubtype);
+    }
     if (message.replaysPath !== "") {
-      writer.uint32(50).string(message.replaysPath);
+      writer.uint32(58).string(message.replaysPath);
     }
     if (message.replayMetadata.length !== 0) {
-      writer.uint32(58).bytes(message.replayMetadata);
+      writer.uint32(66).bytes(message.replayMetadata);
     }
     if (message.rngSeed.length !== 0) {
-      writer.uint32(66).bytes(message.rngSeed);
+      writer.uint32(74).bytes(message.rngSeed);
     }
     if (message.opponentNickname !== undefined) {
-      writer.uint32(74).string(message.opponentNickname);
+      writer.uint32(82).string(message.opponentNickname);
     }
     if (message.maxQueueLength !== 0) {
-      writer.uint32(80).uint32(message.maxQueueLength);
+      writer.uint32(88).uint32(message.maxQueueLength);
     }
     return writer;
   },
@@ -835,18 +840,21 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
           message.matchType = reader.uint32();
           break;
         case 6:
-          message.replaysPath = reader.string();
+          message.matchSubtype = reader.uint32();
           break;
         case 7:
-          message.replayMetadata = reader.bytes();
+          message.replaysPath = reader.string();
           break;
         case 8:
-          message.rngSeed = reader.bytes();
+          message.replayMetadata = reader.bytes();
           break;
         case 9:
-          message.opponentNickname = reader.string();
+          message.rngSeed = reader.bytes();
           break;
         case 10:
+          message.opponentNickname = reader.string();
+          break;
+        case 11:
           message.maxQueueLength = reader.uint32();
           break;
         default:
@@ -870,6 +878,9 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         ? Number(object.shadowInputDelay)
         : 0,
       matchType: isSet(object.matchType) ? Number(object.matchType) : 0,
+      matchSubtype: isSet(object.matchSubtype)
+        ? Number(object.matchSubtype)
+        : 0,
       replaysPath: isSet(object.replaysPath) ? String(object.replaysPath) : "",
       replayMetadata: isSet(object.replayMetadata)
         ? bytesFromBase64(object.replayMetadata)
@@ -898,6 +909,8 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       (obj.shadowInputDelay = Math.round(message.shadowInputDelay));
     message.matchType !== undefined &&
       (obj.matchType = Math.round(message.matchType));
+    message.matchSubtype !== undefined &&
+      (obj.matchSubtype = Math.round(message.matchSubtype));
     message.replaysPath !== undefined &&
       (obj.replaysPath = message.replaysPath);
     message.replayMetadata !== undefined &&
@@ -926,6 +939,7 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.inputDelay = object.inputDelay ?? 0;
     message.shadowInputDelay = object.shadowInputDelay ?? 0;
     message.matchType = object.matchType ?? 0;
+    message.matchSubtype = object.matchSubtype ?? 0;
     message.replaysPath = object.replaysPath ?? "";
     message.replayMetadata = object.replayMetadata ?? new Uint8Array();
     message.rngSeed = object.rngSeed ?? new Uint8Array();
