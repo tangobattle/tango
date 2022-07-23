@@ -450,6 +450,7 @@ const ENDS = [
   "ratioed",
   "reg",
   "rollback",
+  "rotango",
   "sfboy",
   "shmooving",
   "sickos",
