@@ -119,6 +119,7 @@ export function unlz77(dv: DataView) {
       if ((ref & (0x80 >> i)) == 0) {
         out.push(dv.getUint8(pos));
         pos += 1;
+        continue;
       }
 
       const info = dv.getUint16(pos, false);
@@ -133,5 +134,5 @@ export function unlz77(dv: DataView) {
     }
   }
 
-  return new Uint8Array(out).buffer;
+  return new Uint8Array(out.slice(0, n)).buffer;
 }

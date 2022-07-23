@@ -1,6 +1,6 @@
-import type { Chip, NavicustProgram } from "..";
+import type { Chip, Modcard, NavicustProgram } from "..";
 import array2d from "../../array2d";
-import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
+import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase, unlz77 } from "../rom";
 import MODCARDS from "./data/modcards.json";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -311,7 +311,7 @@ class ModcardsEditor {
   }
 
   getModcardInfo(id: number) {
-    return MODCARDS[id] ?? null;
+    return this.editor.romViewer.getModcardInfo(id)!;
   }
 
   getModcardCount() {
@@ -592,6 +592,7 @@ interface SaveeditInfo {
     ncpNamesPointer: number;
     elementIconPalettePointer: number;
     elementIconsPointer: number;
+    modcardNamesPointer: number | null;
   };
 }
 
@@ -600,6 +601,7 @@ class ROMViewer extends ROMViewerBase {
   private elementIconPalette: Uint32Array;
   private saveDv: DataView;
   private saveeditInfo: SaveeditInfo;
+  private modcardTextArchive: ArrayBuffer | null;
 
   constructor(
     buffer: ArrayBuffer,
@@ -619,6 +621,18 @@ class ROMViewer extends ROMViewerBase {
       this.dv.getUint32(saveeditInfo.offsets.elementIconPalettePointer, true) &
         ~0x08000000
     );
+    this.modcardTextArchive =
+      saveeditInfo.offsets.modcardNamesPointer != null
+        ? unlz77(
+            new DataView(
+              buffer,
+              this.dv.getUint32(
+                saveeditInfo.offsets.modcardNamesPointer,
+                true
+              ) & ~0x88000000
+            )
+          )
+        : null;
   }
 
   getElementIcons(): ImageData[] {
@@ -632,6 +646,27 @@ class ROMViewer extends ROMViewerBase {
       );
     }
     return icons;
+  }
+
+  getModcardInfo(id: number): Modcard | null {
+    if (this.modcardTextArchive == null) {
+      return null;
+    }
+
+    const dv = new DataView(this.modcardTextArchive);
+
+    const mc = MODCARDS[id];
+    if (mc == null) {
+      return null;
+    }
+    return {
+      ...mc,
+      name: {
+        en: getText(dv, 4, id)
+          .map((c) => this.saveeditInfo.charset[c])
+          .join(""),
+      },
+    };
   }
 
   getChipInfo(id: number): Chip {
