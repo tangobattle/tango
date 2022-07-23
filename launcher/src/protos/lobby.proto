@@ -12,10 +12,11 @@ message GameInfo {
 message SetSettings {
   string nickname = 1;
   uint32 match_type = 2;
-  GameInfo game_info = 3;
-  repeated GameInfo available_games = 4;
-  uint32 input_delay = 5;
-  bool reveal_setup = 6;
+  uint32 match_subtype = 3;
+  GameInfo game_info = 4;
+  repeated GameInfo available_games = 5;
+  uint32 input_delay = 6;
+  bool reveal_setup = 7;
 }
 
 message Commit { bytes commitment = 1; }

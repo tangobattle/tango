@@ -479,6 +479,7 @@ async function runCallback(
       nickname: ref.current.config.nickname!,
       inputDelay: ref.current.config.defaultMatchSettings.inputDelay,
       matchType: ref.current.config.defaultMatchSettings.matchType,
+      matchSubtype: 0,
       gameInfo: undefined,
       availableGames: [],
       revealSetup: false,
@@ -793,6 +794,7 @@ async function runCallback(
         inputDelay: ownGameSettings.inputDelay,
         shadowInputDelay: opponentGameSettings.inputDelay,
         matchType: ownGameSettings.matchType,
+        matchSubtype: ownGameSettings.matchSubtype,
         opponentNickname:
           ownGameInfo.patch == null ? opponentGameSettings.nickname : undefined,
         replaysPath: path.join(ref.current.config.paths.replays, prefix),

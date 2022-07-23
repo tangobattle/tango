@@ -17,6 +17,7 @@ export interface GameInfo_Patch {
 export interface SetSettings {
   nickname: string;
   matchType: number;
+  matchSubtype: number;
   gameInfo: GameInfo | undefined;
   availableGames: GameInfo[];
   inputDelay: number;
@@ -181,6 +182,7 @@ function createBaseSetSettings(): SetSettings {
   return {
     nickname: "",
     matchType: 0,
+    matchSubtype: 0,
     gameInfo: undefined,
     availableGames: [],
     inputDelay: 0,
@@ -199,17 +201,20 @@ export const SetSettings = {
     if (message.matchType !== 0) {
       writer.uint32(16).uint32(message.matchType);
     }
+    if (message.matchSubtype !== 0) {
+      writer.uint32(24).uint32(message.matchSubtype);
+    }
     if (message.gameInfo !== undefined) {
-      GameInfo.encode(message.gameInfo, writer.uint32(26).fork()).ldelim();
+      GameInfo.encode(message.gameInfo, writer.uint32(34).fork()).ldelim();
     }
     for (const v of message.availableGames) {
-      GameInfo.encode(v!, writer.uint32(34).fork()).ldelim();
+      GameInfo.encode(v!, writer.uint32(42).fork()).ldelim();
     }
     if (message.inputDelay !== 0) {
-      writer.uint32(40).uint32(message.inputDelay);
+      writer.uint32(48).uint32(message.inputDelay);
     }
     if (message.revealSetup === true) {
-      writer.uint32(48).bool(message.revealSetup);
+      writer.uint32(56).bool(message.revealSetup);
     }
     return writer;
   },
@@ -228,15 +233,18 @@ export const SetSettings = {
           message.matchType = reader.uint32();
           break;
         case 3:
-          message.gameInfo = GameInfo.decode(reader, reader.uint32());
+          message.matchSubtype = reader.uint32();
           break;
         case 4:
-          message.availableGames.push(GameInfo.decode(reader, reader.uint32()));
+          message.gameInfo = GameInfo.decode(reader, reader.uint32());
           break;
         case 5:
-          message.inputDelay = reader.uint32();
+          message.availableGames.push(GameInfo.decode(reader, reader.uint32()));
           break;
         case 6:
+          message.inputDelay = reader.uint32();
+          break;
+        case 7:
           message.revealSetup = reader.bool();
           break;
         default:
@@ -251,6 +259,9 @@ export const SetSettings = {
     return {
       nickname: isSet(object.nickname) ? String(object.nickname) : "",
       matchType: isSet(object.matchType) ? Number(object.matchType) : 0,
+      matchSubtype: isSet(object.matchSubtype)
+        ? Number(object.matchSubtype)
+        : 0,
       gameInfo: isSet(object.gameInfo)
         ? GameInfo.fromJSON(object.gameInfo)
         : undefined,
@@ -269,6 +280,8 @@ export const SetSettings = {
     message.nickname !== undefined && (obj.nickname = message.nickname);
     message.matchType !== undefined &&
       (obj.matchType = Math.round(message.matchType));
+    message.matchSubtype !== undefined &&
+      (obj.matchSubtype = Math.round(message.matchSubtype));
     message.gameInfo !== undefined &&
       (obj.gameInfo = message.gameInfo
         ? GameInfo.toJSON(message.gameInfo)
@@ -293,6 +306,7 @@ export const SetSettings = {
     const message = createBaseSetSettings();
     message.nickname = object.nickname ?? "";
     message.matchType = object.matchType ?? 0;
+    message.matchSubtype = object.matchSubtype ?? 0;
     message.gameInfo =
       object.gameInfo !== undefined && object.gameInfo !== null
         ? GameInfo.fromPartial(object.gameInfo)

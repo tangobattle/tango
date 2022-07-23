@@ -1,6 +1,6 @@
 use bincode::Options;
 
-pub const VERSION: u8 = 0x1f;
+pub const VERSION: u8 = 0x20;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
