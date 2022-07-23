@@ -11,7 +11,6 @@ function requireNamespace(
   try {
     return require(`./locales/${lang}/${nsKey}.json`);
   } catch (_e) {
-    console.warn("could not load locale namespace", lang, nsKey);
     return {};
   }
 }
