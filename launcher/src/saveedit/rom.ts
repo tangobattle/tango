@@ -27,7 +27,7 @@ export function getText(
 
   const buf: number[] = [];
   // eslint-disable-next-line no-constant-condition
-  while (true) {
+  while (offset < dv.byteLength - 1) {
     let c = dv.getUint8(offset++);
     if (c == 0xe6 || offset >= nextOffset) {
       break;
