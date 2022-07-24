@@ -539,7 +539,7 @@ class ROMViewer extends ROMViewerBase {
       )
         .map((c) => this.saveeditInfo.charset[c])
         .join(""),
-      color: [null, "white", "yellow", "pink", "red", "blue", "green"][
+      color: [null, "white", "pink", "yellow", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
       ] as NavicustProgram["color"],
       isSolid: this.dv.getUint8(subdataOffset + 0x1) == 0,
