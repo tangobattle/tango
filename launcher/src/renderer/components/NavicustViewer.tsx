@@ -64,7 +64,7 @@ function placementsToArray2D(
     const placement = placements[idx];
     const ncp = getNavicustProgramInfo(placement.id, placement.variant);
 
-    if (ncp == null) {
+    if (ncp.color == null) {
       continue;
     }
 
@@ -165,11 +165,11 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
       const colors: Array<NavicustProgram["color"]> = [];
       for (const placement of placements) {
         const ncp = getNavicustProgramInfo(placement.id, placement.variant);
-        if (ncp == null) {
+        if (ncp.color == null) {
           console.error("unrecognized ncp:", placement.id);
           continue;
         }
-        if (colors.indexOf(ncp.color!) != -1) {
+        if (colors.indexOf(ncp.color) != -1) {
           continue;
         }
         colors.push(ncp.color);
@@ -297,7 +297,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
               <tbody>
                 {grid2d.map((row, i) => (
                   <tr key={i}>
-                    {row.map((placementIdx, j) => {
+                    {row.flatMap((placementIdx, j) => {
                       const placement =
                         placementIdx != -1 ? placements[placementIdx] : null;
 
@@ -309,6 +309,10 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                             )
                           : null;
                       const color = ncp != null ? ncp.color : null;
+
+                      if (color == null) {
+                        return [];
+                      }
 
                       const ncpColor =
                         ncp != null ? NAVICUST_COLORS[color!] : null;
@@ -393,7 +397,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                         );
                       }
 
-                      return (
+                      return [
                         <td
                           style={{
                             width: `${borderWidth * 9}px`,
@@ -420,8 +424,8 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                               background,
                             }}
                           />
-                        </td>
-                      );
+                        </td>,
+                      ];
                     })}
                   </tr>
                 ))}
@@ -644,7 +648,7 @@ export default function NavicustViewer({
                           placement.id,
                           placement.variant
                         )!;
-                        if (!ncp.isSolid) {
+                        if (ncp.color == null || !ncp.isSolid) {
                           return [];
                         }
                         const isActive = commandLinePlacements.indexOf(i) != -1;
@@ -677,7 +681,7 @@ export default function NavicustViewer({
                           placement.id,
                           placement.variant
                         )!;
-                        if (ncp.isSolid) {
+                        if (ncp.color == null || ncp.isSolid) {
                           return [];
                         }
                         return [
