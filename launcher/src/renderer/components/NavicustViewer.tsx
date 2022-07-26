@@ -310,19 +310,15 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                           : null;
                       const color = ncp != null ? ncp.color : null;
 
-                      if (color == null) {
-                        return [];
-                      }
-
                       const ncpColor =
                         ncp != null ? NAVICUST_COLORS[color!] : null;
 
                       // prettier-ignore
                       const isCorner = hasOutOfBounds && (
-                      (i == 0 && j == 0) ||
-                      (i == 0 && j == row.length - 1) ||
-                      (i == grid2d.length - 1 && j == 0) ||
-                      (i == grid2d.length - 1 && j == row.length - 1));
+                          (i == 0 && j == 0) ||
+                          (i == 0 && j == row.length - 1) ||
+                          (i == grid2d.length - 1 && j == 0) ||
+                          (i == grid2d.length - 1 && j == row.length - 1));
 
                       const background = isCorner
                         ? "transparent"
