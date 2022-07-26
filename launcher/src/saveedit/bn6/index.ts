@@ -595,6 +595,11 @@ interface SaveeditInfo {
     modcardNamesPointer: number | null;
     modcardDetailsNamesPointer: number | null;
   };
+  strings: {
+    chips: string[] | null;
+    ncps: string[] | null;
+    modcards: string[] | null;
+  } | null;
 }
 
 class ROMViewer extends ROMViewerBase {
@@ -723,9 +728,13 @@ class ROMViewer extends ROMViewerBase {
     }
 
     return {
-      name: getText(new DataView(this.modcardTextArchive), 4, id)
-        .map((c) => this.saveeditInfo.charset[c])
-        .join(""),
+      name:
+        this.saveeditInfo.strings == null ||
+        this.saveeditInfo.strings.modcards == null
+          ? getText(new DataView(this.modcardTextArchive), 4, id)
+              .map((c) => this.saveeditInfo.charset[c])
+              .join("")
+          : this.saveeditInfo.strings.modcards[id],
       mb: this.dv.getUint8(
         this.saveeditInfo.offsets.modcardData + modcardStart + 0x01
       ),
@@ -749,12 +758,16 @@ class ROMViewer extends ROMViewerBase {
     const iconPtr = this.dv.getUint32(dataOffset + 0x20, true);
 
     return {
-      name: getChipString(
-        this.dv,
-        this.saveeditInfo.charset,
-        this.saveeditInfo.offsets.chipNamesPointers,
-        id
-      ),
+      name:
+        this.saveeditInfo.strings == null ||
+        this.saveeditInfo.strings.chips == null
+          ? getChipString(
+              this.dv,
+              this.saveeditInfo.charset,
+              this.saveeditInfo.offsets.chipNamesPointers,
+              id
+            )
+          : this.saveeditInfo.strings.chips[id],
       codes: codes.join(""),
       icon:
         iconPtr >= 0x08000000
@@ -778,14 +791,20 @@ class ROMViewer extends ROMViewerBase {
     const subdataOffset = dataOffset + variant * 0x10;
 
     return {
-      name: getText(
-        this.dv,
-        this.dv.getUint32(this.saveeditInfo.offsets.ncpNamesPointer, true) &
-          ~0x08000000,
-        id
-      )
-        .map((c) => this.saveeditInfo.charset[c])
-        .join(""),
+      name:
+        this.saveeditInfo.strings == null ||
+        this.saveeditInfo.strings.ncps == null
+          ? getText(
+              this.dv,
+              this.dv.getUint32(
+                this.saveeditInfo.offsets.ncpNamesPointer,
+                true
+              ) & ~0x08000000,
+              id
+            )
+              .map((c) => this.saveeditInfo.charset[c])
+              .join("")
+          : this.saveeditInfo.strings.ncps[id],
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
       ] as NavicustProgram["color"],
