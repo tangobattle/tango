@@ -599,7 +599,7 @@ interface SaveeditInfo {
     chips: string[] | null;
     ncps: string[] | null;
     modcards: string[] | null;
-    modcardEffects: Chunk[] | null;
+    modcardEffects: Chunk[][] | null;
   } | null;
 }
 
@@ -706,7 +706,7 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcardEffects == null
           ? textToChunks(getText(detailsDv, 4, id), this.saveeditInfo.charset)
-          : this.saveeditInfo.strings.modcardEffects;
+          : this.saveeditInfo.strings.modcardEffects[id];
 
       effects.push({
         id,
