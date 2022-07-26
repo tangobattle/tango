@@ -711,20 +711,21 @@ class ROMViewer extends ROMViewerBase {
       effects.push({
         id,
         name: tmpl
-          .map(([t, v]) => {
-            switch (t) {
-              case "t":
-                return v;
-              case "p":
-                if (v == 1) {
-                  let p = parameter;
-                  if (id == 0x00 || id == 0x02) {
-                    p = p * 10;
-                  }
-                  return p.toString();
-                }
-                return "";
+          .map((chunk) => {
+            if ("t" in chunk) {
+              return chunk.t;
             }
+            if ("p" in chunk) {
+              if (chunk.p == 1) {
+                let p = parameter;
+                if (id == 0x00 || id == 0x02) {
+                  p = p * 10;
+                }
+                return p.toString();
+              }
+              return "";
+            }
+            return "";
           })
           .join(""),
         parameter,
@@ -861,7 +862,7 @@ function getChipString(
     });
 }
 
-type Chunk = ["t", string] | ["p", number];
+type Chunk = { t: string } | { p: number };
 
 function textToChunks(raw: number[], charset: string): Chunk[] {
   const tmpl: Chunk[] = [];
@@ -873,15 +874,15 @@ function textToChunks(raw: number[], charset: string): Chunk[] {
       ++i;
       ++i;
 
-      tmpl.push(["t", text.join("")]);
+      tmpl.push({ t: text.join("") });
       text.splice(0, text.length);
-      tmpl.push(["p", raw[i]]);
+      tmpl.push({ p: raw[i] });
       continue;
     }
     text.push(charset[raw[i]]);
   }
   if (text.length > 0) {
-    tmpl.push(["t", text.join("")]);
+    tmpl.push({ t: text.join("") });
   }
   return tmpl;
 }
