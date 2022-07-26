@@ -716,7 +716,7 @@ class ROMViewer extends ROMViewerBase {
               case "t":
                 return v;
               case "p":
-                if (v == 0) {
+                if (v == 1) {
                   let p = parameter;
                   if (id == 0x00 || id == 0x02) {
                     p = p * 10;
@@ -864,7 +864,6 @@ function getChipString(
 type Chunk = ["t", string] | ["p", number];
 
 function textToChunks(raw: number[], charset: string): Chunk[] {
-  let placeholder = 0;
   const tmpl: Chunk[] = [];
   const text = [];
   for (let i = 0; i < raw.length; ++i) {
@@ -876,8 +875,7 @@ function textToChunks(raw: number[], charset: string): Chunk[] {
 
       tmpl.push(["t", text.join("")]);
       text.splice(0, text.length);
-
-      tmpl.push(["p", placeholder++]);
+      tmpl.push(["p", raw[i]]);
       continue;
     }
     text.push(charset[raw[i]]);
