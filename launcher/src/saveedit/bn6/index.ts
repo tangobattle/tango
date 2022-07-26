@@ -1,7 +1,7 @@
-import type { Chip, Modcard, NavicustProgram } from "..";
 import array2d from "../../array2d";
 import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase, unlz77 } from "../rom";
 
+import type { Chip, Modcard, NavicustProgram } from "..";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_START_OFFSET = 0x0100;
@@ -599,6 +599,7 @@ interface SaveeditInfo {
     chips: string[] | null;
     ncps: string[] | null;
     modcards: string[] | null;
+    modcardEffects: Chunk[] | null;
   } | null;
 }
 
@@ -701,26 +702,31 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.modcardData + offset + 2
       );
 
-      const nameBuf = [];
-      const raw = getText(detailsDv, 4, id);
-      for (let i = 0; i < raw.length; ++i) {
-        if (raw[i] == 0xfa) {
-          // refusing to do any real interpreting of textpet
-          ++i;
-          ++i;
-          ++i;
-          let p = parameter;
-          if (id == 0x00 || id == 0x02) {
-            p = p * 10;
-          }
-          nameBuf.push(p.toString());
-          continue;
-        }
-        nameBuf.push(this.saveeditInfo.charset[raw[i]]);
-      }
+      const tmpl =
+        this.saveeditInfo.strings == null ||
+        this.saveeditInfo.strings.modcardEffects == null
+          ? textToChunks(getText(detailsDv, 4, id), this.saveeditInfo.charset)
+          : this.saveeditInfo.strings.modcardEffects;
+
       effects.push({
         id,
-        name: nameBuf.join(""),
+        name: tmpl
+          .map(([t, v]) => {
+            switch (t) {
+              case "t":
+                return v;
+              case "p":
+                if (v == 0) {
+                  let p = parameter;
+                  if (id == 0x00 || id == 0x02) {
+                    p = p * 10;
+                  }
+                  return p.toString();
+                }
+                return "";
+            }
+          })
+          .join(""),
         parameter,
         isAbility: id > 0x15,
         debuff,
@@ -853,4 +859,31 @@ function getChipString(
       }
       return c;
     });
+}
+
+type Chunk = ["t", string] | ["p", number];
+
+function textToChunks(raw: number[], charset: string): Chunk[] {
+  let placeholder = 0;
+  const tmpl: Chunk[] = [];
+  const text = [];
+  for (let i = 0; i < raw.length; ++i) {
+    if (raw[i] == 0xfa) {
+      // refusing to do any real interpreting of textpet
+      ++i;
+      ++i;
+      ++i;
+
+      tmpl.push(["t", text.join("")]);
+      text.splice(0, text.length);
+
+      tmpl.push(["p", placeholder++]);
+      continue;
+    }
+    text.push(charset[raw[i]]);
+  }
+  if (text.length > 0) {
+    tmpl.push(["t", text.join("")]);
+  }
+  return tmpl;
 }
