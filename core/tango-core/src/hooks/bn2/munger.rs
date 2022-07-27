@@ -67,4 +67,8 @@ impl Munger {
     pub(super) fn is_linking(&self, mut core: mgba::core::CoreMutRef) -> bool {
         core.raw_read_8(self.offsets.ewram.is_linking, -1) == 1
     }
+
+    pub(super) fn packet_seqnum(&self, mut core: mgba::core::CoreMutRef) -> u32 {
+        core.raw_read_32(self.offsets.ewram.packet_seqnum, -1)
+    }
 }

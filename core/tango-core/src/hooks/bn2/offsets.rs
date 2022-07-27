@@ -19,6 +19,7 @@ pub(super) struct EWRAMOffsets {
     pub(super) rng_state: u32,
 
     pub(super) is_linking: u32,
+    pub(super) packet_seqnum: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -92,6 +93,7 @@ static EWRAM_OFFSETS: EWRAMOffsets = EWRAMOffsets {
     submenu_control:        0x02007ea0,
     rng_state:              0x02009080,
     is_linking:             0x0200eae0,
+    packet_seqnum:          0x0200ea9c,
 };
 
 #[derive(Clone, Copy)]
