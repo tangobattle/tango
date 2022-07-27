@@ -98,6 +98,7 @@
   },
   "build": {
     "appId": "com.tangobattle.tango",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "win": {
       "target": "nsis"
     },
