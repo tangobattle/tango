@@ -166,6 +166,18 @@ impl hooks::Hooks for BN3 {
 
                             let mut rng = match_.lock_rng().await;
 
+                            // rng1 is the local rng, it should not be synced.
+                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                            munger.set_rng1_state(
+                                core,
+                                if match_.is_offerer() {
+                                    offerer_rng1_state
+                                } else {
+                                    answerer_rng1_state
+                                },
+                            );
                             munger.start_battle_from_comm_menu(
                                 core,
                                 bn3_match_type(match_.match_type()),
@@ -421,19 +433,6 @@ impl hooks::Hooks for BN3 {
                                 if !round.has_committed_state() {
                                     let mut rng = match_.lock_rng().await;
 
-                                    // rng1 is the local rng, it should not be synced.
-                                    // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                                    let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                                    let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                                    munger.set_rng1_state(
-                                        core,
-                                        if match_.is_offerer() {
-                                            offerer_rng1_state
-                                        } else {
-                                            answerer_rng1_state
-                                        },
-                                    );
-
                                     // rng2 is the shared rng, it must be synced.
                                     munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
 
@@ -643,6 +642,18 @@ impl hooks::Hooks for BN3 {
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
 
+                        // rng1 is the local rng, it should not be synced.
+                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                        munger.set_rng1_state(
+                            core,
+                            if shadow_state.is_offerer() {
+                                answerer_rng1_state
+                            } else {
+                                offerer_rng1_state
+                            },
+                        );
                         munger.start_battle_from_comm_menu(
                             core,
                             bn3_match_type(shadow_state.match_type()),
@@ -777,19 +788,6 @@ impl hooks::Hooks for BN3 {
 
                         if !round.has_first_committed_state() {
                             let mut rng = shadow_state.lock_rng();
-
-                            // rng1 is the local rng, it should not be synced.
-                            // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                            let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                            let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                            munger.set_rng1_state(
-                                core,
-                                if shadow_state.is_offerer() {
-                                    answerer_rng1_state
-                                } else {
-                                    offerer_rng1_state
-                                },
-                            );
 
                             // rng2 is the shared rng, it must be synced.
                             munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
