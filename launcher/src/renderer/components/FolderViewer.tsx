@@ -65,12 +65,24 @@ function FolderChipRow({
   const iconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   React.useEffect(() => {
     const ctx = iconCanvasRef.current!.getContext("2d")!;
+    ctx.clearRect(
+      0,
+      0,
+      iconCanvasRef.current!.width,
+      iconCanvasRef.current!.height
+    );
     ctx.putImageData(chipInfo.icon, -1, -1);
   }, [chipInfo]);
 
   const elementIconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
   React.useEffect(() => {
     const ctx = elementIconCanvasRef.current!.getContext("2d")!;
+    ctx.clearRect(
+      0,
+      0,
+      elementIconCanvasRef.current!.width,
+      elementIconCanvasRef.current!.height
+    );
     if (chipInfo.element >= elementIcons.length) {
       return;
     }
