@@ -337,7 +337,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id)
+  return getChipText(dv, scriptPointerOffset, id, 0xe5)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {

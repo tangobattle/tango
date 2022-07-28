@@ -19,7 +19,8 @@ export function getPalette(dv: DataView, offset: number): Uint32Array {
 export function getText(
   dv: DataView,
   scriptOffset: number,
-  id: number
+  id: number,
+  eor: number
 ): number[] {
   let offset = scriptOffset + dv.getUint16(scriptOffset + id * 0x2, true);
   const nextOffset =
@@ -29,15 +30,10 @@ export function getText(
   // eslint-disable-next-line no-constant-condition
   while (offset < dv.byteLength - 1) {
     let c = dv.getUint8(offset++);
-    if (c == 0xe6 || offset >= nextOffset) {
+    if (c == eor || offset >= nextOffset) {
       break;
     } else if (c == 0xe4) {
       c += dv.getUint8(offset++);
-    } else if (c == 0xe5) {
-      // Only the Chinese patch does this?
-      const hi = dv.getUint8(offset++);
-      const lo = dv.getUint8(offset++);
-      c = 0xe4 + 0x100 + ((hi << 8) | lo);
     }
     buf.push(c);
   }
@@ -48,13 +44,19 @@ export function getText(
 export function getChipText(
   dv: DataView,
   scriptPointerOffset: number,
-  id: number
+  id: number,
+  eor: number
 ): number[] {
   if (id > 0xff) {
     scriptPointerOffset += 4;
     id -= 0x100;
   }
-  return getText(dv, dv.getUint32(scriptPointerOffset, true) & ~0x08000000, id);
+  return getText(
+    dv,
+    dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
+    id,
+    eor
+  );
 }
 
 export function getChipIcon(

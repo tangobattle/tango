@@ -705,7 +705,10 @@ class ROMViewer extends ROMViewerBase {
       const tmpl =
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcardEffects == null
-          ? textToChunks(getText(detailsDv, 4, id), this.saveeditInfo.charset)
+          ? textToChunks(
+              getText(detailsDv, 4, id, 0xe6),
+              this.saveeditInfo.charset
+            )
           : this.saveeditInfo.strings.modcardEffects[id];
 
       effects.push({
@@ -738,7 +741,7 @@ class ROMViewer extends ROMViewerBase {
       name:
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcards == null
-          ? getText(new DataView(this.modcardTextArchive), 4, id)
+          ? getText(new DataView(this.modcardTextArchive), 4, id, 0xe6)
               .map((c) => this.saveeditInfo.charset[c])
               .join("")
           : this.saveeditInfo.strings.modcards[id],
@@ -807,7 +810,8 @@ class ROMViewer extends ROMViewerBase {
                 this.saveeditInfo.offsets.ncpNamesPointer,
                 true
               ) & ~0x08000000,
-              id
+              id,
+              0xe6
             )
               .map((c) => this.saveeditInfo.charset[c])
               .join("")
@@ -848,7 +852,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id)
+  return getChipText(dv, scriptPointerOffset, id, 0xe6)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {
