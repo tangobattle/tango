@@ -115,7 +115,7 @@ jobs:
               env:
                   NODE_OPTIONS: --max-old-space-size=8192
 
-    release-darwin-x86_64:
+    release-mac-x64:
         runs-on: macos-12
 
         steps:
