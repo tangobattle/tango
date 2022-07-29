@@ -111,6 +111,46 @@ jobs:
             - run: >
                   cd launcher &&
                   npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:linux -- --publish always
+                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:linux-x64 -- --publish always
+              env:
+                  NODE_OPTIONS: --max-old-space-size=8192
+
+    release-darwin-x86_64:
+        runs-on: macos-12
+
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                  submodules: recursive
+
+            - uses: pat-s/always-upload-cache@v2
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      core/target
+                  key: darwin-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+            - uses: actions/setup-node@v1
+              with:
+                  node-version: 18
+
+            - uses: actions-rs/toolchain@v1
+              with:
+                  toolchain: stable
+                  target: x86_64-apple-darwin
+
+            - run: >
+                  cd core &&
+                  cargo build --release --target x86_64-apple-darwin
+
+            - run: >
+                  mkdir launcher/bin &&
+                  cp core/target/x86_64-apple-darwin/release/{tango-core,replayview,replaydump,keymaptool} ./launcher/bin/
+
+            - run: >
+                  cd launcher &&
+                  npm install &&
+                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:mac -- --publish always
               env:
                   NODE_OPTIONS: --max-old-space-size=8192

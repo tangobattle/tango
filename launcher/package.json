@@ -12,7 +12,7 @@
   "repository": "https://github.com/tangobattle/tango",
   "scripts": {
     "build:win32-x64": "npm-run-all build:main build:renderer && ./update-bin.sh",
-    "build:linux": "npm-run-all build:main build:renderer",
+    "build:linux-x64": "npm-run-all build:main build:renderer",
     "build:main": "cross-env NODE_ENV=production webpack --config webpack/main.webpack.ts --mode=production",
     "build:renderer": "cross-env NODE_ENV=production webpack --config webpack/renderer.webpack.ts --mode=production",
     "generate:protos": "(rm -rf src/protos/generated && mkdir -p src/protos/generated 2> /dev/null || true) && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos/generated --ts_proto_opt=esModuleInterop=true -I../core/tango-core/src/protos/ ipc.proto && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos/generated --ts_proto_opt=esModuleInterop=true -I./src/protos lobby.proto && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protos/generated --ts_proto_opt=esModuleInterop=true -I../core/tango-protos/src/protos/ iceconfig.proto replay.proto",
@@ -20,7 +20,8 @@
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only ./src/main/main.ts",
     "start:renderer": "cross-env NODE_ENV=development webpack serve --config webpack/renderer.webpack.ts --mode=development",
     "dist:win32-x64": "npm run build:win32-x64 && electron-builder --win --x64",
-    "dist:linux": "npm run build:linux && electron-builder --linux --x64"
+    "dist:linux-x64": "npm run build:linux-x64 && electron-builder --linux --x64",
+    "dist:mac-x64": "npm run build:mac-x64 && electron-builder --mac --x64"
   },
   "keywords": [],
   "license": "AGPL-3.0",
