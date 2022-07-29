@@ -97,7 +97,7 @@ jobs:
             - run: >
                   sudo apt-get update -y &&
                   sudo apt-get upgrade -y &&
-                  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl git libnss3 libsdl2-dev libsdl2-ttf-dev pkgconf sudo
+                  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl git libnss3 pkgconf sudo
 
             - run: >
                   cd core &&
