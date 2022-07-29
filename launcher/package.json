@@ -11,7 +11,8 @@
   "main": "./dist/main.js",
   "repository": "https://github.com/tangobattle/tango",
   "scripts": {
-    "build:win32-x64": "npm-run-all build:main build:renderer && ./update-bin.sh",
+    "build:win32-x64": "npm-run-all build:main build:renderer && ./update-win32-x64-bin.sh",
+    "build:mac-x64": "npm-run-all build:main build:renderer && ./update-mac-x64-bin.sh",
     "build:linux-x64": "npm-run-all build:main build:renderer",
     "build:main": "cross-env NODE_ENV=production webpack --config webpack/main.webpack.ts --mode=production",
     "build:renderer": "cross-env NODE_ENV=production webpack --config webpack/renderer.webpack.ts --mode=production",
@@ -20,8 +21,8 @@
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only ./src/main/main.ts",
     "start:renderer": "cross-env NODE_ENV=development webpack serve --config webpack/renderer.webpack.ts --mode=development",
     "dist:win32-x64": "npm run build:win32-x64 && electron-builder --win --x64",
-    "dist:linux-x64": "npm run build:linux-x64 && electron-builder --linux --x64",
-    "dist:mac-x64": "npm run build:mac-x64 && electron-builder --mac --x64"
+    "dist:mac-x64": "npm run build:mac-x64 && electron-builder --mac --x64",
+    "dist:linux-x64": "npm run build:linux-x64 && electron-builder --linux --x64"
   },
   "keywords": [],
   "license": "AGPL-3.0",
