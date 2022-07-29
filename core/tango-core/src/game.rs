@@ -1,4 +1,5 @@
-use crate::{audio, battle, facade, hooks, ipc, tps};
+use crate::{audio, battle, facade, font, hooks, ipc, tps};
+use ab_glyph::{Font, ScaleFont};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -333,13 +334,10 @@ impl Game {
         let mut show_debug_pressed = false;
         let mut show_debug = false;
 
-        // let ttf = sdl2::ttf::init().unwrap();
-        // let font = ttf
-        //     .load_font_from_rwops(
-        //         sdl2::rwops::RWops::from_bytes(include_bytes!("fonts/04B_03__.TTF")).unwrap(),
-        //         8,
-        //     )
-        //     .unwrap();
+        let font =
+            ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
+        let scale = ab_glyph::PxScale::from(8.0);
+        let scaled_font = font.as_scaled(scale);
 
         let texture_creator = self.canvas.texture_creator();
         let mut texture = texture_creator
@@ -479,26 +477,67 @@ impl Game {
                     tps_adjustment
                 ));
 
-                // for (i, line) in lines.iter().enumerate() {
-                //     let surface = font
-                //         .render(line)
-                //         .shaded(
-                //             sdl2::pixels::Color::RGBA(255, 255, 255, 255),
-                //             sdl2::pixels::Color::RGBA(0, 0, 0, 255),
-                //         )
-                //         .unwrap();
-                //     let texture = texture_creator
-                //         .create_texture_from_surface(&surface)
-                //         .unwrap();
-                //     let sdl2::render::TextureQuery { width, height, .. } = texture.query();
-                //     self.canvas
-                //         .copy(
-                //             &texture,
-                //             None,
-                //             Some(sdl2::rect::Rect::new(1, 1 + i as i32 * 8, width, height)),
-                //         )
-                //         .unwrap();
-                // }
+                for (i, line) in lines.iter().enumerate() {
+                    let mut glyphs = Vec::new();
+                    font::layout_paragraph(
+                        scaled_font,
+                        ab_glyph::point(0.0, 0.0),
+                        9999.0,
+                        &line,
+                        &mut glyphs,
+                    );
+
+                    let height = scaled_font.height().ceil() as i32;
+                    let width = {
+                        let min_x = glyphs.first().unwrap().position.x;
+                        let last_glyph = glyphs.last().unwrap();
+                        let max_x = last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
+                        (max_x - min_x).ceil() as i32
+                    };
+
+                    let mut texture = texture_creator
+                        .create_texture_streaming(
+                            sdl2::pixels::PixelFormatEnum::ABGR8888,
+                            width as u32,
+                            height as u32,
+                        )
+                        .unwrap();
+
+                    let mut font_buf = vec![0x0u8; (width * height * 4) as usize];
+                    for glyph in glyphs {
+                        if let Some(outlined) = scaled_font.outline_glyph(glyph) {
+                            let bounds = outlined.px_bounds();
+                            outlined.draw(|x, y, v| {
+                                let x = x as i32 + bounds.min.x as i32;
+                                let y = y as i32 + bounds.min.y as i32;
+                                if x >= width || y >= height || x < 0 || y < 0 {
+                                    return;
+                                }
+                                let gray = (v * 0xff as f32) as u8;
+                                font_buf[((y * width + x) * 4) as usize + 0] = gray;
+                                font_buf[((y * width + x) * 4) as usize + 1] = gray;
+                                font_buf[((y * width + x) * 4) as usize + 2] = gray;
+                                font_buf[((y * width + x) * 4) as usize + 3] = 0xff;
+                            });
+                        }
+                    }
+                    texture
+                        .update(None, &font_buf[..], (width * 4) as usize)
+                        .unwrap();
+
+                    self.canvas
+                        .copy(
+                            &texture,
+                            None,
+                            Some(sdl2::rect::Rect::new(
+                                1,
+                                (1 + i * height as usize) as i32,
+                                width as u32,
+                                height as u32,
+                            )),
+                        )
+                        .unwrap();
+                }
             }
 
             self.canvas.present();

@@ -21,7 +21,7 @@ struct Cli {
     text: std::ffi::OsString,
 }
 
-pub fn layout_paragraph<F, SF>(
+fn layout_paragraph<F, SF>(
     font: SF,
     position: ab_glyph::Point,
     max_width: f32,
@@ -133,7 +133,7 @@ fn main() -> anyhow::Result<()> {
         )
         .unwrap();
 
-    let mut vbuf = vec![0xffu8; (width * height * 4) as usize];
+    let mut font_buf = vec![0xffu8; (width * height * 4) as usize];
     for glyph in glyphs {
         if let Some(outlined) = scaled_font.outline_glyph(glyph) {
             let bounds = outlined.px_bounds();
@@ -144,15 +144,15 @@ fn main() -> anyhow::Result<()> {
                     return;
                 }
                 let gray = ((1.0 - v) * 0xff as f32) as u8;
-                vbuf[((y * width + x) * 4) as usize + 0] = gray;
-                vbuf[((y * width + x) * 4) as usize + 1] = gray;
-                vbuf[((y * width + x) * 4) as usize + 2] = gray;
-                vbuf[((y * width + x) * 4) as usize + 3] = 0xff;
+                font_buf[((y * width + x) * 4) as usize + 0] = gray;
+                font_buf[((y * width + x) * 4) as usize + 1] = gray;
+                font_buf[((y * width + x) * 4) as usize + 2] = gray;
+                font_buf[((y * width + x) * 4) as usize + 3] = 0xff;
             });
         }
     }
     texture
-        .update(None, &vbuf[..], (width * 4) as usize)
+        .update(None, &font_buf[..], (width * 4) as usize)
         .unwrap();
 
     canvas.set_draw_color(sdl2::pixels::Color::RGBA(0x00, 0x00, 0x00, 0xff));
