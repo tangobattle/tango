@@ -160,6 +160,7 @@ packages
 
 /dev-bin
 /bin
+/lib
 /roms
 /saves
 /patches

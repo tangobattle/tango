@@ -132,7 +132,8 @@
       "dist/**"
     ],
     "extraResources": [
-      "bin/**"
+      "bin/**",
+      "lib/**"
     ]
   },
   "engines": {

@@ -3,7 +3,7 @@ import {
 } from "child_process";
 import { accessSync, constants } from "fs";
 
-import { getBinPath } from "./paths";
+import { getBinPath, getDynamicLibraryPath } from "./paths";
 
 function hasCatchsegv(app: Electron.App) {
   try {
@@ -18,7 +18,7 @@ export function spawn(
   app: Electron.App,
   command: string,
   args?: ReadonlyArray<string>,
-  options?: SpawnOptionsWithoutStdio
+  { env, ...rest }: SpawnOptionsWithoutStdio = {}
 ): ChildProcessWithoutNullStreams {
   command = getBinPath(app, command);
   const realArgs = (args ?? []).slice();
@@ -32,5 +32,8 @@ export function spawn(
     // eslint-disable-next-line no-console
     console.info("catchsegv NOT available, will NOT wrap process");
   }
-  return origSpawn(command, realArgs, options);
+  return origSpawn(command, realArgs, {
+    env: { DYLD_FALLBACK_LIBRARY_PATH: getDynamicLibraryPath(app), ...env },
+    ...rest,
+  });
 }
