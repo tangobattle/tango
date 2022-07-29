@@ -1,6 +1,7 @@
 #![windows_subsystem = "windows"]
 use std::io::Write;
 
+use ab_glyph::{Font, ScaleFont};
 use clap::StructOpt;
 
 // NOTE: This should match the same struct as in tango-core. Why it's here is just a goofy quirk.
@@ -18,6 +19,46 @@ struct Cli {
 
     #[clap()]
     text: std::ffi::OsString,
+}
+
+pub fn layout_paragraph<F, SF>(
+    font: SF,
+    position: ab_glyph::Point,
+    max_width: f32,
+    text: &str,
+    target: &mut Vec<ab_glyph::Glyph>,
+) where
+    F: Font,
+    SF: ScaleFont<F>,
+{
+    let v_advance = font.height() + font.line_gap();
+    let mut caret = position + ab_glyph::point(0.0, font.ascent());
+    let mut last_glyph: Option<ab_glyph::Glyph> = None;
+    for c in text.chars() {
+        if c.is_control() {
+            if c == '\n' {
+                caret = ab_glyph::point(position.x, caret.y + v_advance);
+                last_glyph = None;
+            }
+            continue;
+        }
+        let mut glyph = font.scaled_glyph(c);
+        if let Some(previous) = last_glyph.take() {
+            caret.x += font.kern(previous.id, glyph.id);
+        }
+        glyph.position = caret;
+
+        last_glyph = Some(glyph.clone());
+        caret.x += font.h_advance(glyph.id);
+
+        if !c.is_whitespace() && caret.x > position.x + max_width {
+            caret = ab_glyph::point(position.x, caret.y + v_advance);
+            glyph.position = caret;
+            last_glyph = None;
+        }
+
+        target.push(glyph);
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -57,30 +98,62 @@ fn main() -> anyhow::Result<()> {
     let mut canvas = window.into_canvas().present_vsync().build().unwrap();
     let texture_creator = canvas.texture_creator();
 
-    let ttf = sdl2::ttf::init().unwrap();
-    let font = ttf
-        .load_font_from_rwops(
-            sdl2::rwops::RWops::from_bytes(match args.lang.as_str() {
-                "ja" => include_bytes!("fonts/NotoSansJP-Regular.otf"),
-                "zh-Hans" => include_bytes!("fonts/NotoSansSC-Regular.otf"),
-                _ => include_bytes!("fonts/NotoSans-Regular.ttf"),
-            })
-            .unwrap(),
-            20 * (canvas.window().drawable_size().0 / canvas.window().size().0) as u16,
+    let font = ab_glyph::FontRef::try_from_slice(match args.lang.as_str() {
+        "ja" => &include_bytes!("fonts/NotoSansJP-Regular.otf")[..],
+        "zh-Hans" => &include_bytes!("fonts/NotoSansSC-Regular.otf")[..],
+        _ => &include_bytes!("fonts/NotoSans-Regular.ttf")[..],
+    })
+    .unwrap();
+
+    let scale = ab_glyph::PxScale::from(64.0);
+    let scaled_font = font.as_scaled(scale);
+
+    let mut glyphs = Vec::new();
+    layout_paragraph(
+        scaled_font,
+        ab_glyph::point(0.0, 0.0),
+        9999.0,
+        &args.text.to_string_lossy(),
+        &mut glyphs,
+    );
+
+    let height = scaled_font.height().ceil() as i32;
+    let width = {
+        let min_x = glyphs.first().unwrap().position.x;
+        let last_glyph = glyphs.last().unwrap();
+        let max_x = last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
+        (max_x - min_x).ceil() as i32
+    };
+
+    let mut texture = texture_creator
+        .create_texture_streaming(
+            sdl2::pixels::PixelFormatEnum::ABGR8888,
+            width as u32,
+            height as u32,
         )
         .unwrap();
 
-    let surface = font
-        .render(args.text.to_string_lossy().trim_end())
-        .blended_wrapped(
-            sdl2::pixels::Color::RGBA(0, 0, 0, 255),
-            canvas.window().drawable_size().0 - 4,
-        )
+    let mut vbuf = vec![0xffu8; (width * height * 4) as usize];
+    for glyph in glyphs {
+        if let Some(outlined) = scaled_font.outline_glyph(glyph) {
+            let bounds = outlined.px_bounds();
+            outlined.draw(|x, y, v| {
+                let x = x as i32 + bounds.min.x as i32;
+                let y = y as i32 + bounds.min.y as i32;
+                if x >= width || y >= height || x < 0 || y < 0 {
+                    return;
+                }
+                let gray = ((1.0 - v) * 0xff as f32) as u8;
+                vbuf[((y * width + x) * 4) as usize + 0] = gray;
+                vbuf[((y * width + x) * 4) as usize + 1] = gray;
+                vbuf[((y * width + x) * 4) as usize + 2] = gray;
+                vbuf[((y * width + x) * 4) as usize + 3] = 0xff;
+            });
+        }
+    }
+    texture
+        .update(None, &vbuf[..], (width * 4) as usize)
         .unwrap();
-    let texture = texture_creator
-        .create_texture_from_surface(&surface)
-        .unwrap();
-    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
 
     canvas.set_draw_color(sdl2::pixels::Color::RGBA(0x00, 0x00, 0x00, 0xff));
     canvas.clear();
@@ -102,8 +175,8 @@ fn main() -> anyhow::Result<()> {
             Some(sdl2::rect::Rect::new(
                 (canvas.window().drawable_size().0 as i32 - width as i32) / 2,
                 (canvas.window().drawable_size().1 as i32 - height as i32) / 2,
-                width,
-                height,
+                width as u32,
+                height as u32,
             )),
         )
         .unwrap();

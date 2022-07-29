@@ -5,8 +5,6 @@ set -x
 tempdir="$(mktemp -d)"
 trap 'rm -rf -- "$tempdir"' EXIT
 
-cp ../core/external/sdl2/* bin
-
 curl -L -o "${tempdir}/ffmpeg.7z" "https://www.gyan.dev/ffmpeg/builds/ffmpeg-git-essentials.7z"
 mkdir "${tempdir}/ffmpeg"
 pushd "${tempdir}/ffmpeg"

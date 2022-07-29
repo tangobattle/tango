@@ -14,7 +14,3 @@ export function getBinPath(app: Electron.App, exe: string) {
     exe + (process.platform === "win32" ? ".exe" : "")
   );
 }
-
-export function getDynamicLibraryPath(app: Electron.App) {
-  return app.isPackaged ? path.join(process.resourcesPath, "lib") : "lib";
-}

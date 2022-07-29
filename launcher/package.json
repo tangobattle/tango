@@ -19,9 +19,8 @@
     "start": "npm run start:renderer",
     "start:main": "cross-env NODE_ENV=development electronmon -r ts-node/register/transpile-only ./src/main/main.ts",
     "start:renderer": "cross-env NODE_ENV=development webpack serve --config webpack/renderer.webpack.ts --mode=development",
-    "pack:win32-x64": "npm run build:win32-x64 && electron-builder --dir --win --x64",
     "dist:win32-x64": "npm run build:win32-x64 && electron-builder --win --x64",
-    "dist:linux": "npm run build:linux && electron-builder"
+    "dist:linux": "npm run build:linux && electron-builder --linux --x64"
   },
   "keywords": [],
   "license": "AGPL-3.0",
@@ -105,16 +104,6 @@
     "linux": {
       "target": [
         "AppImage"
-      ],
-      "extraFiles": [
-        {
-          "from": "/usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0",
-          "to": "usr/lib/libSDL2-2.0.so.0"
-        },
-        {
-          "from": "/usr/lib/x86_64-linux-gnu/libSDL2_ttf-2.0.so.0",
-          "to": "usr/lib/libSDL2_ttf-2.0.so.0"
-        }
       ]
     },
     "nsis": {
@@ -132,8 +121,7 @@
       "dist/**"
     ],
     "extraResources": [
-      "bin/**",
-      "lib/**"
+      "bin/**"
     ]
   },
   "engines": {

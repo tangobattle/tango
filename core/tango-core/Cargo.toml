@@ -38,7 +38,7 @@ tokio-tungstenite = { version = "0.16.1", features = [
 ] }
 prost = "0.10"
 bytes = "1.1.0"
-sdl2 = { version = "0.35", features = ["ttf"] }
+sdl2 = { version = "0.35", features = ["static-link", "bundled"] }
 sdl2-input-helper = { path = "../sdl2-input-helper" }
 serde_repr = "0.1"
 hex = "0.4"

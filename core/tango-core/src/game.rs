@@ -333,13 +333,13 @@ impl Game {
         let mut show_debug_pressed = false;
         let mut show_debug = false;
 
-        let ttf = sdl2::ttf::init().unwrap();
-        let font = ttf
-            .load_font_from_rwops(
-                sdl2::rwops::RWops::from_bytes(include_bytes!("fonts/04B_03__.TTF")).unwrap(),
-                8,
-            )
-            .unwrap();
+        // let ttf = sdl2::ttf::init().unwrap();
+        // let font = ttf
+        //     .load_font_from_rwops(
+        //         sdl2::rwops::RWops::from_bytes(include_bytes!("fonts/04B_03__.TTF")).unwrap(),
+        //         8,
+        //     )
+        //     .unwrap();
 
         let texture_creator = self.canvas.texture_creator();
         let mut texture = texture_creator
@@ -479,26 +479,26 @@ impl Game {
                     tps_adjustment
                 ));
 
-                for (i, line) in lines.iter().enumerate() {
-                    let surface = font
-                        .render(line)
-                        .shaded(
-                            sdl2::pixels::Color::RGBA(255, 255, 255, 255),
-                            sdl2::pixels::Color::RGBA(0, 0, 0, 255),
-                        )
-                        .unwrap();
-                    let texture = texture_creator
-                        .create_texture_from_surface(&surface)
-                        .unwrap();
-                    let sdl2::render::TextureQuery { width, height, .. } = texture.query();
-                    self.canvas
-                        .copy(
-                            &texture,
-                            None,
-                            Some(sdl2::rect::Rect::new(1, 1 + i as i32 * 8, width, height)),
-                        )
-                        .unwrap();
-                }
+                // for (i, line) in lines.iter().enumerate() {
+                //     let surface = font
+                //         .render(line)
+                //         .shaded(
+                //             sdl2::pixels::Color::RGBA(255, 255, 255, 255),
+                //             sdl2::pixels::Color::RGBA(0, 0, 0, 255),
+                //         )
+                //         .unwrap();
+                //     let texture = texture_creator
+                //         .create_texture_from_surface(&surface)
+                //         .unwrap();
+                //     let sdl2::render::TextureQuery { width, height, .. } = texture.query();
+                //     self.canvas
+                //         .copy(
+                //             &texture,
+                //             None,
+                //             Some(sdl2::rect::Rect::new(1, 1 + i as i32 * 8, width, height)),
+                //         )
+                //         .unwrap();
+                // }
             }
 
             self.canvas.present();
