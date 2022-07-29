@@ -177,7 +177,13 @@ function AboutTab({ active }: { active: boolean }) {
               <Link href="https://github.com/ubergeek77" target="_blank">
                 ubergeek77
               </Link>{" "}
-              for their work on Linux support.
+              for Linux support.
+            </li>
+            <li>
+              <Link href="https://twitter.com/pokemium" target="_blank">
+                Akatsuki
+              </Link>{" "}
+              for macOS support.
             </li>
             <li>
               <Link href="https://twitter.com/seventhfonist42" target="_blank">
