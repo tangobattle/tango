@@ -78,6 +78,18 @@ function computeChecksumRaw(dv: DataView) {
   return checksum;
 }
 
+class BN4ModcardsEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getModcard(slot: number) {
+    return { id: 0, enabled: false };
+  }
+}
+
 class NavicustEditor {
   private editor: Editor;
 
@@ -429,6 +441,10 @@ export class Editor extends EditorBase {
 
   getNavicustEditor() {
     return new NavicustEditor(this);
+  }
+
+  getBN4ModcardsEditor() {
+    return new BN4ModcardsEditor(this);
   }
 }
 
