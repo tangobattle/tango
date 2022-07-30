@@ -1,6 +1,7 @@
-import type { Chip } from "..";
+import { EditorBase } from "../base";
 import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
 
+import type { Chip } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_START_OFFSET = 0x00;
@@ -150,7 +151,7 @@ class FolderEditor {
   }
 }
 
-export class Editor {
+export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
 
@@ -201,6 +202,7 @@ export class Editor {
   }
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
+    super();
     this.dv = new DataView(buffer);
     this.romViewer = new ROMViewer(romBuffer, this.dv, saveeditInfo);
   }

@@ -1,5 +1,6 @@
-import type { Chip, NavicustProgram } from "..";
+import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
+import { EditorBase } from "../base";
 import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
 
 export interface GameInfo {
@@ -239,12 +240,13 @@ class FolderEditor {
   }
 }
 
-export class Editor {
+export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
   navicustDirty: boolean;
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
+    super();
     this.dv = new DataView(buffer);
     this.romViewer = new ROMViewer(romBuffer, this.dv, saveeditInfo);
     this.navicustDirty = false;
@@ -379,10 +381,6 @@ export class Editor {
 
   getNavicustEditor() {
     return new NavicustEditor(this);
-  }
-
-  getModcardsEditor() {
-    return null;
   }
 }
 

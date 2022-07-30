@@ -1,7 +1,8 @@
+import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
+import { EditorBase } from "../base";
 import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase, unlz77 } from "../rom";
 
-import type { Chip, Modcard, NavicustProgram } from "..";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_START_OFFSET = 0x0100;
@@ -353,7 +354,7 @@ class ModcardsEditor {
   }
 }
 
-export class Editor {
+export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
   navicustDirty: boolean;
@@ -407,6 +408,7 @@ export class Editor {
   }
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
+    super();
     this.dv = new DataView(buffer);
     this.romViewer = new ROMViewer(romBuffer, this.dv, saveeditInfo);
 

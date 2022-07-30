@@ -1,3 +1,4 @@
+import { EditorBase } from "../base";
 import { ROMViewerBase } from "../rom";
 
 const SRAM_SIZE = 0x3a78;
@@ -22,11 +23,12 @@ function computeChecksum(dv: DataView) {
   return checksum;
 }
 
-export class Editor {
+export class Editor extends EditorBase {
   dv: DataView;
   private romViewer: ROMViewer;
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, _saveeditInfo: any) {
+    super();
     this.dv = new DataView(buffer);
     this.romViewer = new ROMViewer(romBuffer);
   }
@@ -89,18 +91,6 @@ export class Editor {
 
   rebuild() {
     // TODO
-  }
-
-  getFolderEditor() {
-    return null;
-  }
-
-  getNavicustEditor() {
-    return null;
-  }
-
-  getModcardsEditor() {
-    return null;
   }
 }
 

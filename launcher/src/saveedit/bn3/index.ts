@@ -1,3 +1,4 @@
+import { EditorBase } from "../base";
 import { ROMViewerBase } from "../rom";
 
 export interface GameInfo {
@@ -58,11 +59,12 @@ function computeChecksumRaw(dv: DataView) {
   return checksum;
 }
 
-export class Editor {
+export class Editor extends EditorBase {
   dv: DataView;
   private romViewer: ROMViewer;
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, _saveeditInfo: any) {
+    super();
     this.dv = new DataView(buffer);
     this.romViewer = new ROMViewer(romBuffer);
   }
@@ -142,18 +144,6 @@ export class Editor {
 
   getGameInfo() {
     return GAME_INFOS[this.getROMInfo().name];
-  }
-
-  getFolderEditor() {
-    return null;
-  }
-
-  getNavicustEditor() {
-    return null;
-  }
-
-  getModcardsEditor() {
-    return null;
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
+import { EditorBase } from "../base";
 import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -249,7 +250,7 @@ class FolderEditor {
   }
 }
 
-export class Editor {
+export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
   navicustDirty: boolean;
@@ -337,6 +338,7 @@ export class Editor {
   }
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
+    super();
     const startOffset = Editor.getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
@@ -427,10 +429,6 @@ export class Editor {
 
   getNavicustEditor() {
     return new NavicustEditor(this);
-  }
-
-  getModcardsEditor() {
-    return null;
   }
 }
 
