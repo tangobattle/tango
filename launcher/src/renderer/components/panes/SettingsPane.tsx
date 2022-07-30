@@ -303,6 +303,24 @@ function AboutTab({ active }: { active: boolean }) {
               </Link>
             </li>
             <li>
+              <strong>Traditional Chinese:</strong>{" "}
+              <Link
+                href="https://github.com/bigfarts"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                weenie
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/Hikari_Calyx"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Hikari Calyx
+              </Link>
+            </li>
+            <li>
               <strong>Spanish:</strong>{" "}
               <Link
                 href="https://twitter.com/Karate_Bugman"

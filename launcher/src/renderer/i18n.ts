@@ -69,6 +69,7 @@ export const LANGUAGES = [
   { code: "en", name: "English" },
   { code: "ja", name: "日本語" },
   { code: "zh-Hans", name: "简体中文" },
+  { code: "zh-Hant", name: "繁體中文" },
   { code: "es", name: "Español" },
   { code: "pt-BR", name: "Português (Brasil)" },
   { code: "fr", name: "Français" },

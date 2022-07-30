@@ -1,0 +1,18 @@
+{
+  "viewing": "正在播放……",
+  "exporting": "正在導出……",
+  "export-complete": "回放導出成功。",
+  "no-replays": "沒有回放",
+  "incomplete": "這個回放是不完整的。",
+  "play": "播放",
+  "show-info": "顯示信息",
+  "show-file": "目錄中顯示",
+  "export-video": "視頻導出",
+  "replay-title": "{{linkCode}}： 対 {{nickname}}",
+  "crash": "抱歉，回放播放器遇到崩潰。在報告錯誤時，請提供此日誌！",
+  "export-settings": "導出設置",
+  "output-path": "保存到",
+  "scale-factor": "縮放係數",
+  "scale-factor-suffix": "倍",
+  "start-export": "導出"
+}
