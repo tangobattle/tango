@@ -99,164 +99,318 @@ function AboutTab({ active }: { active: boolean }) {
             Tango would not be a reality without the work of the many people who
             have helped make this possible.
           </Typography>
+          <Typography variant="h5" sx={{ alignSelf: "center" }}>
+            Development
+          </Typography>
           <ul>
             <li>
-              <Link href="https://www.capcom.com/" target="_blank">
-                CAPCOM
-              </Link>{" "}
-              for making Mega Man Battle Network!
-            </li>
-            <li>
-              <Link href="https://twitter.com/endrift" target="_blank">
+              <strong>Emulation:</strong>{" "}
+              <Link
+                href="https://twitter.com/endrift"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 endrift
               </Link>{" "}
-              for their work on{" "}
-              <Link href="https://mgba.io/" target="_blank">
+              (
+              <Link
+                href="https://mgba.io/"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 mGBA
               </Link>
-              , which all of the emulation in Tango is based on.
+              )
             </li>
             <li>
-              <Link href="https://twitter.com/pnw_ssbmars" target="_blank">
+              <strong>Reverse engineering:</strong>{" "}
+              <Link
+                href="https://twitter.com/pnw_ssbmars"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 pnw_ssbmars
               </Link>{" "}
-              and{" "}
-              <Link href="https://github.com/XKirby" target="_blank">
+              (BN3),{" "}
+              <Link
+                href="https://github.com/XKirby"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 XKirby
               </Link>{" "}
-              for their work on{" "}
-              <Link href="https://www.n1gp.dev/bbn3" target="_blank">
-                BBN3
-              </Link>
-              , the original Battle Network rollback netplay, and indispensable
-              assistance on Tango (and the name and logo!).
-            </li>
-            <li>
-              <Link href="https://github.com/luckytyphlosion" target="_blank">
+              (BN3),{" "}
+              <Link
+                href="https://github.com/luckytyphlosion"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 luckytyphlosion
               </Link>{" "}
-              and{" "}
-              <Link href="https://github.com/LanHikari22" target="_blank">
+              (BN6),{" "}
+              <Link
+                href="https://github.com/LanHikari22"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 LanHikari22
               </Link>{" "}
-              for their work on{" "}
-              <Link href="https://github.com/dism-exe/bn6f" target="_blank">
-                disassembling and documenting the Battle Network 6 code
-              </Link>
-              .
-            </li>
-            <li>
-              <Link href="https://twitter.com/aldelaro5" target="_blank">
-                aldelaro5
-              </Link>{" "}
-              and the{" "}
-              <Link href="https://www.nsa.gov" target="_blank">
+              (BN6),{" "}
+              <Link
+                href="https://www.nsa.gov"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 National Security Agency
               </Link>{" "}
-              for the help with and development of{" "}
-              <Link href="https://ghidra-sre.org/" target="_blank">
+              (
+              <Link
+                href="https://ghidra-sre.org//"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 Ghidra
               </Link>
-              .
-            </li>
-            <li>
-              <Link href="https://twitter.com/GreigaMaster" target="_blank">
+              ),{" "}
+              <Link
+                href="https://twitter.com/aldelaro5"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                aldelaro5
+              </Link>{" "}
+              (Ghidra),{" "}
+              <Link
+                href="https://twitter.com/GreigaMaster"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 GreigaMaster
               </Link>{" "}
-              for all of their original reverse engineering work on Battle
-              Network 6 and adding support for Rockman.EXE 4.5: Real Operation.
-            </li>
-            <li>
-              <Link href="https://twitter.com/Prof9" target="_blank">
+              (BN),{" "}
+              <Link
+                href="https://twitter.com/Prof9"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 Prof. 9
               </Link>{" "}
-              for all of their original reverse engineering work on Battle
-              Network 6.
+              (BN)
             </li>
             <li>
-              <Link href="https://github.com/ubergeek77" target="_blank">
+              <strong>Porting:</strong>{" "}
+              <Link
+                href="https://github.com/ubergeek77"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 ubergeek77
               </Link>{" "}
-              for Linux support.
-            </li>
-            <li>
-              <Link href="https://twitter.com/pokemium" target="_blank">
+              (Linux),{" "}
+              <Link
+                href="https://twitter.com/pokemium"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
                 Akatsuki
               </Link>{" "}
-              for macOS support.
+              (macOS)
             </li>
             <li>
-              <Link href="https://twitter.com/seventhfonist42" target="_blank">
-                Nonstopmop
-              </Link>{" "}
-              for their contribution to the Japanese translation.
-            </li>
-            <li>
-              <Link href="https://twitter.com/Hikari_Calyx" target="_blank">
-                Hikari Calyx
-              </Link>{" "}
-              for their contribution to the Chinese translation.
-            </li>
-            <li>
-              <Link href="https://twitter.com/Karate_Bugman" target="_blank">
-                Karate_Bugman
-              </Link>{" "}
-              for the Spanish translation.
-            </li>
-            <li>
-              <Link href="https://discord.gg/hPrFVaaRrU" target="_blank">
-                Darkgaia
-              </Link>{" "}
-              and{" "}
-              <Link href="https://twitter.com/mushiguchi" target="_blank">
-                mushiguchi
-              </Link>{" "}
-              for the Brazilian Portuguese translation.
-            </li>
-            <li>
-              <Link href="https://twitter.com/Sheriel_Phoenix" target="_blank">
-                Sheriel Phoenix
-              </Link>{" "}
-              and{" "}
-              <Link href="https://twitter.com/justplayfly" target="_blank">
-                Justplay
-              </Link>{" "}
-              for the French translation.
-            </li>
-            <li>
-              <Link href="https://www.twitch.tv/kendeep_fgc" target="_blank">
-                KenDeep
-              </Link>{" "}
-              for the German translation.
-            </li>
-            <li>
-              <Link href="https://twitter.com/saladdammit" target="_blank">
-                saladdammit
-              </Link>{" "}
-              for the logo.
-            </li>
-            <li>
-              <Link href="https://twitter.com/saladdammit" target="_blank">
-                saladdammit
+              <strong>Game support:</strong>{" "}
+              <Link
+                href="https://github.com/bigfarts"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                weenie
               </Link>
               ,{" "}
-              <Link href="https://twitter.com/Playerzero_exe" target="_blank">
-                Playerzero_exe
-              </Link>
-              , and the entire{" "}
-              <Link href="https://n1gp.net/" target="_blank">
-                N1GP
+              <Link
+                href="https://twitter.com/GreigaMaster"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                GreigaMaster
               </Link>{" "}
-              for their bug testing and support.
+              (EXE4.5)
             </li>
             <li>
-              <Link href="https://github.com/bigfarts" target="_blank">
-                bigfarts
-              </Link>{" "}
-              thats me lol
+              <strong>Odds and ends:</strong>{" "}
+              <Link
+                href="https://github.com/sailormoon"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                sailormoon
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/dev_console"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Shiz
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/Karate_Bugman"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Karate_Bugman
+              </Link>
             </li>
           </ul>
-          <Typography>Thank you!</Typography>
+          <Typography variant="h5" sx={{ alignSelf: "center" }}>
+            Translation
+          </Typography>
+          <ul>
+            <li>
+              <strong>Japanese:</strong>{" "}
+              <Link
+                href="https://github.com/bigfarts"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                weenie
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/seventhfonist42"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Nonstopmop
+              </Link>
+            </li>
+            <li>
+              <strong>Simplified Chinese:</strong>{" "}
+              <Link
+                href="https://github.com/bigfarts"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                weenie
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/Hikari_Calyx"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Hikari Calyx
+              </Link>
+            </li>
+            <li>
+              <strong>Spanish:</strong>{" "}
+              <Link
+                href="https://twitter.com/Karate_Bugman"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Karate_Bugman
+              </Link>
+            </li>
+            <li>
+              <strong>Brazilian Portuguese:</strong>{" "}
+              <Link
+                href="https://discord.gg/hPrFVaaRrU"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Darkgaia
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/mushiguchi"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                mushiguchi
+              </Link>
+            </li>
+            <li>
+              <strong>French:</strong>{" "}
+              <Link
+                href="https://twitter.com/Sheriel_Phoenix"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Sheriel Phoenix
+              </Link>
+              ,{" "}
+              <Link
+                href="https://twitter.com/justplayfly"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Justplay
+              </Link>
+            </li>
+            <li>
+              <strong>German:</strong>{" "}
+              <Link
+                href="https://www.twitch.tv/kendeep_fgc"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                KenDeep
+              </Link>
+            </li>
+          </ul>
+          <Typography variant="h5" sx={{ alignSelf: "center" }}>
+            Art
+          </Typography>
+          <ul>
+            <li>
+              <strong>Logo:</strong>{" "}
+              <Link
+                href="https://twitter.com/saladdammit"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                saladdammit
+              </Link>
+            </li>
+          </ul>
+          <Typography variant="h5" sx={{ alignSelf: "center" }}>
+            Special thanks
+          </Typography>
+          <ul>
+            <li>
+              <strong>Playtesting:</strong>{" "}
+              <Link
+                href="https://n1gp.net/"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                N1GP
+              </Link>
+            </li>
+            <li>
+              <strong>#1 fan:</strong>{" "}
+              <Link
+                href="https://twitter.com/Playerzero_exe"
+                target="_blank"
+                style={{ whiteSpace: "nowrap", hyphens: "none" }}
+              >
+                Playerzero_exe
+              </Link>
+            </li>
+          </ul>
+          <Typography>
+            And, of course, a huge thank you to{" "}
+            <Link
+              href="https://www.capcom.com/"
+              target="_blank"
+              style={{ whiteSpace: "nowrap", hyphens: "none" }}
+            >
+              CAPCOM
+            </Link>{" "}
+            for making Mega Man Battle Network!
+          </Typography>
+          <Typography>Thank you everyone!</Typography>
           <Typography>
             Tango is licensed under the terms of the{" "}
             <Link
