@@ -45,5 +45,11 @@
     "patch-repo": "パッチリポジトリ",
     "window-scale": "ウィンドウスケール",
     "window-scale-suffix": "倍",
-    "max-queue-length": "最大キューの長"
+    "max-queue-length": "最大キューの長",
+    "video-filter": "ビデオフィルター",
+    "video-filter.null": "なし",
+    "video-filter.hq2x": "hq2x（2倍）",
+    "video-filter.hq3x": "hq3x（3倍）",
+    "video-filter.hq4x": "hq4x（4倍）",
+    "video-filter.mmpx": "MMPX（2倍）"
 }

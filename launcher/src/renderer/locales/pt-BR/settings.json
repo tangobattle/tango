@@ -45,5 +45,11 @@
     "patch-repo": "Repositório de patches",
     "window-scale": "Tamanho de tela",
     "window-scale-suffix": "x",
-    "max-queue-length": "Comprimento máximo da fila"
+    "max-queue-length": "Comprimento máximo da fila",
+    "video-filter": "Filtro de vídeo",
+    "video-filter.null": "Nenhum",
+    "video-filter.hq2x": "hq2x (2x)",
+    "video-filter.hq3x": "hq3x (3x)",
+    "video-filter.hq4x": "hq4x (4x)",
+    "video-filter.mmpx": "MMPX (2x)"
 }
