@@ -21,6 +21,7 @@
   "tab.folder": "芯片夾",
   "tab.modcards": "改造",
   "play": "啓動",
+  "folder.show-grouped": "將芯片組合在一起",
   "folder.regular-chip": "REG",
   "folder.tag-chip": "TAG",
   "patch-name": "補丁",
