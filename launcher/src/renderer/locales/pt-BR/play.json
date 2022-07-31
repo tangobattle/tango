@@ -21,6 +21,7 @@
   "tab.folder": "Folder",
   "tab.modcards": "Custom",
   "play": "Jogar",
+  "folder.show-grouped": "Group chips together",
   "folder.regular-chip": "Regular",
   "folder.tag-chip": "TAG",
   "patch-name": "Patch",
