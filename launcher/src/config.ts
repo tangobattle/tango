@@ -14,6 +14,7 @@ export interface Config {
   updateChannel: string;
   rustLogFilter: string;
   windowScale: number;
+  videoFilter: string;
   maxQueueLength: number;
   inputMapping: {
     up: PhysicalInput[];
@@ -66,6 +67,7 @@ function defaultConfig(app: Electron.App): Config {
     language: null,
     updateChannel: "latest",
     rustLogFilter: "",
+    videoFilter: "",
     windowScale: 3,
     maxQueueLength: 1200,
     inputMapping: {

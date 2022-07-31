@@ -39,6 +39,7 @@ message ToCoreMessage {
     string rom_path = 2;
     string save_path = 3;
     uint32 window_scale = 4;
+    string video_filter = 5;
 
     message MatchSettings {
       string shadow_save_path = 1;
@@ -54,7 +55,7 @@ message ToCoreMessage {
       uint32 max_queue_length = 11;
     }
 
-    MatchSettings settings = 5;
+    MatchSettings settings = 6;
   }
 
   message SmuggleRequest { bytes data = 1; }

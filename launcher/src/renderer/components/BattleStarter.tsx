@@ -468,6 +468,7 @@ async function runCallback(
         ),
         windowTitle: ref.current.getGameTitle(ref.current.gameInfo!),
         windowScale: ref.current.config.windowScale,
+        videoFilter: ref.current.config.videoFilter,
         settings: undefined,
       },
     });
@@ -788,6 +789,7 @@ async function runCallback(
       ),
       windowTitle: ref.current.getGameTitle(ownGameInfo),
       windowScale: config.windowScale,
+      videoFilter: config.videoFilter,
       settings: {
         shadowSavePath,
         shadowRomPath: outOpponentROMPath,

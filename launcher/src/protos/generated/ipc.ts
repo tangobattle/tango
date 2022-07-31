@@ -141,6 +141,7 @@ export interface ToCoreMessage_StartRequest {
   romPath: string;
   savePath: string;
   windowScale: number;
+  videoFilter: string;
   settings: ToCoreMessage_StartRequest_MatchSettings | undefined;
 }
 
@@ -648,6 +649,7 @@ function createBaseToCoreMessage_StartRequest(): ToCoreMessage_StartRequest {
     romPath: "",
     savePath: "",
     windowScale: 0,
+    videoFilter: "",
     settings: undefined,
   };
 }
@@ -669,10 +671,13 @@ export const ToCoreMessage_StartRequest = {
     if (message.windowScale !== 0) {
       writer.uint32(32).uint32(message.windowScale);
     }
+    if (message.videoFilter !== "") {
+      writer.uint32(42).string(message.videoFilter);
+    }
     if (message.settings !== undefined) {
       ToCoreMessage_StartRequest_MatchSettings.encode(
         message.settings,
-        writer.uint32(42).fork()
+        writer.uint32(50).fork()
       ).ldelim();
     }
     return writer;
@@ -701,6 +706,9 @@ export const ToCoreMessage_StartRequest = {
           message.windowScale = reader.uint32();
           break;
         case 5:
+          message.videoFilter = reader.string();
+          break;
+        case 6:
           message.settings = ToCoreMessage_StartRequest_MatchSettings.decode(
             reader,
             reader.uint32()
@@ -720,6 +728,7 @@ export const ToCoreMessage_StartRequest = {
       romPath: isSet(object.romPath) ? String(object.romPath) : "",
       savePath: isSet(object.savePath) ? String(object.savePath) : "",
       windowScale: isSet(object.windowScale) ? Number(object.windowScale) : 0,
+      videoFilter: isSet(object.videoFilter) ? String(object.videoFilter) : "",
       settings: isSet(object.settings)
         ? ToCoreMessage_StartRequest_MatchSettings.fromJSON(object.settings)
         : undefined,
@@ -734,6 +743,8 @@ export const ToCoreMessage_StartRequest = {
     message.savePath !== undefined && (obj.savePath = message.savePath);
     message.windowScale !== undefined &&
       (obj.windowScale = Math.round(message.windowScale));
+    message.videoFilter !== undefined &&
+      (obj.videoFilter = message.videoFilter);
     message.settings !== undefined &&
       (obj.settings = message.settings
         ? ToCoreMessage_StartRequest_MatchSettings.toJSON(message.settings)
@@ -749,6 +760,7 @@ export const ToCoreMessage_StartRequest = {
     message.romPath = object.romPath ?? "";
     message.savePath = object.savePath ?? "";
     message.windowScale = object.windowScale ?? 0;
+    message.videoFilter = object.videoFilter ?? "";
     message.settings =
       object.settings !== undefined && object.settings !== null
         ? ToCoreMessage_StartRequest_MatchSettings.fromPartial(object.settings)

@@ -1,4 +1,4 @@
-use crate::{audio, battle, facade, font, hooks, ipc, tps};
+use crate::{audio, battle, facade, font, hooks, ipc, tps, video};
 use ab_glyph::{Font, ScaleFont};
 use parking_lot::Mutex;
 use rand::SeedableRng;
@@ -99,6 +99,7 @@ pub struct Game {
     event_loop: sdl2::EventPump,
     game_controller: sdl2::GameControllerSubsystem,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
+    video_filter: Box<dyn video::Filter>,
     _audio_device: sdl2::audio::AudioDevice<audio::mgba_stretch_stream::MGBAStretchStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
@@ -115,6 +116,7 @@ impl Game {
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
         window_scale: u32,
+        video_filter: Box<dyn video::Filter>,
         match_init: Option<battle::MatchInit>,
     ) -> Result<Game, anyhow::Error> {
         let handle = rt.handle().clone();
@@ -294,8 +296,14 @@ impl Game {
             .present_vsync()
             .build()
             .unwrap();
+
+        let (vbuf_width, vbuf_height) = video_filter.output_size((
+            mgba::gba::SCREEN_WIDTH as usize,
+            mgba::gba::SCREEN_HEIGHT as usize,
+        ));
+
         canvas
-            .set_logical_size(mgba::gba::SCREEN_WIDTH, mgba::gba::SCREEN_HEIGHT)
+            .set_logical_size(vbuf_width as u32, vbuf_height as u32)
             .unwrap();
         canvas.set_integer_scale(true).unwrap();
 
@@ -310,6 +318,7 @@ impl Game {
             event_loop,
             game_controller,
             canvas,
+            video_filter,
             vbuf,
             joyflags,
             match_,
@@ -342,12 +351,19 @@ impl Game {
         let scale = ab_glyph::PxScale::from(8.0);
         let scaled_font = font.as_scaled(scale);
 
+        let (vbuf_width, vbuf_height) = self.video_filter.output_size((
+            mgba::gba::SCREEN_WIDTH as usize,
+            mgba::gba::SCREEN_HEIGHT as usize,
+        ));
+
+        let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
+
         let texture_creator = self.canvas.texture_creator();
         let mut texture = texture_creator
             .create_texture_streaming(
                 sdl2::pixels::PixelFormatEnum::ABGR8888,
-                mgba::gba::SCREEN_WIDTH,
-                mgba::gba::SCREEN_HEIGHT,
+                vbuf_width as u32,
+                vbuf_height as u32,
             )
             .unwrap();
 
@@ -428,12 +444,18 @@ impl Game {
                 );
             }
 
+            let emu_vbuf = self.vbuf.lock();
+            self.video_filter.apply(
+                &emu_vbuf,
+                &mut vbuf,
+                (
+                    mgba::gba::SCREEN_WIDTH as usize,
+                    mgba::gba::SCREEN_HEIGHT as usize,
+                ),
+            );
+
             texture
-                .update(
-                    None,
-                    &*self.vbuf.lock(),
-                    mgba::gba::SCREEN_WIDTH as usize * 4,
-                )
+                .update(None, &vbuf, vbuf_width as usize * 4)
                 .unwrap();
 
             self.canvas.clear();

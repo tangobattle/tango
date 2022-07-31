@@ -561,6 +561,38 @@ function GeneralTab({ active }: { active: boolean }) {
               </MenuItem>
             </Select>
           </FormControl>
+          <FormControl fullWidth size="small">
+            <InputLabel id="video-filter-label">
+              <Trans i18nKey="settings:video-filter" />
+            </InputLabel>
+            <Select
+              labelId="video-filter-label"
+              value={config.videoFilter}
+              onChange={(e) => {
+                saveConfig((config) => ({
+                  ...config,
+                  videoFilter: e.target.value,
+                }));
+              }}
+              label={<Trans i18nKey="settings:video-filter" />}
+            >
+              <MenuItem value="">
+                <Trans i18nKey="settings:video-filter.null" />
+              </MenuItem>
+              <MenuItem value="hq2x">
+                <Trans i18nKey="settings:video-filter.hq2x" />
+              </MenuItem>
+              <MenuItem value="hq3x">
+                <Trans i18nKey="settings:video-filter.hq3x" />
+              </MenuItem>
+              <MenuItem value="hq4x">
+                <Trans i18nKey="settings:video-filter.hq4x" />
+              </MenuItem>
+              <MenuItem value="mmpx">
+                <Trans i18nKey="settings:video-filter.mmpx" />
+              </MenuItem>
+            </Select>
+          </FormControl>
         </Stack>
       </Box>
     </Box>

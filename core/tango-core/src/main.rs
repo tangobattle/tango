@@ -142,9 +142,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut ipc_sender = tango_core::ipc::Sender::new_from_stdout();
     let mut ipc_receiver = tango_core::ipc::Receiver::new_from_stdin();
 
-    let (window_title, rom_path, save_path, window_scale, pvp_init) = if let Some(session_id) =
-        &args.session_id
-    {
+    let (start_req, pvp_init) = if let Some(session_id) = &args.session_id {
         rt.block_on(async {
             let (dc, peer_conn) = match tango_core::negotiation::negotiate(
                 &mut ipc_sender,
@@ -277,12 +275,10 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             }
 
+            let settings = start_req.settings.clone().unwrap();
             Ok((
-                start_req.window_title,
-                start_req.rom_path,
-                start_req.save_path,
-                start_req.window_scale,
-                Some((peer_conn, dc_rx.unsplit(dc_tx), start_req.settings.unwrap()))
+                start_req,
+                Some((peer_conn, dc_rx.unsplit(dc_tx), settings))
             ))
         })?
     } else {
@@ -303,10 +299,7 @@ fn main() -> Result<(), anyhow::Error> {
             match msg?.which {
                 Some(tango_core::ipc::protos::to_core_message::Which::StartReq(start_req)) => {
                     Ok((
-                        start_req.window_title,
-                        start_req.rom_path,
-                        start_req.save_path,
-                        start_req.window_scale,
+                        start_req,
                         None,
                     ))
                 }
@@ -322,14 +315,17 @@ fn main() -> Result<(), anyhow::Error> {
 
     mgba::log::init();
 
+    let video_filter = tango_core::video::filter_by_name(&start_req.video_filter).unwrap();
+
     let g = tango_core::game::Game::new(
         rt,
         std::sync::Arc::new(parking_lot::Mutex::new(ipc_sender)),
-        window_title,
+        start_req.window_title,
         input_mapping,
-        rom_path.into(),
-        save_path.into(),
-        window_scale,
+        start_req.rom_path.into(),
+        start_req.save_path.into(),
+        start_req.window_scale,
+        video_filter,
         match pvp_init {
             None => None,
             Some((peer_conn, dc, settings)) => Some(tango_core::battle::MatchInit {
