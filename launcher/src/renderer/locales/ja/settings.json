@@ -46,10 +46,10 @@
     "window-scale": "ウィンドウスケール",
     "window-scale-suffix": "倍",
     "max-queue-length": "最大キューの長",
-    "video-filter": "Video filter",
-    "video-filter.null": "None",
-    "video-filter.hq2x": "hq2x (2x)",
-    "video-filter.hq3x": "hq3x (3x)",
-    "video-filter.hq4x": "hq4x (4x)",
-    "video-filter.mmpx": "MMPX (2x)"
+    "video-filter": "ビデオフィルター",
+    "video-filter.null": "なし",
+    "video-filter.hq2x": "hq2x（2倍）",
+    "video-filter.hq3x": "hq3x（3倍）",
+    "video-filter.hq4x": "hq4x（4倍）",
+    "video-filter.mmpx": "MMPX（2倍）"
 }
