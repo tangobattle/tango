@@ -16,47 +16,80 @@ export function getPalette(dv: DataView, offset: number): Uint32Array {
   return palette;
 }
 
-export function getText(
+export type ControlCodeHandlers<Control> = {
+  [code: number]: (
+    dv: DataView,
+    offset: number
+  ) => {
+    offset: number;
+    control: Control;
+  } | null;
+};
+
+export type NewlineControl = {
+  c: "newline";
+};
+
+export function parseText<Control>(
   dv: DataView,
   scriptOffset: number,
   id: number,
-  eor: number
-): number[] {
+  controlCodeHandlers: ControlCodeHandlers<Control>
+): Array<{ t: number[] } | Control> {
+  const chunks: Array<{ t: number[] } | Control> = [];
+
   let offset = scriptOffset + dv.getUint16(scriptOffset + id * 0x2, true);
   const nextOffset =
     scriptOffset + dv.getUint16(scriptOffset + (id + 1) * 0x2, true);
 
-  const buf: number[] = [];
-  // eslint-disable-next-line no-constant-condition
-  while (offset < dv.byteLength - 1) {
+  const text: number[] = [];
+  while (offset < dv.byteLength && offset < nextOffset) {
     let c = dv.getUint8(offset++);
-    if (c == eor || offset >= nextOffset) {
-      break;
-    } else if (c == 0xe4) {
+
+    const handler = controlCodeHandlers[c];
+    if (handler) {
+      chunks.push({ t: text.splice(0, text.length) });
+      const r = handler(dv, offset);
+      if (r == null) {
+        break;
+      }
+      const { offset: offset2, control } = r;
+      chunks.push(control);
+      offset = offset2;
+      continue;
+    }
+
+    if (c == 0xe4) {
       c += dv.getUint8(offset++);
     }
-    buf.push(c);
+
+    text.push(c);
   }
 
-  return buf;
+  if (text.length > 0) {
+    chunks.push({ t: text.splice(0, text.length) });
+  }
+
+  return chunks;
 }
 
-export function getChipText(
+export function getChipText<Control>(
   dv: DataView,
   scriptPointerOffset: number,
   id: number,
-  eor: number
+  controlCodeHandlers: ControlCodeHandlers<Control | NewlineControl>
 ): number[] {
   if (id > 0xff) {
     scriptPointerOffset += 4;
     id -= 0x100;
   }
-  return getText(
+
+  return parseText(
     dv,
     dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
     id,
-    eor
-  );
+    controlCodeHandlers
+  ).flatMap((chunk) => ("t" in chunk ? chunk.t : []));
 }
 
 export function getChipIcon(

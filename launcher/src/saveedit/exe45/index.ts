@@ -10,6 +10,15 @@ const MASK_OFFSET = 0x3c84;
 const GAME_NAME_OFFSET = 0x4ba8;
 const CHECKSUM_OFFSET = 0x4b88;
 
+const CONTROL_CODE_HANDLERS = {
+  0xe5: (_dv: DataView, _offset: number) => {
+    return null;
+  },
+  0xe8: (_dv: DataView, offset: number) => {
+    return { offset, control: { c: "newline" } };
+  },
+};
+
 function getChecksum(dv: DataView) {
   return dv.getUint32(CHECKSUM_OFFSET, true);
 }
@@ -339,7 +348,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, 0xe5)
+  return getChipText(dv, scriptPointerOffset, id, CONTROL_CODE_HANDLERS)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {

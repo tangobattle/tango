@@ -1,7 +1,10 @@
 import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase, unlz77 } from "../rom";
+import {
+    ControlCodeHandlers, getChipIcon, getChipText, getPalette, NewlineControl, parseText,
+    ROMViewerBase, unlz77
+} from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -10,6 +13,23 @@ const SRAM_SIZE = 0x6710;
 const MASK_OFFSET = 0x1064;
 const GAME_NAME_OFFSET = 0x1c70;
 const CHECKSUM_OFFSET = 0x1c6c;
+
+type Control = NewlineControl | { c: "print"; v: number };
+
+const CONTROL_CODE_HANDLERS: ControlCodeHandlers<Control> = {
+  0xe6: (_dv: DataView, _offset: number) => {
+    return null;
+  },
+  0xe9: (_dv: DataView, offset: number) => {
+    return { offset, control: { c: "newline" } };
+  },
+  0xfa: (dv: DataView, offset: number) => {
+    return {
+      offset: offset + 3,
+      control: { c: "print", v: dv.getUint8(offset + 2) },
+    };
+  },
+};
 
 function getChecksum(dv: DataView) {
   return dv.getUint32(CHECKSUM_OFFSET, true);
@@ -707,10 +727,28 @@ class ROMViewer extends ROMViewerBase {
       const tmpl =
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcardEffects == null
-          ? textToChunks(
-              getText(detailsDv, 4, id, 0xe6),
-              this.saveeditInfo.charset
-            )
+          ? parseText(detailsDv, 4, id, CONTROL_CODE_HANDLERS).flatMap<
+              { t: string } | { p: number }
+            >((chunk) => {
+              if ("t" in chunk) {
+                return [
+                  {
+                    t: chunk.t
+                      .map((c) => this.saveeditInfo.charset[c])
+                      .join(""),
+                  },
+                ];
+              }
+              if ("c" in chunk) {
+                switch (chunk.c) {
+                  case "print":
+                    return [{ p: chunk.v }];
+                  case "newline":
+                    return [{ t: "\n" }];
+                }
+              }
+              return [];
+            })
           : this.saveeditInfo.strings.modcardEffects[id];
 
       effects.push({
@@ -743,8 +781,19 @@ class ROMViewer extends ROMViewerBase {
       name:
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcards == null
-          ? getText(new DataView(this.modcardTextArchive), 4, id, 0xe6)
-              .map((c) => this.saveeditInfo.charset[c])
+          ? parseText(
+              new DataView(this.modcardTextArchive),
+              4,
+              id,
+              CONTROL_CODE_HANDLERS
+            )
+              .flatMap((chunk) =>
+                "t" in chunk
+                  ? chunk.t.map((c) => this.saveeditInfo.charset[c])
+                  : "c" in chunk && chunk.c == "newline"
+                  ? ["\n"]
+                  : []
+              )
               .join("")
           : this.saveeditInfo.strings.modcards[id],
       mb: this.dv.getUint8(
@@ -806,16 +855,22 @@ class ROMViewer extends ROMViewerBase {
       name:
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.ncps == null
-          ? getText(
+          ? parseText(
               this.dv,
               this.dv.getUint32(
                 this.saveeditInfo.offsets.ncpNamesPointer,
                 true
               ) & ~0x08000000,
               id,
-              0xe6
+              CONTROL_CODE_HANDLERS
             )
-              .map((c) => this.saveeditInfo.charset[c])
+              .flatMap((chunk) =>
+                "t" in chunk
+                  ? chunk.t.map((c) => this.saveeditInfo.charset[c])
+                  : "c" in chunk && chunk.c == "newline"
+                  ? ["\n"]
+                  : []
+              )
               .join("")
           : this.saveeditInfo.strings.ncps[id],
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
@@ -854,7 +909,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, 0xe6)
+  return getChipText(dv, scriptPointerOffset, id, CONTROL_CODE_HANDLERS)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {
@@ -869,26 +924,3 @@ function getChipString(
 }
 
 type Chunk = { t: string } | { p: number };
-
-function textToChunks(raw: number[], charset: string): Chunk[] {
-  const tmpl: Chunk[] = [];
-  const text = [];
-  for (let i = 0; i < raw.length; ++i) {
-    if (raw[i] == 0xfa) {
-      // refusing to do any real interpreting of textpet
-      ++i;
-      ++i;
-      ++i;
-
-      tmpl.push({ t: text.join("") });
-      text.splice(0, text.length);
-      tmpl.push({ p: raw[i] });
-      continue;
-    }
-    text.push(charset[raw[i]]);
-  }
-  if (text.length > 0) {
-    tmpl.push({ t: text.join("") });
-  }
-  return tmpl;
-}
