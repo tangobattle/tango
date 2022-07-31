@@ -566,7 +566,14 @@
         title: null,
         order: 0,
         revisions: {
-          "0": { crc32: 0x6d961f82 },
+          "0": {
+            crc32: 0x6d961f82,
+            saveedit: {
+              offsets: {
+                chipData: 0x0000e450,
+              },
+            },
+          },
         },
       },
     },
