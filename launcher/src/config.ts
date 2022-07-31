@@ -67,7 +67,7 @@ function defaultConfig(app: Electron.App): Config {
     language: null,
     updateChannel: "latest",
     rustLogFilter: "",
-    videoFilter: "",
+    videoFilter: "null",
     windowScale: 3,
     maxQueueLength: 1200,
     inputMapping: {

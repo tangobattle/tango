@@ -14,11 +14,15 @@ import VideoFileOutlinedIcon from "@mui/icons-material/VideoFileOutlined";
 import WarningIcon from "@mui/icons-material/Warning";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import FormControl from "@mui/material/FormControl";
 import IconButton from "@mui/material/IconButton";
 import InputAdornment from "@mui/material/InputAdornment";
+import InputLabel from "@mui/material/InputLabel";
 import ListItem from "@mui/material/ListItem";
 import ListItemText from "@mui/material/ListItemText";
+import MenuItem from "@mui/material/MenuItem";
 import Modal from "@mui/material/Modal";
+import Select from "@mui/material/Select";
 import Slide from "@mui/material/Slide";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
@@ -189,6 +193,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
     replay: LoadedReplay;
     outPath: string;
     scaleFactor: number;
+    filter: string;
     state: "confirm" | "in-progress";
   } | null>(null);
 
@@ -290,6 +295,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                               replay: replay,
                               outPath: fn,
                               scaleFactor: 5,
+                              filter: "null",
                               state: "confirm",
                             }
                           : null
@@ -455,6 +461,44 @@ export default function ReplaysPane({ active }: { active: boolean }) {
                           />
                         </TableCell>
                       </TableRow>
+                      <TableRow>
+                        <TableCell
+                          component="th"
+                          sx={{ fontWeight: "bold", whiteSpace: "nowrap" }}
+                        >
+                          <Trans i18nKey="settings:video-filter" />
+                        </TableCell>
+                        <TableCell>
+                          <FormControl fullWidth size="small">
+                            <Select
+                              labelId="video-filter-label"
+                              value={dumpingReplay.filter}
+                              onChange={(e) => {
+                                setDumpingReplay((dr) => ({
+                                  ...dr!,
+                                  filter: e.target.value,
+                                }));
+                              }}
+                            >
+                              <MenuItem value="null">
+                                <Trans i18nKey="settings:video-filter.null" />
+                              </MenuItem>
+                              <MenuItem value="hq2x">
+                                <Trans i18nKey="settings:video-filter.hq2x" />
+                              </MenuItem>
+                              <MenuItem value="hq3x">
+                                <Trans i18nKey="settings:video-filter.hq3x" />
+                              </MenuItem>
+                              <MenuItem value="hq4x">
+                                <Trans i18nKey="settings:video-filter.hq4x" />
+                              </MenuItem>
+                              <MenuItem value="mmpx">
+                                <Trans i18nKey="settings:video-filter.mmpx" />
+                              </MenuItem>
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                   <Stack direction="row" justifyContent="flex-end">
@@ -486,6 +530,7 @@ export default function ReplaysPane({ active }: { active: boolean }) {
             )}
             outPath={dumpingReplay.outPath}
             scaleFactor={dumpingReplay.scaleFactor}
+            filter={dumpingReplay.filter}
             onExit={() => {
               setDumpingReplay(null);
             }}
