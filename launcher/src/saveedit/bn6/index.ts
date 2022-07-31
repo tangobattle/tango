@@ -2,8 +2,8 @@ import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTiles, NewlineControl, parseText, ParseTextOptions, ROMViewerBase,
-    unlz77
+    getChipText, getPalette, getTiles, NewlineControl, parseText, ParseTextOptions,
+    replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -916,18 +916,11 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-    .map((c) => charset[c])
-    .join("")
-    .replace(/[\u3000-\ue004]/g, (c) => {
-      switch (c) {
-        case "\ue000":
-          return "EX";
-        case "\ue001":
-          return "SP";
-      }
-      return c;
-    });
+  return replacePrivateUseCharacters(
+    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
+      .map((c) => charset[c])
+      .join("")
+  );
 }
 
 type Chunk = { t: string } | { p: number };

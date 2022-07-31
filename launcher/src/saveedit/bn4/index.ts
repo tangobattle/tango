@@ -1,7 +1,9 @@
 import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import { getChipText, getPalette, getTiles, parseText, ROMViewerBase } from "../rom";
+import {
+    getChipText, getPalette, getTiles, parseText, replacePrivateUseCharacters, ROMViewerBase
+} from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -625,16 +627,9 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-    .map((c) => charset[c])
-    .join("")
-    .replace(/[\u3000-\ue004]/g, (c) => {
-      switch (c) {
-        case "\ue001":
-          return "SP";
-        case "\ue002":
-          return "DS";
-      }
-      return c;
-    });
+  return replacePrivateUseCharacters(
+    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
+      .map((c) => charset[c])
+      .join("")
+  );
 }

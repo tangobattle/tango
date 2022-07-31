@@ -1,8 +1,8 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTiles, NewlineControl, parseText, ParseTextOptions, ROMViewerBase,
-    unlz77
+    getChipText, getPalette, getTiles, NewlineControl, parseText, ParseTextOptions,
+    replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
 import type { Chip, NavicustProgram, Modcard } from "../";
@@ -710,16 +710,9 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-    .map((c) => charset[c])
-    .join("")
-    .replace(/[\u3000-\ue004]/g, (c) => {
-      switch (c) {
-        case "\ue001":
-          return "SP";
-        case "\ue002":
-          return "DS";
-      }
-      return c;
-    });
+  return replacePrivateUseCharacters(
+    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
+      .map((c) => charset[c])
+      .join("")
+  );
 }

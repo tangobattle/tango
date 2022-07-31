@@ -1,5 +1,7 @@
 import { EditorBase } from "../base";
-import { getPalette, getTiles, parseText, ROMViewerBase } from "../rom";
+import {
+    getPalette, getTiles, parseText, replacePrivateUseCharacters, ROMViewerBase
+} from "../rom";
 
 import type { Chip } from "../";
 
@@ -237,7 +239,7 @@ class ROMViewer extends ROMViewerBase {
     const dataOffset = this.saveeditInfo.offsets.chipData + id * 0x1c;
 
     const codes = [];
-    for (let i = 0; i < 4; ++i) {
+    for (let i = 0; i < 5; ++i) {
       const code = this.dv.getUint8(dataOffset + 0x00 + i);
       if (code == 0xff) {
         continue;
@@ -246,21 +248,23 @@ class ROMViewer extends ROMViewerBase {
     }
 
     return {
-      name: parseText(
-        this.dv,
-        this.dv.getUint32(this.saveeditInfo.offsets.chipNamesPointer, true) &
-          ~0x08000000,
-        id,
-        PARSE_TEXT_OPTIONS
-      )
-        .flatMap((chunk) =>
-          "t" in chunk
-            ? chunk.t.map((c) => this.saveeditInfo.charset[c])
-            : "c" in chunk && chunk.c == "newline"
-            ? ["\n"]
-            : []
+      name: replacePrivateUseCharacters(
+        parseText(
+          this.dv,
+          this.dv.getUint32(this.saveeditInfo.offsets.chipNamesPointer, true) &
+            ~0x08000000,
+          id,
+          PARSE_TEXT_OPTIONS
         )
-        .join(""),
+          .flatMap((chunk) =>
+            "t" in chunk
+              ? chunk.t.map((c) => this.saveeditInfo.charset[c])
+              : "c" in chunk && chunk.c == "newline"
+              ? ["\n"]
+              : []
+          )
+          .join("")
+      ),
       codes: codes.join(""),
       icon: getTiles(
         this.dv,
