@@ -44,8 +44,8 @@ export class Editor extends EditorBase {
     return arr.buffer;
   }
 
-  getChecksum(dv: DataView) {
-    return getChecksum(dv);
+  getChecksum() {
+    return getChecksum(this.dv);
   }
 
   getROMInfo() {
