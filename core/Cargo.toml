@@ -8,6 +8,7 @@ members = [
     "mgba-sys",
     "keymaptool",
     "datachannel-wrapper",
+    "hqx",
     "sdl2-input-helper",
 ]
 

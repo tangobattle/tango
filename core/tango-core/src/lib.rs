@@ -17,3 +17,4 @@ pub mod shadow;
 pub mod signaling;
 pub mod tps;
 pub mod transport;
+pub mod video;

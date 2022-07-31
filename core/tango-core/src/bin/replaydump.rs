@@ -46,6 +46,9 @@ struct VideoCli {
 
     #[clap(short('m'), long, default_value = "-movflags +faststart")]
     ffmpeg_mux_flags: String,
+
+    #[clap(long)]
+    filter: String,
 }
 
 #[derive(clap::Parser)]
@@ -140,6 +143,14 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+    let filter = tango_core::video::filter_by_name(&args.filter).expect("unknown filter");
+    let (vbuf_width, vbuf_height) = filter.output_size((
+        mgba::gba::SCREEN_WIDTH as usize,
+        mgba::gba::SCREEN_HEIGHT as usize,
+    ));
+    let mut emu_vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
+    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
+
     let video_output = tempfile::NamedTempFile::new()?;
     let mut video_child = std::process::Command::new(&args.ffmpeg);
     video_child
@@ -152,7 +163,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
             "-pixel_format",
             "rgba",
             "-video_size",
-            "240x160",
+            &format!("{}x{}", vbuf_width, vbuf_height),
             "-framerate",
             "16777216/280896",
             "-i",
@@ -183,7 +194,6 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
 
     const SAMPLE_RATE: f64 = 48000.0;
     let mut samples = vec![0i16; SAMPLE_RATE as usize];
-    let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
     writeln!(
         std::io::stdout(),
         "{}",
@@ -222,10 +232,19 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
         }
         let samples = &samples[..(n * 2) as usize];
 
-        vbuf.copy_from_slice(core.video_buffer().unwrap());
-        for i in (0..vbuf.len()).step_by(4) {
-            vbuf[i + 3] = 0xff;
+        emu_vbuf.copy_from_slice(core.video_buffer().unwrap());
+        for i in (0..emu_vbuf.len()).step_by(4) {
+            emu_vbuf[i + 3] = 0xff;
         }
+        filter.apply(
+            &emu_vbuf,
+            &mut vbuf,
+            (
+                mgba::gba::SCREEN_WIDTH as usize,
+                mgba::gba::SCREEN_HEIGHT as usize,
+            ),
+        );
+
         video_child
             .stdin
             .as_mut()

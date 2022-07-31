@@ -45,6 +45,7 @@ hex = "0.4"
 bitvec = "1.0"
 png = "0.17"
 ab_glyph = "0.2"
+hqx = { path = "../hqx" }
 
 [build-dependencies]
 winres = "0.1"
