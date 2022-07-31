@@ -14,7 +14,7 @@ const PARSE_TEXT_OPTIONS = {
       return { offset, control: { c: "newline" } };
     },
   },
-  multibyteControlCode: 0xe5,
+  extendCharsetControlCode: 0xe5,
 };
 
 const SRAM_SIZE = 0x2308;

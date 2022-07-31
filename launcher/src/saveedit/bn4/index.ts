@@ -19,7 +19,7 @@ const PARSE_TEXT_OPTIONS = {
       return { offset, control: { c: "newline" } };
     },
   },
-  multibyteControlCode: 0xe4,
+  extendCharsetControlCode: 0xe4,
 };
 
 const GAME_INFOS: { [key: string]: GameInfo } = {

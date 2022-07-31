@@ -18,7 +18,7 @@ export function getPalette(dv: DataView, offset: number): Uint32Array {
 
 export interface ParseTextOptions<Control> {
   controlCodeHandlers: ControlCodeHandlers<Control>;
-  multibyteControlCode: number;
+  extendCharsetControlCode: number;
 }
 
 export type ControlCodeHandlers<Control> = {
@@ -64,7 +64,7 @@ export function parseText<Control>(
       continue;
     }
 
-    if (c == opts.multibyteControlCode) {
+    if (c == opts.extendCharsetControlCode) {
       c += dv.getUint8(offset++);
     }
 
