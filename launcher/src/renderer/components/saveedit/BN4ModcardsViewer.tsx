@@ -7,8 +7,8 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 
-import { BN4ModcardsEditor } from "../../saveedit";
-import { CopyButtonWithLabel } from "./CopyButton";
+import { BN4ModcardsEditor } from "../../../saveedit";
+import { CopyButtonWithLabel } from "../CopyButton";
 
 const SLOT_NAMES = ["0A", "0B", "0C", "0D", "0E", "0F"];
 

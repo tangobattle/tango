@@ -68,10 +68,10 @@ import { fallbackLng } from "../i18n";
 import { requestAttention } from "../platform";
 import { useConfig } from "./ConfigContext";
 import CopyButton from "./CopyButton";
-import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import { usePatches } from "./PatchesContext";
 import { useROMs } from "./ROMsContext";
-import SaveViewer from "./SaveViewer";
+import SaveViewer from "./saveedit";
+import { AllowEdits as AllowFolderEdits } from "./saveedit/FolderViewer";
 import Spinner from "./Spinner";
 import { useTempDir } from "./TempDirContext";
 

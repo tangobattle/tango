@@ -15,9 +15,9 @@ import TableRow from "@mui/material/TableRow";
 import Tooltip, { TooltipProps } from "@mui/material/Tooltip";
 import { lighten } from "@mui/system/colorManipulator";
 
-import array2d, { Array2D } from "../../array2d";
-import { NavicustEditor, NavicustProgram } from "../../saveedit";
-import { CopyButtonWithLabel } from "./CopyButton";
+import array2d, { Array2D } from "../../../array2d";
+import { NavicustEditor, NavicustProgram } from "../../../saveedit";
+import { CopyButtonWithLabel } from "../CopyButton";
 
 const NAVICUST_COLORS = {
   red: {

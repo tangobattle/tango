@@ -10,8 +10,8 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 import useTheme from "@mui/system/useTheme";
 
-import { Chip as ChipInfo, FolderEditor } from "../../saveedit";
-import { CopyButtonWithLabel } from "./CopyButton";
+import { Chip as ChipInfo, FolderEditor } from "../../../saveedit";
+import { CopyButtonWithLabel } from "../CopyButton";
 
 export enum AllowEdits {
   None,

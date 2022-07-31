@@ -41,11 +41,11 @@ import { useGetPatchPath, useGetROMPath } from "../../hooks";
 import { fallbackLng } from "../../i18n";
 import BattleStarter, { useGetNetplayCompatibility } from "../BattleStarter";
 import { useConfig } from "../ConfigContext";
-import { AllowEdits as AllowFolderEdits } from "../FolderViewer";
 import { usePatches } from "../PatchesContext";
 import { useROMs } from "../ROMsContext";
+import SaveViewer from "../saveedit";
+import { AllowEdits as AllowFolderEdits } from "../saveedit/FolderViewer";
 import { useSaves } from "../SavesContext";
-import SaveViewer from "../SaveViewer";
 
 function SaveSelector({
   initialSelection,

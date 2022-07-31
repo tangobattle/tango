@@ -310,6 +310,7 @@
                 chipNamesPointers: 0x0003cb98,
                 elementIconPalettePointer: 0x000d4ca0,
                 elementIconsPointer: 0x0000d4c94,
+                naviNamesPointer: 0x0005174c,
               },
             },
           },

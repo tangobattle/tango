@@ -19,9 +19,9 @@ import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../rom";
 import { Editor, editorClassForGameFamily } from "../../saveedit";
 import { useGetPatchPath, useGetROMPath } from "../hooks";
 import { useConfig } from "./ConfigContext";
-import { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import { usePatches } from "./PatchesContext";
-import SaveViewer from "./SaveViewer";
+import SaveViewer from "./saveedit";
+import { AllowEdits as AllowFolderEdits } from "./saveedit/FolderViewer";
 import Spinner from "./Spinner";
 
 export default function ReplayInfoDialog({

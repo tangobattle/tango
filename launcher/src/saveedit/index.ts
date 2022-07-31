@@ -13,6 +13,10 @@ export interface GameInfo {
   version: string | null;
 }
 
+export interface Navi {
+  name: string;
+}
+
 export interface Chip {
   name: string;
   codes: string;
@@ -60,6 +64,11 @@ export interface Editor {
   getModcardsEditor(): ModcardsEditor | null;
   getBN4ModcardsEditor(): BN4ModcardsEditor | null;
   rebuild(): void;
+}
+
+export interface NaviEditor {
+  getNavi(): number;
+  getNaviInfo(id: number): Navi;
 }
 
 export interface FolderEditor {

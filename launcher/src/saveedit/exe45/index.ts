@@ -1,7 +1,7 @@
 import { EditorBase } from "../base";
-import { getChipIcon, getChipText, getPalette, ROMViewerBase } from "../rom";
+import { getChipIcon, getChipText, getPalette, parseText, ROMViewerBase } from "../rom";
 
-import type { Chip } from "../";
+import type { Chip, Navi } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_START_OFFSET = 0x00;
@@ -160,6 +160,22 @@ class FolderEditor {
   }
 }
 
+class NaviEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getNavi() {
+    return this.editor.dv.getUint8(0x4ad1);
+  }
+
+  getNaviInfo(id: number) {
+    return this.editor.romViewer.getNaviInfo(id);
+  }
+}
+
 export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
@@ -239,16 +255,12 @@ export class Editor extends EditorBase {
     return this.dv.buffer;
   }
 
+  getNaviEditor() {
+    return new NaviEditor(this);
+  }
+
   getFolderEditor() {
     return new FolderEditor(this);
-  }
-
-  getNavicustEditor() {
-    return null;
-  }
-
-  getModcardsEditor() {
-    return null;
   }
 }
 
@@ -260,6 +272,7 @@ interface SaveeditInfo {
     chipNamesPointers: number;
     elementIconPalettePointer: number;
     elementIconsPointer: number;
+    naviNamesPointer: number;
   };
 }
 
@@ -338,6 +351,26 @@ class ROMViewer extends ROMViewerBase {
       class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x08)],
       mb: this.dv.getUint8(dataOffset + 0x06),
       damage: (flags & 0x2) != 0 ? this.dv.getUint8(dataOffset + 0x1a) : 0,
+    };
+  }
+
+  getNaviInfo(id: number): Navi {
+    return {
+      name: parseText(
+        this.dv,
+        this.dv.getUint32(this.saveeditInfo.offsets.naviNamesPointer, true) &
+          ~0x08000000,
+        id,
+        CONTROL_CODE_HANDLERS
+      )
+        .flatMap((chunk) =>
+          "t" in chunk
+            ? chunk.t.map((c) => this.saveeditInfo.charset[c])
+            : "c" in chunk && chunk.c == "newline"
+            ? ["\n"]
+            : []
+        )
+        .join(""),
     };
   }
 }

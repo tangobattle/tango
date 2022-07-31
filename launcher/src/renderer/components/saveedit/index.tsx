@@ -8,7 +8,7 @@ import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 
-import { Editor } from "../../saveedit";
+import { Editor } from "../../../saveedit";
 import BN4ModcardsViewer from "./BN4ModcardsViewer";
 import FolderViewer, { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";

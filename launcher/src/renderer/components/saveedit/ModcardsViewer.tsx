@@ -8,8 +8,8 @@ import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 
-import { ModcardsEditor } from "../../saveedit";
-import { CopyButtonWithLabel } from "./CopyButton";
+import { ModcardsEditor } from "../../../saveedit";
+import { CopyButtonWithLabel } from "../CopyButton";
 
 const DEBUFF_COLOR = "#b55ade";
 const BUFF_COLOR = "#ffbd18";
