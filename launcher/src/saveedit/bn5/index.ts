@@ -693,7 +693,9 @@ class ROMViewer extends ROMViewerBase {
             ? ["\n"]
             : []
         )
-        .join(""),
+        .join("")
+        .replace(/\n/g, " ")
+        .replace(/- /g, "-"),
       mb: this.dv.getUint8(
         this.saveeditInfo.offsets.modcardData + modcardStart + 0x01
       ),
