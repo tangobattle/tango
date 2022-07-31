@@ -408,21 +408,6 @@
         },
         order: 0,
         revisions: {
-          "0": {
-            crc32: 0x6a51907d,
-            saveedit: {
-              charset: ' 0123456789アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ熱斗ヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョヴABCDEFGHIJKLMNOPQRSTUVWXYZ*-×=:%?+空港ー!現実&、。.・;’"~/()「」_ƶ周あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわ研究をんがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽぁぃぅぇぉっゃゅょabcdefghijklmnopqrstuvwxyz容量全木�無嵐���駅匠不止彩起父集院一二三四五六七八陽十百千万脳上下左右手足日目月転各人入出山口光電気助科戸名前学校省祐室世界舟朗枚野悪路闇大小中自分間村花問異門城王兄帯道行街屋水見終丁桜先生長今了点井子言太属風会性持時勝赤毎年火改計画休体波回外地病正造値合戦川秋原町所用金郎作数方社攻撃力同武何発少味以白早暮面組後文字本階明才者立泉々ヶ連射国綾切土炎伊■',
-              offsets: {
-                chipData: 0x000196f8,
-                chipIconPalettePointer: 0x000159a0,
-                chipNamesPointers: 0x0004fa30,
-                ncpData: 0x000454fc,
-                ncpNamesPointer: 0x0004fa40,
-                elementIconPalettePointer: 0x00109830,
-                elementIconsPointer: 0x00109824,
-              },
-            },
-          },
           "1": {
             crc32: 0xcf0e8b05,
             saveedit: {
