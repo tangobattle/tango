@@ -125,7 +125,7 @@ export class Editor extends EditorBase {
     return arr.buffer;
   }
 
-  getArmorType() {
+  getArmor() {
     return this.dv.getUint8(0x0227);
   }
 
