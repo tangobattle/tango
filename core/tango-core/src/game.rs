@@ -90,6 +90,7 @@ impl InputMapping {
 }
 
 pub struct Game {
+    title_prefix: String,
     rt: tokio::runtime::Runtime,
     ipc_sender: Arc<Mutex<ipc::Sender>>,
     fps_counter: Arc<Mutex<tps::Counter>>,
@@ -130,10 +131,11 @@ impl Game {
         let audio = sdl.audio().unwrap();
 
         let event_loop = sdl.event_pump().unwrap();
+        let title_prefix = format!("Tango: {}", window_title);
 
         let window = video
             .window(
-                &format!("Tango: {}", window_title),
+                &title_prefix,
                 mgba::gba::SCREEN_WIDTH * window_scale,
                 mgba::gba::SCREEN_HEIGHT * window_scale,
             )
@@ -298,6 +300,7 @@ impl Game {
         canvas.set_integer_scale(true).unwrap();
 
         Ok(Game {
+            title_prefix,
             rt,
             ipc_sender,
             _audio_device: audio_device,
@@ -435,6 +438,19 @@ impl Game {
 
             self.canvas.clear();
             self.canvas.copy(&texture, None, None).unwrap();
+
+            let mut title = self.title_prefix.to_string();
+            if let Some(match_) = self.match_.as_ref() {
+                self.rt.block_on(async {
+                    if let Some(match_) = &*match_.lock().await {
+                        let round_state = match_.lock_round_state().await;
+                        if let Some(round) = round_state.round.as_ref() {
+                            title = format!("{} [P{}]", title, round.local_player_index() + 1);
+                        }
+                    }
+                });
+            }
+            self.canvas.window_mut().set_title(&title).unwrap();
 
             if show_debug {
                 let mut lines = vec![format!(
