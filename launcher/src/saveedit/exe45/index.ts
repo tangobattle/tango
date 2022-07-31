@@ -276,6 +276,8 @@ interface SaveeditInfo {
     elementIconPalettePointer: number;
     elementIconsPointer: number;
     naviNamesPointer: number;
+    emblemIconsPointers: number;
+    emblemIconPalettePointers: number;
   };
 }
 
@@ -376,6 +378,22 @@ class ROMViewer extends ROMViewerBase {
             : []
         )
         .join(""),
+      emblem: getTiles(
+        this.dv,
+        getPalette(
+          this.dv,
+          this.dv.getUint32(
+            this.saveeditInfo.offsets.emblemIconPalettePointers + id * 0x4,
+            true
+          ) & ~0x08000000
+        ),
+        this.dv.getUint32(
+          this.saveeditInfo.offsets.emblemIconsPointers + id * 0x4,
+          true
+        ) & ~0x08000000,
+        2,
+        2
+      ),
     };
   }
 }

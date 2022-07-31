@@ -121,7 +121,8 @@ export function getTiles(
       const x = tileX * 8 + (i % 8);
       const y = tileY * 8 + Math.floor(i / 8);
 
-      pixels[y * (tileW * 8) + x] = palette[paletteIndex];
+      pixels[y * (tileW * 8) + x] =
+        paletteIndex > 0 ? palette[paletteIndex] : 0;
     }
   }
 

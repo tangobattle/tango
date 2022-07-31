@@ -311,6 +311,8 @@
                 elementIconPalettePointer: 0x000d4ca0,
                 elementIconsPointer: 0x0000d4c94,
                 naviNamesPointer: 0x0005174c,
+                emblemIconsPointers: 0x00021a50,
+                emblemIconPalettePointers: 0x000219f4,
               },
             },
           },

@@ -15,6 +15,7 @@ export interface GameInfo {
 
 export interface Navi {
   name: string;
+  emblem: ImageData;
 }
 
 export interface Chip {
