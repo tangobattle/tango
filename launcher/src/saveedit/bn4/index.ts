@@ -86,14 +86,18 @@ class BN4ModcardsEditor {
   }
 
   getModcard(slot: number) {
-    const id = this.editor.dv.getUint8(0x464c + slot);
-    if (id != 0xff) {
-      return { id, enabled: true };
+    {
+      const id = this.editor.dv.getUint8(0x464c + slot);
+      if (id != 0xff) {
+        return { id, enabled: true };
+      }
     }
 
-    const id2 = this.editor.dv.getUint8(0x464c + 6 + slot);
-    if (id2 != 0xff) {
-      return { id, enabled: false };
+    {
+      const id = this.editor.dv.getUint8(0x464c + 7 + slot);
+      if (id != 0xff) {
+        return { id, enabled: false };
+      }
     }
 
     return null;
