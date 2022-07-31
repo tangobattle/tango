@@ -1,5 +1,21 @@
 import { EditorBase } from "../base";
-import { ROMViewerBase } from "../rom";
+import { getPalette, getTiles, parseText, ROMViewerBase } from "../rom";
+
+import type { Chip } from "../";
+
+const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+const PARSE_TEXT_OPTIONS = {
+  controlCodeHandlers: {
+    0xe7: (_dv: DataView, _offset: number) => {
+      return null;
+    },
+    0xe8: (_dv: DataView, offset: number) => {
+      return { offset, control: { c: "newline" } };
+    },
+  },
+  multibyteControlCode: 0xe5,
+};
 
 const SRAM_SIZE = 0x2308;
 const GAME_NAME_OFFSET = 0x03fc;
@@ -23,14 +39,79 @@ function computeChecksum(dv: DataView) {
   return checksum;
 }
 
+class FolderEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getFolderCount() {
+    return 1;
+  }
+
+  getEquippedFolder() {
+    return 0;
+  }
+
+  isRegularChipInPlace() {
+    return false;
+  }
+
+  getRegularChipIndex(_folderIdx: number) {
+    return null;
+  }
+
+  getTagChip1Index() {
+    // Not supported.
+    return null;
+  }
+
+  getTagChip2Index() {
+    // Not supported.
+    return null;
+  }
+
+  getChipInfo(id: number) {
+    return this.editor.romViewer.getChipInfo(id);
+  }
+
+  getChipRaw(folderIdx: number, chipIdx: number) {
+    return {
+      id: this.editor.dv.getUint8(0x01c0 + chipIdx * 2),
+      variant: this.editor.dv.getUint8(0x01c0 + chipIdx * 2 + 1),
+    };
+  }
+
+  getChip(folderIdx: number, chipIdx: number) {
+    const rawChip = this.getChipRaw(folderIdx, chipIdx);
+    if (rawChip == null) {
+      return null;
+    }
+
+    return {
+      id: rawChip.id,
+      code: CHIP_CODES[rawChip.variant],
+    };
+  }
+
+  getElementIcons() {
+    return this.editor.romViewer.getElementIcons();
+  }
+}
+
 export class Editor extends EditorBase {
   dv: DataView;
-  private romViewer: ROMViewer;
+  romViewer: ROMViewer;
 
-  constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, _saveeditInfo: any) {
+  constructor(
+    buffer: ArrayBuffer,
+    romBuffer: ArrayBuffer,
+    saveeditInfo: SaveeditInfo
+  ) {
     super();
     this.dv = new DataView(buffer);
-    this.romViewer = new ROMViewer(romBuffer);
+    this.romViewer = new ROMViewer(romBuffer, saveeditInfo);
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -93,9 +174,101 @@ export class Editor extends EditorBase {
     throw "unknown game name: " + gn;
   }
 
+  getFolderEditor() {
+    return new FolderEditor(this);
+  }
+
   rebuild() {
     // TODO
   }
 }
 
-class ROMViewer extends ROMViewerBase {}
+interface SaveeditInfo {
+  charset: string;
+  offsets: {
+    chipData: number;
+    chipNamesPointer: number;
+    chipIconPalettePointer: number;
+    elementIconPalettePointer: number;
+    elementIconsPointer: number;
+  };
+}
+
+class ROMViewer extends ROMViewerBase {
+  private saveeditInfo: SaveeditInfo;
+  private chipIconPalette: Uint32Array;
+  private elementIconPalette: Uint32Array;
+
+  constructor(buffer: ArrayBuffer, saveeditInfo: SaveeditInfo) {
+    super(buffer);
+    this.saveeditInfo = saveeditInfo;
+    this.chipIconPalette = getPalette(
+      this.dv,
+      this.dv.getUint32(
+        this.saveeditInfo.offsets.chipIconPalettePointer,
+        true
+      ) & ~0x08000000
+    );
+    this.elementIconPalette = getPalette(
+      this.dv,
+      this.dv.getUint32(saveeditInfo.offsets.elementIconPalettePointer, true) &
+        ~0x08000000
+    );
+  }
+
+  getElementIcons(): ImageData[] {
+    const icons: ImageData[] = [];
+    const start =
+      this.dv.getUint32(this.saveeditInfo.offsets.elementIconsPointer, true) &
+      ~0x08000000;
+    for (let i = 0; i < 5; ++i) {
+      icons.push(
+        getTiles(this.dv, this.elementIconPalette, start + i * 0x80, 2, 2)
+      );
+    }
+    return icons;
+  }
+
+  getChipInfo(id: number): Chip {
+    const dataOffset = this.saveeditInfo.offsets.chipData + id * 0x1c;
+
+    const codes = [];
+    for (let i = 0; i < 4; ++i) {
+      const code = this.dv.getUint8(dataOffset + 0x00 + i);
+      if (code == 0xff) {
+        continue;
+      }
+      codes.push(CHIP_CODES[code]);
+    }
+
+    return {
+      name: parseText(
+        this.dv,
+        this.dv.getUint32(this.saveeditInfo.offsets.chipNamesPointer, true) &
+          ~0x08000000,
+        id,
+        PARSE_TEXT_OPTIONS
+      )
+        .flatMap((chunk) =>
+          "t" in chunk
+            ? chunk.t.map((c) => this.saveeditInfo.charset[c])
+            : "c" in chunk && chunk.c == "newline"
+            ? ["\n"]
+            : []
+        )
+        .join(""),
+      codes: codes.join(""),
+      icon: getTiles(
+        this.dv,
+        this.chipIconPalette,
+        this.dv.getUint32(dataOffset + 0x10, true) & ~0x08000000,
+        2,
+        2
+      ),
+      element: this.dv.getUint8(dataOffset + 0x05),
+      class: "standard",
+      mb: 0,
+      damage: this.dv.getUint16(dataOffset + 0x0c, true),
+    };
+  }
+}

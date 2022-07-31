@@ -1,9 +1,7 @@
 import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import {
-    ControlCodeHandlers, getChipText, getPalette, getTiles, NewlineControl, parseText, ROMViewerBase
-} from "../rom";
+import { getChipText, getPalette, getTiles, parseText, ROMViewerBase } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -12,15 +10,16 @@ const MASK_OFFSET = 0x1554;
 const GAME_NAME_OFFSET = 0x2208;
 const CHECKSUM_OFFSET = 0x21e8;
 
-type Control = NewlineControl;
-
-const CONTROL_CODE_HANDLERS: ControlCodeHandlers<Control> = {
-  0xe5: (_dv: DataView, _offset: number) => {
-    return null;
+const PARSE_TEXT_OPTIONS = {
+  controlCodeHandlers: {
+    0xe5: (_dv: DataView, _offset: number) => {
+      return null;
+    },
+    0xe8: (_dv: DataView, offset: number) => {
+      return { offset, control: { c: "newline" } };
+    },
   },
-  0xe8: (_dv: DataView, offset: number) => {
-    return { offset, control: { c: "newline" } };
-  },
+  multibyteControlCode: 0xe4,
 };
 
 const GAME_INFOS: { [key: string]: GameInfo } = {
@@ -580,7 +579,7 @@ class ROMViewer extends ROMViewerBase {
         this.dv.getUint32(this.saveeditInfo.offsets.ncpNamesPointer, true) &
           ~0x08000000,
         id,
-        CONTROL_CODE_HANDLERS
+        PARSE_TEXT_OPTIONS
       )
         .flatMap((chunk) =>
           "t" in chunk
@@ -626,7 +625,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, CONTROL_CODE_HANDLERS)
+  return getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {

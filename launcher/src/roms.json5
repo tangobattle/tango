@@ -606,7 +606,19 @@
         title: null,
         order: 0,
         revisions: {
-          "0": { crc32: 0x1d347971 },
+          "0": {
+            crc32: 0x1d347971,
+            saveedit: {
+              charset: " 0123456789�����������������������������������������������������������������������������������-ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz����",
+              offsets: {
+                chipData: 0x00007d70,
+                chipNamesPointer: 0x000145f4,
+                elementIconsPointer: 0x0001a688,
+                elementIconPalettePointer: 0x00005a1c,
+                chipIconPalettePointer: 0x00015ebc,
+              },
+            },
+          },
         },
       },
     },
@@ -627,7 +639,19 @@
         title: null,
         order: 0,
         revisions: {
-          "0": { crc32: 0xd9516e50 },
+          "0": {
+            crc32: 0xd9516e50,
+            saveedit: {
+              charset: " 0123456789アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヰヱヲンガギグゲゴザジズゼゾダヂヅデドバビブベボパピプペポァィゥェォッャュョヴーABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzあいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわゐゑをんがぎぐげござじずぜぞだぢづでどばびぶべぼぱぴぷぺぽぁぃぅぇぉっゃゅょ!‼?“„#♭$%&'()~^\"∧∨<>、。.・/�_「」����⊂⊃∩�↑→↓←∀αβ@★♥♪℃♂♀＿｜￣:;…¥+×÷=※*○●◎□■◇◆△▲▽▼▶◀☛止彩起父博士一二三四五六七八九十百千万億上下左右手足日目月顔頭人入出山口光電気話広雨名前学校保健室世界体育館信号機器大小中自分間開閉問聞門熱斗要住道行街屋水見家教走先生長今事点女子言会来¼��思時円知毎年火朝計画休曜帰回外多考正死値合戦争秋原町天用金男作数方社攻撃力同武何発少度以楽早暮面組後文字本階岩才者立官庁ヶ連射国局耳土炎伊集院各科省祐朗枚永川花兄茶",
+              offsets: {
+                chipData: 0x00007d3c,
+                chipNamesPointer: 0x00014578,
+                elementIconsPointer: 0x0001a5a4,
+                elementIconPalettePointer: 0x00005a0c,
+                chipIconPalettePointer: 0x00015e40,
+              },
+            },
+          },
         },
       },
     },

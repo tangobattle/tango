@@ -10,13 +10,16 @@ const MASK_OFFSET = 0x3c84;
 const GAME_NAME_OFFSET = 0x4ba8;
 const CHECKSUM_OFFSET = 0x4b88;
 
-const CONTROL_CODE_HANDLERS = {
-  0xe5: (_dv: DataView, _offset: number) => {
-    return null;
+const PARSE_TEXT_OPTIONS = {
+  controlCodeHandlers: {
+    0xe5: (_dv: DataView, _offset: number) => {
+      return null;
+    },
+    0xe8: (_dv: DataView, offset: number) => {
+      return { offset, control: { c: "newline" } };
+    },
   },
-  0xe8: (_dv: DataView, offset: number) => {
-    return { offset, control: { c: "newline" } };
-  },
+  multibyteControlCode: 0xe4,
 };
 
 function getChecksum(dv: DataView) {
@@ -363,7 +366,7 @@ class ROMViewer extends ROMViewerBase {
         this.dv.getUint32(this.saveeditInfo.offsets.naviNamesPointer, true) &
           ~0x08000000,
         id,
-        CONTROL_CODE_HANDLERS
+        PARSE_TEXT_OPTIONS
       )
         .flatMap((chunk) =>
           "t" in chunk
@@ -383,7 +386,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, CONTROL_CODE_HANDLERS)
+  return getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {

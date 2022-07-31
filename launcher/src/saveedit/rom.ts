@@ -16,6 +16,11 @@ export function getPalette(dv: DataView, offset: number): Uint32Array {
   return palette;
 }
 
+export interface ParseTextOptions<Control> {
+  controlCodeHandlers: ControlCodeHandlers<Control>;
+  multibyteControlCode: number;
+}
+
 export type ControlCodeHandlers<Control> = {
   [code: number]: (
     dv: DataView,
@@ -34,7 +39,7 @@ export function parseText<Control>(
   dv: DataView,
   scriptOffset: number,
   id: number,
-  controlCodeHandlers: ControlCodeHandlers<Control>
+  opts: ParseTextOptions<Control>
 ): Array<{ t: number[] } | Control> {
   const chunks: Array<{ t: number[] } | Control> = [];
 
@@ -46,7 +51,7 @@ export function parseText<Control>(
   while (offset < dv.byteLength && offset < nextOffset) {
     let c = dv.getUint8(offset++);
 
-    const handler = controlCodeHandlers[c];
+    const handler = opts.controlCodeHandlers[c];
     if (handler) {
       chunks.push({ t: text.splice(0, text.length) });
       const r = handler(dv, offset);
@@ -59,7 +64,7 @@ export function parseText<Control>(
       continue;
     }
 
-    if (c == 0xe4) {
+    if (c == opts.multibyteControlCode) {
       c += dv.getUint8(offset++);
     }
 
@@ -77,7 +82,7 @@ export function getChipText<Control>(
   dv: DataView,
   scriptPointerOffset: number,
   id: number,
-  controlCodeHandlers: ControlCodeHandlers<Control | NewlineControl>
+  opts: ParseTextOptions<Control | NewlineControl>
 ): number[] {
   if (id > 0xff) {
     scriptPointerOffset += 4;
@@ -88,7 +93,7 @@ export function getChipText<Control>(
     dv,
     dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
     id,
-    controlCodeHandlers
+    opts
   ).flatMap((chunk) => ("t" in chunk ? chunk.t : []));
 }
 

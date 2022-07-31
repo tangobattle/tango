@@ -2,8 +2,8 @@ import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    ControlCodeHandlers, getChipText, getPalette, getTiles, NewlineControl, parseText,
-    ROMViewerBase, unlz77
+    getChipText, getPalette, getTiles, NewlineControl, parseText, ParseTextOptions, ROMViewerBase,
+    unlz77
 } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -16,19 +16,22 @@ const CHECKSUM_OFFSET = 0x1c6c;
 
 type Control = NewlineControl | { c: "print"; v: number };
 
-const CONTROL_CODE_HANDLERS: ControlCodeHandlers<Control> = {
-  0xe6: (_dv: DataView, _offset: number) => {
-    return null;
+const PARSE_TEXT_OPTIONS: ParseTextOptions<Control> = {
+  controlCodeHandlers: {
+    0xe6: (_dv: DataView, _offset: number) => {
+      return null;
+    },
+    0xe9: (_dv: DataView, offset: number) => {
+      return { offset, control: { c: "newline" } };
+    },
+    0xfa: (dv: DataView, offset: number) => {
+      return {
+        offset: offset + 3,
+        control: { c: "print", v: dv.getUint8(offset + 2) },
+      };
+    },
   },
-  0xe9: (_dv: DataView, offset: number) => {
-    return { offset, control: { c: "newline" } };
-  },
-  0xfa: (dv: DataView, offset: number) => {
-    return {
-      offset: offset + 3,
-      control: { c: "print", v: dv.getUint8(offset + 2) },
-    };
-  },
+  multibyteControlCode: 0xe4,
 };
 
 function getChecksum(dv: DataView) {
@@ -727,7 +730,7 @@ class ROMViewer extends ROMViewerBase {
       const tmpl =
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcardEffects == null
-          ? parseText(detailsDv, 4, id, CONTROL_CODE_HANDLERS).flatMap<
+          ? parseText(detailsDv, 4, id, PARSE_TEXT_OPTIONS).flatMap<
               { t: string } | { p: number }
             >((chunk) => {
               if ("t" in chunk) {
@@ -785,7 +788,7 @@ class ROMViewer extends ROMViewerBase {
               new DataView(this.modcardTextArchive),
               4,
               id,
-              CONTROL_CODE_HANDLERS
+              PARSE_TEXT_OPTIONS
             )
               .flatMap((chunk) =>
                 "t" in chunk
@@ -864,7 +867,7 @@ class ROMViewer extends ROMViewerBase {
                 true
               ) & ~0x08000000,
               id,
-              CONTROL_CODE_HANDLERS
+              PARSE_TEXT_OPTIONS
             )
               .flatMap((chunk) =>
                 "t" in chunk
@@ -911,7 +914,7 @@ function getChipString(
   scriptPointerOffset: number,
   id: number
 ): string {
-  return getChipText(dv, scriptPointerOffset, id, CONTROL_CODE_HANDLERS)
+  return getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
     .map((c) => charset[c])
     .join("")
     .replace(/[\u3000-\ue004]/g, (c) => {

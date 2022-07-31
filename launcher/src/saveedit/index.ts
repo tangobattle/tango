@@ -125,7 +125,7 @@ export function editorClassForGameFamily(family: string): EditorClass {
   switch (family) {
     case "bn1":
     case "exe1":
-      return bn2.Editor;
+      return bn1.Editor;
     case "bn2":
     case "exe2":
       return bn2.Editor;
