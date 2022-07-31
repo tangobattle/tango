@@ -98,7 +98,6 @@ export interface NavicustEditor {
 export interface ModcardsEditor {
   getModcardInfo(id: number): Modcard | null;
   getModcardCount(): number;
-  setModcardCount(n: number): void;
   getModcard(i: number): { id: number; enabled: boolean } | null;
 }
 

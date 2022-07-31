@@ -1,7 +1,7 @@
-import type { Chip, NavicustProgram } from "../";
+import type { Chip, NavicustProgram, Modcard } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase } from "../rom";
+import { getChipIcon, getChipText, getPalette, getText, ROMViewerBase, unlz77 } from "../rom";
 
 export interface GameInfo {
   region: "US" | "JP";
@@ -240,6 +240,34 @@ class FolderEditor {
   }
 }
 
+class ModcardsEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getModcardInfo(id: number) {
+    return this.editor.romViewer.getModcardInfo(id)!;
+  }
+
+  getModcardCount() {
+    return this.editor.dv.getUint8(0x79a0);
+  }
+
+  getModcard(i: number) {
+    if (i >= this.getModcardCount()) {
+      return null;
+    }
+
+    const c = this.editor.dv.getUint8(0x79d0 + i);
+    return {
+      id: c & 0x7f,
+      enabled: !(c >> 7),
+    };
+  }
+}
+
 export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
@@ -382,6 +410,10 @@ export class Editor extends EditorBase {
   getNavicustEditor() {
     return new NavicustEditor(this);
   }
+
+  getModcardsEditor() {
+    return new ModcardsEditor(this);
+  }
 }
 
 interface SaveeditInfo {
@@ -394,6 +426,9 @@ interface SaveeditInfo {
     ncpNamesPointer: number;
     elementIconPalettePointer: number;
     elementIconsPointer: number;
+    modcardData: number;
+    modcardNamesPointer: number;
+    modcardDetailsNamesPointer: number;
   };
 }
 
@@ -402,6 +437,8 @@ class ROMViewer extends ROMViewerBase {
   private elementIconPalette: Uint32Array;
   private saveDv: DataView;
   private saveeditInfo: SaveeditInfo;
+  private modcardTextArchive: ArrayBuffer;
+  private modcardDetailsTextArchive: ArrayBuffer;
 
   constructor(
     buffer: ArrayBuffer,
@@ -422,6 +459,22 @@ class ROMViewer extends ROMViewerBase {
       this.dv,
       this.dv.getUint32(saveeditInfo.offsets.elementIconPalettePointer, true) &
         ~0x08000000
+    );
+    this.modcardTextArchive = unlz77(
+      new DataView(
+        buffer,
+        this.dv.getUint32(saveeditInfo.offsets.modcardNamesPointer, true) &
+          ~0x88000000
+      )
+    );
+    this.modcardDetailsTextArchive = unlz77(
+      new DataView(
+        buffer,
+        this.dv.getUint32(
+          saveeditInfo.offsets.modcardDetailsNamesPointer,
+          true
+        ) & ~0x88000000
+      )
     );
   }
 
@@ -523,6 +576,74 @@ class ROMViewer extends ROMViewerBase {
       ),
     };
   }
+
+  getModcardInfo(id: number): Modcard | null {
+    const modcardStart = this.dv.getUint16(
+      this.saveeditInfo.offsets.modcardData + id * 2,
+      true
+    );
+
+    const modcardEnd = this.dv.getUint16(
+      this.saveeditInfo.offsets.modcardData + (id + 1) * 2,
+      true
+    );
+
+    const detailsDv = new DataView(this.modcardDetailsTextArchive);
+
+    const effects = [];
+
+    for (let offset = modcardStart + 3; offset < modcardEnd; offset += 3) {
+      const id = this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + offset
+      );
+      const parameter = this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + offset + 1
+      );
+      const debuff = !!this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + offset + 2
+      );
+
+      const tmpl = textToChunks(
+        getText(detailsDv, 4, id, 0xe6),
+        this.saveeditInfo.charset
+      );
+
+      effects.push({
+        id,
+        name: tmpl
+          .map((chunk) => {
+            if ("t" in chunk) {
+              return chunk.t;
+            }
+            if ("p" in chunk) {
+              if (chunk.p == 1) {
+                let p = parameter;
+                if (id == 0x00 || id == 0x02) {
+                  p = p * 10;
+                }
+                return p.toString();
+              }
+              return "";
+            }
+            return "";
+          })
+          .join(""),
+        parameter,
+        isAbility: id > 0x15,
+        debuff,
+      });
+    }
+
+    return {
+      name: getText(new DataView(this.modcardTextArchive), 4, id, 0xe6)
+        .map((c) => this.saveeditInfo.charset[c])
+        .join(""),
+      mb: this.dv.getUint8(
+        this.saveeditInfo.offsets.modcardData + modcardStart + 0x01
+      ),
+      effects,
+    };
+  }
 }
 
 function getChipString(
@@ -543,4 +664,29 @@ function getChipString(
       }
       return c;
     });
+}
+
+type Chunk = { t: string } | { p: number };
+
+function textToChunks(raw: number[], charset: string): Chunk[] {
+  const tmpl: Chunk[] = [];
+  const text = [];
+  for (let i = 0; i < raw.length; ++i) {
+    if (raw[i] == 0xfa) {
+      // refusing to do any real interpreting of textpet
+      ++i;
+      ++i;
+      ++i;
+
+      tmpl.push({ t: text.join("") });
+      text.splice(0, text.length);
+      tmpl.push({ p: raw[i] });
+      continue;
+    }
+    text.push(charset[raw[i]]);
+  }
+  if (text.length > 0) {
+    tmpl.push({ t: text.join("") });
+  }
+  return tmpl;
 }
