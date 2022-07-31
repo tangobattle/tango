@@ -9,6 +9,7 @@ members = [
     "keymaptool",
     "datachannel-wrapper",
     "hqx",
+    "mmpx",
     "sdl2-input-helper",
 ]
 

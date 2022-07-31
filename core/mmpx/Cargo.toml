@@ -1,0 +1,24 @@
+[package]
+name = "mmpx"
+version = "0.1.0"
+authors = ["Kyle Moore <moore.kyle39@gmail.com>"]
+license = "MIT"
+description = "image magnification algorithm"
+readme = "README.md"
+homepage = "https://github.com/pierogis/mmpx-rs"
+repository = "https://github.com/pierogis/mmpx-rs"
+keywords = ["pixelart", "scaling", "image"]
+categories = [
+    "command-line-utilities",
+    "game-development",
+    "graphics",
+    "multimedia::images",
+]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+image = "0.24"
+rayon = "1.5.0"
+structopt = "0.3.21"

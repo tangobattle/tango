@@ -46,6 +46,8 @@ bitvec = "1.0"
 png = "0.17"
 ab_glyph = "0.2"
 hqx = { path = "../hqx" }
+mmpx = { path = "../mmpx" }
+image = "0.24"
 
 [build-dependencies]
 winres = "0.1"
