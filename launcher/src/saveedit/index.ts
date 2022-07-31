@@ -59,6 +59,7 @@ export interface EditorClass {
 
 export interface Editor {
   getROMInfo(): ROMInfo;
+  getNaviEditor(): NaviEditor | null;
   getFolderEditor(): FolderEditor | null;
   getNavicustEditor(): NavicustEditor | null;
   getModcardsEditor(): ModcardsEditor | null;

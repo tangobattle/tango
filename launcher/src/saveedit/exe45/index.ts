@@ -1,5 +1,5 @@
 import { EditorBase } from "../base";
-import { getChipIcon, getChipText, getPalette, parseText, ROMViewerBase } from "../rom";
+import { getChipText, getPalette, getTiles, parseText, ROMViewerBase } from "../rom";
 
 import type { Chip, Navi } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -311,7 +311,7 @@ class ROMViewer extends ROMViewerBase {
       ~0x08000000;
     for (let i = 0; i < 13; ++i) {
       icons.push(
-        getChipIcon(this.dv, this.elementIconPalette, start + i * 0x80)
+        getTiles(this.dv, this.elementIconPalette, start + i * 0x80, 2, 2)
       );
     }
     return icons;
@@ -341,11 +341,13 @@ class ROMViewer extends ROMViewerBase {
       codes: codes.join(""),
       icon:
         iconPtr >= 0x08000000
-          ? getChipIcon(this.dv, this.chipIconPalette, iconPtr & ~0x08000000)
-          : getChipIcon(
+          ? getTiles(this.dv, this.chipIconPalette, iconPtr & ~0x08000000, 2, 2)
+          : getTiles(
               this.saveDv,
               this.chipIconPalette,
-              iconPtr & ~0x02000000
+              iconPtr & ~0x02000000,
+              2,
+              2
             ),
       element: this.dv.getUint8(dataOffset + 0x07),
       class: ["standard", "mega", "giga"][this.dv.getUint8(dataOffset + 0x08)],

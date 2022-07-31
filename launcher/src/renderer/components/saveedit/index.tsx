@@ -13,6 +13,7 @@ import BN4ModcardsViewer from "./BN4ModcardsViewer";
 import FolderViewer, { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
+import NaviViewer from "./NaviViewer";
 
 export default function SaveViewer({
   editor,
@@ -21,6 +22,7 @@ export default function SaveViewer({
   editor: Editor;
   allowFolderEdits: AllowFolderEdits;
 }) {
+  const naviEditor = editor.getNaviEditor();
   const navicustEditor = editor.getNavicustEditor();
   const folderEditor = editor.getFolderEditor();
   const modcardsEditor = editor.getModcardsEditor();
@@ -28,20 +30,27 @@ export default function SaveViewer({
 
   const availableTabs = React.useMemo(
     () => [
+      ...(naviEditor != null ? ["navi"] : []),
       ...(navicustEditor != null ? ["navicust"] : []),
       ...(folderEditor != null ? ["folder"] : []),
       ...(modcardsEditor != null || bn4ModcardsEditor != null
         ? ["modcards"]
         : []),
     ],
-    [navicustEditor, folderEditor, modcardsEditor, bn4ModcardsEditor]
+    [
+      naviEditor,
+      navicustEditor,
+      folderEditor,
+      modcardsEditor,
+      bn4ModcardsEditor,
+    ]
   );
 
-  const [tab, setTab] = React.useState("navicust");
+  const [tab, setTab] = React.useState("navi");
 
   React.useEffect(() => {
     if (availableTabs.indexOf(tab) == -1) {
-      setTab(availableTabs[0] || "navicust");
+      setTab(availableTabs[0] || "navi");
     }
   }, [tab, availableTabs]);
 
@@ -56,6 +65,9 @@ export default function SaveViewer({
               setTab(value);
             }}
           >
+            {naviEditor != null ? (
+              <Tab label={<Trans i18nKey="play:tab.navi" />} value="navi" />
+            ) : null}
             {navicustEditor != null ? (
               <Tab
                 label={<Trans i18nKey="play:tab.navicust" />}
@@ -78,6 +90,9 @@ export default function SaveViewer({
               />
             ) : null}
           </Tabs>
+          {naviEditor != null ? (
+            <NaviViewer editor={naviEditor} active={tab == "navi"} />
+          ) : null}
           {navicustEditor != null ? (
             <NavicustViewer
               romName={editor.getROMInfo().name}

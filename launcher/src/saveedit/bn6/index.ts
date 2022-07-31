@@ -2,7 +2,7 @@ import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    ControlCodeHandlers, getChipIcon, getChipText, getPalette, NewlineControl, parseText,
+    ControlCodeHandlers, getChipText, getPalette, getTiles, NewlineControl, parseText,
     ROMViewerBase, unlz77
 } from "../rom";
 
@@ -684,7 +684,7 @@ class ROMViewer extends ROMViewerBase {
       ~0x08000000;
     for (let i = 0; i < 11; ++i) {
       icons.push(
-        getChipIcon(this.dv, this.elementIconPalette, start + i * 0x80)
+        getTiles(this.dv, this.elementIconPalette, start + i * 0x80, 2, 2)
       );
     }
     return icons;
@@ -832,11 +832,13 @@ class ROMViewer extends ROMViewerBase {
       codes: codes.join(""),
       icon:
         iconPtr >= 0x08000000
-          ? getChipIcon(this.dv, this.chipIconPalette, iconPtr & ~0x08000000)
-          : getChipIcon(
+          ? getTiles(this.dv, this.chipIconPalette, iconPtr & ~0x08000000, 2, 2)
+          : getTiles(
               this.saveDv,
               this.chipIconPalette,
-              iconPtr & ~0x02000000
+              iconPtr & ~0x02000000,
+              2,
+              2
             ),
 
       element: this.dv.getUint8(dataOffset + 0x06),

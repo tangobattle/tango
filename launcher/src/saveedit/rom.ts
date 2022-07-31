@@ -92,20 +92,22 @@ export function getChipText<Control>(
   ).flatMap((chunk) => ("t" in chunk ? chunk.t : []));
 }
 
-export function getChipIcon(
+export function getTiles(
   dv: DataView,
   palette: Uint32Array,
-  chipIconOffset: number
+  startOffset: number,
+  tileW: number,
+  tileH: number
 ) {
-  const pixels = new Uint32Array(16 * 16);
+  const pixels = new Uint32Array(8 * tileW * 8 * tileH);
   const tileBytes = (8 * 8) / 2;
 
-  for (let tileI = 0; tileI < 4; ++tileI) {
-    const offset = chipIconOffset + tileBytes * tileI;
+  for (let tileI = 0; tileI < tileW * tileH; ++tileI) {
+    const offset = startOffset + tileBytes * tileI;
     const tile = new Uint8Array(dv.buffer, offset, tileBytes);
 
-    const tileX = tileI % 2;
-    const tileY = Math.floor(tileI / 2);
+    const tileX = tileI % tileW;
+    const tileY = Math.floor(tileI / tileW);
 
     for (let i = 0; i < tile.length * 2; ++i) {
       const subI = Math.floor(i / 2);
@@ -114,11 +116,15 @@ export function getChipIcon(
       const x = tileX * 8 + (i % 8);
       const y = tileY * 8 + Math.floor(i / 8);
 
-      pixels[y * 16 + x] = palette[paletteIndex];
+      pixels[y * (tileW * 8) + x] = palette[paletteIndex];
     }
   }
 
-  return new ImageData(new Uint8ClampedArray(pixels.buffer), 16, 16);
+  return new ImageData(
+    new Uint8ClampedArray(pixels.buffer),
+    tileW * 8,
+    tileH * 8
+  );
 }
 
 export abstract class ROMViewerBase {
