@@ -16,6 +16,7 @@
   "select-save": "セーブファイル",
   "select-game": "ゲーム",
   "no-save-selected": "セーブファイルが選択されていません",
+  "tab.navi": "ナビ",
   "tab.navicust": "ナビカスタマイザー",
   "tab.folder": "チップフォルダ",
   "tab.modcards": "改造",

@@ -16,6 +16,7 @@
   "select-save": "Partida Guardada",
   "select-game": "Juego",
   "no-save-selected": "No se ha seleccionado partida guardada",
+  "tab.navi": "Navi",
   "tab.navicust": "NaviCust",
   "tab.folder": "Folder",
   "tab.modcards": "Custom",
