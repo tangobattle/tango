@@ -44,7 +44,7 @@ export interface Modcard {
 }
 
 export interface BN4ModcardsEditor {
-  getModcard(slot: number): { id: number; enabled: boolean };
+  getModcard(slot: number): { id: number; enabled: boolean } | null;
 }
 
 export interface EditorClass {
@@ -60,28 +60,6 @@ export interface Editor {
   getModcardsEditor(): ModcardsEditor | null;
   getBN4ModcardsEditor(): BN4ModcardsEditor | null;
   rebuild(): void;
-}
-
-export abstract class EditorBase {
-  abstract getROMInfo(): ROMInfo;
-
-  getFolderEditor(): FolderEditor | null {
-    return null;
-  }
-
-  getNavicustEditor(): NavicustEditor | null {
-    return null;
-  }
-
-  getModcardsEditor(): ModcardsEditor | null {
-    return null;
-  }
-
-  getBN4ModcardsEditor(): BN4ModcardsEditor | null {
-    return null;
-  }
-
-  abstract rebuild(): void;
 }
 
 export interface FolderEditor {

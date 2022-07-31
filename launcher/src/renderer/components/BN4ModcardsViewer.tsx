@@ -30,19 +30,27 @@ export default function BN4ModcardsViewer({
         <Box sx={{ overflow: "auto", height: 0, flexGrow: 1, px: 1 }}>
           <Table size="small">
             <TableBody>
-              {modcards.map(({ id, enabled }, i) => {
+              {modcards.map((modcard, i) => {
                 return (
                   <TableRow key={i}>
                     <TableCell component="th">
                       <strong>
-                        {enabled ? SLOT_NAMES[i] : <del>{SLOT_NAMES[i]}</del>}
+                        {modcard != null && modcard.enabled ? (
+                          SLOT_NAMES[i]
+                        ) : (
+                          <del>{SLOT_NAMES[i]}</del>
+                        )}
                       </strong>
                     </TableCell>
                     <TableCell>
-                      {enabled ? (
-                        id
+                      {modcard != null ? (
+                        modcard.enabled ? (
+                          modcard.id.toString().padStart(3, "0")
+                        ) : (
+                          <del>{modcard.id.toString().padStart(3, "0")}</del>
+                        )
                       ) : (
-                        <del>{id.toString().padStart(3, "0")}</del>
+                        "---"
                       )}
                     </TableCell>
                   </TableRow>
@@ -62,10 +70,14 @@ export default function BN4ModcardsViewer({
           >
             <CopyButtonWithLabel
               value={modcards
-                .filter(({ enabled }) => enabled)
-                .flatMap(({ id }, i) => {
+                .flatMap((modcard, i) => {
+                  if (modcard == null || !modcard.enabled) {
+                    return [];
+                  }
                   return [
-                    `${SLOT_NAMES[i]}\t${id.toString().padStart(3, "0")}`,
+                    `${SLOT_NAMES[i]}\t${modcard.id
+                      .toString()
+                      .padStart(3, "0")}`,
                   ];
                 })
                 .join("\n")}
