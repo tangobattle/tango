@@ -2,7 +2,10 @@ import React from "react";
 import { Trans } from "react-i18next";
 
 import Box from "@mui/material/Box";
+import Checkbox from "@mui/material/Checkbox";
 import Chip from "@mui/material/Chip";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormGroup from "@mui/material/FormGroup";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -35,6 +38,7 @@ const DARK_BG = {
 };
 
 function FolderChipRow({
+  showGrouped,
   code,
   isRegular,
   isTag1,
@@ -43,6 +47,7 @@ function FolderChipRow({
   chipInfo,
   elementIcons,
 }: {
+  showGrouped: boolean;
   code: string;
   isRegular: boolean;
   isTag1: boolean;
@@ -91,9 +96,11 @@ function FolderChipRow({
 
   return (
     <TableRow sx={{ backgroundColor }}>
-      <TableCell sx={{ width: "28px", textAlign: "right" }}>
-        <strong>{count}x</strong>
-      </TableCell>
+      {showGrouped ? (
+        <TableCell sx={{ width: "28px", textAlign: "right" }}>
+          <strong>{count}x</strong>
+        </TableCell>
+      ) : null}
       <TableCell sx={{ width: 0 }}>
         <canvas
           width={14}
@@ -169,6 +176,7 @@ export default function FolderViewer({
   allowEdits: AllowEdits;
   active: boolean;
 }) {
+  const [showGrouped, setShowGrouped] = React.useState(true);
   // TODO: Use this one day.
   void allowEdits;
 
@@ -185,7 +193,7 @@ export default function FolderViewer({
     }
   }
 
-  const groupedChips: {
+  let groupedChips: {
     firstIndex: number;
     id: number;
     code: string;
@@ -193,59 +201,85 @@ export default function FolderViewer({
     isTag1: boolean;
     isTag2: boolean;
     count: number;
-  }[] = [];
-  const chipCounter: { [key: string]: number } = {};
-  for (let i = 0; i < chips.length; ++i) {
-    const chip = chips[i];
-    if (chip == null) {
-      continue;
-    }
-    const chipKey = `${chip.id}:${chip.code}`;
-    if (!Object.prototype.hasOwnProperty.call(chipCounter, chipKey)) {
-      chipCounter[chipKey] = 0;
-      groupedChips.push({
-        ...chip,
-        firstIndex: i,
-        isRegular: false,
-        isTag1: false,
-        isTag2: false,
-        count: 0,
-      });
-    }
-    chipCounter[chipKey]++;
-  }
+  }[];
 
-  for (const groupedChip of groupedChips) {
-    groupedChip.count = chipCounter[`${groupedChip.id}:${groupedChip.code}`];
+  if (showGrouped) {
+    groupedChips = [];
+    const chipCounter: { [key: string]: number } = {};
+    for (let i = 0; i < chips.length; ++i) {
+      const chip = chips[i];
+      if (chip == null) {
+        continue;
+      }
+      const chipKey = `${chip.id}:${chip.code}`;
+      if (!Object.prototype.hasOwnProperty.call(chipCounter, chipKey)) {
+        chipCounter[chipKey] = 0;
+        groupedChips.push({
+          ...chip,
+          firstIndex: i,
+          isRegular: false,
+          isTag1: false,
+          isTag2: false,
+          count: 0,
+        });
+      }
+      chipCounter[chipKey]++;
+    }
 
-    const regularChipIdx = editor.getRegularChipIndex(
-      editor.getEquippedFolder()
+    for (const groupedChip of groupedChips) {
+      groupedChip.count = chipCounter[`${groupedChip.id}:${groupedChip.code}`];
+
+      const regularChipIdx = editor.getRegularChipIndex(
+        editor.getEquippedFolder()
+      );
+      if (regularChipIdx != null) {
+        const regularChip = chips[regularChipIdx]!;
+        if (
+          groupedChip.id == regularChip.id &&
+          groupedChip.code == regularChip.code
+        ) {
+          groupedChip.isRegular = true;
+        }
+      }
+
+      const tagChip1Idx = editor.getTagChip1Index(editor.getEquippedFolder());
+      if (tagChip1Idx != null) {
+        const tagChip1 = chips[tagChip1Idx]!;
+        if (
+          groupedChip.id == tagChip1.id &&
+          groupedChip.code == tagChip1.code
+        ) {
+          groupedChip.isTag1 = true;
+        }
+      }
+
+      const tagChip2Idx = editor.getTagChip2Index(editor.getEquippedFolder());
+      if (tagChip2Idx != null) {
+        const tagChip2 = chips[tagChip2Idx]!;
+        if (
+          groupedChip.id == tagChip2.id &&
+          groupedChip.code == tagChip2.code
+        ) {
+          groupedChip.isTag2 = true;
+        }
+      }
+    }
+  } else {
+    groupedChips = chips.flatMap((chip, i) =>
+      chip != null
+        ? [
+            {
+              ...chip,
+              firstIndex: i,
+              isRegular:
+                editor.getRegularChipIndex(editor.getEquippedFolder()) == i,
+              isTag1: editor.getTagChip1Index(editor.getEquippedFolder()) == i,
+              isTag2: editor.getTagChip2Index(editor.getEquippedFolder()) == i,
+              count: 1,
+            },
+          ]
+        : []
     );
-    if (regularChipIdx != null) {
-      const regularChip = chips[regularChipIdx]!;
-      if (
-        groupedChip.id == regularChip.id &&
-        groupedChip.code == regularChip.code
-      ) {
-        groupedChip.isRegular = true;
-      }
-    }
-
-    const tagChip1Idx = editor.getTagChip1Index(editor.getEquippedFolder());
-    if (tagChip1Idx != null) {
-      const tagChip1 = chips[tagChip1Idx]!;
-      if (groupedChip.id == tagChip1.id && groupedChip.code == tagChip1.code) {
-        groupedChip.isTag1 = true;
-      }
-    }
-
-    const tagChip2Idx = editor.getTagChip2Index(editor.getEquippedFolder());
-    if (tagChip2Idx != null) {
-      const tagChip2 = chips[tagChip2Idx]!;
-      if (groupedChip.id == tagChip2.id && groupedChip.code == tagChip2.code) {
-        groupedChip.isTag2 = true;
-      }
-    }
   }
 
   const elementIcons = React.useMemo(() => editor.getElementIcons(), [editor]);
@@ -258,6 +292,7 @@ export default function FolderViewer({
             <TableBody>
               {groupedChips.map((groupedChip) => (
                 <FolderChipRow
+                  showGrouped={showGrouped}
                   elementIcons={elementIcons}
                   key={groupedChip.firstIndex}
                   code={groupedChip.code}
@@ -280,12 +315,31 @@ export default function FolderViewer({
             spacing={1}
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
+            <FormGroup>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={showGrouped}
+                    onChange={(_e, v) => {
+                      setShowGrouped(v);
+                    }}
+                  />
+                }
+                label={
+                  <span style={{ userSelect: "none" }}>
+                    <Trans i18nKey={"play:folder.show-grouped"} />
+                  </span>
+                }
+              />
+            </FormGroup>
             <CopyButtonWithLabel
               value={groupedChips
                 .flatMap(({ id, code, count, isRegular, isTag1, isTag2 }) => {
                   const chipInfo = editor.getChipInfo(id);
                   return [
-                    `${count}\t${chipInfo.name}\t${code}\t${[
+                    `${showGrouped ? `${count}\t` : ""}${
+                      chipInfo.name
+                    }\t${code}\t${[
                       ...(isRegular ? ["[REG]"] : []),
                       ...(isTag1 ? ["[TAG]"] : []),
                       ...(isTag2 ? ["[TAG]"] : []),
