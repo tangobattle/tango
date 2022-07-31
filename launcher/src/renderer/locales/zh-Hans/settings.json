@@ -46,10 +46,10 @@
     "window-scale": "窗口缩放",
     "window-scale-suffix": "倍",
     "max-queue-length": "最大队列长度",
-    "video-filter": "Video filter",
-    "video-filter.null": "None",
-    "video-filter.hq2x": "hq2x (2x)",
-    "video-filter.hq3x": "hq3x (3x)",
-    "video-filter.hq4x": "hq4x (4x)",
-    "video-filter.mmpx": "MMPX (2x)"
+    "video-filter": "视频过滤器",
+    "video-filter.null": "无",
+    "video-filter.hq2x": "hq2x（2倍）",
+    "video-filter.hq3x": "hq3x（3倍）",
+    "video-filter.hq4x": "hq4x（4倍）",
+    "video-filter.mmpx": "MMPX（2倍）"
 }
