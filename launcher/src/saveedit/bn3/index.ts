@@ -86,8 +86,7 @@ class FolderEditor {
   }
 
   getEquippedFolder() {
-    return 0;
-    // return this.editor.dv.getUint8(0x0dc2);
+    return this.editor.dv.getUint8(0x1882);
   }
 
   isRegularChipInPlace() {
@@ -95,10 +94,7 @@ class FolderEditor {
   }
 
   getRegularChipIndex(folderIdx: number) {
-    if (folderIdx == 2) {
-      return null;
-    }
-    const i = this.editor.dv.getUint8(0x189d + folderIdx * 2);
+    const i = this.editor.dv.getUint8(0x189d + folderIdx);
     return i != 0xff ? i : null;
   }
 
