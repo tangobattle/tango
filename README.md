@@ -25,8 +25,8 @@ Tango is rollback netplay for Mega Man Battle Network.
 | `MEGA_EXE3_WHA6BE` | Megaman Battle Network 3: White (US)                  | ✅ Works great!             | ❌ None                     |
 | `ROCK_EXE3_BKA3XJ` | Battle Network Rockman EXE 3: Black (Rev 1 only) (JP) | ✅ Works great!             | ❌ None                     |
 | `ROCKMAN_EXE3A6BJ` | Battle Network Rockman EXE 3 (Rev 1 only) (JP)        | ✅ Works great!             | ❌ None                     |
-| `MEGAMAN_EXE2AE2E` | Megaman Battle Network 2 (US)                         | 🤷 Works, with minor issues | 🤷 Folder None              |
-| `ROCKMAN_EXE2AE2J` | Battle Network Rockman EXE 2 (Rev 1 only) (JP)        | 🤷 Works, with minor issues | 🤷 Folder None              |
+| `MEGAMAN_EXE2AE2E` | Megaman Battle Network 2 (US)                         | 🤷 Works, with minor issues | 🤷 Folder                   |
+| `ROCKMAN_EXE2AE2J` | Battle Network Rockman EXE 2 (Rev 1 only) (JP)        | 🤷 Works, with minor issues | 🤷 Folder                   |
 | `MEGAMAN_BN@@AREE` | Megaman Battle Network (US)                           | 🤷 Works, with minor issues | 🤷 Folder                   |
 | `ROCKMAN_EXE@AREJ` | Battle Network Rockman EXE (JP)                       | 🤷 Works, with minor issues | 🤷 Folder                   |
 
