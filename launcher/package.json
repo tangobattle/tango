@@ -7,7 +7,7 @@
     "email": "lets@tangobattle.com"
   },
   "private": true,
-  "description": "rollback netplay for mega man battle network",
+  "description": "Play Mega Man Battle Network online with rollback netcode!",
   "main": "./dist/main.js",
   "repository": "https://github.com/tangobattle/tango",
   "scripts": {
