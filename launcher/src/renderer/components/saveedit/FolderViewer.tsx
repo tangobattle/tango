@@ -152,16 +152,16 @@ function FolderChipRow({
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
-        <strong>
-          {chipInfo != null
-            ? (chipInfo.damage ?? 0) > 0
-              ? chipInfo.damage
-              : ""
-            : "???"}
-        </strong>
+        <strong>{chipInfo.damage > 0 ? chipInfo.damage : ""}</strong>
       </TableCell>
-      <TableCell sx={{ width: "64px", textAlign: "right" }}>
-        {chipInfo != null ? chipInfo.mb : "??"}MB
+      <TableCell
+        sx={{
+          width: "64px",
+          textAlign: "right",
+          display: chipInfo.mb > 0 ? undefined : "none",
+        }}
+      >
+        {chipInfo.mb > 0 ? `${chipInfo.mb}MB` : null}
       </TableCell>
     </TableRow>
   );
