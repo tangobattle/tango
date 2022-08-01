@@ -1,7 +1,5 @@
 import { EditorBase } from "../base";
-import {
-    getChipText, getPalette, getTiles, parseText, replacePrivateUseCharacters, ROMViewerBase
-} from "../rom";
+import { getChipText, getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
 
 import type { Chip, Navi } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -339,11 +337,12 @@ class ROMViewer extends ROMViewerBase {
     const iconPtr = this.dv.getUint32(dataOffset + 0x20, true);
 
     return {
-      name: getChipString(
+      name: getChipText(
         this.dv,
-        this.saveeditInfo.charset,
         this.saveeditInfo.offsets.chipNamesPointers,
-        id
+        id,
+        this.saveeditInfo.charset,
+        PARSE_TEXT_OPTIONS
       ),
       codes: codes.join(""),
       icon:
@@ -365,21 +364,14 @@ class ROMViewer extends ROMViewerBase {
 
   getNaviInfo(id: number): Navi {
     return {
-      name: parseText(
+      name: getTextSimple(
         this.dv,
         this.dv.getUint32(this.saveeditInfo.offsets.naviNamesPointer, true) &
           ~0x08000000,
         id,
+        this.saveeditInfo.charset,
         PARSE_TEXT_OPTIONS
-      )
-        .flatMap((chunk) =>
-          "t" in chunk
-            ? chunk.t.map((c) => this.saveeditInfo.charset[c])
-            : "c" in chunk && chunk.c == "newline"
-            ? ["\n"]
-            : []
-        )
-        .join(""),
+      ),
       emblem: getTiles(
         this.dv,
         getPalette(
@@ -398,17 +390,4 @@ class ROMViewer extends ROMViewerBase {
       ),
     };
   }
-}
-
-function getChipString(
-  dv: DataView,
-  charset: string,
-  scriptPointerOffset: number,
-  id: number
-): string {
-  return replacePrivateUseCharacters(
-    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-      .map((c) => charset[c])
-      .join("")
-  );
 }

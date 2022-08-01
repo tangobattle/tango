@@ -1,7 +1,5 @@
 import { EditorBase } from "../base";
-import {
-    getPalette, getTiles, parseText, replacePrivateUseCharacters, ROMViewerBase
-} from "../rom";
+import { getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
 
 import type { Chip } from "../";
 
@@ -248,22 +246,13 @@ class ROMViewer extends ROMViewerBase {
     }
 
     return {
-      name: replacePrivateUseCharacters(
-        parseText(
-          this.dv,
-          this.dv.getUint32(this.saveeditInfo.offsets.chipNamesPointer, true) &
-            ~0x08000000,
-          id,
-          PARSE_TEXT_OPTIONS
-        )
-          .flatMap((chunk) =>
-            "t" in chunk
-              ? chunk.t.map((c) => this.saveeditInfo.charset[c])
-              : "c" in chunk && chunk.c == "newline"
-              ? ["\n"]
-              : []
-          )
-          .join("")
+      name: getTextSimple(
+        this.dv,
+        this.dv.getUint32(this.saveeditInfo.offsets.chipNamesPointer, true) &
+          ~0x08000000,
+        id,
+        this.saveeditInfo.charset,
+        PARSE_TEXT_OPTIONS
       ),
       codes: codes.join(""),
       icon: getTiles(

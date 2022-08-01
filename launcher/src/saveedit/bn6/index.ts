@@ -2,7 +2,7 @@ import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTiles, NewlineControl, parseText, ParseTextOptions,
+    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseTextOptions,
     replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
@@ -756,24 +756,26 @@ class ROMViewer extends ROMViewerBase {
 
       effects.push({
         id,
-        name: tmpl
-          .map((chunk) => {
-            if ("t" in chunk) {
-              return chunk.t;
-            }
-            if ("p" in chunk) {
-              if (chunk.p == 1) {
-                let p = parameter;
-                if (id == 0x00 || id == 0x02) {
-                  p = p * 10;
+        name: replacePrivateUseCharacters(
+          tmpl
+            .map((chunk) => {
+              if ("t" in chunk) {
+                return chunk.t;
+              }
+              if ("p" in chunk) {
+                if (chunk.p == 1) {
+                  let p = parameter;
+                  if (id == 0x00 || id == 0x02) {
+                    p = p * 10;
+                  }
+                  return p.toString();
                 }
-                return p.toString();
+                return "";
               }
               return "";
-            }
-            return "";
-          })
-          .join(""),
+            })
+            .join("")
+        ),
         parameter,
         isAbility: id > 0x15,
         debuff,
@@ -784,22 +786,13 @@ class ROMViewer extends ROMViewerBase {
       name:
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcards == null
-          ? parseText(
+          ? getTextSimple(
               new DataView(this.modcardTextArchive),
               4,
               id,
+              this.saveeditInfo.charset,
               PARSE_TEXT_OPTIONS
             )
-              .flatMap((chunk) =>
-                "t" in chunk
-                  ? chunk.t.map((c) => this.saveeditInfo.charset[c])
-                  : "c" in chunk && chunk.c == "newline"
-                  ? ["\n"]
-                  : []
-              )
-              .join("")
-              .replace(/-\n/g, "-")
-              .replace(/\n/g, " ")
           : this.saveeditInfo.strings.modcards[id],
       mb: this.dv.getUint8(
         this.saveeditInfo.offsets.modcardData + modcardStart + 0x01
@@ -827,11 +820,12 @@ class ROMViewer extends ROMViewerBase {
       name:
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.chips == null
-          ? getChipString(
+          ? getChipText(
               this.dv,
-              this.saveeditInfo.charset,
               this.saveeditInfo.offsets.chipNamesPointers,
-              id
+              id,
+              this.saveeditInfo.charset,
+              PARSE_TEXT_OPTIONS
             )
           : this.saveeditInfo.strings.chips[id],
       codes: codes.join(""),
@@ -862,23 +856,16 @@ class ROMViewer extends ROMViewerBase {
       name:
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.ncps == null
-          ? parseText(
+          ? getTextSimple(
               this.dv,
               this.dv.getUint32(
                 this.saveeditInfo.offsets.ncpNamesPointer,
                 true
               ) & ~0x08000000,
               id,
+              this.saveeditInfo.charset,
               PARSE_TEXT_OPTIONS
             )
-              .flatMap((chunk) =>
-                "t" in chunk
-                  ? chunk.t.map((c) => this.saveeditInfo.charset[c])
-                  : "c" in chunk && chunk.c == "newline"
-                  ? ["\n"]
-                  : []
-              )
-              .join("")
           : this.saveeditInfo.strings.ncps[id],
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
@@ -908,19 +895,6 @@ class ROMViewer extends ROMViewerBase {
       ),
     };
   }
-}
-
-function getChipString(
-  dv: DataView,
-  charset: string,
-  scriptPointerOffset: number,
-  id: number
-): string {
-  return replacePrivateUseCharacters(
-    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-      .map((c) => charset[c])
-      .join("")
-  );
 }
 
 type Chunk = { t: string } | { p: number };

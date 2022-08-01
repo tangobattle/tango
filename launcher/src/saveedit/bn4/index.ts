@@ -1,9 +1,7 @@
 import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import {
-    getChipText, getPalette, getTiles, parseText, replacePrivateUseCharacters, ROMViewerBase
-} from "../rom";
+import { getChipText, getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -546,11 +544,12 @@ class ROMViewer extends ROMViewerBase {
     const iconPtr = this.dv.getUint32(dataOffset + 0x20, true);
 
     return {
-      name: getChipString(
+      name: getChipText(
         this.dv,
-        this.saveeditInfo.charset,
         this.saveeditInfo.offsets.chipNamesPointers,
-        id
+        id,
+        this.saveeditInfo.charset,
+        PARSE_TEXT_OPTIONS
       ),
       codes: codes.join(""),
       icon:
@@ -576,21 +575,14 @@ class ROMViewer extends ROMViewerBase {
     const subdataOffset = dataOffset + variant * 0x10;
 
     return {
-      name: parseText(
+      name: getTextSimple(
         this.dv,
         this.dv.getUint32(this.saveeditInfo.offsets.ncpNamesPointer, true) &
           ~0x08000000,
         id,
+        this.saveeditInfo.charset,
         PARSE_TEXT_OPTIONS
-      )
-        .flatMap((chunk) =>
-          "t" in chunk
-            ? chunk.t.map((c) => this.saveeditInfo.charset[c])
-            : "c" in chunk && chunk.c == "newline"
-            ? ["\n"]
-            : []
-        )
-        .join(""),
+      ),
       color: [null, "white", "pink", "yellow", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
       ] as NavicustProgram["color"],
@@ -619,17 +611,4 @@ class ROMViewer extends ROMViewerBase {
       ),
     };
   }
-}
-
-function getChipString(
-  dv: DataView,
-  charset: string,
-  scriptPointerOffset: number,
-  id: number
-): string {
-  return replacePrivateUseCharacters(
-    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-      .map((c) => charset[c])
-      .join("")
-  );
 }

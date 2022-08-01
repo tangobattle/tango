@@ -1,7 +1,5 @@
 import { EditorBase } from "../base";
-import {
-    getChipText, getPalette, getTiles, replacePrivateUseCharacters, ROMViewerBase
-} from "../rom";
+import { getChipText, getPalette, getTiles, ROMViewerBase } from "../rom";
 
 import type { Chip } from "../";
 
@@ -247,11 +245,12 @@ class ROMViewer extends ROMViewerBase {
     }
 
     return {
-      name: getChipString(
+      name: getChipText(
         this.dv,
-        this.saveeditInfo.charset,
         this.saveeditInfo.offsets.chipNamesPointers,
-        id
+        id,
+        this.saveeditInfo.charset,
+        PARSE_TEXT_OPTIONS
       ),
       codes: codes.join(""),
       icon: getTiles(
@@ -267,17 +266,4 @@ class ROMViewer extends ROMViewerBase {
       damage: this.dv.getUint16(dataOffset + 0x0c, true),
     };
   }
-}
-
-function getChipString(
-  dv: DataView,
-  charset: string,
-  scriptPointerOffset: number,
-  id: number
-): string {
-  return replacePrivateUseCharacters(
-    getChipText(dv, scriptPointerOffset, id, PARSE_TEXT_OPTIONS)
-      .map((c) => charset[c])
-      .join("")
-  );
 }

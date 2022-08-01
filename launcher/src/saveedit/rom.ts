@@ -35,12 +35,34 @@ export type NewlineControl = {
   c: "newline";
 };
 
+export function getTextSimple<Control>(
+  dv: DataView,
+  scriptOffset: number,
+  id: number,
+  charset: string,
+  opts: ParseTextOptions<Control | NewlineControl>
+): string {
+  return replacePrivateUseCharacters(
+    parseText(dv, scriptOffset, id, opts)
+      .flatMap((chunk) =>
+        "t" in chunk
+          ? chunk.t.map((c) => charset[c]).join("")
+          : "c" in chunk && chunk.c == "newline"
+          ? ["\n"]
+          : []
+      )
+      .join("")
+      .replace(/-\n/g, "-")
+      .replace(/\n/g, " ")
+  );
+}
+
 export function parseText<Control>(
   dv: DataView,
   scriptOffset: number,
   id: number,
   opts: ParseTextOptions<Control>
-): Array<{ t: number[] } | Control> {
+): Array<{ t: number[] } | Control | NewlineControl> {
   const chunks: Array<{ t: number[] } | Control> = [];
 
   let offset = scriptOffset + dv.getUint16(scriptOffset + id * 0x2, true);
@@ -82,19 +104,21 @@ export function getChipText<Control>(
   dv: DataView,
   scriptPointerOffset: number,
   id: number,
+  charset: string,
   opts: ParseTextOptions<Control | NewlineControl>
-): number[] {
+): string {
   if (id > 0xff) {
     scriptPointerOffset += 4;
     id -= 0x100;
   }
 
-  return parseText(
+  return getTextSimple(
     dv,
     dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
     id,
+    charset,
     opts
-  ).flatMap((chunk) => ("t" in chunk ? chunk.t : []));
+  );
 }
 
 export function getTiles(
