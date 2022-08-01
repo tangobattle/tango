@@ -6,29 +6,29 @@ Tango is rollback netplay for Mega Man Battle Network.
 
 ## Supported games
 
-| ID                 | Name                                                  | Gameplay support            | Save viewer support         |
-| ------------------ | ----------------------------------------------------- | --------------------------- | --------------------------- |
-| `MEGAMAN6_FXXBR6E` | Mega Man Battle Network 6: Cybeast Falzar (US)        | ✅ Works great!             | 🤷 Folder, NaviCust         |
-| `MEGAMAN6_GXXBR5E` | Mega Man Battle Network 6: Cybeast Gregar (US)        | ✅ Works great!             | 🤷 Folder, NaviCust         |
-| `ROCKEXE6_RXXBR6J` | Rockman EXE 6: Dennoujuu Falzer (JP)                  | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `ROCKEXE6_GXXBR5J` | Rockman EXE 6: Dennoujuu Glaga (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `MEGAMAN5_TP_BRBE` | Mega Man Battle Network 5: Team Protoman (US)         | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `MEGAMAN5_TC_BRKE` | Mega Man Battle Network 5: Team Colonel (US)          | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `ROCKEXE5_TOBBRBJ` | Rockman EXE 5: Team of Blues (JP)                     | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `ROCKEXE5_TOCBRKJ` | Rockman EXE 5: Team of Colonel (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `ROCKEXE4.5ROBR4J` | Rockman EXE 4.5: Real Operation (JP)                  | ✅ Works great!             | ✅ Navi, Folder             |
-| `MEGAMANBN4BMB4BE` | Mega Man Battle Network 4: Blue Moon (US)             | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `MEGAMANBN4RSB4WE` | Mega Man Battle Network 4: Red Sun (US)               | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `ROCK_EXE4_BMB4BJ` | Rockman EXE 4: Tournament Blue Moon (Rev 0 only) (JP) | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `ROCK_EXE4_RSB4WJ` | Rockman EXE 4: Tournament Red Sun (Rev 1 only) (JP)   | ✅ Works great!             | 🤷 Folder, NaviCust, Custom |
-| `MEGA_EXE3_BLA3XE` | Megaman Battle Network 3: Blue (US)                   | ✅ Works great!             | 🤷 Folder                   |
-| `MEGA_EXE3_WHA6BE` | Megaman Battle Network 3: White (US)                  | ✅ Works great!             | 🤷 Folder                   |
-| `ROCK_EXE3_BKA3XJ` | Battle Network Rockman EXE 3: Black (Rev 1 only) (JP) | ✅ Works great!             | 🤷 Folder                   |
-| `ROCKMAN_EXE3A6BJ` | Battle Network Rockman EXE 3 (Rev 1 only) (JP)        | ✅ Works great!             | 🤷 Folder                   |
-| `MEGAMAN_EXE2AE2E` | Megaman Battle Network 2 (US)                         | 🤷 Works, with minor issues | 🤷 Folder                   |
-| `ROCKMAN_EXE2AE2J` | Battle Network Rockman EXE 2 (Rev 1 only) (JP)        | 🤷 Works, with minor issues | 🤷 Folder                   |
-| `MEGAMAN_BN@@AREE` | Megaman Battle Network (US)                           | 🤷 Works, with minor issues | 🤷 Folder                   |
-| `ROCKMAN_EXE@AREJ` | Battle Network Rockman EXE (JP)                       | 🤷 Works, with minor issues | 🤷 Folder                   |
+| ID                 | Name                                                  | Gameplay support            | Save viewer support           |
+| ------------------ | ----------------------------------------------------- | --------------------------- | ----------------------------- |
+| `MEGAMAN6_FXXBR6E` | Mega Man Battle Network 6: Cybeast Falzar (US)        | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `MEGAMAN6_GXXBR5E` | Mega Man Battle Network 6: Cybeast Gregar (US)        | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCKEXE6_RXXBR6J` | Rockman EXE 6: Dennoujuu Falzer (JP)                  | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `ROCKEXE6_GXXBR5J` | Rockman EXE 6: Dennoujuu Glaga (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `MEGAMAN5_TP_BRBE` | Mega Man Battle Network 5: Team Protoman (US)         | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `MEGAMAN5_TC_BRKE` | Mega Man Battle Network 5: Team Colonel (US)          | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `ROCKEXE5_TOBBRBJ` | Rockman EXE 5: Team of Blues (JP)                     | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `ROCKEXE5_TOCBRKJ` | Rockman EXE 5: Team of Colonel (JP)                   | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `ROCKEXE4.5ROBR4J` | Rockman EXE 4.5: Real Operation (JP)                  | ✅ Works great!             | ✅ Navi, Folder               |
+| `MEGAMANBN4BMB4BE` | Mega Man Battle Network 4: Blue Moon (US)             | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `MEGAMANBN4RSB4WE` | Mega Man Battle Network 4: Red Sun (US)               | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `ROCK_EXE4_BMB4BJ` | Rockman EXE 4: Tournament Blue Moon (Rev 0 only) (JP) | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `ROCK_EXE4_RSB4WJ` | Rockman EXE 4: Tournament Red Sun (Rev 1 only) (JP)   | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
+| `MEGA_EXE3_BLA3XE` | Megaman Battle Network 3: Blue (US)                   | ✅ Works great!             | 🤷 Folder                     |
+| `MEGA_EXE3_WHA6BE` | Megaman Battle Network 3: White (US)                  | ✅ Works great!             | 🤷 Folder                     |
+| `ROCK_EXE3_BKA3XJ` | Battle Network Rockman EXE 3: Black (Rev 1 only) (JP) | ✅ Works great!             | 🤷 Folder                     |
+| `ROCKMAN_EXE3A6BJ` | Battle Network Rockman EXE 3 (Rev 1 only) (JP)        | ✅ Works great!             | 🤷 Folder                     |
+| `MEGAMAN_EXE2AE2E` | Megaman Battle Network 2 (US)                         | 🤷 Works, with minor issues | 🤷 Folder                     |
+| `ROCKMAN_EXE2AE2J` | Battle Network Rockman EXE 2 (Rev 1 only) (JP)        | 🤷 Works, with minor issues | 🤷 Folder                     |
+| `MEGAMAN_BN@@AREE` | Megaman Battle Network (US)                           | 🤷 Works, with minor issues | 🤷 Folder                     |
+| `ROCKMAN_EXE@AREJ` | Battle Network Rockman EXE (JP)                       | 🤷 Works, with minor issues | 🤷 Folder                     |
 
 ## Design
 
