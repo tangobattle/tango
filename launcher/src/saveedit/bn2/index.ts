@@ -236,7 +236,7 @@ class ROMViewer extends ROMViewerBase {
     const dataOffset = this.saveeditInfo.offsets.chipData + id * 0x20;
 
     const codes = [];
-    for (let i = 0; i < 5; ++i) {
+    for (let i = 0; i < 6; ++i) {
       const code = this.dv.getUint8(dataOffset + 0x00 + i);
       if (code == 0xff) {
         continue;
