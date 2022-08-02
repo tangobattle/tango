@@ -427,7 +427,7 @@ impl Game {
                         .iter()
                         .any(|c| c.is_active(&input_state))
                     {
-                        EXPECTED_FPS * 2.0
+                        EXPECTED_FPS * 3.0
                     } else {
                         EXPECTED_FPS
                     },
@@ -444,15 +444,17 @@ impl Game {
                 );
             }
 
-            let emu_vbuf = self.vbuf.lock();
-            self.video_filter.apply(
-                &emu_vbuf,
-                &mut vbuf,
-                (
-                    mgba::gba::SCREEN_WIDTH as usize,
-                    mgba::gba::SCREEN_HEIGHT as usize,
-                ),
-            );
+            {
+                let emu_vbuf = self.vbuf.lock();
+                self.video_filter.apply(
+                    &emu_vbuf,
+                    &mut vbuf,
+                    (
+                        mgba::gba::SCREEN_WIDTH as usize,
+                        mgba::gba::SCREEN_HEIGHT as usize,
+                    ),
+                );
+            }
 
             texture
                 .update(None, &vbuf, vbuf_width as usize * 4)

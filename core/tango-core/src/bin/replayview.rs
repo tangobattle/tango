@@ -175,7 +175,7 @@ fn main() -> Result<(), anyhow::Error> {
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
                     if input_state.is_key_pressed(sdl2::keyboard::Scancode::Tab) {
-                        EXPECTED_FPS * 2.0
+                        EXPECTED_FPS * 3.0
                     } else {
                         EXPECTED_FPS
                     },
@@ -196,7 +196,8 @@ fn main() -> Result<(), anyhow::Error> {
 
                 let current_tick = replayer_state.current_tick();
 
-                let vbuf = vbuf.lock();
+                let vbuf = vbuf.lock().clone();
+
                 if taking_screenshot {
                     let ss_f = std::fs::File::create(format!(
                         "{}-tick{}.png",
