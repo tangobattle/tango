@@ -175,7 +175,15 @@ export default function ReplaydumpSupervisor({
         setDone({ exitCode, signalCode });
       });
     })();
-  }, [romPath, patchPath, outROMPath, scaleFactor, replayPath, outPath]);
+  }, [
+    romPath,
+    patchPath,
+    outROMPath,
+    scaleFactor,
+    replayPath,
+    outPath,
+    filter,
+  ]);
 
   const pct =
     maxProgressRef.current > 0
