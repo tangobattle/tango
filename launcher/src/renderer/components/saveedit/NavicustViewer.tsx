@@ -207,16 +207,18 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
           textAlign: "left",
         }}
       >
-        <div
-          style={{
-            fontFamily: "sans-serif",
-            fontWeight: "bold",
-            color: "#fff",
-            marginBottom: `${borderWidth * 2}px`,
-          }}
-        >
-          {style != null ? style.name : null}
-        </div>
+        {style != null ? (
+          <div
+            style={{
+              fontFamily: "sans-serif",
+              fontWeight: "bold",
+              color: "#fff",
+              marginBottom: `${borderWidth * 2}px`,
+            }}
+          >
+            {style.name}
+          </div>
+        ) : null}
         <div
           style={{
             display: "flex",

@@ -21,10 +21,10 @@ Tango is rollback netplay for Mega Man Battle Network.
 | `MEGAMANBN4RSB4WE` | Mega Man Battle Network 4: Red Sun (US)               | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
 | `ROCK_EXE4_BMB4BJ` | Rockman EXE 4: Tournament Blue Moon (Rev 0 only) (JP) | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
 | `ROCK_EXE4_RSB4WJ` | Rockman EXE 4: Tournament Red Sun (Rev 1 only) (JP)   | ✅ Works great!             | 🤷 Folder, NaviCust, Modcards |
-| `MEGA_EXE3_BLA3XE` | Megaman Battle Network 3: Blue (US)                   | ✅ Works great!             | 🤷 Folder                     |
-| `MEGA_EXE3_WHA6BE` | Megaman Battle Network 3: White (US)                  | ✅ Works great!             | 🤷 Folder                     |
-| `ROCK_EXE3_BKA3XJ` | Battle Network Rockman EXE 3: Black (Rev 1 only) (JP) | ✅ Works great!             | 🤷 Folder                     |
-| `ROCKMAN_EXE3A6BJ` | Battle Network Rockman EXE 3 (Rev 1 only) (JP)        | ✅ Works great!             | 🤷 Folder                     |
+| `MEGA_EXE3_BLA3XE` | Megaman Battle Network 3: Blue (US)                   | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `MEGA_EXE3_WHA6BE` | Megaman Battle Network 3: White (US)                  | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCK_EXE3_BKA3XJ` | Battle Network Rockman EXE 3: Black (Rev 1 only) (JP) | ✅ Works great!             | 🤷 Folder, NaviCust           |
+| `ROCKMAN_EXE3A6BJ` | Battle Network Rockman EXE 3 (Rev 1 only) (JP)        | ✅ Works great!             | 🤷 Folder, NaviCust           |
 | `MEGAMAN_EXE2AE2E` | Megaman Battle Network 2 (US)                         | 🤷 Works, with minor issues | 🤷 Folder                     |
 | `ROCKMAN_EXE2AE2J` | Battle Network Rockman EXE 2 (Rev 1 only) (JP)        | 🤷 Works, with minor issues | 🤷 Folder                     |
 | `MEGAMAN_BN@@AREE` | Megaman Battle Network (US)                           | 🤷 Works, with minor issues | 🤷 Folder                     |
