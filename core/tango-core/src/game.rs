@@ -135,11 +135,16 @@ impl Game {
         let event_loop = sdl.event_pump().unwrap();
         let title_prefix = format!("Tango: {}", window_title);
 
-        let window = video
+        let (vbuf_width, vbuf_height) = video_filter.output_size((
+            mgba::gba::SCREEN_WIDTH as usize,
+            mgba::gba::SCREEN_HEIGHT as usize,
+        ));
+
+        let mut window = video
             .window(
                 &title_prefix,
-                mgba::gba::SCREEN_WIDTH * window_scale,
-                mgba::gba::SCREEN_HEIGHT * window_scale,
+                std::cmp::max(mgba::gba::SCREEN_WIDTH * window_scale, vbuf_width as u32),
+                std::cmp::max(mgba::gba::SCREEN_HEIGHT * window_scale, vbuf_height as u32),
             )
             .opengl()
             .resizable()
@@ -296,11 +301,6 @@ impl Game {
             .present_vsync()
             .build()
             .unwrap();
-
-        let (vbuf_width, vbuf_height) = video_filter.output_size((
-            mgba::gba::SCREEN_WIDTH as usize,
-            mgba::gba::SCREEN_HEIGHT as usize,
-        ));
 
         canvas
             .set_logical_size(vbuf_width as u32, vbuf_height as u32)
