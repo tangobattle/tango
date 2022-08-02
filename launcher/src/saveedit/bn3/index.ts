@@ -103,7 +103,7 @@ class NavicustEditor {
   }
 
   getStyle() {
-    return this.editor.dv.getUint8(0x1881);
+    return this.editor.dv.getUint8(0x1881) & 0x3f;
   }
 
   getStyleInfo(id: number) {
@@ -448,7 +448,7 @@ class ROMViewer extends ROMViewerBase {
   }
 
   getStyleInfo(id: number): Style {
-    const type = (id >> 3) & 0xf;
+    const type = id >> 3;
     const element = id & 0x7;
 
     if (type >= 8 || element >= 5) {
