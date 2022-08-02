@@ -303,6 +303,7 @@ class ROMViewer extends ROMViewerBase {
     }
 
     const damage = this.dv.getUint16(dataOffset + 0x0c, true);
+    const flags = this.dv.getUint8(dataOffset + 0x13);
 
     return {
       name: getChipText(
@@ -321,7 +322,8 @@ class ROMViewer extends ROMViewerBase {
         2
       ),
       element: this.dv.getUint8(dataOffset + 0x06),
-      class: id > 300 ? "giga" : id > 200 ? "mega" : "standard",
+      class:
+        (flags & 0x2) != 0 ? "giga" : (flags & 0x1) != 0 ? "mega" : "standard",
       mb: this.dv.getUint8(dataOffset + 0x0a),
       damage: damage < 1000 ? damage : 0,
     };
