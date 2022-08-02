@@ -14,4 +14,4 @@ members = [
 ]
 
 [patch.crates-io]
-sdl2 = { git = "https://github.com/Rust-SDL2/rust-sdl2", rev = "541f49af58fb55b678d0b209fc354a13a54318dd" }
+sdl2 = { git = "https://github.com/tangobattle/rust-sdl2", rev = "41e9250f1ef527034ee7ef28a1a1996b8019f49d" }
