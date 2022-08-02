@@ -44,6 +44,18 @@ const NAVICUST_COLORS = {
     color: "#dedede",
     plusColor: "#bdbdbd",
   },
+  orange: {
+    color: "#de7b00",
+    plusColor: "#de7b00",
+  },
+  purple: {
+    color: "#9400ce",
+    plusColor: "#9400ce",
+  },
+  gray: {
+    color: "#848484",
+    plusColor: "#848484",
+  },
 };
 
 function placementsToArray2D(

@@ -30,7 +30,17 @@ export interface Chip {
 
 export interface NavicustProgram {
   name: string;
-  color: "white" | "yellow" | "pink" | "red" | "blue" | "green" | null;
+  color:
+    | "white"
+    | "yellow"
+    | "pink"
+    | "red"
+    | "blue"
+    | "green"
+    | "orange"
+    | "purple"
+    | "gray"
+    | null;
   isSolid: boolean;
   compressed: Array2D<boolean>;
   uncompressed: Array2D<boolean>;

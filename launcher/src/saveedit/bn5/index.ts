@@ -156,10 +156,10 @@ class NavicustEditor {
   ) {
     const offset = 0x4d6c + i * 8;
     this.editor.dv.setUint8(offset, (id << 2) | variant);
-    this.editor.dv.setUint8(offset + 3, col);
-    this.editor.dv.setUint8(offset + 4, row);
-    this.editor.dv.setUint8(offset + 5, rot);
-    this.editor.dv.setUint8(offset + 6, compressed ? 1 : 0);
+    this.editor.dv.setUint8(offset + 2, col);
+    this.editor.dv.setUint8(offset + 3, row);
+    this.editor.dv.setUint8(offset + 4, rot);
+    this.editor.dv.setUint8(offset + 5, compressed ? 1 : 0);
     this.editor.navicustDirty = true;
   }
 }
