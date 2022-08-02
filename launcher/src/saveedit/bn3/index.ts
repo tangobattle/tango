@@ -102,6 +102,10 @@ class NavicustEditor {
     return 5;
   }
 
+  getStyle() {
+    return this.editor.dv.getUint8(0x1881);
+  }
+
   getNavicustBlock(i: number) {
     const offset = 0x1300 + i * 8;
     const blockConstant = this.editor.dv.getUint8(offset);
