@@ -128,6 +128,14 @@ class NavicustEditor {
     return 5;
   }
 
+  getStyle() {
+    return null;
+  }
+
+  getStyleInfo(_id: number) {
+    return null;
+  }
+
   getNavicustBlock(i: number) {
     const offset = 0x4d6c + i * 8;
     const fullID = this.editor.dv.getUint8(offset);

@@ -28,6 +28,11 @@ export interface Chip {
   class: string;
 }
 
+export interface Style {
+  name: string;
+  ncpColors: NavicustProgram["color"][];
+}
+
 export interface NavicustProgram {
   name: string;
   color:
@@ -114,6 +119,8 @@ export interface NavicustEditor {
     rot: number;
     compressed: boolean;
   } | null;
+  getStyle(): number | null;
+  getStyleInfo(id: number): Style | null;
 }
 
 export interface ModcardsEditor {

@@ -16,7 +16,7 @@ import Tooltip, { TooltipProps } from "@mui/material/Tooltip";
 import { lighten } from "@mui/system/colorManipulator";
 
 import array2d, { Array2D } from "../../../array2d";
-import { NavicustEditor, NavicustProgram } from "../../../saveedit";
+import { NavicustEditor, NavicustProgram, Style } from "../../../saveedit";
 import { CopyButtonWithLabel } from "../CopyButton";
 
 const NAVICUST_COLORS = {
@@ -151,6 +151,7 @@ interface NavicustGridProps {
   commandLine: number;
   hasOutOfBounds: boolean;
   romName: string;
+  style: Style | null;
 }
 
 const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
@@ -162,6 +163,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
       romName,
       commandLine,
       hasOutOfBounds,
+      style,
     }: NavicustGridProps,
     ref
   ) => {
@@ -174,6 +176,10 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
     }, [grid]);
 
     const colors = React.useMemo(() => {
+      if (style != null) {
+        return style.ncpColors;
+      }
+
       const colors: Array<NavicustProgram["color"]> = [];
       for (const placement of placements) {
         const ncp = getNavicustProgramInfo(placement.id, placement.variant);
@@ -187,7 +193,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
         colors.push(ncp.color);
       }
       return colors;
-    }, [getNavicustProgramInfo, placements]);
+    }, [getNavicustProgramInfo, placements, style]);
 
     return (
       <div
@@ -201,6 +207,16 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
           textAlign: "left",
         }}
       >
+        <div
+          style={{
+            fontFamily: "sans-serif",
+            fontWeight: "bold",
+            color: "#fff",
+            marginBottom: `${borderWidth * 2}px`,
+          }}
+        >
+          {style != null ? style.name : null}
+        </div>
         <div
           style={{
             display: "flex",
@@ -222,7 +238,7 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
             <tbody>
               <tr>
                 {[...colors.slice(0, 4), null, null, null, null]
-                  .slice(0, 4)
+                  .slice(0, style != null ? style.ncpColors.length : 4)
                   .map((color, i) => (
                     <td
                       key={i}
@@ -615,6 +631,9 @@ export default function NavicustViewer({
 
   const navicustGridRef = React.useRef<HTMLDivElement | null>(null);
 
+  const styleID = editor.getStyle();
+  const style = styleID != null ? editor.getStyleInfo(styleID) : null;
+
   return (
     <Box display={active ? "flex" : "none"} flexGrow={1}>
       <Stack sx={{ flexGrow: 1 }}>
@@ -637,6 +656,7 @@ export default function NavicustViewer({
                 commandLine={editor.getCommandLine()}
                 hasOutOfBounds={editor.hasOutOfBounds()}
                 romName={romName}
+                style={style}
               />
             </Box>
             <Table

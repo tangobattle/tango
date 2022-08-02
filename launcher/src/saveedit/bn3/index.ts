@@ -1,4 +1,4 @@
-import { Chip, NavicustProgram } from "../";
+import { Chip, NavicustProgram, Style } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import { getChipText, getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
@@ -103,14 +103,11 @@ class NavicustEditor {
   }
 
   getStyle() {
-    const fullID = this.editor.dv.getUint8(0x1881);
-    return {
-      // Normal, Guts, Cust, Team, Shield, Ground, Shadow, Bug
-      type: fullID >> 3,
+    return this.editor.dv.getUint8(0x1881);
+  }
 
-      // Null, Elec, Heat, Aqua, Wood
-      element: fullID & 0x7,
-    };
+  getStyleInfo(id: number) {
+    return this.editor.romViewer.getStyleInfo(id);
   }
 
   getNavicustBlock(i: number) {
@@ -314,6 +311,7 @@ interface SaveeditInfo {
     elementIconsPointer: number;
     ncpData: number;
     ncpNamesPointer: number;
+    keyItemsNamesPointer: number;
   };
 }
 
@@ -446,6 +444,39 @@ class ROMViewer extends ROMViewerBase {
         5,
         5
       ),
+    };
+  }
+
+  getStyleInfo(id: number): Style {
+    const type = id >> 3;
+    const element = id & 0x7;
+
+    return {
+      name: getTextSimple(
+        this.dv,
+        this.dv.getUint32(
+          this.saveeditInfo.offsets.keyItemsNamesPointer,
+          true
+        ) & ~0x08000000,
+        128 + type * 5 + element,
+        this.saveeditInfo.charset,
+        PARSE_TEXT_OPTIONS
+      ),
+      ncpColors: [
+        "white",
+        "pink",
+        "yellow",
+        ...([
+          [], // Normal
+          ["red"], // Guts
+          ["blue"], // Cust
+          ["green"], // Team
+          ["blue"], // Shield
+          ["green"], // Ground
+          ["red"], // Shadow
+          ["gray"], // Bug
+        ][type] as NavicustProgram["color"][]),
+      ],
     };
   }
 }
