@@ -140,7 +140,7 @@ impl Game {
             mgba::gba::SCREEN_HEIGHT as usize,
         ));
 
-        let mut window = video
+        let window = video
             .window(
                 &title_prefix,
                 std::cmp::max(mgba::gba::SCREEN_WIDTH * window_scale, vbuf_width as u32),
