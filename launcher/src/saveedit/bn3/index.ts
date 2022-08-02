@@ -103,7 +103,14 @@ class NavicustEditor {
   }
 
   getStyle() {
-    return this.editor.dv.getUint8(0x1881);
+    const fullID = this.editor.dv.getUint8(0x1881);
+    return {
+      // Normal, Guts, Cust, Team, Shield, Ground, Shadow, Bug
+      type: fullID >> 3,
+
+      // Null, Elec, Heat, Aqua, Wood
+      element: fullID & 0x7,
+    };
   }
 
   getNavicustBlock(i: number) {
@@ -119,26 +126,11 @@ class NavicustEditor {
       col: this.editor.dv.getUint8(offset + 2),
       row: this.editor.dv.getUint8(offset + 3),
       rot: this.editor.dv.getUint8(offset + 4),
-      compressed: true,
+      compressed: !!(
+        this.editor.dv.getUint8(0x0310 + (fullID >> 3)) &
+        (0x80 >> (fullID & 7))
+      ),
     };
-  }
-
-  setNavicustBlock(
-    i: number,
-    id: number,
-    variant: number,
-    col: number,
-    row: number,
-    rot: number,
-    compressed: boolean
-  ) {
-    const offset = 0x1300 + i * 8;
-    this.editor.dv.setUint8(offset, (id << 2) | variant);
-    this.editor.dv.setUint8(offset + 2, col);
-    this.editor.dv.setUint8(offset + 3, row);
-    this.editor.dv.setUint8(offset + 4, rot);
-    this.editor.dv.setUint8(offset + 5, compressed ? 1 : 0);
-    this.editor.navicustDirty = true;
   }
 }
 
