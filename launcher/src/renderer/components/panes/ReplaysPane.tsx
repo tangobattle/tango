@@ -80,6 +80,7 @@ function ReplayItem({
         <Stack direction="row">
           <Tooltip title={<Trans i18nKey="replays:show-info" />}>
             <IconButton
+              disabled={unavailable}
               onClick={() => {
                 onInfoClick();
               }}
