@@ -210,43 +210,129 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
         {style != null ? (
           <div
             style={{
-              fontFamily: "sans-serif",
-              fontWeight: "bold",
-              color: "#fff",
+              display: "flex",
+              boxSizing: "border-box",
               marginBottom: `${borderWidth * 2}px`,
             }}
           >
-            {style.name}
-          </div>
-        ) : null}
-        <div
-          style={{
-            display: "flex",
-            boxSizing: "border-box",
-            marginBottom: `${borderWidth * 2}px`,
-          }}
-        >
-          <table
-            style={{
-              boxSizing: "border-box",
-              background: borderColor,
-              borderStyle: "solid",
-              borderColor,
-              borderWidth: `${borderWidth / 4}px`,
-              borderSpacing: 0,
-              borderCollapse: "separate",
-            }}
-          >
-            <tbody>
-              <tr>
-                {[...colors.slice(0, 4), null, null, null, null]
-                  .slice(0, style != null ? style.ncpColors.length : 4)
-                  .map((color, i) => (
+            <div
+              style={{
+                fontFamily: "sans-serif",
+                fontWeight: "bold",
+                color: "#fff",
+              }}
+            >
+              {style.name}
+            </div>
+            <table
+              style={{
+                boxSizing: "border-box",
+                background: borderColor,
+                borderStyle: "solid",
+                borderColor,
+                borderWidth: `${borderWidth / 4}px`,
+                borderSpacing: 0,
+                borderCollapse: "separate",
+                marginLeft: "auto",
+              }}
+            >
+              <tbody>
+                <tr>
+                  {style.ncpColors.map((color, i) => (
                     <td
                       key={i}
                       style={{
                         borderStyle: "solid",
                         borderColor,
+                        boxSizing: "border-box",
+                        borderWidth: `${borderWidth / 2}px`,
+                        width: `${borderWidth * 3}px`,
+                        height: `${borderWidth * 4}px`,
+                        padding: 0,
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          background: NAVICUST_COLORS[color!].color,
+                        }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              boxSizing: "border-box",
+              marginBottom: `${borderWidth * 2}px`,
+            }}
+          >
+            <table
+              style={{
+                boxSizing: "border-box",
+                background: borderColor,
+                borderStyle: "solid",
+                borderColor,
+                borderWidth: `${borderWidth / 4}px`,
+                borderSpacing: 0,
+                borderCollapse: "separate",
+              }}
+            >
+              <tbody>
+                <tr>
+                  {[...colors.slice(0, 4), null, null, null, null]
+                    .slice(0, 4)
+                    .map((color, i) => (
+                      <td
+                        key={i}
+                        style={{
+                          borderStyle: "solid",
+                          borderColor,
+                          boxSizing: "border-box",
+                          borderWidth: `${borderWidth / 2}px`,
+                          width: `${borderWidth * 6}px`,
+                          height: `${borderWidth * 4}px`,
+                          padding: 0,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            background:
+                              color != null
+                                ? NAVICUST_COLORS[color!].plusColor
+                                : emptyColor,
+                          }}
+                        />
+                      </td>
+                    ))}
+                </tr>
+              </tbody>
+            </table>
+            <table
+              style={{
+                borderStyle: "solid",
+                borderColor: "transparent",
+                boxSizing: "border-box",
+                borderWidth: `${borderWidth / 4}px`,
+                borderSpacing: 0,
+                borderCollapse: "separate",
+              }}
+            >
+              <tbody>
+                <tr>
+                  {colors.slice(4).map((color, i) => (
+                    <td
+                      key={i}
+                      style={{
+                        borderStyle: "solid",
+                        borderColor: "transparent",
                         boxSizing: "border-box",
                         borderWidth: `${borderWidth / 2}px`,
                         width: `${borderWidth * 6}px`,
@@ -266,50 +352,11 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
                       />
                     </td>
                   ))}
-              </tr>
-            </tbody>
-          </table>
-          <table
-            style={{
-              borderStyle: "solid",
-              borderColor: "transparent",
-              boxSizing: "border-box",
-              borderWidth: `${borderWidth / 4}px`,
-              borderSpacing: 0,
-              borderCollapse: "separate",
-            }}
-          >
-            <tbody>
-              <tr>
-                {colors.slice(4).map((color, i) => (
-                  <td
-                    key={i}
-                    style={{
-                      borderStyle: "solid",
-                      borderColor: "transparent",
-                      boxSizing: "border-box",
-                      borderWidth: `${borderWidth / 2}px`,
-                      width: `${borderWidth * 6}px`,
-                      height: `${borderWidth * 4}px`,
-                      padding: 0,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        background:
-                          color != null
-                            ? NAVICUST_COLORS[color!].plusColor
-                            : emptyColor,
-                      }}
-                    />
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
         <div>
           <div style={{ position: "relative" }}>
             <table

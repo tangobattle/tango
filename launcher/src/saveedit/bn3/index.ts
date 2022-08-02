@@ -448,8 +448,15 @@ class ROMViewer extends ROMViewerBase {
   }
 
   getStyleInfo(id: number): Style {
-    const type = id >> 3;
+    const type = (id >> 3) & 0xf;
     const element = id & 0x7;
+
+    if (type >= 8 || element >= 5) {
+      return {
+        name: "",
+        ncpColors: [],
+      };
+    }
 
     return {
       name: getTextSimple(
@@ -466,7 +473,7 @@ class ROMViewer extends ROMViewerBase {
         "white",
         "pink",
         "yellow",
-        ...([
+        ...(([
           [], // Normal
           ["red"], // Guts
           ["blue"], // Cust
@@ -475,7 +482,7 @@ class ROMViewer extends ROMViewerBase {
           ["green"], // Ground
           ["red"], // Shadow
           ["gray"], // Bug
-        ][type] as NavicustProgram["color"][]),
+        ][type] as NavicustProgram["color"][]) || []),
       ],
     };
   }
