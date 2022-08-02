@@ -123,10 +123,10 @@ function navicustBackground(romName: string) {
       return "#5A5A4A";
     case "MEGAMANBN4BMB4BE":
     case "ROCK_EXE4_BMB4BJ":
-      return "#4252AD";
+      return "#5210AD";
     case "MEGAMANBN4RSB4WE":
     case "ROCK_EXE4_RSB4WJ":
-      return "#BD3139";
+      return "#8C1010";
     case "MEGA_EXE3_BLA3XE":
     case "ROCK_EXE3_BKA3XJ":
       return "#5A5A5A";
