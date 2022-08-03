@@ -1382,10 +1382,26 @@ export default function BattleStarter({
                           )
                         : null}
                     </Select>{" "}
-                    {pendingStates?.opponent?.settings.matchType !=
+                    {pendingStates?.opponent?.settings.gameInfo?.rom != null &&
+                    pendingStates?.own?.settings.gameInfo?.rom != null &&
+                    (pendingStates?.opponent?.settings.matchType !=
                       pendingStates?.own?.settings.matchType ||
-                    pendingStates?.opponent?.settings.matchSubtype !=
-                      pendingStates?.own?.settings.matchSubtype ? (
+                      KNOWN_ROM_FAMILIES[
+                        FAMILY_BY_ROM_NAME[
+                          pendingStates.opponent.settings.gameInfo.rom
+                        ]
+                      ].matchTypes[pendingStates.opponent.settings.matchType]
+                        .subtypes[
+                        pendingStates.opponent.settings.matchSubtype
+                      ] !=
+                        KNOWN_ROM_FAMILIES[
+                          FAMILY_BY_ROM_NAME[
+                            pendingStates.own.settings.gameInfo.rom
+                          ]
+                        ].matchTypes[pendingStates.own.settings.matchType]
+                          .subtypes[
+                          pendingStates.own.settings.matchSubtype
+                        ]) ? (
                       <Tooltip
                         title={<Trans i18nKey="play:mismatching-match-type" />}
                       >
