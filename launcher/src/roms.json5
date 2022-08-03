@@ -464,7 +464,7 @@
     matchTypes: [
       {
         name: "single",
-        subtypes: ["lightweight", "mediumweight", "heavyweight"],
+        subtypes: ["lightweight", "midweight", "heavyweight"],
       },
       { name: "triple", subtypes: ["regular"] },
     ],
@@ -535,7 +535,7 @@
     matchTypes: [
       {
         name: "single",
-        subtypes: ["lightweight", "mediumweight", "heavyweight"],
+        subtypes: ["lightweight", "midweight", "heavyweight"],
       },
       { name: "triple", subtypes: ["regular"] },
     ],

@@ -13,7 +13,7 @@
   "match-type.single.regular": "Single",
   "match-type.single.extended": "Single (all stages)",
   "match-type.single.lightweight": "Lightweight",
-  "match-type.single.mediumweight": "Mediumweight",
+  "match-type.single.midweight": "Midweight",
   "match-type.single.heavyweight": "Heavyweight",
   "match-type.triple.regular": "Triple",
   "match-type.triple.extended": "Triple (all stages)",

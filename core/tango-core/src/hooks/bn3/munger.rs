@@ -42,7 +42,7 @@ impl Munger {
                 0x00, 0x00, 0x00,
             ],
         );
-        // 0 = lightweight, 1 = mediumweight, 2 = heavyweight, 3 = tri-battle
+        // 0 = lightweight, 1 = midweight, 2 = heavyweight, 3 = tri-battle
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, match_type);
     }
 

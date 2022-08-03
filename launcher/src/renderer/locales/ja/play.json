@@ -13,7 +13,7 @@
   "match-type.single.regular": "シングル",
   "match-type.single.extended": "シングル（本番ステージ）",
   "match-type.single.lightweight": "ライト級",
-  "match-type.single.mediumweight": "ミドル級",
+  "match-type.single.midweight": "ミドル級",
   "match-type.single.heavyweight": "ヘビー級",
   "match-type.triple.regular": "トリプル",
   "match-type.triple.extended": "トリプル（本番ステージ）",
