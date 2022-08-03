@@ -75,8 +75,6 @@ import { AllowEdits as AllowFolderEdits } from "./saveedit/FolderViewer";
 import Spinner from "./Spinner";
 import { useTempDir } from "./TempDirContext";
 
-const MATCH_TYPES = ["single", "triple"];
-
 function removeBadPathCharacters(s: string): string {
   return s.replace(/[/\\?%*:|"<>. ]/g, "_");
 }
@@ -479,14 +477,18 @@ async function runCallback(
     const myPendingSettings: SetSettings = {
       nickname: ref.current.config.nickname!,
       inputDelay: ref.current.config.defaultMatchSettings.inputDelay,
-      matchType: ref.current.config.defaultMatchSettings.matchType,
+      matchType:
+        ref.current.gameInfo != null &&
+        ref.current.config.defaultMatchSettings.matchType <
+          KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[ref.current.gameInfo.rom]]
+            .matchTypes.length
+          ? ref.current.config.defaultMatchSettings.matchType
+          : 0,
       matchSubtype: 0,
-      gameInfo: undefined,
-      availableGames: [],
+      gameInfo: ref.current.gameInfo ?? undefined,
+      availableGames: ref.current.availableGames,
       revealSetup: false,
     };
-    myPendingSettings.gameInfo = ref.current.gameInfo ?? undefined;
-    myPendingSettings.availableGames = ref.current.availableGames;
     ref.current.setPendingStates((pendingStates) => ({
       ...pendingStates!,
       opponent: null,
@@ -921,6 +923,7 @@ interface PendingStates {
 
 interface TrivializedSettings {
   matchType: number;
+  matchSubtype: number;
   gameFamily: string | null;
   patch: GameInfo_Patch | null;
   revealSetup: boolean;
@@ -929,6 +932,7 @@ interface TrivializedSettings {
 function trivializeSettings(settings: SetSettings): TrivializedSettings {
   return {
     matchType: settings.matchType,
+    matchSubtype: settings.matchSubtype,
     gameFamily:
       settings.gameInfo != null
         ? FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
@@ -1066,6 +1070,14 @@ export default function BattleStarter({
       changeLocalPendingState({
         ...pendingStates.own.settings,
         gameInfo: gameInfo ?? undefined,
+        matchType:
+          gameInfo != null &&
+          pendingStates.own.settings.matchType <
+            KNOWN_ROM_FAMILIES[FAMILY_BY_ROM_NAME[gameInfo.rom]].matchTypes
+              .length
+            ? pendingStates.own.settings.matchType
+            : 0,
+        matchSubtype: 0,
         availableGames,
       });
     }
@@ -1333,27 +1345,47 @@ export default function BattleStarter({
                     <Select
                       variant="standard"
                       size="small"
-                      value={pendingStates?.own?.settings.matchType ?? 0}
+                      value={
+                        pendingStates?.own != null
+                          ? JSON.stringify([
+                              pendingStates.own.settings.matchType,
+                              pendingStates.own.settings.matchSubtype,
+                            ])
+                          : ""
+                      }
                       disabled={pendingStates?.own?.negotiatedState != null}
                       onChange={(e) => {
+                        const [matchType, matchSubtype] = JSON.parse(
+                          e.target.value as string
+                        );
                         changeLocalPendingState({
                           ...pendingStates!.own!.settings,
-                          matchType: e.target.value as number,
+                          matchType,
+                          matchSubtype,
                         });
                       }}
                     >
-                      {MATCH_TYPES.map((_v, k) => (
-                        <MenuItem key={k} value={k}>
-                          {k == 0 ? (
-                            <Trans i18nKey="play:match-type.single" />
-                          ) : k == 1 ? (
-                            <Trans i18nKey="play:match-type.triple" />
-                          ) : null}
-                        </MenuItem>
-                      ))}
+                      {gameInfo != null
+                        ? KNOWN_ROM_FAMILIES[
+                            FAMILY_BY_ROM_NAME[gameInfo.rom]
+                          ].matchTypes.map((v, i) =>
+                            v.subtypes.flatMap((st, j) => (
+                              <MenuItem
+                                key={JSON.stringify([i, j])}
+                                value={JSON.stringify([i, j])}
+                              >
+                                <Trans
+                                  i18nKey={`play:match-type.${v.name}.${st}`}
+                                />
+                              </MenuItem>
+                            ))
+                          )
+                        : null}
                     </Select>{" "}
                     {pendingStates?.opponent?.settings.matchType !=
-                    pendingStates?.own?.settings.matchType ? (
+                      pendingStates?.own?.settings.matchType ||
+                    pendingStates?.opponent?.settings.matchSubtype !=
+                      pendingStates?.own?.settings.matchSubtype ? (
                       <Tooltip
                         title={<Trans i18nKey="play:mismatching-match-type" />}
                       >
@@ -1368,10 +1400,28 @@ export default function BattleStarter({
                     ) : null}
                   </TableCell>
                   <TableCell>
-                    {pendingStates?.opponent?.settings.matchType == 0 ? (
-                      <Trans i18nKey="play:match-type.single" />
-                    ) : pendingStates?.opponent?.settings.matchType == 1 ? (
-                      <Trans i18nKey="play:match-type.triple" />
+                    {pendingStates?.opponent?.settings.gameInfo?.rom != null ? (
+                      <Trans
+                        i18nKey={`play:match-type.${
+                          KNOWN_ROM_FAMILIES[
+                            FAMILY_BY_ROM_NAME[
+                              pendingStates.opponent.settings.gameInfo.rom
+                            ]
+                          ].matchTypes[
+                            pendingStates.opponent.settings.matchType
+                          ].name
+                        }.${
+                          KNOWN_ROM_FAMILIES[
+                            FAMILY_BY_ROM_NAME[
+                              pendingStates.opponent.settings.gameInfo.rom
+                            ]
+                          ].matchTypes[
+                            pendingStates.opponent.settings.matchType
+                          ].subtypes[
+                            pendingStates.opponent.settings.matchSubtype
+                          ]
+                        }`}
+                      />
                     ) : null}
                   </TableCell>
                 </TableRow>
@@ -1562,6 +1612,8 @@ export default function BattleStarter({
                             saveName == null ||
                             pendingStates.own.settings.matchType !=
                               pendingStates.opponent.settings.matchType ||
+                            pendingStates.own.settings.matchSubtype !=
+                              pendingStates.opponent.settings.matchSubtype ||
                             !pendingStates.opponent.settings.availableGames.some(
                               (g) =>
                                 gameInfoMatches(
