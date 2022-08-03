@@ -8,8 +8,8 @@
     lang: "en",
 
     matchTypes: [
-      { name: "single", subtypes: ["single"] },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "single", subtypes: ["regular"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -74,8 +74,8 @@
     lang: "ja",
 
     matchTypes: [
-      { name: "single", subtypes: ["single"] },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "single", subtypes: ["regular"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -147,8 +147,8 @@
     lang: "en",
 
     matchTypes: [
-      { name: "single", subtypes: ["normal", "extended"] },
-      { name: "triple", subtypes: ["normal", "extended"] },
+      { name: "single", subtypes: ["regular", "extended"] },
+      { name: "triple", subtypes: ["regular", "extended"] },
     ],
 
     versions: {
@@ -219,8 +219,8 @@
     lang: "ja",
 
     matchTypes: [
-      { name: "single", subtypes: ["normal", "all-fields"] },
-      { name: "triple", subtypes: ["normal", "all-fields"] },
+      { name: "single", subtypes: ["regular", "extended"] },
+      { name: "triple", subtypes: ["regular", "extended"] },
     ],
 
     versions: {
@@ -291,8 +291,8 @@
     lang: "ja",
 
     matchTypes: [
-      { name: "single", subtypes: ["single"] },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "single", subtypes: ["regular"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -329,8 +329,8 @@
     lang: "en",
 
     matchTypes: [
-      { name: "single", subtypes: ["single"] },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "single", subtypes: ["regular"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -395,8 +395,8 @@
     lang: "ja",
 
     matchTypes: [
-      { name: "single", subtypes: ["single"] },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "single", subtypes: ["regular"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -466,7 +466,7 @@
         name: "single",
         subtypes: ["lightweight", "mediumweight", "heavyweight"],
       },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -537,7 +537,7 @@
         name: "single",
         subtypes: ["lightweight", "mediumweight", "heavyweight"],
       },
-      { name: "triple", subtypes: ["triple"] },
+      { name: "triple", subtypes: ["regular"] },
     ],
 
     versions: {
@@ -604,7 +604,7 @@
     },
     lang: "en",
 
-    matchTypes: [{ name: "single", subtypes: ["single"] }],
+    matchTypes: [{ name: "single", subtypes: ["regular"] }],
 
     versions: {
       MEGAMAN_EXE2AE2E: {
@@ -637,7 +637,7 @@
     },
     lang: "ja",
 
-    matchTypes: [{ name: "single", subtypes: ["single"] }],
+    matchTypes: [{ name: "single", subtypes: ["regular"] }],
 
     versions: {
       ROCKMAN_EXE2AE2J: {
@@ -670,7 +670,7 @@
     },
     lang: "en",
 
-    matchTypes: [{ name: "single", subtypes: ["single"] }],
+    matchTypes: [{ name: "single", subtypes: ["regular"] }],
 
     versions: {
       "MEGAMAN_BN\0\0AREE": {
@@ -703,7 +703,7 @@
     },
     lang: "ja",
 
-    matchTypes: [{ name: "single", subtypes: ["single"] }],
+    matchTypes: [{ name: "single", subtypes: ["regular"] }],
 
     versions: {
       "ROCKMAN_EXE\0AREJ": {
