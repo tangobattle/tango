@@ -7,8 +7,9 @@ import { walk } from "./fsutil";
 
 export const KNOWN_ROM_FAMILIES = require("./roms.json5").default as {
   [family: string]: {
-    lang: string;
     title: { [language: string]: string };
+    lang: string;
+    matchTypes: { name: string; subtypes: string[] }[];
     versions: { [name: string]: KnownROM };
   };
 };
