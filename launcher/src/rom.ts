@@ -5,7 +5,7 @@ import path from "path";
 
 import { walk } from "./fsutil";
 
-export const KNOWN_ROM_FAMILIES = require("./roms.json5").default as {
+export const KNOWN_ROM_FAMILIES = require("./roms.json5") as {
   [family: string]: {
     title: { [language: string]: string };
     lang: string;

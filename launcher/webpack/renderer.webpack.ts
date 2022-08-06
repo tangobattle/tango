@@ -31,6 +31,9 @@ const config: Configuration = {
         test: /\.json5$/i,
         loader: "json5-loader",
         type: "javascript/auto",
+        options: {
+          esModule: false,
+        },
       },
       {
         test: /\.css$/i,
