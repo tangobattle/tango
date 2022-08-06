@@ -19,7 +19,10 @@ const MASK_OFFSET = 0x1a34;
 const GAME_NAME_OFFSET = 0x29e0;
 const CHECKSUM_OFFSET = 0x29dc;
 
-type Control = NewlineControl | { c: "print"; v: number };
+type Control =
+  | NewlineControl
+  | { c: "print"; v: number }
+  | { c: "ereader"; v: number };
 
 const PARSE_TEXT_OPTIONS: ParseTextOptions<Control> = {
   controlCodeHandlers: {
@@ -33,6 +36,12 @@ const PARSE_TEXT_OPTIONS: ParseTextOptions<Control> = {
       return {
         offset: offset + 3,
         control: { c: "print", v: dv.getUint8(offset + 2) },
+      };
+    },
+    0xff: (dv: DataView, offset: number) => {
+      return {
+        offset: offset + 2,
+        control: { c: "ereader", v: dv.getUint8(offset + 1) },
       };
     },
   },
@@ -498,7 +507,6 @@ class ROMViewer extends ROMViewerBase {
           ~0x88000000
       )
     );
-    console.log(this.modcardTextArchive);
     this.modcardDetailsTextArchive = unlz77(
       new DataView(
         buffer,

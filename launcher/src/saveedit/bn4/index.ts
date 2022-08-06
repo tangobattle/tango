@@ -1,7 +1,10 @@
 import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import { getChipText, getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
+import {
+    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseTextOptions,
+    ROMViewerBase
+} from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -10,13 +13,21 @@ const MASK_OFFSET = 0x1554;
 const GAME_NAME_OFFSET = 0x2208;
 const CHECKSUM_OFFSET = 0x21e8;
 
-const PARSE_TEXT_OPTIONS = {
+type Control = NewlineControl | { c: "ereader"; v: number };
+
+const PARSE_TEXT_OPTIONS: ParseTextOptions<Control> = {
   controlCodeHandlers: {
     0xe5: (_dv: DataView, _offset: number) => {
       return null;
     },
     0xe8: (_dv: DataView, offset: number) => {
       return { offset, control: { c: "newline" } };
+    },
+    0xff: (dv: DataView, offset: number) => {
+      return {
+        offset: offset + 2,
+        control: { c: "ereader", v: dv.getUint8(offset + 1) },
+      };
     },
   },
   extendCharsetControlCode: 0xe4,
