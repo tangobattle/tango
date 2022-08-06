@@ -1,7 +1,7 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseTextOptions,
+    getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseTextOptions,
     replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
@@ -548,13 +548,50 @@ class ROMViewer extends ROMViewerBase {
     const iconPtr = this.dv.getUint32(dataOffset + 0x20, true);
 
     return {
-      name: getChipText(
-        this.dv,
-        this.saveeditInfo.offsets.chipNamesPointers,
-        id,
-        this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
-      ),
+      name: (() => {
+        let scriptEntryID = id;
+        let scriptPointerOffset = this.saveeditInfo.offsets.chipNamesPointers;
+        if (scriptEntryID > 0xff) {
+          scriptPointerOffset += 4;
+          scriptEntryID -= 0x100;
+        }
+        return replacePrivateUseCharacters(
+          parseText(
+            this.dv,
+            this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
+            scriptEntryID,
+            PARSE_TEXT_OPTIONS
+          )
+            .flatMap((chunk) => {
+              if ("t" in chunk) {
+                return chunk.t
+                  .map((c) => this.saveeditInfo.charset[c])
+                  .join("");
+              }
+
+              if ("c" in chunk) {
+                switch (chunk.c) {
+                  case "newline":
+                    return ["\n"];
+                  case "ereader":
+                    return [
+                      getTextSimple(
+                        this.saveDv,
+                        0x1d14 + chunk.v * 0x18,
+                        0,
+                        this.saveeditInfo.charset,
+                        PARSE_TEXT_OPTIONS
+                      ),
+                    ];
+                }
+              }
+              return [];
+            })
+            .join("")
+            .replace(/-\n/g, "-")
+            .replace(/\n/g, " ")
+        );
+      })(),
       codes: codes.join(""),
       icon:
         iconPtr >= 0x08000000

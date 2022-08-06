@@ -212,6 +212,12 @@ function SaveSelector({
             <IconButton
               edge="end"
               onClick={() => {
+                if (initialSelection != null) {
+                  shell.showItemInFolder(
+                    path.join(config.paths.saves, initialSelection.saveName)
+                  );
+                  return;
+                }
                 shell.openPath(config.paths.saves);
               }}
             >
