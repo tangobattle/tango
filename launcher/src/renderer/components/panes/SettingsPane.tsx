@@ -30,7 +30,7 @@ import TextField from "@mui/material/TextField";
 import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 
-import { Config } from "../../../config";
+import { Config, DEFAULT_ENDPOINTS, DEFAULT_PATCH_REPO } from "../../../config";
 import { captureInput } from "../../../input";
 import { LANGUAGES } from "../../i18n";
 import { useConfig } from "../ConfigContext";
@@ -660,12 +660,12 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.endpoints.replaycollector}
+            value={config.endpointURLs.replaycollector}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                endpoints: {
-                  ...config.endpoints,
+                endpointURLs: {
+                  ...config.endpointURLs,
                   replaycollector: e.target.value,
                 },
               }));
@@ -675,12 +675,14 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.endpoints.signaling}
+            value={config.endpointURLs.signaling}
+            InputLabelProps={{ shrink: true }}
+            placeholder={DEFAULT_ENDPOINTS.signaling}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                endpoints: {
-                  ...config.endpoints,
+                endpointURLs: {
+                  ...config.endpointURLs,
                   signaling: e.target.value,
                 },
               }));
@@ -690,12 +692,14 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.endpoints.iceconfig}
+            value={config.endpointURLs.iceconfig}
+            InputLabelProps={{ shrink: true }}
+            placeholder={DEFAULT_ENDPOINTS.iceconfig}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                endpoints: {
-                  ...config.endpoints,
+                endpointURLs: {
+                  ...config.endpointURLs,
                   iceconfig: e.target.value,
                 },
               }));
@@ -705,11 +709,13 @@ function AdvancedTab({ active }: { active: boolean }) {
           <TextField
             size="small"
             fullWidth
-            value={config.patchRepo}
+            value={config.patchRepoURL}
+            InputLabelProps={{ shrink: true }}
+            placeholder={DEFAULT_PATCH_REPO}
             onChange={(e) => {
               saveConfig((config) => ({
                 ...config,
-                patchRepo: e.target.value,
+                patchRepoURL: e.target.value,
               }));
             }}
             label={<Trans i18nKey="settings:patch-repo" />}

@@ -48,7 +48,7 @@ import Typography from "@mui/material/Typography";
 import useTheme from "@mui/system/useTheme";
 
 import applyBPS from "../../bps";
-import { Config } from "../../config";
+import { Config, DEFAULT_ENDPOINTS } from "../../config";
 import * as discord from "../../discord";
 import * as ipc from "../../ipc";
 import { PatchInfo } from "../../patch";
@@ -313,31 +313,34 @@ async function runCallback(
 
   if (linkCode != "") {
     try {
-      const rawResp = await fetch(config.endpoints.iceconfig, {
-        method: "POST",
-        headers: {
-          "User-Agent": `tango-launcher/${app.getVersion()}`,
-          "Content-Type": "application/x-protobuf",
-        },
-        body: Buffer.from(
-          GetRequest.encode({
-            sessionId: linkCode,
-          }).finish()
-        ),
-        signal: (() => {
-          const abortController = new AbortController();
-          signal.addEventListener("abort", () => {
-            abortController.abort();
-          });
+      const rawResp = await fetch(
+        config.endpointURLs.iceconfig || DEFAULT_ENDPOINTS.iceconfig,
+        {
+          method: "POST",
+          headers: {
+            "User-Agent": `tango-launcher/${app.getVersion()}`,
+            "Content-Type": "application/x-protobuf",
+          },
+          body: Buffer.from(
+            GetRequest.encode({
+              sessionId: linkCode,
+            }).finish()
+          ),
+          signal: (() => {
+            const abortController = new AbortController();
+            signal.addEventListener("abort", () => {
+              abortController.abort();
+            });
 
-          // Abort the relay request after 30 seconds.
-          setTimeout(() => {
-            abortController.abort();
-          }, 10 * 1000);
+            // Abort the relay request after 30 seconds.
+            setTimeout(() => {
+              abortController.abort();
+            }, 10 * 1000);
 
-          return abortController.signal;
-        })(),
-      });
+            return abortController.signal;
+          })(),
+        }
+      );
       if (rawResp.ok) {
         const resp = GetResponse.decode(
           new Uint8Array(await rawResp.arrayBuffer())
@@ -376,7 +379,7 @@ async function runCallback(
 
   const core = new ipc.Core(
     config.inputMapping,
-    config.endpoints.signaling,
+    config.endpointURLs.signaling || DEFAULT_ENDPOINTS.signaling,
     iceServers,
     linkCode,
     {
@@ -853,15 +856,18 @@ async function runCallback(
     if (msg.roundEndedEv != null) {
       // eslint-disable-next-line no-console
       console.log("round ended", msg.roundEndedEv);
-      if (config.endpoints.replaycollector != "") {
+      if (config.endpointURLs.replaycollector != "") {
         (async () => {
-          const collectorResp = await fetch(config.endpoints.replaycollector, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-tango-replay",
-            },
-            body: createReadStream(msg.roundEndedEv!.replayFilename),
-          });
+          const collectorResp = await fetch(
+            config.endpointURLs.replaycollector,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-tango-replay",
+              },
+              body: createReadStream(msg.roundEndedEv!.replayFilename),
+            }
+          );
           if (!collectorResp.ok) {
             console.error(
               "failed to send to collector",

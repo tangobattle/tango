@@ -7,6 +7,13 @@ export type PhysicalInput =
   | { Button: string }
   | { Axis: [string, number] };
 
+export const DEFAULT_ENDPOINTS = {
+  signaling: "wss://signaling.tangobattle.com",
+  iceconfig: "https://iceconfig.tangobattle.com",
+};
+
+export const DEFAULT_PATCH_REPO = "https://github.com/tangobattle/patches";
+
 export interface Config {
   nickname: string | null;
   theme: "dark" | "light";
@@ -29,13 +36,13 @@ export interface Config {
     start: PhysicalInput[];
     speedUp: PhysicalInput[];
   };
-  endpoints: {
+  endpointURLs: {
     signaling: string;
     iceconfig: string;
     replaycollector: string;
   };
   iceServers: string[];
-  patchRepo: string;
+  patchRepoURL: string;
   defaultMatchSettings: {
     inputDelay: number;
     matchType: number;
@@ -54,7 +61,7 @@ function fillWithDefaults(app: Electron.App, config: Partial<Config>): Config {
     ...default_,
     ...config,
     inputMapping: { ...default_.inputMapping, ...config.inputMapping },
-    endpoints: { ...default_.endpoints, ...config.endpoints },
+    endpointURLs: { ...default_.endpointURLs, ...config.endpointURLs },
     paths: { ...default_.paths, ...config.paths },
   };
 }
@@ -83,9 +90,9 @@ function defaultConfig(app: Electron.App): Config {
       start: [{ Key: "Return" }, { Button: "start" }],
       speedUp: [],
     },
-    endpoints: {
-      signaling: "wss://signaling.tangobattle.com",
-      iceconfig: "https://iceconfig.tangobattle.com",
+    endpointURLs: {
+      signaling: "",
+      iceconfig: "",
       replaycollector: "https://replaycollector.tangobattle.com",
     },
     iceServers: [
@@ -95,7 +102,7 @@ function defaultConfig(app: Electron.App): Config {
       "stun://stun3.l.google.com:19302",
       "stun://stun4.l.google.com:19302",
     ],
-    patchRepo: "https://github.com/tangobattle/patches",
+    patchRepoURL: "",
     defaultMatchSettings: {
       inputDelay: 2,
       matchType: 1,

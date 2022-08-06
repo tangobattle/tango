@@ -498,6 +498,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x88000000
       )
     );
+    console.log(this.modcardTextArchive);
     this.modcardDetailsTextArchive = unlz77(
       new DataView(
         buffer,

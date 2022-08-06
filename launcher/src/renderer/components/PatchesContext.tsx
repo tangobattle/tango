@@ -1,5 +1,6 @@
 import React, { useContext } from "react";
 
+import { DEFAULT_PATCH_REPO } from "../../config";
 import { PatchInfos, scan, update as updatePatches } from "../../patch";
 import { useConfig } from "./ConfigContext";
 
@@ -63,14 +64,17 @@ export const PatchesProvider = ({
   const update = React.useCallback(async () => {
     try {
       setUpdating(true);
-      await updatePatches(config.paths.patches, config.patchRepo);
+      await updatePatches(
+        config.paths.patches,
+        config.patchRepoURL || DEFAULT_PATCH_REPO
+      );
       await rescan();
     } catch (e) {
       console.error("failed to update patches", e);
     } finally {
       setUpdating(false);
     }
-  }, [config.paths.patches, config.patchRepo, rescan]);
+  }, [config.paths.patches, config.patchRepoURL, rescan]);
 
   React.useEffect(() => {
     update();
