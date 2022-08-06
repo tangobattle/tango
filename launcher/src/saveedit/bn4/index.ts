@@ -592,7 +592,7 @@ class ROMViewer extends ROMViewerBase {
                     return [
                       getTextSimple(
                         this.saveDv,
-                        0x15c4 + chunk.v * 0x10,
+                        0x1770 - this.saveDv.byteOffset + chunk.v * 0x10,
                         0,
                         this.saveeditInfo.charset,
                         PARSE_TEXT_OPTIONS
