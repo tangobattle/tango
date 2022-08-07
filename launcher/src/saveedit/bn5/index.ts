@@ -1,7 +1,7 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseTextOptions,
+    getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, parseText,
     replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
@@ -24,29 +24,31 @@ type Control =
   | { c: "print"; v: number }
   | { c: "ereader"; v: number };
 
-const PARSE_TEXT_OPTIONS: ParseTextOptions<Control> = {
-  controlCodeHandlers: {
-    0xe6: (_dv: DataView, _offset: number) => {
-      return null;
-    },
-    0xe9: (_dv: DataView, offset: number) => {
-      return { offset, control: { c: "newline" } };
-    },
-    0xfa: (dv: DataView, offset: number) => {
-      return {
-        offset: offset + 3,
-        control: { c: "print", v: dv.getUint8(offset + 2) },
-      };
-    },
-    0xff: (dv: DataView, offset: number) => {
+function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
+  const c = dv.getUint8(offset);
+  switch (c) {
+    case 0xe4:
       return {
         offset: offset + 2,
-        control: { c: "ereader", v: dv.getUint8(offset + 1) },
+        value: { t: 0xe5 + dv.getUint8(offset + 1) },
       };
-    },
-  },
-  extendCharsetControlCode: 0xe4,
-};
+    case 0xe6:
+      return null;
+    case 0xe9:
+      return { offset: offset + 1, value: { c: "newline" } };
+    case 0xfa:
+      return {
+        offset: offset + 4,
+        value: { c: "print", v: dv.getUint8(offset + 3) },
+      };
+    case 0xff:
+      return {
+        offset: offset + 3,
+        value: { c: "ereader", v: dv.getUint8(offset + 2) },
+      };
+  }
+  return { offset: offset + 1, value: { t: c } };
+}
 
 function maskSave(dv: DataView) {
   const mask = dv.getUint32(MASK_OFFSET, true);
@@ -560,13 +562,11 @@ class ROMViewer extends ROMViewerBase {
             this.dv,
             this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
             scriptEntryID,
-            PARSE_TEXT_OPTIONS
+            parseOne
           )
             .flatMap((chunk) => {
               if ("t" in chunk) {
-                return chunk.t
-                  .map((c) => this.saveeditInfo.charset[c])
-                  .join("");
+                return this.saveeditInfo.charset[chunk.t];
               }
 
               if ("c" in chunk) {
@@ -580,7 +580,7 @@ class ROMViewer extends ROMViewerBase {
                         0x1d14 + chunk.v * 0x18,
                         0,
                         this.saveeditInfo.charset,
-                        PARSE_TEXT_OPTIONS
+                        parseOne
                       ),
                     ];
                 }
@@ -625,7 +625,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
@@ -682,13 +682,11 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.modcardData + offset + 2
       );
 
-      const tmpl = parseText(detailsDv, 4, id, PARSE_TEXT_OPTIONS).flatMap<
+      const tmpl = parseText(detailsDv, 4, id, parseOne).flatMap<
         { t: string } | { p: number }
       >((chunk) => {
         if ("t" in chunk) {
-          return [
-            { t: chunk.t.map((c) => this.saveeditInfo.charset[c]).join("") },
-          ];
+          return [{ t: this.saveeditInfo.charset[chunk.t] }];
         }
         if ("c" in chunk) {
           switch (chunk.c) {
@@ -735,7 +733,7 @@ class ROMViewer extends ROMViewerBase {
         4,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       mb: this.dv.getUint8(
         this.saveeditInfo.offsets.modcardData + modcardStart + 0x01

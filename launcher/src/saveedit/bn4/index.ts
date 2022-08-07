@@ -1,11 +1,11 @@
-import type { Chip, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseTextOptions,
+    getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, parseText,
     replacePrivateUseCharacters, ROMViewerBase
 } from "../rom";
 
+import type { Chip, NavicustProgram } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
 const SRAM_SIZE = 0x73d2;
@@ -15,23 +15,26 @@ const CHECKSUM_OFFSET = 0x21e8;
 
 type Control = NewlineControl | { c: "ereader"; v: number };
 
-const PARSE_TEXT_OPTIONS: ParseTextOptions<Control> = {
-  controlCodeHandlers: {
-    0xe5: (_dv: DataView, _offset: number) => {
-      return null;
-    },
-    0xe8: (_dv: DataView, offset: number) => {
-      return { offset, control: { c: "newline" } };
-    },
-    0xff: (dv: DataView, offset: number) => {
+function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
+  const c = dv.getUint8(offset);
+  switch (c) {
+    case 0xe4:
       return {
         offset: offset + 2,
-        control: { c: "ereader", v: dv.getUint8(offset + 1) },
+        value: { t: 0xe5 + dv.getUint8(offset + 1) },
       };
-    },
-  },
-  extendCharsetControlCode: 0xe4,
-};
+    case 0xe5:
+      return null;
+    case 0xe8:
+      return { offset: offset + 1, value: { c: "newline" } };
+    case 0xff:
+      return {
+        offset: offset + 3,
+        value: { c: "ereader", v: dv.getUint8(offset + 2) },
+      };
+  }
+  return { offset: offset + 1, value: { t: c } };
+}
 
 const GAME_INFOS: { [key: string]: GameInfo } = {
   // Japan
@@ -575,13 +578,11 @@ class ROMViewer extends ROMViewerBase {
             this.dv,
             this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
             scriptEntryID,
-            PARSE_TEXT_OPTIONS
+            parseOne
           )
             .flatMap((chunk) => {
               if ("t" in chunk) {
-                return chunk.t
-                  .map((c) => this.saveeditInfo.charset[c])
-                  .join("");
+                return this.saveeditInfo.charset[chunk.t];
               }
 
               if ("c" in chunk) {
@@ -595,7 +596,7 @@ class ROMViewer extends ROMViewerBase {
                         0x1770 - this.saveDv.byteOffset + chunk.v * 0x10,
                         0,
                         this.saveeditInfo.charset,
-                        PARSE_TEXT_OPTIONS
+                        parseOne
                       ),
                     ];
                 }
@@ -637,7 +638,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       color: [null, "white", "pink", "yellow", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)

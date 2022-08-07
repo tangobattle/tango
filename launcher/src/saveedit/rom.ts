@@ -16,18 +16,13 @@ export function getPalette(dv: DataView, offset: number): Uint32Array {
   return palette;
 }
 
-export interface ParseTextOptions<Control> {
-  controlCodeHandlers: ControlCodeHandlers<Control>;
-  extendCharsetControlCode: number;
-}
-
-export type ControlCodeHandlers<Control> = {
+export type ControlCodeHandlers<T> = {
   [code: number]: (
     dv: DataView,
     offset: number
   ) => {
     offset: number;
-    control: Control;
+    value: T;
   } | null;
 };
 
@@ -35,18 +30,25 @@ export type NewlineControl = {
   c: "newline";
 };
 
-export function getTextSimple<Control>(
+export type ParseOne<T> = (dv: DataView, offset: number) => ParseOneResult<T>;
+
+export type ParseOneResult<T> = {
+  offset: number;
+  value: { t: number } | T;
+} | null;
+
+export function getTextSimple<T>(
   dv: DataView,
   scriptOffset: number,
   id: number,
   charset: string,
-  opts: ParseTextOptions<Control | NewlineControl>
+  parseOne: ParseOne<NewlineControl | T>
 ): string {
   return replacePrivateUseCharacters(
-    parseText(dv, scriptOffset, id, opts)
+    parseText(dv, scriptOffset, id, parseOne)
       .flatMap((chunk) =>
         "t" in chunk
-          ? chunk.t.map((c) => charset[c]).join("")
+          ? charset[chunk.t]
           : "c" in chunk && chunk.c == "newline"
           ? ["\n"]
           : []
@@ -57,55 +59,37 @@ export function getTextSimple<Control>(
   );
 }
 
-export function parseText<Control>(
+export function parseText<T>(
   dv: DataView,
   scriptOffset: number,
   id: number,
-  opts: ParseTextOptions<Control>
-): Array<{ t: number[] } | Control | NewlineControl> {
-  const chunks: Array<{ t: number[] } | Control> = [];
+  parseOne: ParseOne<T>
+): Array<{ t: number } | T> {
+  const chunks: Array<{ t: number } | T> = [];
 
   let offset = scriptOffset + dv.getUint16(scriptOffset + id * 0x2, true);
   const nextOffset =
     scriptOffset + dv.getUint16(scriptOffset + (id + 1) * 0x2, true);
 
-  const text: number[] = [];
   while (offset < dv.byteLength && offset < nextOffset) {
-    let c = dv.getUint8(offset++);
-
-    const handler = opts.controlCodeHandlers[c];
-    if (handler) {
-      chunks.push({ t: text.splice(0, text.length) });
-      const r = handler(dv, offset);
-      if (r == null) {
-        break;
-      }
-      const { offset: offset2, control } = r;
-      chunks.push(control);
-      offset = offset2;
-      continue;
+    const r = parseOne(dv, offset);
+    if (r == null) {
+      break;
     }
-
-    if (c == opts.extendCharsetControlCode) {
-      c += dv.getUint8(offset++);
-    }
-
-    text.push(c);
-  }
-
-  if (text.length > 0) {
-    chunks.push({ t: text.splice(0, text.length) });
+    const { offset: offset2, value } = r;
+    chunks.push(value);
+    offset = offset2;
   }
 
   return chunks;
 }
 
-export function getChipText<Control>(
+export function getChipText<T>(
   dv: DataView,
   scriptPointerOffset: number,
   id: number,
   charset: string,
-  opts: ParseTextOptions<Control | NewlineControl>
+  parseOne: ParseOne<NewlineControl | T>
 ): string {
   if (id > 0xff) {
     scriptPointerOffset += 4;
@@ -117,7 +101,7 @@ export function getChipText<Control>(
     dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
     id,
     charset,
-    opts
+    parseOne
   );
 }
 

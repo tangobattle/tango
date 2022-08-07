@@ -1,5 +1,7 @@
 import { EditorBase } from "../base";
-import { getChipText, getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
+import {
+    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, ROMViewerBase
+} from "../rom";
 
 import type { Chip, Navi } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -10,17 +12,23 @@ const MASK_OFFSET = 0x3c84;
 const GAME_NAME_OFFSET = 0x4ba8;
 const CHECKSUM_OFFSET = 0x4b88;
 
-const PARSE_TEXT_OPTIONS = {
-  controlCodeHandlers: {
-    0xe5: (_dv: DataView, _offset: number) => {
+type Control = NewlineControl;
+
+function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
+  const c = dv.getUint8(offset);
+  switch (c) {
+    case 0xe4:
+      return {
+        offset: offset + 2,
+        value: { t: 0xe5 + dv.getUint8(offset + 1) },
+      };
+    case 0xe5:
       return null;
-    },
-    0xe8: (_dv: DataView, offset: number) => {
-      return { offset, control: { c: "newline" } };
-    },
-  },
-  extendCharsetControlCode: 0xe4,
-};
+    case 0xe8:
+      return { offset: offset + 1, value: { c: "newline" } };
+  }
+  return { offset: offset + 1, value: { t: c } };
+}
 
 function getChecksum(dv: DataView) {
   return dv.getUint32(CHECKSUM_OFFSET, true);
@@ -342,7 +350,7 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.chipNamesPointers,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       codes: codes.join(""),
       icon:
@@ -370,7 +378,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       emblem: getTiles(
         this.dv,

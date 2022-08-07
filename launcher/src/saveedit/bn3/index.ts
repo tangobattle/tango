@@ -1,7 +1,9 @@
 import { Chip, NavicustProgram, Style } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
-import { getChipText, getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
+import {
+    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, ROMViewerBase
+} from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
 
@@ -14,17 +16,21 @@ const SRAM_SIZE = 0x57b0;
 const GAME_NAME_OFFSET = 0x1e00;
 const CHECKSUM_OFFSET = 0x1dd8;
 
-const PARSE_TEXT_OPTIONS = {
-  controlCodeHandlers: {
-    0xe7: (_dv: DataView, _offset: number) => {
+function parseOne(dv: DataView, offset: number): ParseOneResult<NewlineControl> {
+  const c = dv.getUint8(offset);
+  switch (c) {
+    case 0xe5:
+      return {
+        offset: offset + 2,
+        value: { t: 0xe5 + dv.getUint8(offset + 1) },
+      };
+    case 0xe7:
       return null;
-    },
-    0xe8: (_dv: DataView, offset: number) => {
-      return { offset, control: { c: "newline" } };
-    },
-  },
-  extendCharsetControlCode: 0xe5,
-};
+    case 0xe8:
+      return { offset: offset + 1, value: { c: "newline" } };
+  }
+  return { offset: offset + 1, value: { t: c } };
+}
 
 const GAME_INFOS: { [key: string]: GameInfo } = {
   // Japan
@@ -377,7 +383,7 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.chipNamesPointers,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       codes: codes.join(""),
       icon: getTiles(
@@ -407,7 +413,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       color: [
         null,
@@ -467,7 +473,7 @@ class ROMViewer extends ROMViewerBase {
         ) & ~0x08000000,
         128 + type * 5 + element,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       ncpColors: [
         "white",

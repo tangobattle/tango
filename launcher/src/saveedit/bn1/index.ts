@@ -1,21 +1,29 @@
 import { EditorBase } from "../base";
-import { getPalette, getTextSimple, getTiles, ROMViewerBase } from "../rom";
+import {
+    getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, ROMViewerBase
+} from "../rom";
 
 import type { Chip } from "../";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-const PARSE_TEXT_OPTIONS = {
-  controlCodeHandlers: {
-    0xe7: (_dv: DataView, _offset: number) => {
+type Control = NewlineControl;
+
+function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
+  const c = dv.getUint8(offset);
+  switch (c) {
+    case 0xe5:
+      return {
+        offset: offset + 2,
+        value: { t: 0xe5 + dv.getUint8(offset + 1) },
+      };
+    case 0xe7:
       return null;
-    },
-    0xe8: (_dv: DataView, offset: number) => {
-      return { offset, control: { c: "newline" } };
-    },
-  },
-  extendCharsetControlCode: 0xe5,
-};
+    case 0xe8:
+      return { offset: offset + 1, value: { c: "newline" } };
+  }
+  return { offset: offset + 1, value: { t: c } };
+}
 
 const SRAM_SIZE = 0x2308;
 const GAME_NAME_OFFSET = 0x03fc;
@@ -252,7 +260,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        PARSE_TEXT_OPTIONS
+        parseOne
       ),
       codes: codes.join(""),
       icon: getTiles(
