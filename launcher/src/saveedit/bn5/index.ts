@@ -30,7 +30,7 @@ function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
     case 0xe4:
       return {
         offset: offset + 2,
-        value: { t: 0xe5 + dv.getUint8(offset + 1) },
+        value: { t: 0xe4 + dv.getUint8(offset + 1) },
       };
     case 0xe6:
       return null;
