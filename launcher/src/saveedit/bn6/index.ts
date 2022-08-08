@@ -2,8 +2,8 @@ import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne,
-    parseText, replacePrivateUseCharacters, ROMViewerBase, unlz77
+    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, parseText,
+    ParseText1, replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -16,7 +16,7 @@ const CHECKSUM_OFFSET = 0x1c6c;
 
 type Control = NewlineControl | { c: "print"; v: number };
 
-function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
   const b = br.readByte();
   switch (b) {
     case 0xe4:
@@ -739,7 +739,7 @@ class ROMViewer extends ROMViewerBase {
       const tmpl =
         this.saveeditInfo.strings == null ||
         this.saveeditInfo.strings.modcardEffects == null
-          ? parseText(detailsDv, 4, id, parseOne).flatMap<
+          ? parseText(detailsDv, 4, id, parseText1).flatMap<
               { t: string } | { p: number }
             >((chunk) => {
               if ("t" in chunk) {
@@ -798,7 +798,7 @@ class ROMViewer extends ROMViewerBase {
               4,
               id,
               this.saveeditInfo.charset,
-              parseOne
+              parseText1
             )
           : this.saveeditInfo.strings.modcards[id],
       mb: this.dv.getUint8(
@@ -832,7 +832,7 @@ class ROMViewer extends ROMViewerBase {
               this.saveeditInfo.offsets.chipNamesPointers,
               id,
               this.saveeditInfo.charset,
-              parseOne
+              parseText1
             )
           : this.saveeditInfo.strings.chips[id],
       codes: codes.join(""),
@@ -871,7 +871,7 @@ class ROMViewer extends ROMViewerBase {
               ) & ~0x08000000,
               id,
               this.saveeditInfo.charset,
-              parseOne
+              parseText1
             )
           : this.saveeditInfo.strings.ncps[id],
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][

@@ -1,7 +1,7 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne, parseText,
+    ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseText1,
     replacePrivateUseCharacters, ROMViewerBase
 } from "../rom";
 
@@ -15,7 +15,7 @@ const CHECKSUM_OFFSET = 0x21e8;
 
 type Control = NewlineControl | { c: "ereader"; v: number };
 
-function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
   const b = br.readByte();
   switch (b) {
     case 0xe4:
@@ -575,7 +575,7 @@ class ROMViewer extends ROMViewerBase {
             this.dv,
             this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
             scriptEntryID,
-            parseOne
+            parseText1
           )
             .flatMap((chunk) => {
               if ("t" in chunk) {
@@ -593,7 +593,7 @@ class ROMViewer extends ROMViewerBase {
                         0x1770 - this.saveDv.byteOffset + chunk.v * 0x10,
                         0,
                         this.saveeditInfo.charset,
-                        parseOne
+                        parseText1
                       ),
                     ];
                 }
@@ -635,7 +635,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       color: [null, "white", "pink", "yellow", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)

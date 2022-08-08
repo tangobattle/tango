@@ -40,17 +40,17 @@ export type NewlineControl = {
   c: "newline";
 };
 
-export type ParseOne<T> = (br: ByteReader) => T | { t: number } | null;
+export type ParseText1<T> = (br: ByteReader) => T | { t: number } | null;
 
 export function getTextSimple<T>(
   dv: DataView,
   scriptOffset: number,
   id: number,
   charset: string,
-  parseOne: ParseOne<NewlineControl | T>
+  parseText1: ParseText1<NewlineControl | T>
 ): string {
   return replacePrivateUseCharacters(
-    parseText(dv, scriptOffset, id, parseOne)
+    parseText(dv, scriptOffset, id, parseText1)
       .flatMap((chunk) =>
         "t" in chunk
           ? charset[chunk.t]
@@ -68,7 +68,7 @@ export function parseText<T>(
   dv: DataView,
   scriptOffset: number,
   id: number,
-  parseOne: ParseOne<T>
+  parseText1: ParseText1<T>
 ): Array<{ t: number } | T> {
   const chunks: Array<{ t: number } | T> = [];
 
@@ -78,7 +78,7 @@ export function parseText<T>(
 
   while (offset < dv.byteLength && offset < nextOffset) {
     const br = new ByteReader(dv, offset);
-    const r = parseOne(br);
+    const r = parseText1(br);
     if (r == null) {
       break;
     }
@@ -94,7 +94,7 @@ export function getChipText<T>(
   scriptPointerOffset: number,
   id: number,
   charset: string,
-  parseOne: ParseOne<NewlineControl | T>
+  parseText1: ParseText1<NewlineControl | T>
 ): string {
   if (id > 0xff) {
     scriptPointerOffset += 4;
@@ -106,7 +106,7 @@ export function getChipText<T>(
     dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
     id,
     charset,
-    parseOne
+    parseText1
   );
 }
 

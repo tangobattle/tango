@@ -1,7 +1,7 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne, parseText,
+    ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseText1,
     replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
@@ -24,7 +24,7 @@ type Control =
   | { c: "print"; v: number }
   | { c: "ereader"; v: number };
 
-function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
   const b = br.readByte();
   switch (b) {
     case 0xe4:
@@ -560,7 +560,7 @@ class ROMViewer extends ROMViewerBase {
             this.dv,
             this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
             scriptEntryID,
-            parseOne
+            parseText1
           )
             .flatMap((chunk) => {
               if ("t" in chunk) {
@@ -578,7 +578,7 @@ class ROMViewer extends ROMViewerBase {
                         0x1d14 + chunk.v * 0x18,
                         0,
                         this.saveeditInfo.charset,
-                        parseOne
+                        parseText1
                       ),
                     ];
                 }
@@ -623,7 +623,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       color: [null, "white", "yellow", "pink", "red", "blue", "green"][
         this.dv.getUint8(subdataOffset + 0x3)
@@ -680,7 +680,7 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.modcardData + offset + 2
       );
 
-      const tmpl = parseText(detailsDv, 4, id, parseOne).flatMap<
+      const tmpl = parseText(detailsDv, 4, id, parseText1).flatMap<
         { t: string } | { p: number }
       >((chunk) => {
         if ("t" in chunk) {
@@ -731,7 +731,7 @@ class ROMViewer extends ROMViewerBase {
         4,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       mb: this.dv.getUint8(
         this.saveeditInfo.offsets.modcardData + modcardStart + 0x01

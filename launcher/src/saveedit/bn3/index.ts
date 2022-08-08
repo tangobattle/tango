@@ -2,7 +2,7 @@ import { Chip, NavicustProgram, Style } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne,
+    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseText1,
     ROMViewerBase
 } from "../rom";
 
@@ -19,7 +19,7 @@ const CHECKSUM_OFFSET = 0x1dd8;
 
 type Control = NewlineControl;
 
-function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
   const b = br.readByte();
   switch (b) {
     case 0xe5:
@@ -383,7 +383,7 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.chipNamesPointers,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       codes: codes.join(""),
       icon: getTiles(
@@ -413,7 +413,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       color: [
         null,
@@ -473,7 +473,7 @@ class ROMViewer extends ROMViewerBase {
         ) & ~0x08000000,
         128 + type * 5 + element,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       ncpColors: [
         "white",

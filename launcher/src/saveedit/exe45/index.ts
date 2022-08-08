@@ -1,6 +1,6 @@
 import { EditorBase } from "../base";
 import {
-    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne,
+    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseText1,
     ROMViewerBase
 } from "../rom";
 
@@ -15,7 +15,7 @@ const CHECKSUM_OFFSET = 0x4b88;
 
 type Control = NewlineControl;
 
-function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
   const b = br.readByte();
   switch (b) {
     case 0xe4:
@@ -347,7 +347,7 @@ class ROMViewer extends ROMViewerBase {
         this.saveeditInfo.offsets.chipNamesPointers,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       codes: codes.join(""),
       icon:
@@ -375,7 +375,7 @@ class ROMViewer extends ROMViewerBase {
           ~0x08000000,
         id,
         this.saveeditInfo.charset,
-        parseOne
+        parseText1
       ),
       emblem: getTiles(
         this.dv,
