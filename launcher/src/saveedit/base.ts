@@ -6,6 +6,7 @@ import type {
   NavicustEditor,
   ModcardsEditor,
   BN4ModcardsEditor,
+  DarkAIEditor,
 } from "./";
 
 export abstract class EditorBase {
@@ -28,6 +29,10 @@ export abstract class EditorBase {
   }
 
   getBN4ModcardsEditor(): BN4ModcardsEditor | null {
+    return null;
+  }
+
+  getDarkAIEditor(): DarkAIEditor | null {
     return null;
   }
 

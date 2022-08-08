@@ -63,6 +63,11 @@ export interface Modcard {
   }[];
 }
 
+export interface DarkAIEditor {
+  getSlot(i: number): { type: "chip" | "combo"; id: number } | null;
+  getNumSlots(): number;
+}
+
 export interface BN4ModcardsEditor {
   getModcard(slot: number): { id: number; enabled: boolean } | null;
 }
@@ -80,6 +85,7 @@ export interface Editor {
   getNavicustEditor(): NavicustEditor | null;
   getModcardsEditor(): ModcardsEditor | null;
   getBN4ModcardsEditor(): BN4ModcardsEditor | null;
+  getDarkAIEditor(): DarkAIEditor | null;
   rebuild(): void;
 }
 

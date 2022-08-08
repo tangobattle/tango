@@ -307,6 +307,31 @@ class FolderEditor {
   }
 }
 
+class DarkAIEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getNumSlots() {
+    return 0x54;
+  }
+
+  getSlot(i: number): { type: "chip" | "combo"; id: number } | null {
+    if (i >= this.getNumSlots()) {
+      return null;
+    }
+
+    const id = this.editor.dv.getUint16(0x5064 + i * 2, true);
+    if (id == 0xffff) {
+      return null;
+    }
+
+    return { type: "chip", id };
+  }
+}
+
 export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
@@ -490,6 +515,10 @@ export class Editor extends EditorBase {
 
   getBN4ModcardsEditor() {
     return new BN4ModcardsEditor(this);
+  }
+
+  getDarkAIEditor() {
+    return new DarkAIEditor(this);
   }
 }
 
