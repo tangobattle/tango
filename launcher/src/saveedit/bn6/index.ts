@@ -3,7 +3,7 @@ import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
     ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, parseText,
-    ParseText1, replacePrivateUseCharacters, ROMViewerBase, unlz77
+    ParseText1, ROMViewerBase, unlz77
 } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -763,26 +763,24 @@ class ROMViewer extends ROMViewerBase {
 
       effects.push({
         id,
-        name: replacePrivateUseCharacters(
-          tmpl
-            .map((chunk) => {
-              if ("t" in chunk) {
-                return chunk.t;
-              }
-              if ("p" in chunk) {
-                if (chunk.p == 1) {
-                  let p = parameter;
-                  if (id == 0x00 || id == 0x02) {
-                    p = p * 10;
-                  }
-                  return p.toString();
+        name: tmpl
+          .map((chunk) => {
+            if ("t" in chunk) {
+              return chunk.t;
+            }
+            if ("p" in chunk) {
+              if (chunk.p == 1) {
+                let p = parameter;
+                if (id == 0x00 || id == 0x02) {
+                  p = p * 10;
                 }
-                return "";
+                return p.toString();
               }
               return "";
-            })
-            .join("")
-        ),
+            }
+            return "";
+          })
+          .join(""),
         parameter,
         isAbility: id > 0x15,
         debuff,

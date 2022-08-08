@@ -2,7 +2,7 @@ import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
     ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseText1,
-    replacePrivateUseCharacters, ROMViewerBase, unlz77
+    ROMViewerBase, unlz77
 } from "../rom";
 
 import type { Chip, NavicustProgram, Modcard } from "../";
@@ -555,40 +555,38 @@ class ROMViewer extends ROMViewerBase {
           scriptPointerOffset += 4;
           scriptEntryID -= 0x100;
         }
-        return replacePrivateUseCharacters(
-          parseText(
-            this.dv,
-            this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
-            scriptEntryID,
-            parseText1
-          )
-            .flatMap((chunk) => {
-              if ("t" in chunk) {
-                return this.saveeditInfo.charset[chunk.t];
-              }
+        return parseText(
+          this.dv,
+          this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
+          scriptEntryID,
+          parseText1
+        )
+          .flatMap((chunk) => {
+            if ("t" in chunk) {
+              return this.saveeditInfo.charset[chunk.t];
+            }
 
-              if ("c" in chunk) {
-                switch (chunk.c) {
-                  case "newline":
-                    return ["\n"];
-                  case "ereader":
-                    return [
-                      getTextSimple(
-                        this.saveDv,
-                        0x1d14 + chunk.v * 0x18,
-                        0,
-                        this.saveeditInfo.charset,
-                        parseText1
-                      ),
-                    ];
-                }
+            if ("c" in chunk) {
+              switch (chunk.c) {
+                case "newline":
+                  return ["\n"];
+                case "ereader":
+                  return [
+                    getTextSimple(
+                      this.saveDv,
+                      0x1d14 + chunk.v * 0x18,
+                      0,
+                      this.saveeditInfo.charset,
+                      parseText1
+                    ),
+                  ];
               }
-              return [];
-            })
-            .join("")
-            .replace(/-\n/g, "-")
-            .replace(/\n/g, " ")
-        );
+            }
+            return [];
+          })
+          .join("")
+          .replace(/-\n/g, "-")
+          .replace(/\n/g, " ");
       })(),
       codes: codes.join(""),
       icon:
@@ -699,26 +697,24 @@ class ROMViewer extends ROMViewerBase {
 
       effects.push({
         id,
-        name: replacePrivateUseCharacters(
-          tmpl
-            .map((chunk) => {
-              if ("t" in chunk) {
-                return chunk.t;
-              }
-              if ("p" in chunk) {
-                if (chunk.p == 1) {
-                  let p = parameter;
-                  if (id == 0x00 || id == 0x02) {
-                    p = p * 10;
-                  }
-                  return p.toString();
+        name: tmpl
+          .map((chunk) => {
+            if ("t" in chunk) {
+              return chunk.t;
+            }
+            if ("p" in chunk) {
+              if (chunk.p == 1) {
+                let p = parameter;
+                if (id == 0x00 || id == 0x02) {
+                  p = p * 10;
                 }
-                return "";
+                return p.toString();
               }
               return "";
-            })
-            .join("")
-        ),
+            }
+            return "";
+          })
+          .join(""),
         parameter,
         isAbility: id > 0x15,
         debuff,

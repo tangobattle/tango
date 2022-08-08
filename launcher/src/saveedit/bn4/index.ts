@@ -2,7 +2,7 @@ import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
     ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseText1,
-    replacePrivateUseCharacters, ROMViewerBase
+    ROMViewerBase
 } from "../rom";
 
 import type { Chip, NavicustProgram } from "../";
@@ -570,40 +570,38 @@ class ROMViewer extends ROMViewerBase {
           scriptPointerOffset += 4;
           scriptEntryID -= 0x100;
         }
-        return replacePrivateUseCharacters(
-          parseText(
-            this.dv,
-            this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
-            scriptEntryID,
-            parseText1
-          )
-            .flatMap((chunk) => {
-              if ("t" in chunk) {
-                return this.saveeditInfo.charset[chunk.t];
-              }
+        return parseText(
+          this.dv,
+          this.dv.getUint32(scriptPointerOffset, true) & ~0x08000000,
+          scriptEntryID,
+          parseText1
+        )
+          .flatMap((chunk) => {
+            if ("t" in chunk) {
+              return this.saveeditInfo.charset[chunk.t];
+            }
 
-              if ("c" in chunk) {
-                switch (chunk.c) {
-                  case "newline":
-                    return ["\n"];
-                  case "ereader":
-                    return [
-                      getTextSimple(
-                        this.saveDv,
-                        0x1770 - this.saveDv.byteOffset + chunk.v * 0x10,
-                        0,
-                        this.saveeditInfo.charset,
-                        parseText1
-                      ),
-                    ];
-                }
+            if ("c" in chunk) {
+              switch (chunk.c) {
+                case "newline":
+                  return ["\n"];
+                case "ereader":
+                  return [
+                    getTextSimple(
+                      this.saveDv,
+                      0x1770 - this.saveDv.byteOffset + chunk.v * 0x10,
+                      0,
+                      this.saveeditInfo.charset,
+                      parseText1
+                    ),
+                  ];
               }
-              return [];
-            })
-            .join("")
-            .replace(/-\n/g, "-")
-            .replace(/\n/g, " ")
-        );
+            }
+            return [];
+          })
+          .join("")
+          .replace(/-\n/g, "-")
+          .replace(/\n/g, " ");
       })(),
       codes: codes.join(""),
       icon:

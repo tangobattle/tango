@@ -49,19 +49,17 @@ export function getTextSimple<T>(
   charset: string[],
   parseText1: ParseText1<NewlineControl | T>
 ): string {
-  return replacePrivateUseCharacters(
-    parseText(dv, scriptOffset, id, parseText1)
-      .flatMap((chunk) =>
-        "t" in chunk
-          ? charset[chunk.t]
-          : "c" in chunk && chunk.c == "newline"
-          ? ["\n"]
-          : []
-      )
-      .join("")
-      .replace(/-\n/g, "-")
-      .replace(/\n/g, " ")
-  );
+  return parseText(dv, scriptOffset, id, parseText1)
+    .flatMap((chunk) =>
+      "t" in chunk
+        ? charset[chunk.t]
+        : "c" in chunk && chunk.c == "newline"
+        ? ["\n"]
+        : []
+    )
+    .join("")
+    .replace(/-\n/g, "-")
+    .replace(/\n/g, " ");
 }
 
 export function parseText<T>(
@@ -195,32 +193,4 @@ export function unlz77(dv: DataView) {
   }
 
   return new Uint8Array(out.slice(0, n)).buffer;
-}
-
-export function replacePrivateUseCharacters(s: string) {
-  return s.replace(/[\u3000-\uf8ff]/g, (c) => {
-    switch (c) {
-      case "\ue000":
-        return "V2";
-      case "\ue001":
-        return "V3";
-      case "\ue002":
-        return "V4";
-      case "\ue003":
-        return "V5";
-      case "\ue004":
-        return "EX";
-      case "\ue005":
-        return "SP";
-      case "\ue006":
-        return "DS";
-      case "\ue007":
-        return "RV";
-      case "\ue008":
-        return "BX";
-      case "\ue009":
-        return "FZ";
-    }
-    return c;
-  });
 }
