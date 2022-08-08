@@ -308,6 +308,33 @@ class ModcardsEditor {
   }
 }
 
+class DarkAIEditor {
+  private editor: Editor;
+
+  constructor(editor: Editor) {
+    this.editor = editor;
+  }
+
+  getNumSlots() {
+    return 0x2a;
+  }
+
+  getSlot(i: number): { type: "chip" | "combo"; id: number } | null {
+    if (i >= this.getNumSlots()) {
+      return null;
+    }
+
+    const id = this.editor.dv.getUint16(0x554c + i * 2, true);
+    if (id == 0xffff) {
+      return null;
+    }
+
+    return (id & 0x8000) != 0
+      ? { type: "combo", id: id & 0x7fff }
+      : { type: "chip", id };
+  }
+}
+
 export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
@@ -453,6 +480,10 @@ export class Editor extends EditorBase {
 
   getModcardsEditor() {
     return new ModcardsEditor(this);
+  }
+
+  getDarkAIEditor() {
+    return new DarkAIEditor(this);
   }
 }
 
