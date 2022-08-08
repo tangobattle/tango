@@ -1,6 +1,6 @@
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTiles, NewlineControl, ParseOneResult, ROMViewerBase
+    ByteReader, getChipText, getPalette, getTiles, NewlineControl, ParseOne, ROMViewerBase
 } from "../rom";
 
 import type { Chip } from "../";
@@ -13,20 +13,17 @@ const CHECKSUM_OFFSET = 0x114c;
 
 type Control = NewlineControl;
 
-function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
-  const c = dv.getUint8(offset);
-  switch (c) {
+function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+  const b = br.readByte();
+  switch (b) {
     case 0xe5:
-      return {
-        offset: offset + 2,
-        value: { t: 0xe5 + dv.getUint8(offset + 1) },
-      };
+      return { t: 0xe5 + br.readByte() };
     case 0xe7:
       return null;
     case 0xe8:
-      return { offset: offset + 1, value: { c: "newline" } };
+      return { c: "newline" };
   }
-  return { offset: offset + 1, value: { t: c } };
+  return { t: b };
 }
 
 function getChecksum(dv: DataView) {

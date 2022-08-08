@@ -2,7 +2,8 @@ import { Chip, NavicustProgram, Style } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, ROMViewerBase
+    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne,
+    ROMViewerBase
 } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -16,20 +17,19 @@ const SRAM_SIZE = 0x57b0;
 const GAME_NAME_OFFSET = 0x1e00;
 const CHECKSUM_OFFSET = 0x1dd8;
 
-function parseOne(dv: DataView, offset: number): ParseOneResult<NewlineControl> {
-  const c = dv.getUint8(offset);
-  switch (c) {
+type Control = NewlineControl;
+
+function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+  const b = br.readByte();
+  switch (b) {
     case 0xe5:
-      return {
-        offset: offset + 2,
-        value: { t: 0xe5 + dv.getUint8(offset + 1) },
-      };
+      return { t: 0xe5 + br.readByte() };
     case 0xe7:
       return null;
     case 0xe8:
-      return { offset: offset + 1, value: { c: "newline" } };
+      return { c: "newline" };
   }
-  return { offset: offset + 1, value: { t: c } };
+  return { t: b };
 }
 
 const GAME_INFOS: { [key: string]: GameInfo } = {

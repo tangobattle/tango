@@ -16,26 +16,31 @@ export function getPalette(dv: DataView, offset: number): Uint32Array {
   return palette;
 }
 
-export type ControlCodeHandlers<T> = {
-  [code: number]: (
-    dv: DataView,
-    offset: number
-  ) => {
-    offset: number;
-    value: T;
-  } | null;
-};
+export class ByteReader {
+  private dv: DataView;
+  private offset: number;
+
+  constructor(dv: DataView, offset: number) {
+    this.dv = dv;
+    this.offset = offset;
+  }
+
+  readByte(): number {
+    const b = this.dv.getUint8(this.offset);
+    this.offset += 1;
+    return b;
+  }
+
+  getOffset(): number {
+    return this.offset;
+  }
+}
 
 export type NewlineControl = {
   c: "newline";
 };
 
-export type ParseOne<T> = (dv: DataView, offset: number) => ParseOneResult<T>;
-
-export type ParseOneResult<T> = {
-  offset: number;
-  value: { t: number } | T;
-} | null;
+export type ParseOne<T> = (br: ByteReader) => T | { t: number } | null;
 
 export function getTextSimple<T>(
   dv: DataView,
@@ -72,13 +77,13 @@ export function parseText<T>(
     scriptOffset + dv.getUint16(scriptOffset + (id + 1) * 0x2, true);
 
   while (offset < dv.byteLength && offset < nextOffset) {
-    const r = parseOne(dv, offset);
+    const br = new ByteReader(dv, offset);
+    const r = parseOne(br);
     if (r == null) {
       break;
     }
-    const { offset: offset2, value } = r;
-    chunks.push(value);
-    offset = offset2;
+    chunks.push(r);
+    offset = br.getOffset();
   }
 
   return chunks;

@@ -1,7 +1,7 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, parseText,
+    ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne, parseText,
     replacePrivateUseCharacters, ROMViewerBase
 } from "../rom";
 
@@ -15,25 +15,22 @@ const CHECKSUM_OFFSET = 0x21e8;
 
 type Control = NewlineControl | { c: "ereader"; v: number };
 
-function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
-  const c = dv.getUint8(offset);
-  switch (c) {
+function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+  const b = br.readByte();
+  switch (b) {
     case 0xe4:
-      return {
-        offset: offset + 2,
-        value: { t: 0xe4 + dv.getUint8(offset + 1) },
-      };
+      return { t: 0xe4 + br.readByte() };
     case 0xe5:
       return null;
     case 0xe8:
-      return { offset: offset + 1, value: { c: "newline" } };
-    case 0xff:
-      return {
-        offset: offset + 3,
-        value: { c: "ereader", v: dv.getUint8(offset + 2) },
-      };
+      return { c: "newline" };
+    case 0xff: {
+      const v = br.readByte();
+      br.readByte();
+      return { c: "ereader", v };
+    }
   }
-  return { offset: offset + 1, value: { t: c } };
+  return { t: b };
 }
 
 const GAME_INFOS: { [key: string]: GameInfo } = {

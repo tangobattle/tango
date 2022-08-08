@@ -2,8 +2,8 @@ import type { Chip, Modcard, NavicustProgram } from "../";
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, parseText,
-    replacePrivateUseCharacters, ROMViewerBase, unlz77
+    ByteReader, getChipText, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne,
+    parseText, replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -16,25 +16,23 @@ const CHECKSUM_OFFSET = 0x1c6c;
 
 type Control = NewlineControl | { c: "print"; v: number };
 
-function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
-  const c = dv.getUint8(offset);
-  switch (c) {
+function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+  const b = br.readByte();
+  switch (b) {
     case 0xe4:
-      return {
-        offset: offset + 2,
-        value: { t: 0xe4 + dv.getUint8(offset + 1) },
-      };
+      return { t: 0xe4 + br.readByte() };
     case 0xe6:
       return null;
     case 0xe9:
-      return { offset: offset + 1, value: { c: "newline" } };
-    case 0xfa:
-      return {
-        offset: offset + 4,
-        value: { c: "print", v: dv.getUint8(offset + 3) },
-      };
+      return { c: "newline" };
+    case 0xfa: {
+      br.readByte();
+      br.readByte();
+      const v = br.readByte();
+      return { c: "print", v };
+    }
   }
-  return { offset: offset + 1, value: { t: c } };
+  return { t: b };
 }
 
 function getChecksum(dv: DataView) {

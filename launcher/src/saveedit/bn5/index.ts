@@ -1,7 +1,7 @@
 import array2d from "../../array2d";
 import { EditorBase } from "../base";
 import {
-    getPalette, getTextSimple, getTiles, NewlineControl, ParseOneResult, parseText,
+    ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, ParseOne, parseText,
     replacePrivateUseCharacters, ROMViewerBase, unlz77
 } from "../rom";
 
@@ -24,30 +24,28 @@ type Control =
   | { c: "print"; v: number }
   | { c: "ereader"; v: number };
 
-function parseOne(dv: DataView, offset: number): ParseOneResult<Control> {
-  const c = dv.getUint8(offset);
-  switch (c) {
+function parseOne(br: ByteReader): ReturnType<ParseOne<Control>> {
+  const b = br.readByte();
+  switch (b) {
     case 0xe4:
-      return {
-        offset: offset + 2,
-        value: { t: 0xe4 + dv.getUint8(offset + 1) },
-      };
+      return { t: 0xe4 + br.readByte() };
     case 0xe6:
       return null;
     case 0xe9:
-      return { offset: offset + 1, value: { c: "newline" } };
-    case 0xfa:
-      return {
-        offset: offset + 4,
-        value: { c: "print", v: dv.getUint8(offset + 3) },
-      };
-    case 0xff:
-      return {
-        offset: offset + 3,
-        value: { c: "ereader", v: dv.getUint8(offset + 2) },
-      };
+      return { c: "newline" };
+    case 0xfa: {
+      br.readByte();
+      br.readByte();
+      const v = br.readByte();
+      return { c: "print", v };
+    }
+    case 0xff: {
+      const v = br.readByte();
+      br.readByte();
+      return { c: "ereader", v };
+    }
   }
-  return { offset: offset + 1, value: { t: c } };
+  return { t: b };
 }
 
 function maskSave(dv: DataView) {
