@@ -70,18 +70,17 @@ export function parseText<T>(
 ): Array<{ t: number } | T> {
   const chunks: Array<{ t: number } | T> = [];
 
-  let offset = scriptOffset + dv.getUint16(scriptOffset + id * 0x2, true);
+  const offset = scriptOffset + dv.getUint16(scriptOffset + id * 0x2, true);
   const nextOffset =
     scriptOffset + dv.getUint16(scriptOffset + (id + 1) * 0x2, true);
 
-  while (offset < dv.byteLength && offset < nextOffset) {
-    const br = new ByteReader(dv, offset);
+  const br = new ByteReader(dv, offset);
+  while (br.getOffset() < dv.byteLength && br.getOffset() < nextOffset) {
     const r = parseText1(br);
     if (r == null) {
       break;
     }
     chunks.push(r);
-    offset = br.getOffset();
   }
 
   return chunks;
