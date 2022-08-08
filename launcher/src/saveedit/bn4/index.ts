@@ -315,7 +315,7 @@ class DarkAIEditor {
   }
 
   getNumSlots() {
-    return 0x54;
+    return 0x2a;
   }
 
   getSlot(i: number): { type: "chip" | "combo"; id: number } | null {
