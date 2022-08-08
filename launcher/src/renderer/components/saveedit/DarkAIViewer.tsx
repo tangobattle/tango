@@ -104,7 +104,7 @@ export default function DarkAIViewer({
           <Table size="small">
             <TableBody>
               {slots.map((slot, i) => {
-                if (slot == null || (slot.type == "chip" && slot.id == 0)) {
+                if (slot == null) {
                   return (
                     <TableRow key={i}>
                       <TableCell sx={{ width: 0 }}></TableCell>
