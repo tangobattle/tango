@@ -292,9 +292,9 @@ export default function FolderViewer({
             <TableBody>
               {groupedChips.map((groupedChip) => (
                 <FolderChipRow
+                  key={groupedChip.firstIndex}
                   showGrouped={showGrouped}
                   elementIcons={elementIcons}
-                  key={groupedChip.firstIndex}
                   code={groupedChip.code}
                   isRegular={groupedChip.isRegular}
                   isTag1={groupedChip.isTag1}

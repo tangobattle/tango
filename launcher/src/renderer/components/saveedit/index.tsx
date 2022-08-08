@@ -10,6 +10,7 @@ import Typography from "@mui/material/Typography";
 
 import { Editor } from "../../../saveedit";
 import BN4ModcardsViewer from "./BN4ModcardsViewer";
+import DarkAIViewer from "./DarkAIViewer";
 import FolderViewer, { AllowEdits as AllowFolderEdits } from "./FolderViewer";
 import ModcardsViewer from "./ModcardsViewer";
 import NavicustViewer from "./NavicustViewer";
@@ -27,6 +28,7 @@ export default function SaveViewer({
   const folderEditor = editor.getFolderEditor();
   const modcardsEditor = editor.getModcardsEditor();
   const bn4ModcardsEditor = editor.getBN4ModcardsEditor();
+  const darkAIEditor = editor.getDarkAIEditor();
 
   const availableTabs = React.useMemo(
     () => [
@@ -36,6 +38,7 @@ export default function SaveViewer({
       ...(modcardsEditor != null || bn4ModcardsEditor != null
         ? ["modcards"]
         : []),
+      ...(darkAIEditor != null ? ["darkai"] : []),
     ],
     [
       naviEditor,
@@ -43,6 +46,7 @@ export default function SaveViewer({
       folderEditor,
       modcardsEditor,
       bn4ModcardsEditor,
+      darkAIEditor,
     ]
   );
 
@@ -89,6 +93,9 @@ export default function SaveViewer({
                 value="modcards"
               />
             ) : null}
+            {darkAIEditor != null ? (
+              <Tab label={<Trans i18nKey="play:tab.darkai" />} value="darkai" />
+            ) : null}
           </Tabs>
           {naviEditor != null ? (
             <NaviViewer editor={naviEditor} active={tab == "navi"} />
@@ -117,6 +124,13 @@ export default function SaveViewer({
             <BN4ModcardsViewer
               editor={bn4ModcardsEditor}
               active={tab == "modcards"}
+            />
+          ) : null}
+          {darkAIEditor != null && folderEditor != null ? (
+            <DarkAIViewer
+              editor={darkAIEditor}
+              folderEditor={folderEditor}
+              active={tab == "darkai"}
             />
           ) : null}
         </Stack>

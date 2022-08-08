@@ -328,7 +328,9 @@ class DarkAIEditor {
       return null;
     }
 
-    return { type: "chip", id };
+    return (id & 0x8000) != 0
+      ? { type: "combo", id: id & 0x7fff }
+      : { type: "chip", id };
   }
 }
 
