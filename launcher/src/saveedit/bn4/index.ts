@@ -263,18 +263,18 @@ class FolderEditor {
   }
 
   getChipRaw(folderIdx: number, chipIdx: number) {
-    const chipConstant = this.editor.dv.getUint16(
+    const fullID = this.editor.dv.getUint16(
       0x262c + folderIdx * (30 * 2) + chipIdx * 2,
       true
     );
 
-    if (chipConstant == 0) {
+    if (fullID == 0) {
       return null;
     }
 
     return {
-      id: chipConstant & 0x1ff,
-      variant: chipConstant >> 9,
+      id: fullID & 0x1ff,
+      variant: fullID >> 9,
     };
   }
 
