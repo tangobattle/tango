@@ -616,7 +616,7 @@ export class Editor extends EditorBase {
 }
 
 interface SaveeditInfo {
-  charset: string;
+  charset: string[];
   offsets: {
     chipData: number;
     chipIconPalettePointer: number;

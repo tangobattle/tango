@@ -46,7 +46,7 @@ export function getTextSimple<T>(
   dv: DataView,
   scriptOffset: number,
   id: number,
-  charset: string,
+  charset: string[],
   parseText1: ParseText1<NewlineControl | T>
 ): string {
   return replacePrivateUseCharacters(
@@ -93,7 +93,7 @@ export function getChipText<T>(
   dv: DataView,
   scriptPointerOffset: number,
   id: number,
-  charset: string,
+  charset: string[],
   parseText1: ParseText1<NewlineControl | T>
 ): string {
   if (id > 0xff) {
