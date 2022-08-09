@@ -116,6 +116,11 @@ class NavicustEditor {
     return this.editor.romViewer.getStyleInfo(id);
   }
 
+  getNavicustTiles() {
+    // TODO: Figure out where this data is from.
+    return [];
+  }
+
   getNavicustBlock(i: number) {
     const offset = 0x1300 + i * 8;
     const fullID = this.editor.dv.getUint8(offset);

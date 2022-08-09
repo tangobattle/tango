@@ -271,6 +271,16 @@ class NavicustEditor {
     this.editor = editor;
   }
 
+  getNavicustTiles() {
+    return Array.from(
+      new Uint8Array(
+        this.editor.dv.buffer,
+        this.editor.getNavicustTilesOffset(),
+        49
+      )
+    );
+  }
+
   getNavicustProgramInfo(id: number, variant: number) {
     return this.editor.romViewer.getNavicustProgramInfo(id, variant);
   }

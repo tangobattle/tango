@@ -138,6 +138,7 @@ export interface NavicustEditor {
     rot: number;
     compressed: boolean;
   } | null;
+  getNavicustTiles(): number[];
   getStyle(): number | null;
   getStyleInfo(id: number): Style | null;
 }

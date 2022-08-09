@@ -194,6 +194,16 @@ class NavicustEditor {
     return null;
   }
 
+  getNavicustTiles() {
+    return Array.from(
+      new Uint8Array(
+        this.editor.dv.buffer,
+        this.editor.dv.byteOffset + 0x4540,
+        25
+      )
+    );
+  }
+
   getNavicustBlock(i: number) {
     const offset = 0x4564 + i * 8;
     const fullID = this.editor.dv.getUint8(offset);
