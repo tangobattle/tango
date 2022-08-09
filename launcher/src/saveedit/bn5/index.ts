@@ -40,8 +40,8 @@ function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
       return { c: "print", v };
     }
     case 0xff: {
-      const v = br.readByte();
       br.readByte();
+      const v = br.readByte();
       return { c: "ereader", v };
     }
   }

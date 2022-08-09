@@ -26,8 +26,8 @@ function parseText1(br: ByteReader): ReturnType<ParseText1<Control>> {
     case 0xe8:
       return { c: "newline" };
     case 0xff: {
-      const v = br.readByte();
       br.readByte();
+      const v = br.readByte();
       return { c: "ereader", v };
     }
   }
