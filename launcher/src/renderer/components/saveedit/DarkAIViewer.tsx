@@ -1,5 +1,6 @@
 import { sortBy } from "lodash-es";
 import React from "react";
+import { Trans } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -19,7 +20,7 @@ function DarkAIRow({
   elementIcons,
 }: {
   count: number;
-  chipInfo: ChipInfo;
+  chipInfo: ChipInfo | null;
   elementIcons: ImageData[];
 }) {
   const iconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);
@@ -31,6 +32,9 @@ function DarkAIRow({
       iconCanvasRef.current!.width,
       iconCanvasRef.current!.height
     );
+    if (chipInfo == null) {
+      return;
+    }
     ctx.putImageData(chipInfo.icon, -1, -1);
   }, [chipInfo]);
 
@@ -43,6 +47,9 @@ function DarkAIRow({
       elementIconCanvasRef.current!.width,
       elementIconCanvasRef.current!.height
     );
+    if (chipInfo == null) {
+      return;
+    }
     if (chipInfo.element >= elementIcons.length) {
       return;
     }
@@ -77,7 +84,16 @@ function DarkAIRow({
           ref={iconCanvasRef}
         />
       </TableCell>
-      <TableCell component="th">{chipInfo.name}</TableCell>
+      <TableCell
+        component="th"
+        sx={{ color: chipInfo == null ? "text.disabled" : undefined }}
+      >
+        {chipInfo != null ? (
+          chipInfo.name
+        ) : (
+          <Trans i18nKey="play:darkai.unset" />
+        )}
+      </TableCell>
       <TableCell sx={{ width: 0 }}>
         <canvas
           width={14}
@@ -91,7 +107,9 @@ function DarkAIRow({
         />
       </TableCell>
       <TableCell sx={{ width: "56px", textAlign: "right" }}>
-        <strong>{chipInfo.damage > 0 ? chipInfo.damage : ""}</strong>
+        <strong>
+          {chipInfo != null && chipInfo.damage > 0 ? chipInfo.damage : ""}
+        </strong>
       </TableCell>
     </TableRow>
   );
@@ -107,6 +125,7 @@ export default function DarkAIViewer({
   active: boolean;
 }) {
   const rows = React.useMemo(() => {
+    let secondaryStandardChipUses = [];
     let standardChipUses = [];
     let megaChipUses = [];
     let gigaChipUses = [];
@@ -120,9 +139,14 @@ export default function DarkAIViewer({
       }
 
       switch (chipInfo.class) {
-        case "standard":
+        case "standard": {
           standardChipUses.push({ id, uses });
+          const secondaryUses = editor.getSecondaryChipUseCount(id);
+          if (secondaryUses > 0) {
+            secondaryStandardChipUses.push({ id, uses: secondaryUses });
+          }
           break;
+        }
         case "mega":
           megaChipUses.push({ id, uses });
           break;
@@ -135,42 +159,50 @@ export default function DarkAIViewer({
       }
     }
 
+    secondaryStandardChipUses = sortBy(secondaryStandardChipUses, [
+      (x) => -x.uses,
+      (x) => x.id,
+    ]);
     standardChipUses = sortBy(standardChipUses, [(x) => -x.uses, (x) => x.id]);
     megaChipUses = sortBy(megaChipUses, [(x) => -x.uses, (x) => x.id]);
     gigaChipUses = sortBy(gigaChipUses, [(x) => -x.uses, (x) => x.id]);
     paUses = sortBy(paUses, [(x) => -x.uses, (x) => x.id]);
 
-    const rows: { id: number; count: number }[] = [];
-    for (let i = 0; i < 16; ++i) {
-      if (i >= standardChipUses.length) {
-        break;
-      }
+    const rows: { id: number | null; count: number }[] = [];
+    for (let i = 0; i < 3; ++i) {
       rows.push({
-        id: standardChipUses[i].id,
+        id:
+          i < secondaryStandardChipUses.length
+            ? secondaryStandardChipUses[i].id
+            : null,
+        count: 1,
+      });
+    }
+    for (let i = 0; i < 16; ++i) {
+      rows.push({
+        id: i < standardChipUses.length ? standardChipUses[i].id : null,
         count: i < 2 ? 4 : i < 4 ? 2 : 1,
       });
     }
     for (let i = 0; i < 5; ++i) {
-      if (i >= megaChipUses.length) {
-        break;
-      }
       rows.push({
-        id: megaChipUses[i].id,
+        id: i < megaChipUses.length ? megaChipUses[i].id : null,
         count: 1,
       });
     }
-    if (gigaChipUses.length > 0) {
-      rows.push({
-        id: gigaChipUses[0].id,
-        count: 1,
-      });
-    }
-    if (paUses.length > 0) {
-      rows.push({
-        id: paUses[0].id,
-        count: 1,
-      });
-    }
+    rows.push({
+      id: gigaChipUses.length > 0 ? gigaChipUses[0].id : null,
+      count: 1,
+    });
+    // Combos.
+    rows.push({
+      id: null,
+      count: 8,
+    });
+    rows.push({
+      id: paUses.length > 0 ? paUses[0].id : null,
+      count: 1,
+    });
 
     return rows;
   }, [editor, folderEditor]);
@@ -187,12 +219,11 @@ export default function DarkAIViewer({
           <Table size="small">
             <TableBody>
               {rows.map(({ id, count }, i) => {
-                const chipInfo = folderEditor.getChipInfo(id);
                 return (
                   <DarkAIRow
                     key={i}
                     count={count}
-                    chipInfo={chipInfo}
+                    chipInfo={id != null ? folderEditor.getChipInfo(id) : null}
                     elementIcons={elementIcons}
                   />
                 );
@@ -213,8 +244,11 @@ export default function DarkAIViewer({
             <CopyButtonWithLabel
               value={rows
                 .flatMap(({ id, count }) => {
-                  const chipInfo = folderEditor.getChipInfo(id);
-                  return [`${count}\t${chipInfo.name}`];
+                  return [
+                    `${count}\t${
+                      id != null ? folderEditor.getChipInfo(id).name : "-"
+                    }`,
+                  ];
                 })
                 .join("\n")}
               TooltipProps={{ placement: "top" }}
