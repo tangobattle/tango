@@ -1,5 +1,5 @@
 import React from "react";
-import { Trans } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -9,6 +9,7 @@ import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
 
 import { Chip as ChipInfo, DarkAIEditor, FolderEditor } from "../../../saveedit";
+import { CopyButtonWithLabel } from "../CopyButton";
 
 function DarkAIRow({
   chipInfo,
@@ -87,6 +88,7 @@ export default function DarkAIViewer({
   folderEditor: FolderEditor;
   active: boolean;
 }) {
+  const { t } = useTranslation();
   const slots = [];
   for (let i = 0; i < editor.getNumSlots(); ++i) {
     slots.push(editor.getSlot(i));
@@ -140,6 +142,34 @@ export default function DarkAIViewer({
               })}
             </TableBody>
           </Table>
+        </Box>
+        <Box>
+          <Stack
+            flexGrow={0}
+            flexShrink={0}
+            direction="row"
+            justifyContent="flex-end"
+            spacing={1}
+            sx={{ px: 1, mb: 0, pt: 1 }}
+          >
+            <CopyButtonWithLabel
+              value={slots
+                .flatMap((slot) => {
+                  if (slot == null) {
+                    return [t("play:darkai.unset")];
+                  }
+
+                  if (slot.type == "combo") {
+                    return [t("play:darkai.combo", { i: slot.id + 1 })];
+                  }
+
+                  const chipInfo = folderEditor.getChipInfo(slot.id);
+                  return [chipInfo.name];
+                })
+                .join("\n")}
+              TooltipProps={{ placement: "top" }}
+            />
+          </Stack>
         </Box>
       </Stack>
     </Box>
