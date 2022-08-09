@@ -64,6 +64,9 @@ export interface Modcard {
 }
 
 export interface DarkAIEditor {
+  getNumChips(): number;
+  getChipUseCount(id: number): number;
+  getSecondaryChipUseCount(id: number): number;
   getSlot(i: number): { type: "chip" | "combo"; id: number } | null;
   getNumSlots(): number;
 }

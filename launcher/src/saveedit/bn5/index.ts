@@ -315,6 +315,18 @@ class DarkAIEditor {
     this.editor = editor;
   }
 
+  getNumChips() {
+    return 368;
+  }
+
+  getChipUseCount(id: number) {
+    return this.editor.dv.getUint16(0x7340 + id * 2, true);
+  }
+
+  getSecondaryChipUseCount(id: number) {
+    return this.editor.dv.getUint16(0x2340 + id * 2, true);
+  }
+
   getNumSlots() {
     return 0x2a;
   }
