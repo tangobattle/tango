@@ -285,7 +285,10 @@ const NavicustGrid = React.forwardRef<HTMLDivElement, NavicustGridProps>(
             >
               <tbody>
                 <tr>
-                  {[...colors.slice(0, 4), null, null, null, null]
+                  {[
+                    ...colors.slice(0, 4),
+                    ...(new Array(4).fill(null) as null[]),
+                  ]
                     .slice(0, 4)
                     .map((color, i) => (
                       <td

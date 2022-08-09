@@ -1,5 +1,5 @@
+import { sortBy } from "lodash-es";
 import React from "react";
-import { Trans, useTranslation } from "react-i18next";
 
 import Box from "@mui/material/Box";
 import Stack from "@mui/material/Stack";
@@ -7,14 +7,18 @@ import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
 import TableRow from "@mui/material/TableRow";
+import useTheme from "@mui/system/useTheme";
 
 import { Chip as ChipInfo, DarkAIEditor, FolderEditor } from "../../../saveedit";
 import { CopyButtonWithLabel } from "../CopyButton";
+import { DARK_BG, GIGA_BG, MEGA_BG } from "./FolderViewer";
 
 function DarkAIRow({
+  count,
   chipInfo,
   elementIcons,
 }: {
+  count: number;
   chipInfo: ChipInfo;
   elementIcons: ImageData[];
 }) {
@@ -45,8 +49,22 @@ function DarkAIRow({
     ctx.putImageData(elementIcons[chipInfo.element], -1, -1);
   }, [chipInfo, elementIcons]);
 
+  const theme = useTheme();
+
+  const backgroundColor =
+    chipInfo != null && chipInfo.class == "giga"
+      ? GIGA_BG[theme.palette.mode]
+      : chipInfo != null && chipInfo.class == "mega"
+      ? MEGA_BG[theme.palette.mode]
+      : chipInfo != null && chipInfo.class == "dark"
+      ? DARK_BG[theme.palette.mode]
+      : null;
+
   return (
-    <TableRow>
+    <TableRow sx={{ backgroundColor }}>
+      <TableCell sx={{ width: "28px", textAlign: "right" }}>
+        <strong>{count}x</strong>
+      </TableCell>
       <TableCell sx={{ width: 0 }}>
         <canvas
           width={14}
@@ -88,11 +106,74 @@ export default function DarkAIViewer({
   folderEditor: FolderEditor;
   active: boolean;
 }) {
-  const { t } = useTranslation();
-  const slots = [];
-  for (let i = 0; i < editor.getNumSlots(); ++i) {
-    slots.push(editor.getSlot(i));
-  }
+  const rows = React.useMemo(() => {
+    let standardChipUses = [];
+    let megaChipUses = [];
+    let gigaChipUses = [];
+    let paUses = [];
+
+    for (let id = 0; id < editor.getNumChips(); ++id) {
+      const chipInfo = folderEditor.getChipInfo(id);
+      const uses = editor.getChipUseCount(id);
+      if (uses == 0) {
+        continue;
+      }
+
+      switch (chipInfo.class) {
+        case "standard":
+          standardChipUses.push({ id, uses });
+          break;
+        case "mega":
+          megaChipUses.push({ id, uses });
+          break;
+        case "giga":
+          gigaChipUses.push({ id, uses });
+          break;
+        case "pa":
+          paUses.push({ id, uses });
+          break;
+      }
+    }
+
+    standardChipUses = sortBy(standardChipUses, [(x) => -x.uses, (x) => x.id]);
+    megaChipUses = sortBy(megaChipUses, [(x) => -x.uses, (x) => x.id]);
+    gigaChipUses = sortBy(gigaChipUses, [(x) => -x.uses, (x) => x.id]);
+    paUses = sortBy(paUses, [(x) => -x.uses, (x) => x.id]);
+
+    const rows: { id: number; count: number }[] = [];
+    for (let i = 0; i < 16; ++i) {
+      if (i >= standardChipUses.length) {
+        break;
+      }
+      rows.push({
+        id: standardChipUses[i].id,
+        count: i < 2 ? 4 : i < 4 ? 2 : 1,
+      });
+    }
+    for (let i = 0; i < 5; ++i) {
+      if (i >= megaChipUses.length) {
+        break;
+      }
+      rows.push({
+        id: megaChipUses[i].id,
+        count: 1,
+      });
+    }
+    if (gigaChipUses.length > 0) {
+      rows.push({
+        id: gigaChipUses[0].id,
+        count: 1,
+      });
+    }
+    if (paUses.length > 0) {
+      rows.push({
+        id: paUses[0].id,
+        count: 1,
+      });
+    }
+
+    return rows;
+  }, [editor, folderEditor]);
 
   const elementIcons = React.useMemo(
     () => folderEditor.getElementIcons(),
@@ -105,36 +186,12 @@ export default function DarkAIViewer({
         <Box sx={{ overflow: "auto", height: 0, flexGrow: 1, px: 1 }}>
           <Table size="small">
             <TableBody>
-              {slots.map((slot, i) => {
-                if (slot == null) {
-                  return (
-                    <TableRow key={i}>
-                      <TableCell sx={{ width: 0 }}></TableCell>
-                      <TableCell colSpan={3} sx={{ color: "text.disabled" }}>
-                        <Trans i18nKey="play:darkai.unset" />
-                      </TableCell>
-                    </TableRow>
-                  );
-                }
-
-                if (slot.type == "combo") {
-                  return (
-                    <TableRow key={i}>
-                      <TableCell sx={{ width: 0 }}></TableCell>
-                      <TableCell colSpan={3}>
-                        <Trans
-                          i18nKey="play:darkai.combo"
-                          values={{ i: slot.id + 1 }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                }
-
-                const chipInfo = folderEditor.getChipInfo(slot.id);
+              {rows.map(({ id, count }, i) => {
+                const chipInfo = folderEditor.getChipInfo(id);
                 return (
                   <DarkAIRow
                     key={i}
+                    count={count}
                     chipInfo={chipInfo}
                     elementIcons={elementIcons}
                   />
@@ -143,6 +200,7 @@ export default function DarkAIViewer({
             </TableBody>
           </Table>
         </Box>
+
         <Box>
           <Stack
             flexGrow={0}
@@ -153,18 +211,10 @@ export default function DarkAIViewer({
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
             <CopyButtonWithLabel
-              value={slots
-                .flatMap((slot) => {
-                  if (slot == null) {
-                    return [t("play:darkai.unset")];
-                  }
-
-                  if (slot.type == "combo") {
-                    return [t("play:darkai.combo", { i: slot.id + 1 })];
-                  }
-
-                  const chipInfo = folderEditor.getChipInfo(slot.id);
-                  return [chipInfo.name];
+              value={rows
+                .flatMap(({ id, count }) => {
+                  const chipInfo = folderEditor.getChipInfo(id);
+                  return [`${count}\t${chipInfo.name}`];
                 })
                 .join("\n")}
               TooltipProps={{ placement: "top" }}

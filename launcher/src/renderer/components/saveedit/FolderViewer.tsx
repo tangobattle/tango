@@ -22,17 +22,17 @@ export enum AllowEdits {
   All,
 }
 
-const MEGA_BG = {
+export const MEGA_BG = {
   dark: "#52849c",
   light: "#adefef",
 };
 
-const GIGA_BG = {
+export const GIGA_BG = {
   dark: "#8c3152",
   light: "#f7cee7",
 };
 
-const DARK_BG = {
+export const DARK_BG = {
   dark: "#31395A",
   light: "#B58CD6",
 };
