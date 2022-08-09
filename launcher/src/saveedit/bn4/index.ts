@@ -4,6 +4,7 @@ import {
     ByteReader, getPalette, getTextSimple, getTiles, NewlineControl, parseText, ParseText1,
     ROMViewerBase
 } from "../rom";
+import MODCARDS from "./modcards.json";
 
 import type { Chip, NavicustProgram } from "../";
 const CHIP_CODES = "ABCDEFGHIJKLMNOPQRSTUVWXYZ*";
@@ -108,22 +109,53 @@ class BN4ModcardsEditor {
     this.editor = editor;
   }
 
+  getModcardInfo(id: number) {
+    const modcard = MODCARDS[id];
+
+    if (id >= 0x85) {
+      return null;
+    }
+
+    let lang;
+    switch (this.editor.getGameInfo().region) {
+      case "JP":
+        lang = "ja";
+        break;
+      default:
+        lang = "en";
+        break;
+    }
+
+    return {
+      slot: modcard.slot,
+      name: modcard.name[lang as keyof typeof modcard.name],
+      effect: modcard.effect[lang as keyof typeof modcard.effect],
+      bug:
+        modcard.bug != null
+          ? modcard.bug[lang as keyof typeof modcard.bug]
+          : null,
+    };
+  }
+
   getModcard(slot: number) {
-    {
-      const id = this.editor.dv.getUint8(0x464c + slot);
-      if (id != 0xff) {
-        return { id, enabled: true };
+    let id;
+    let enabled;
+
+    id = this.editor.dv.getUint8(0x464c + slot);
+    if (id < 0x85) {
+      enabled = true;
+    } else {
+      id = this.editor.dv.getUint8(0x464c + 7 + slot);
+      if (id >= 0x85) {
+        return null;
       }
+      enabled = false;
     }
 
-    {
-      const id = this.editor.dv.getUint8(0x464c + 7 + slot);
-      if (id != 0xff) {
-        return { id, enabled: false };
-      }
-    }
-
-    return null;
+    return {
+      id,
+      enabled,
+    };
   }
 }
 

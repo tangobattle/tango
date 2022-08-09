@@ -69,7 +69,17 @@ export interface DarkAIEditor {
 }
 
 export interface BN4ModcardsEditor {
-  getModcard(slot: number): { id: number; enabled: boolean } | null;
+  getModcard(slot: number): {
+    id: number;
+    enabled: boolean;
+  } | null;
+
+  getModcardInfo(id: number): {
+    slot: number;
+    name: string;
+    effect: string;
+    bug: string | null;
+  } | null;
 }
 
 export interface EditorClass {

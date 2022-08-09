@@ -1,0 +1,1412 @@
+[
+  {
+    "slot": 0,
+    "name": {
+      "en": "Weapon Change"
+    },
+    "effect": {
+      "en": "B Button MiniBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+100"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+100"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+150"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+150"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+200"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+200"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+250"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+250"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+300"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+300"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "First Barrier100"
+    },
+    "effect": {
+      "en": "Start battle with Barrier 100"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster Mod"
+    },
+    "effect": {
+      "en": "Normal Shot inflicts Blind"
+    },
+    "bug": {
+      "en": "Auto move forward"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster Mod"
+    },
+    "effect": {
+      "en": "Normal Shot spawns Grass Panel"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Panel Change"
+    },
+    "effect": {
+      "en": "Metal Panel Step"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Panel Change"
+    },
+    "effect": {
+      "en": "Cracked Panel Step"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Panel Change"
+    },
+    "effect": {
+      "en": "Broken Panel Step"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Custom2"
+    },
+    "effect": {
+      "en": "Custom Slots +2"
+    },
+    "bug": {
+      "en": "Custom HP Bug"
+    }
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "MegaFolder2"
+    },
+    "effect": {
+      "en": "MegaChip+2"
+    },
+    "bug": {
+      "en": "Custom -1"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster ATK 10"
+    },
+    "effect": {
+      "en": "Buster ATK 10"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge GutsMachineGun"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Cannon"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge MiniBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge HeatShot"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Bubbler"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Thunder1"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Sword"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Spreader"
+    },
+    "bug": null
+  },
+  {
+    "slot": 5,
+    "name": {
+      "en": "PET Menu Color Change"
+    },
+    "effect": {
+      "en": "Blue PET menu"
+    },
+    "bug": null
+  },
+  {
+    "slot": 5,
+    "name": {
+      "en": "PET Menu Color Change"
+    },
+    "effect": {
+      "en": "Pink PET menu"
+    },
+    "bug": null
+  },
+  {
+    "slot": 5,
+    "name": {
+      "en": "PET Menu Color Change"
+    },
+    "effect": {
+      "en": "Green PET menu"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+350"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+350"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+400"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+400"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+450"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+450"
+    },
+    "bug": {
+      "en": "Start battle Confused"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+500"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+500"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left AirShot"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left random Trap Chip"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left BugBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left CrackOut"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster Mod"
+    },
+    "effect": {
+      "en": "Normal Shot spawns Cracked Panel"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster Mod"
+    },
+    "effect": {
+      "en": "Normal Shot spawns Poison Panel"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Default Full Synchro"
+    },
+    "effect": {
+      "en": "Start battle with Full Synchro"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "First Barrier200"
+    },
+    "effect": {
+      "en": "Start battle with Barrier 200"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Weapon Change"
+    },
+    "effect": {
+      "en": "B Button Guard1"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Weapon Change"
+    },
+    "effect": {
+      "en": "B Button Crackout"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster ATK 15"
+    },
+    "effect": {
+      "en": "Buster ATK 15"
+    },
+    "bug": {
+      "en": "HP Bug & Start battle Confused"
+    }
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "GigaFolder1"
+    },
+    "effect": {
+      "en": "GigaChip+1"
+    },
+    "bug": {
+      "en": "Custom -1"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge CopyDamage"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WideShot1"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Blizzard"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge HeatBreath"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge ElecShock"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WoodyPowder"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge PanelReturn"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WideSword"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "MegaMan Color Change"
+    },
+    "effect": {
+      "en": "Red MegaMan Cosmetic"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "MegaMan Color Change"
+    },
+    "effect": {
+      "en": "Yellow MegaMan Cosmetic"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+550"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+550"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+600"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+600"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+650"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+650"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+700"
+    },
+    "bug": {
+      "en": "Start battle Confused"
+    }
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left MegaEnergyBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left Recov10"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left PanelReturn"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left NorthWind"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left Lance"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left DoubleCrack"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Triple Supporter 1/2"
+    },
+    "effect": {
+      "en": "Triple Supporter 1/2"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "Triple Supporter 2/2"
+    },
+    "effect": {
+      "en": "Triple Supporter 2/2"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "AllGuard 1/2"
+    },
+    "effect": {
+      "en": "AllGuard 1/2"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "AllGuard 2/2"
+    },
+    "effect": {
+      "en": "AllGuard 2/2"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "First LifeAura"
+    },
+    "effect": {
+      "en": "Start battle with LifeAura"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Hole"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WideShot2"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge ZapRing"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge SandRing"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge EnergyBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Thunder2"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Repair"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge TripleCrack"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge LongSword"
+    },
+    "bug": null
+  },
+  {
+    "slot": 5,
+    "name": {
+      "en": "PET Menu Color Change"
+    },
+    "effect": {
+      "en": "Black PET menu"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "MegaMan Color Change"
+    },
+    "effect": {
+      "en": "White MegaMan Cosmetic"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "MegaMan Color Change"
+    },
+    "effect": {
+      "en": "Green MegaMan Cosmetic"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+700"
+    },
+    "bug": {
+      "en": "Poison Panel Step"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+750"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+750"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+800"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+800"
+    },
+    "bug": {
+      "en": "Poison Panel Step"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+850"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+850"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+900"
+    },
+    "bug": null
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+900"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 1,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+950"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Max HP Boost"
+    },
+    "effect": {
+      "en": "Max HP+1000"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Buster Mod"
+    },
+    "effect": {
+      "en": "Normal Shot spawns Ice Panel"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Charge FullCustom 1/2"
+    },
+    "effect": {
+      "en": "Charge FullCustom 1/2"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge FullCustom 2/2"
+    },
+    "effect": {
+      "en": "Charge FullCustom 2/2"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Panel Change"
+    },
+    "effect": {
+      "en": "Holy Panel Step"
+    },
+    "bug": {
+      "en": "HP Bug & Custom HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Weapon Change"
+    },
+    "effect": {
+      "en": "B Button Reflect"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Weapon Change"
+    },
+    "effect": {
+      "en": "B Button Flower"
+    },
+    "bug": null
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "Weapon Change"
+    },
+    "effect": {
+      "en": "B Button WaterGun"
+    },
+    "bug": null
+  },
+  {
+    "slot": 2,
+    "name": {
+      "en": "MegaFolder3"
+    },
+    "effect": {
+      "en": "MegaChip+3"
+    },
+    "bug": {
+      "en": "Custom -1"
+    }
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "Custom3"
+    },
+    "effect": {
+      "en": "Custom+3"
+    },
+    "bug": {
+      "en": "Custom HP Bug"
+    }
+  },
+  {
+    "slot": 0,
+    "name": {
+      "en": "GigaFolder1"
+    },
+    "effect": {
+      "en": "GigaChip+1"
+    },
+    "bug": null
+  },
+  {
+    "slot": 3,
+    "name": {
+      "en": "B+Left Execution"
+    },
+    "effect": {
+      "en": "B+Left TripleCrack"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WideShot3"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Thunder3"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WindRack"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge MegaEnergyBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge Ball"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge BugBomb"
+    },
+    "bug": null
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge WideBlade"
+    },
+    "bug": {
+      "en": "Auto move forward"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Charge Weapon Change"
+    },
+    "effect": {
+      "en": "B Charge LongBlade"
+    },
+    "bug": {
+      "en": "Auto move forward"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Roll Soul"
+    },
+    "effect": {
+      "en": "Roll Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Guts Soul"
+    },
+    "effect": {
+      "en": "Guts Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Wind Soul"
+    },
+    "effect": {
+      "en": "Wind Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Search Soul"
+    },
+    "effect": {
+      "en": "Search Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Fire Soul"
+    },
+    "effect": {
+      "en": "Fire Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Thunder Soul"
+    },
+    "effect": {
+      "en": "Thunder Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Proto Soul"
+    },
+    "effect": {
+      "en": "Proto Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Number Soul"
+    },
+    "effect": {
+      "en": "Number Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Metal Soul"
+    },
+    "effect": {
+      "en": "Metal Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Junk Soul"
+    },
+    "effect": {
+      "en": "Junk Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Aqua Soul"
+    },
+    "effect": {
+      "en": "Aqua Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  },
+  {
+    "slot": 4,
+    "name": {
+      "en": "Wood Soul"
+    },
+    "effect": {
+      "en": "Wood Soul"
+    },
+    "bug": {
+      "en": "HP Bug"
+    }
+  }
+]
