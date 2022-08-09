@@ -50,11 +50,11 @@ export default function SaveViewer({
     ]
   );
 
-  const [tab, setTab] = React.useState("navi");
+  const [tab, setTab] = React.useState(availableTabs[0]);
 
   React.useEffect(() => {
     if (availableTabs.indexOf(tab) == -1) {
-      setTab(availableTabs[0] || "navi");
+      setTab(availableTabs[0]);
     }
   }, [tab, availableTabs]);
 

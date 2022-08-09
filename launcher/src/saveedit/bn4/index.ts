@@ -366,6 +366,15 @@ class DarkAIEditor {
   }
 }
 
+function getStartOffset(buffer: ArrayBuffer) {
+  const dv = new DataView(buffer);
+  const startOffset = dv.getUint32(0x1550, true);
+  if (startOffset > 0x1fc || (startOffset & 3) != 0) {
+    return null;
+  }
+  return startOffset;
+}
+
 export class Editor extends EditorBase {
   dv: DataView;
   romViewer: ROMViewer;
@@ -373,15 +382,6 @@ export class Editor extends EditorBase {
 
   getROMInfo() {
     return this.romViewer.getROMInfo();
-  }
-
-  static getStartOffset(buffer: ArrayBuffer) {
-    const dv = new DataView(buffer);
-    const startOffset = dv.getUint32(0x1550, true);
-    if (startOffset > 0x1fc || (startOffset & 3) != 0) {
-      return null;
-    }
-    return startOffset;
   }
 
   static sramDumpToRaw(buffer: ArrayBuffer) {
@@ -410,7 +410,7 @@ export class Editor extends EditorBase {
 
     buffer = buffer.slice(0);
 
-    const startOffset = Editor.getStartOffset(buffer);
+    const startOffset = getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
     }
@@ -455,7 +455,7 @@ export class Editor extends EditorBase {
 
   constructor(buffer: ArrayBuffer, romBuffer: ArrayBuffer, saveeditInfo: any) {
     super();
-    const startOffset = Editor.getStartOffset(buffer);
+    const startOffset = getStartOffset(buffer);
     if (startOffset == null) {
       throw "could not locate start offset";
     }
