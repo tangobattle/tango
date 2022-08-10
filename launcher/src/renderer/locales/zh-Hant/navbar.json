@@ -1,8 +1,8 @@
 {
-  "play": "玩",
-  "replays": "回放",
-  "patches": "補丁",
-  "settings": "設定",
-  "settings-update-available": "設定（有更新）",
-  "settings-update-downloaded": "設定（程式重啓時將更新）"
+  "play": "Play",
+  "replays": "Replays",
+  "patches": "Patches",
+  "settings": "Settings",
+  "settings-update-available": "Settings (update available)",
+  "settings-update-downloaded": "Settings (will update on restart)"
 }
