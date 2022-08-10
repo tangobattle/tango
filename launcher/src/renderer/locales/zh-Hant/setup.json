@@ -1,15 +1,15 @@
 {
-  "welcome": "看起來這是您第一次使用Tango。歡迎！",
-  "welcome-2": "在你開始遊戲之前，你只需要完成幾個步驟。",
-  "nickname": "暱稱",
-  "nickname-step-title": "請選擇你的暱稱。",
-  "nickname-step-description": "你可以在任何時候改變你的暱稱。",
-  "roms-step-title": "請將你的ROM放入 {{path}}",
-  "roms-step-description": "確保ROM是原始和沒打補丁的。",
-  "roms-step-error": "找不到任何支持的ROM。請確保ROM是沒打補丁的!",
-  "saves-step-title": "文件夾中有文件但是請將你的遊戲存檔放入 {{path}}",
-  "saves-step-description": "確保遊戲存檔與你放在ROM文件夾中的遊戲兼容。遊戲存檔應該是.sav或.sa1文件。",
-  "saves-step-error": "找不到任何支持的遊戲存檔。請確保遊戲存檔與你的ROM兼容。",
-  "open-folder": "打開文件夾",
-  "next": "下一步"
+  "welcome": "It looks like this is the first time you've used Tango. Welcome!",
+  "welcome-2": "There's just a few steps you'll need to complete before you can start playing.",
+  "nickname": "Nickname",
+  "nickname-step-title": "Set your nickname",
+  "nickname-step-description": "You can change this at any time.",
+  "roms-step-title": "Place your ROMs in {{path}}",
+  "roms-step-description": "Make sure they're pristine, unpatched ROMs.",
+  "roms-step-error": "Could not find any supported ROMs. Please make sure they're unpatched!",
+  "saves-step-title": "Place your saves in {{path}}",
+  "saves-step-description": "Make sure they're compatible with the games you've put in the ROMs folder. They should be .sav or .sa1 files.",
+  "saves-step-error": "Could not find any supported saves. Please make sure they compatible.",
+  "open-folder": "Open folder",
+  "next": "I'm done!"
 }
