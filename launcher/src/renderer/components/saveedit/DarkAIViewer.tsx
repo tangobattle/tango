@@ -59,12 +59,12 @@ function DarkAIRow({
   const theme = useTheme();
 
   const backgroundColor =
-    chipInfo != null && chipInfo.class == "giga"
-      ? GIGA_BG[theme.palette.mode]
+    chipInfo != null && chipInfo.dark
+      ? DARK_BG[theme.palette.mode]
       : chipInfo != null && chipInfo.class == "mega"
       ? MEGA_BG[theme.palette.mode]
-      : chipInfo != null && chipInfo.class == "dark"
-      ? DARK_BG[theme.palette.mode]
+      : chipInfo != null && chipInfo.class == "giga"
+      ? GIGA_BG[theme.palette.mode]
       : null;
 
   return (
@@ -124,7 +124,14 @@ export default function DarkAIViewer({
   folderEditor: FolderEditor;
   active: boolean;
 }) {
-  const rows = React.useMemo(() => {
+  const {
+    secondaryStandardChips,
+    standardChips,
+    megaChips,
+    gigaChip,
+    combos,
+    pa,
+  } = React.useMemo(() => {
     let secondaryStandardChipUses = [];
     let standardChipUses = [];
     let megaChipUses = [];
@@ -168,9 +175,9 @@ export default function DarkAIViewer({
     gigaChipUses = sortBy(gigaChipUses, [(x) => -x.uses, (x) => x.id]);
     paUses = sortBy(paUses, [(x) => -x.uses, (x) => x.id]);
 
-    const rows: { id: number | null; count: number }[] = [];
+    const secondaryStandardChips: { id: number | null; count: number }[] = [];
     for (let i = 0; i < 3; ++i) {
-      rows.push({
+      secondaryStandardChips.push({
         id:
           i < secondaryStandardChipUses.length
             ? secondaryStandardChipUses[i].id
@@ -178,33 +185,49 @@ export default function DarkAIViewer({
         count: 1,
       });
     }
+
+    const standardChips: { id: number | null; count: number }[] = [];
     for (let i = 0; i < 16; ++i) {
-      rows.push({
+      standardChips.push({
         id: i < standardChipUses.length ? standardChipUses[i].id : null,
         count: i < 2 ? 4 : i < 4 ? 2 : 1,
       });
     }
+
+    const megaChips: { id: number | null; count: number }[] = [];
     for (let i = 0; i < 5; ++i) {
-      rows.push({
+      megaChips.push({
         id: i < megaChipUses.length ? megaChipUses[i].id : null,
         count: 1,
       });
     }
-    rows.push({
+
+    const gigaChip = {
       id: gigaChipUses.length > 0 ? gigaChipUses[0].id : null,
       count: 1,
-    });
-    // Combos.
-    rows.push({
-      id: null,
-      count: 8,
-    });
-    rows.push({
+    };
+
+    const combos: { id: number | null; count: number }[] = [];
+    for (let i = 0; i < 8; ++i) {
+      combos.push({
+        id: null,
+        count: 1,
+      });
+    }
+
+    const pa = {
       id: paUses.length > 0 ? paUses[0].id : null,
       count: 1,
-    });
+    };
 
-    return rows;
+    return {
+      secondaryStandardChips,
+      standardChips,
+      megaChips,
+      gigaChip,
+      combos,
+      pa,
+    };
   }, [editor, folderEditor]);
 
   const elementIcons = React.useMemo(
@@ -218,7 +241,14 @@ export default function DarkAIViewer({
         <Box sx={{ overflow: "auto", height: 0, flexGrow: 1, px: 1 }}>
           <Table size="small">
             <TableBody>
-              {rows.map(({ id, count }, i) => {
+              <TableRow>
+                <TableCell colSpan={5} component="th">
+                  <strong>
+                    <Trans i18nKey="play:darkai.section.secondary-standard" />
+                  </strong>
+                </TableCell>
+              </TableRow>
+              {secondaryStandardChips.map(({ id, count }, i) => {
                 return (
                   <DarkAIRow
                     key={i}
@@ -228,6 +258,87 @@ export default function DarkAIViewer({
                   />
                 );
               })}
+              <TableRow>
+                <TableCell colSpan={5} component="th">
+                  <strong>
+                    <Trans i18nKey="play:darkai.section.standard" />
+                  </strong>
+                </TableCell>
+              </TableRow>
+              {standardChips.map(({ id, count }, i) => {
+                return (
+                  <DarkAIRow
+                    key={i}
+                    count={count}
+                    chipInfo={id != null ? folderEditor.getChipInfo(id) : null}
+                    elementIcons={elementIcons}
+                  />
+                );
+              })}
+              <TableRow>
+                <TableCell colSpan={5} component="th">
+                  <strong>
+                    <Trans i18nKey="play:darkai.section.mega" />
+                  </strong>
+                </TableCell>
+              </TableRow>
+              {megaChips.map(({ id, count }, i) => {
+                return (
+                  <DarkAIRow
+                    key={i}
+                    count={count}
+                    chipInfo={id != null ? folderEditor.getChipInfo(id) : null}
+                    elementIcons={elementIcons}
+                  />
+                );
+              })}
+              <TableRow>
+                <TableCell colSpan={5} component="th">
+                  <strong>
+                    <Trans i18nKey="play:darkai.section.giga" />
+                  </strong>
+                </TableCell>
+              </TableRow>
+              <DarkAIRow
+                count={gigaChip.count}
+                chipInfo={
+                  gigaChip.id != null
+                    ? folderEditor.getChipInfo(gigaChip.id)
+                    : null
+                }
+                elementIcons={elementIcons}
+              />
+              <TableRow>
+                <TableCell colSpan={5} component="th">
+                  <strong>
+                    <Trans i18nKey="play:darkai.section.combos" />
+                  </strong>
+                </TableCell>
+              </TableRow>
+              {combos.map(({ id, count }, i) => {
+                return (
+                  <DarkAIRow
+                    key={i}
+                    count={count}
+                    chipInfo={id != null ? folderEditor.getChipInfo(id) : null}
+                    elementIcons={elementIcons}
+                  />
+                );
+              })}
+              <TableRow>
+                <TableCell colSpan={5} component="th">
+                  <strong>
+                    <Trans i18nKey="play:darkai.section.pa" />
+                  </strong>
+                </TableCell>
+              </TableRow>
+              <DarkAIRow
+                count={pa.count}
+                chipInfo={
+                  pa.id != null ? folderEditor.getChipInfo(pa.id) : null
+                }
+                elementIcons={elementIcons}
+              />
             </TableBody>
           </Table>
         </Box>
@@ -242,7 +353,14 @@ export default function DarkAIViewer({
             sx={{ px: 1, mb: 0, pt: 1 }}
           >
             <CopyButtonWithLabel
-              value={rows
+              value={[
+                ...secondaryStandardChips,
+                ...standardChips,
+                ...megaChips,
+                gigaChip,
+                ...combos,
+                pa,
+              ]
                 .flatMap(({ id, count }) => {
                   return [
                     `${count}\t${

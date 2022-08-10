@@ -59,12 +59,12 @@ function FolderChipRow({
   const theme = useTheme();
 
   const backgroundColor =
-    chipInfo != null && chipInfo.class == "giga"
-      ? GIGA_BG[theme.palette.mode]
+    chipInfo != null && chipInfo.dark
+      ? DARK_BG[theme.palette.mode]
       : chipInfo != null && chipInfo.class == "mega"
       ? MEGA_BG[theme.palette.mode]
-      : chipInfo != null && chipInfo.class == "dark"
-      ? DARK_BG[theme.palette.mode]
+      : chipInfo != null && chipInfo.class == "giga"
+      ? GIGA_BG[theme.palette.mode]
       : null;
 
   const iconCanvasRef = React.useRef<HTMLCanvasElement | null>(null);

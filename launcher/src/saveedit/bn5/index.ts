@@ -653,12 +653,10 @@ class ROMViewer extends ROMViewerBase {
               2
             ),
       element: this.dv.getUint8(dataOffset + 0x06),
-      class:
-        (flags & 0x20) != 0
-          ? "dark"
-          : (["standard", "mega", "giga", null, "pa"][
-              this.dv.getUint8(dataOffset + 0x07)
-            ] as Chip["class"]),
+      class: ["standard", "mega", "giga", null, "pa"][
+        this.dv.getUint8(dataOffset + 0x07)
+      ] as Chip["class"],
+      dark: (flags & 0x20) != 0,
       mb: this.dv.getUint8(dataOffset + 0x08),
       damage: damage < 1000 ? damage : 0,
     };

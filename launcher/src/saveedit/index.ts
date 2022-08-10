@@ -25,7 +25,8 @@ export interface Chip {
   element: number;
   damage: number;
   mb: number;
-  class: "standard" | "mega" | "giga" | "dark" | "pa" | null;
+  class: "standard" | "mega" | "giga" | "pa" | null;
+  dark: boolean;
 }
 
 export interface Style {

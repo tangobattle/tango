@@ -401,6 +401,7 @@ class ROMViewer extends ROMViewerBase {
       element: this.dv.getUint8(dataOffset + 0x06),
       class:
         (flags & 0x2) != 0 ? "giga" : (flags & 0x1) != 0 ? "mega" : "standard",
+      dark: false,
       mb: this.dv.getUint8(dataOffset + 0x0a),
       damage: damage < 1000 ? damage : 0,
     };
