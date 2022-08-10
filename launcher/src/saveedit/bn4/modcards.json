@@ -872,7 +872,10 @@
       "en": "B+Left Execution",
       "ja": "B+左で技発動"
     },
-    "effect": { "en": "B+Left Recov10", "ja": "B+左でリカバリー10発動" },
+    "effect": {
+      "en": "B+Left Recov10",
+      "ja": "B+左でリカバリー10発動"
+    },
     "bug": null
   },
   {
@@ -881,7 +884,10 @@
       "en": "B+Left Execution",
       "ja": "B+左で技発動"
     },
-    "effect": { "en": "B+Left PanelReturn", "ja": "B+左でパネルリターン発動" },
+    "effect": {
+      "en": "B+Left PanelReturn",
+      "ja": "B+左でパネルリターン発動"
+    },
     "bug": null
   },
   {
@@ -890,7 +896,10 @@
       "en": "B+Left Execution",
       "ja": "B+左で技発動"
     },
-    "effect": { "en": "B+Left NorthWind", "ja": "B+左でスーパーキタカゼ発動" },
+    "effect": {
+      "en": "B+Left NorthWind",
+      "ja": "B+左でスーパーキタカゼ発動"
+    },
     "bug": null
   },
   {
@@ -899,7 +908,10 @@
       "en": "B+Left Execution",
       "ja": "B+左で技発動"
     },
-    "effect": { "en": "B+Left Lance", "ja": "B+左でバンブーランス発動" },
+    "effect": {
+      "en": "B+Left Lance",
+      "ja": "B+左でバンブーランス発動"
+    },
     "bug": null
   },
   {
@@ -908,7 +920,10 @@
       "en": "B+Left Execution",
       "ja": "B+左で技発動"
     },
-    "effect": { "en": "B+Left DoubleCrack", "ja": "B+左でダブルクラック発動" },
+    "effect": {
+      "en": "B+Left DoubleCrack",
+      "ja": "B+左でダブルクラック発動"
+    },
     "bug": null
   },
   {
@@ -945,7 +960,10 @@
       "en": "AllGuard 1/2",
       "ja": "ブレイク、毒系以外の攻撃を完全無効化"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 3,
@@ -957,7 +975,10 @@
       "en": "AllGuard 2/2",
       "ja": "ブレイク、毒系以外の攻撃を完全無効化"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 2,
@@ -969,7 +990,10 @@
       "en": "Start battle with LifeAura",
       "ja": "戦闘開始からドリームオーラがつく"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
@@ -1049,7 +1073,10 @@
       "en": "Charge Weapon Change",
       "ja": "チャージ武器を変更"
     },
-    "effect": { "en": "B Charge Repair", "ja": "チャージショットをリペアーに" },
+    "effect": {
+      "en": "B Charge Repair",
+      "ja": "チャージショットをリペアーに"
+    },
     "bug": null
   },
   {
@@ -1082,7 +1109,10 @@
       "en": "PET Menu Color Change",
       "ja": "PET画面カラー変更"
     },
-    "effect": { "en": "Black PET menu", "ja": "PET画面のカラーを黒に" },
+    "effect": {
+      "en": "Black PET menu",
+      "ja": "PET画面のカラーを黒に"
+    },
     "bug": null
   },
   {
@@ -1115,8 +1145,14 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+700", "ja": "ロックマンの最大HPを+700" },
-    "bug": { "en": "Poison Panel Step", "ja": "歩いたパネルが毒パネルになる" }
+    "effect": {
+      "en": "Max HP+700",
+      "ja": "ロックマンの最大HPを+700"
+    },
+    "bug": {
+      "en": "Poison Panel Step",
+      "ja": "歩いたパネルが毒パネルになる"
+    }
   },
   {
     "slot": 0,
@@ -1124,7 +1160,10 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+750", "ja": "ロックマンの最大HPを+750" },
+    "effect": {
+      "en": "Max HP+750",
+      "ja": "ロックマンの最大HPを+750"
+    },
     "bug": null
   },
   {
@@ -1133,8 +1172,14 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+750", "ja": "ロックマンの最大HPを+750" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "effect": {
+      "en": "Max HP+750",
+      "ja": "ロックマンの最大HPを+750"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 0,
@@ -1142,7 +1187,10 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+800", "ja": "ロックマンの最大HPを+800" },
+    "effect": {
+      "en": "Max HP+800",
+      "ja": "ロックマンの最大HPを+800"
+    },
     "bug": null
   },
   {
@@ -1151,8 +1199,14 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+800", "ja": "ロックマンの最大HPを+800" },
-    "bug": { "en": "Poison Panel Step", "ja": "歩いたパネルが毒パネルになる" }
+    "effect": {
+      "en": "Max HP+800",
+      "ja": "ロックマンの最大HPを+800"
+    },
+    "bug": {
+      "en": "Poison Panel Step",
+      "ja": "歩いたパネルが毒パネルになる"
+    }
   },
   {
     "slot": 0,
@@ -1160,7 +1214,10 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+850", "ja": "ロックマンの最大HPを+850" },
+    "effect": {
+      "en": "Max HP+850",
+      "ja": "ロックマンの最大HPを+850"
+    },
     "bug": null
   },
   {
@@ -1169,8 +1226,14 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+850", "ja": "ロックマンの最大HPを+850" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "effect": {
+      "en": "Max HP+850",
+      "ja": "ロックマンの最大HPを+850"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
@@ -1178,7 +1241,10 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+900", "ja": "ロックマンの最大HPを+900" },
+    "effect": {
+      "en": "Max HP+900",
+      "ja": "ロックマンの最大HPを+900"
+    },
     "bug": null
   },
   {
@@ -1187,8 +1253,14 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+900", "ja": "ロックマンの最大HPを+900" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "effect": {
+      "en": "Max HP+900",
+      "ja": "ロックマンの最大HPを+900"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 1,
@@ -1196,8 +1268,14 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+950", "ja": "ロックマンの最大HPを+950" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "effect": {
+      "en": "Max HP+950",
+      "ja": "ロックマンの最大HPを+950"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
@@ -1205,7 +1283,10 @@
       "en": "Max HP Boost",
       "ja": "マックスHPを強化"
     },
-    "effect": { "en": "Max HP+1000", "ja": "ロックマンの最大HPを+1000" },
+    "effect": {
+      "en": "Max HP+1000",
+      "ja": "ロックマンの最大HPを+1000"
+    },
     "bug": null
   },
   {
@@ -1265,8 +1346,14 @@
       "en": "Weapon Change",
       "ja": "ウェポンチェンジ"
     },
-    "effect": { "en": "B Button Reflect", "ja": "Bボタンでリフレクト" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "effect": {
+      "en": "B Button Reflect",
+      "ja": "Bボタンでリフレクト"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 0,
@@ -1274,7 +1361,10 @@
       "en": "Weapon Change",
       "ja": "ウェポンチェンジ"
     },
-    "effect": { "en": "B Button Flower", "ja": "Bボタンでフラワー" },
+    "effect": {
+      "en": "B Button Flower",
+      "ja": "Bボタンでフラワー"
+    },
     "bug": null
   },
   {
@@ -1283,7 +1373,10 @@
       "en": "Weapon Change",
       "ja": "ウェポンチェンジ"
     },
-    "effect": { "en": "B Button WaterGun", "ja": "Bボタンで水鉄砲" },
+    "effect": {
+      "en": "B Button WaterGun",
+      "ja": "Bボタンで水鉄砲"
+    },
     "bug": null
   },
   {
@@ -1296,7 +1389,10 @@
       "en": "MegaChip+3",
       "ja": "フォルダに入れられるメガクラスチップの枚数を+3"
     },
-    "bug": { "en": "Custom -1", "ja": "カスタム画面で選べるチップの枚数が-1" }
+    "bug": {
+      "en": "Custom -1",
+      "ja": "カスタム画面で選べるチップの枚数が-1"
+    }
   },
   {
     "slot": 3,
@@ -1308,7 +1404,10 @@
       "en": "Custom+3",
       "ja": "カスタム画面で選べるチップの枚数を+3"
     },
-    "bug": { "en": "Custom HP Bug", "ja": "カスタム画面でHPが減少" }
+    "bug": {
+      "en": "Custom HP Bug",
+      "ja": "カスタム画面でHPが減少"
+    }
   },
   {
     "slot": 0,
