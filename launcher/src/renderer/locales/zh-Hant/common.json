@@ -1,6 +1,6 @@
 {
-  "copy-to-clipboard": "複製到剪貼板",
-  "copy-image-to-clipboard": "複製截圖到剪貼板",
-  "copied-to-clipboard": "複製了！",
-  "close": "關閉"
+  "copy-to-clipboard": "Copy to clipboard",
+  "copy-image-to-clipboard": "Copy image to clipboard",
+  "copied-to-clipboard": "Copied!",
+  "close": "Close"
 }
