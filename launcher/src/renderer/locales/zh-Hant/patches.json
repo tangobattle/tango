@@ -1,11 +1,11 @@
 {
-  "no-patches": "No patches",
-  "open-directory": "Open directory",
-  "update": "Update",
-  "byline": "by {{authors}}",
-  "authors": "Authors",
-  "license": "License",
-  "all-rights-reserved": "All rights reserved",
-  "versions": "Versions",
-  "source": "Website"
+  "no-patches": "沒有補丁",
+  "open-directory": "打開目錄",
+  "update": "更新",
+  "byline": "作者：{{authors}}",
+  "authors": "作者",
+  "license": "許可證",
+  "all-rights-reserved": "所有權保留",
+  "versions": "版本",
+  "source": "網站"
 }
