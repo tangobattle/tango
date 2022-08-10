@@ -1,91 +1,172 @@
 [
   {
     "slot": 0,
-    "name": { "en": "Weapon Change", "ja": "ウェポンチェンジ" },
-    "effect": { "en": "B Button MiniBomb", "ja": "Bボタンでミニボムを投げる" },
+    "name": {
+      "en": "Weapon Change",
+      "ja": "ウェポンチェンジ"
+    },
+    "effect": {
+      "en": "B Button MiniBomb",
+      "ja": "Bボタンでミニボムを投げる"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+100", "ja": "ロックマンの最大HPを+100" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+100",
+      "ja": "ロックマンの最大HPを+100"
+    },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+100", "ja": "ロックマンの最大HPを+100" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+100",
+      "ja": "ロックマンの最大HPを+100"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+150", "ja": "ロックマンの最大HPを+150" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+150",
+      "ja": "ロックマンの最大HPを+150"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+150", "ja": "ロックマンの最大HPを+150" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+150",
+      "ja": "ロックマンの最大HPを+150"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+200", "ja": "ロックマンの最大HPを+200" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+200",
+      "ja": "ロックマンの最大HPを+200"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+200", "ja": "ロックマンの最大HPを+200" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+200",
+      "ja": "ロックマンの最大HPを+200"
+    },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+250", "ja": "ロックマンの最大HPを+250" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+250",
+      "ja": "ロックマンの最大HPを+250"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+250", "ja": "ロックマンの最大HPを+250" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+250",
+      "ja": "ロックマンの最大HPを+250"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+300", "ja": "ロックマンの最大HPを+300" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+300",
+      "ja": "ロックマンの最大HPを+300"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+300", "ja": "ロックマンの最大HPを+300" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+300",
+      "ja": "ロックマンの最大HPを+300"
+    },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "First Barrier100", "ja": "ファーストバリア100" },
+    "name": {
+      "en": "First Barrier100",
+      "ja": "ファーストバリア100"
+    },
     "effect": {
       "en": "Start battle with Barrier 100",
       "ja": "戦闘開始からバリア100がつく"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 0,
-    "name": { "en": "Buster Mod", "ja": "バスターを改造" },
+    "name": {
+      "en": "Buster Mod",
+      "ja": "バスターを改造"
+    },
     "effect": {
       "en": "Normal Shot inflicts Blind",
       "ja": "バスター攻撃にブラインド効果追加"
     },
-    "bug": { "en": "Auto move forward", "ja": "エリア前方に引き寄せられる" }
+    "bug": {
+      "en": "Auto move forward",
+      "ja": "エリア前方に引き寄せられる"
+    }
   },
   {
     "slot": 0,
-    "name": { "en": "Buster Mod", "ja": "バスターを改造" },
+    "name": {
+      "en": "Buster Mod",
+      "ja": "バスターを改造"
+    },
     "effect": {
       "en": "Normal Shot spawns Grass Panel",
       "ja": "バスター攻撃にクサムラ効果追加"
@@ -94,7 +175,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "Panel Change", "ja": "パネルチェンジ" },
+    "name": {
+      "en": "Panel Change",
+      "ja": "パネルチェンジ"
+    },
     "effect": {
       "en": "Metal Panel Step",
       "ja": "ロックマンが歩いたパネルをメタルパネルに"
@@ -103,7 +187,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "Panel Change", "ja": "パネルチェンジ" },
+    "name": {
+      "en": "Panel Change",
+      "ja": "パネルチェンジ"
+    },
     "effect": {
       "en": "Cracked Panel Step",
       "ja": "ロックマンが歩いたパネルをひびパネルに"
@@ -112,7 +199,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "Panel Change", "ja": "パネルチェンジ" },
+    "name": {
+      "en": "Panel Change",
+      "ja": "パネルチェンジ"
+    },
     "effect": {
       "en": "Broken Panel Step",
       "ja": "ロックマンが歩いたパネルを穴パネルに"
@@ -121,31 +211,55 @@
   },
   {
     "slot": 0,
-    "name": { "en": "Custom2", "ja": "カスタム2" },
+    "name": {
+      "en": "Custom2",
+      "ja": "カスタム2"
+    },
     "effect": {
       "en": "Custom Slots +2",
       "ja": "カスタム画面で選べるチップの枚数を+2"
     },
-    "bug": { "en": "Custom HP Bug", "ja": "カスタム画面でHPが減少" }
+    "bug": {
+      "en": "Custom HP Bug",
+      "ja": "カスタム画面でHPが減少"
+    }
   },
   {
     "slot": 3,
-    "name": { "en": "MegaFolder2", "ja": "メガフォルダ2" },
+    "name": {
+      "en": "MegaFolder2",
+      "ja": "メガフォルダ2"
+    },
     "effect": {
       "en": "MegaChip+2",
       "ja": "フォルダに入れられるメガクラスチップの枚数を+1"
     },
-    "bug": { "en": "Custom -1", "ja": "カスタム画面で選べるチップの枚数が-1" }
+    "bug": {
+      "en": "Custom -1",
+      "ja": "カスタム画面で選べるチップの枚数が-1"
+    }
   },
   {
     "slot": 0,
-    "name": { "en": "Buster ATK 10", "ja": "バスター攻撃力10" },
-    "effect": { "en": "Buster ATK 10", "ja": "ロックバスターの攻撃力を10に" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "name": {
+      "en": "Buster ATK 10",
+      "ja": "バスター攻撃力10"
+    },
+    "effect": {
+      "en": "Buster ATK 10",
+      "ja": "ロックバスターの攻撃力を10に"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge GutsMachineGun",
       "ja": "チャージショットをガッツマシンガンに"
@@ -154,13 +268,22 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
-    "effect": { "en": "B Charge Cannon", "ja": "チャージショットをキャノンに" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
+    "effect": {
+      "en": "B Charge Cannon",
+      "ja": "チャージショットをキャノンに"
+    },
     "bug": null
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge MiniBomb",
       "ja": "チャージショットをミニボムに"
@@ -169,7 +292,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge HeatShot",
       "ja": "チャージショットをヒートショットに"
@@ -178,7 +304,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Bubbler",
       "ja": "チャージショットをバブルショットに"
@@ -187,7 +316,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Thunder1",
       "ja": "チャージショットをサンダーボールに"
@@ -196,13 +328,22 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
-    "effect": { "en": "B Charge Sword", "ja": "チャージショットをソードに" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
+    "effect": {
+      "en": "B Charge Sword",
+      "ja": "チャージショットをソードに"
+    },
     "bug": null
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Spreader",
       "ja": "チャージショットをスプレッドガンに"
@@ -211,97 +352,199 @@
   },
   {
     "slot": 5,
-    "name": { "en": "PET Menu Color Change", "ja": "PET画面カラー変更" },
-    "effect": { "en": "Blue PET menu", "ja": "PET画面のカラーを青に" },
+    "name": {
+      "en": "PET Menu Color Change",
+      "ja": "PET画面カラー変更"
+    },
+    "effect": {
+      "en": "Blue PET menu",
+      "ja": "PET画面のカラーを青に"
+    },
     "bug": null
   },
   {
     "slot": 5,
-    "name": { "en": "PET Menu Color Change", "ja": "PET画面カラー変更" },
-    "effect": { "en": "Pink PET menu", "ja": "PET画面のカラーをピンクに" },
+    "name": {
+      "en": "PET Menu Color Change",
+      "ja": "PET画面カラー変更"
+    },
+    "effect": {
+      "en": "Pink PET menu",
+      "ja": "PET画面のカラーをピンクに"
+    },
     "bug": null
   },
   {
     "slot": 5,
-    "name": { "en": "PET Menu Color Change", "ja": "PET画面カラー変更" },
-    "effect": { "en": "Green PET menu", "ja": "PET画面のカラーを緑に" },
+    "name": {
+      "en": "PET Menu Color Change",
+      "ja": "PET画面カラー変更"
+    },
+    "effect": {
+      "en": "Green PET menu",
+      "ja": "PET画面のカラーを緑に"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+350", "ja": "ロックマンの最大HPを+350" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+350",
+      "ja": "ロックマンの最大HPを+350"
+    },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+350", "ja": "ロックマンの最大HPを+350" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+350",
+      "ja": "ロックマンの最大HPを+350"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+400", "ja": "ロックマンの最大HPを+400" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+400",
+      "ja": "ロックマンの最大HPを+400"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+400", "ja": "ロックマンの最大HPを+400" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+400",
+      "ja": "ロックマンの最大HPを+400"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+450", "ja": "ロックマンの最大HPを+450" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+450",
+      "ja": "ロックマンの最大HPを+450"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 2,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+450", "ja": "ロックマンの最大HPを+450" },
-    "bug": { "en": "Start battle Confused", "ja": "混乱状態になる" }
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+450",
+      "ja": "ロックマンの最大HPを+450"
+    },
+    "bug": {
+      "en": "Start battle Confused",
+      "ja": "混乱状態になる"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+500", "ja": "ロックマンの最大HPを+500" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+500",
+      "ja": "ロックマンの最大HPを+500"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+500", "ja": "ロックマンの最大HPを+500" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+500",
+      "ja": "ロックマンの最大HPを+500"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
-    "effect": { "en": "B+Left AirShot", "ja": "B+左でエアシュート発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
+    "effect": {
+      "en": "B+Left AirShot",
+      "ja": "B+左でエアシュート発動"
+    },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
-    "effect": { "en": "B+Left random Trap Chip", "ja": "B+左でトラップ発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
+    "effect": {
+      "en": "B+Left random Trap Chip",
+      "ja": "B+左でトラップ発動"
+    },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
-    "effect": { "en": "B+Left BugBomb", "ja": "B+左でバグボム発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
+    "effect": {
+      "en": "B+Left BugBomb",
+      "ja": "B+左でバグボム発動"
+    },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
-    "effect": { "en": "B+Left CrackOut", "ja": "B+左でクラックアウト発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
+    "effect": {
+      "en": "B+Left CrackOut",
+      "ja": "B+左でクラックアウト発動"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Buster Mod", "ja": "バスターを改造" },
+    "name": {
+      "en": "Buster Mod",
+      "ja": "バスターを改造"
+    },
     "effect": {
       "en": "Normal Shot spawns Cracked Panel",
       "ja": "バスター攻撃にクラックアウト効果追加"
@@ -310,7 +553,10 @@
   },
   {
     "slot": 0,
-    "name": { "en": "Buster Mod", "ja": "バスターを改造" },
+    "name": {
+      "en": "Buster Mod",
+      "ja": "バスターを改造"
+    },
     "effect": {
       "en": "Normal Shot spawns Poison Panel",
       "ja": "バスター攻撃にポイズン効果追加"
@@ -319,7 +565,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "Default Full Synchro", "ja": "デフォルトフルシンクロ" },
+    "name": {
+      "en": "Default Full Synchro",
+      "ja": "デフォルトフルシンクロ"
+    },
     "effect": {
       "en": "Start battle with Full Synchro",
       "ja": "戦闘開始からフルシンクロ状態"
@@ -328,29 +577,53 @@
   },
   {
     "slot": 2,
-    "name": { "en": "First Barrier200", "ja": "ファーストバリア200" },
+    "name": {
+      "en": "First Barrier200",
+      "ja": "ファーストバリア200"
+    },
     "effect": {
       "en": "Start battle with Barrier 200",
       "ja": "戦闘開始からバリア200がつく"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 0,
-    "name": { "en": "Weapon Change", "ja": "ウェポンチェンジ" },
-    "effect": { "en": "B Button Guard1", "ja": "Bボタンでメットガード1" },
+    "name": {
+      "en": "Weapon Change",
+      "ja": "ウェポンチェンジ"
+    },
+    "effect": {
+      "en": "B Button Guard1",
+      "ja": "Bボタンでメットガード1"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Weapon Change", "ja": "ウェポンチェンジ" },
-    "effect": { "en": "B Button Crackout", "ja": "Bボタンでクラックアウト" },
+    "name": {
+      "en": "Weapon Change",
+      "ja": "ウェポンチェンジ"
+    },
+    "effect": {
+      "en": "B Button Crackout",
+      "ja": "Bボタンでクラックアウト"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Buster ATK 15", "ja": "バスター攻撃力15" },
-    "effect": { "en": "Buster ATK 15", "ja": "ロックバスターの攻撃力を15に" },
+    "name": {
+      "en": "Buster ATK 15",
+      "ja": "バスター攻撃力15"
+    },
+    "effect": {
+      "en": "Buster ATK 15",
+      "ja": "ロックバスターの攻撃力を15に"
+    },
     "bug": {
       "en": "HP Bug & Start battle Confused",
       "ja": "混乱状態になる、戦闘中HPが減少"
@@ -358,16 +631,25 @@
   },
   {
     "slot": 1,
-    "name": { "en": "GigaFolder1", "ja": "ギガフォルダ1" },
+    "name": {
+      "en": "GigaFolder1",
+      "ja": "ギガフォルダ1"
+    },
     "effect": {
       "en": "GigaChip+1",
       "ja": "フォルダに入れられるギガクラスチップの枚数を+1"
     },
-    "bug": { "en": "Custom -1", "ja": "カスタム画面で選べるチップの枚数が-1" }
+    "bug": {
+      "en": "Custom -1",
+      "ja": "カスタム画面で選べるチップの枚数が-1"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge CopyDamage",
       "ja": "チャージショットをコピーダメージに"
@@ -376,7 +658,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WideShot1",
       "ja": "チャージショットをワイドショット1に"
@@ -385,7 +670,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Blizzard",
       "ja": "チャージショットをブリザードに"
@@ -394,7 +682,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge HeatBreath",
       "ja": "チャージショットをヒートブレスに"
@@ -403,7 +694,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge ElecShock",
       "ja": "チャージショットをエレキショックに"
@@ -412,7 +706,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WoodyPowder",
       "ja": "チャージショットをウッディパウダーに"
@@ -421,7 +718,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge PanelReturn",
       "ja": "チャージショットをパネルリターンに"
@@ -430,7 +730,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WideSword",
       "ja": "チャージショットをワイドソードに"
@@ -439,7 +742,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "MegaMan Color Change", "ja": "ロックマンカラーを変更" },
+    "name": {
+      "en": "MegaMan Color Change",
+      "ja": "ロックマンカラーを変更"
+    },
     "effect": {
       "en": "Red MegaMan Cosmetic",
       "ja": "ロックマンの体の色を赤に"
@@ -448,7 +754,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "MegaMan Color Change", "ja": "ロックマンカラーを変更" },
+    "name": {
+      "en": "MegaMan Color Change",
+      "ja": "ロックマンカラーを変更"
+    },
     "effect": {
       "en": "Yellow MegaMan Cosmetic",
       "ja": "ロックマンの体の色を黄色に"
@@ -457,49 +766,100 @@
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+550", "ja": "ロックマンの最大HPを+550" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+550",
+      "ja": "ロックマンの最大HPを+550"
+    },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+550", "ja": "ロックマンの最大HPを+550" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+550",
+      "ja": "ロックマンの最大HPを+550"
+    },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+600", "ja": "ロックマンの最大HPを+600" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+600",
+      "ja": "ロックマンの最大HPを+600"
+    },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+600", "ja": "ロックマンの最大HPを+600" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+600",
+      "ja": "ロックマンの最大HPを+600"
+    },
     "bug": null
   },
   {
     "slot": 4,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+650", "ja": "ロックマンの最大HPを+650" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+650",
+      "ja": "ロックマンの最大HPを+650"
+    },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+650", "ja": "ロックマンの最大HPを+650" },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+650",
+      "ja": "ロックマンの最大HPを+650"
+    },
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
-    "effect": { "en": "Max HP+700", "ja": "ロックマンの最大HPを+700" },
-    "bug": { "en": "Start battle Confused", "ja": "混乱状態になる" }
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
+    "effect": {
+      "en": "Max HP+700",
+      "ja": "ロックマンの最大HPを+700"
+    },
+    "bug": {
+      "en": "Start battle Confused",
+      "ja": "混乱状態になる"
+    }
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": {
       "en": "B+Left MegaEnergyBomb",
       "ja": "B+左でメガエナジーボム発動"
@@ -508,37 +868,55 @@
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": { "en": "B+Left Recov10", "ja": "B+左でリカバリー10発動" },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": { "en": "B+Left PanelReturn", "ja": "B+左でパネルリターン発動" },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": { "en": "B+Left NorthWind", "ja": "B+左でスーパーキタカゼ発動" },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": { "en": "B+Left Lance", "ja": "B+左でバンブーランス発動" },
     "bug": null
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": { "en": "B+Left DoubleCrack", "ja": "B+左でダブルクラック発動" },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Triple Supporter 1/2", "ja": "トリプルサポーター1/2" },
+    "name": {
+      "en": "Triple Supporter 1/2",
+      "ja": "トリプルサポーター1/2"
+    },
     "effect": {
       "en": "Triple Supporter 1/2",
       "ja": "ラッシュ、ビート、タンゴの3つのサポートが装備される"
@@ -547,7 +925,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "Triple Supporter 2/2", "ja": "トリプルサポーター2/2" },
+    "name": {
+      "en": "Triple Supporter 2/2",
+      "ja": "トリプルサポーター2/2"
+    },
     "effect": {
       "en": "Triple Supporter 2/2",
       "ja": "ラッシュ、ビート、タンゴの3つのサポートが装備される"
@@ -556,7 +937,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "AllGuard 1/2", "ja": "オールガード1/2" },
+    "name": {
+      "en": "AllGuard 1/2",
+      "ja": "オールガード1/2"
+    },
     "effect": {
       "en": "AllGuard 1/2",
       "ja": "ブレイク、毒系以外の攻撃を完全無効化"
@@ -565,7 +949,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "AllGuard 2/2", "ja": "オールガード1/2" },
+    "name": {
+      "en": "AllGuard 2/2",
+      "ja": "オールガード1/2"
+    },
     "effect": {
       "en": "AllGuard 2/2",
       "ja": "ブレイク、毒系以外の攻撃を完全無効化"
@@ -574,7 +961,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "First LifeAura", "ja": "ファーストドリームオーラ" },
+    "name": {
+      "en": "First LifeAura",
+      "ja": "ファーストドリームオーラ"
+    },
     "effect": {
       "en": "Start battle with LifeAura",
       "ja": "戦闘開始からドリームオーラがつく"
@@ -583,7 +973,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Hole",
       "ja": "チャージショットをダークホールに"
@@ -592,7 +985,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WideShot2",
       "ja": "チャージショットをワイドショット2に"
@@ -601,7 +997,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge ZapRing",
       "ja": "チャージショットをラビリングに"
@@ -610,7 +1009,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge SandRing",
       "ja": "チャージショットをサンドリングに"
@@ -619,7 +1021,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge EnergyBomb",
       "ja": "チャージショットをエナジーボムに"
@@ -628,7 +1033,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Thunder2",
       "ja": "チャージショットをサンダーボール2に"
@@ -637,13 +1045,19 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": { "en": "B Charge Repair", "ja": "チャージショットをリペアーに" },
     "bug": null
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge TripleCrack",
       "ja": "チャージショットをトリプルクラックに"
@@ -652,7 +1066,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge LongSword",
       "ja": "チャージショットをロングソードに"
@@ -661,13 +1078,19 @@
   },
   {
     "slot": 5,
-    "name": { "en": "PET Menu Color Change", "ja": "PET画面カラー変更" },
+    "name": {
+      "en": "PET Menu Color Change",
+      "ja": "PET画面カラー変更"
+    },
     "effect": { "en": "Black PET menu", "ja": "PET画面のカラーを黒に" },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "MegaMan Color Change", "ja": "ロックマンカラーを変更" },
+    "name": {
+      "en": "MegaMan Color Change",
+      "ja": "ロックマンカラーを変更"
+    },
     "effect": {
       "en": "White MegaMan Cosmetic",
       "ja": "ロックマンの体の色を白に"
@@ -676,7 +1099,10 @@
   },
   {
     "slot": 2,
-    "name": { "en": "MegaMan Color Change", "ja": "ロックマンカラーを変更" },
+    "name": {
+      "en": "MegaMan Color Change",
+      "ja": "ロックマンカラーを変更"
+    },
     "effect": {
       "en": "Green MegaMan Cosmetic",
       "ja": "ロックマンの体の色を緑色に"
@@ -685,73 +1111,109 @@
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+700", "ja": "ロックマンの最大HPを+700" },
     "bug": { "en": "Poison Panel Step", "ja": "歩いたパネルが毒パネルになる" }
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+750", "ja": "ロックマンの最大HPを+750" },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+750", "ja": "ロックマンの最大HPを+750" },
     "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+800", "ja": "ロックマンの最大HPを+800" },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+800", "ja": "ロックマンの最大HPを+800" },
     "bug": { "en": "Poison Panel Step", "ja": "歩いたパネルが毒パネルになる" }
   },
   {
     "slot": 0,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+850", "ja": "ロックマンの最大HPを+850" },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+850", "ja": "ロックマンの最大HPを+850" },
     "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
   },
   {
     "slot": 4,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+900", "ja": "ロックマンの最大HPを+900" },
     "bug": null
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+900", "ja": "ロックマンの最大HPを+900" },
     "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
   },
   {
     "slot": 1,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+950", "ja": "ロックマンの最大HPを+950" },
     "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
   },
   {
     "slot": 4,
-    "name": { "en": "Max HP Boost", "ja": "マックスHPを強化" },
+    "name": {
+      "en": "Max HP Boost",
+      "ja": "マックスHPを強化"
+    },
     "effect": { "en": "Max HP+1000", "ja": "ロックマンの最大HPを+1000" },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Buster Mod", "ja": "バスターを改造" },
+    "name": {
+      "en": "Buster Mod",
+      "ja": "バスターを改造"
+    },
     "effect": {
       "en": "Normal Shot spawns Ice Panel",
       "ja": "バスター攻撃にアイス効果追加"
@@ -760,7 +1222,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "Charge FullCustom 1/2", "ja": "チャージフルカスタム1/2" },
+    "name": {
+      "en": "Charge FullCustom 1/2",
+      "ja": "チャージフルカスタム1/2"
+    },
     "effect": {
       "en": "Charge FullCustom 1/2",
       "ja": "チャージショットがフルカスタムになる"
@@ -769,7 +1234,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge FullCustom 2/2", "ja": "チャージフルカスタム2/2" },
+    "name": {
+      "en": "Charge FullCustom 2/2",
+      "ja": "チャージフルカスタム2/2"
+    },
     "effect": {
       "en": "Charge FullCustom 2/2",
       "ja": "チャージショットがフルカスタムになる"
@@ -778,7 +1246,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "Panel Change", "ja": "パネルチェンジ" },
+    "name": {
+      "en": "Panel Change",
+      "ja": "パネルチェンジ"
+    },
     "effect": {
       "en": "Holy Panel Step",
       "ja": "ロックマンが歩いたパネルをホーリーパネルに"
@@ -790,25 +1261,37 @@
   },
   {
     "slot": 0,
-    "name": { "en": "Weapon Change", "ja": "ウェポンチェンジ" },
+    "name": {
+      "en": "Weapon Change",
+      "ja": "ウェポンチェンジ"
+    },
     "effect": { "en": "B Button Reflect", "ja": "Bボタンでリフレクト" },
     "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
   },
   {
     "slot": 0,
-    "name": { "en": "Weapon Change", "ja": "ウェポンチェンジ" },
+    "name": {
+      "en": "Weapon Change",
+      "ja": "ウェポンチェンジ"
+    },
     "effect": { "en": "B Button Flower", "ja": "Bボタンでフラワー" },
     "bug": null
   },
   {
     "slot": 0,
-    "name": { "en": "Weapon Change", "ja": "ウェポンチェンジ" },
+    "name": {
+      "en": "Weapon Change",
+      "ja": "ウェポンチェンジ"
+    },
     "effect": { "en": "B Button WaterGun", "ja": "Bボタンで水鉄砲" },
     "bug": null
   },
   {
     "slot": 2,
-    "name": { "en": "MegaFolder3", "ja": "メガフォルダ3" },
+    "name": {
+      "en": "MegaFolder3",
+      "ja": "メガフォルダ3"
+    },
     "effect": {
       "en": "MegaChip+3",
       "ja": "フォルダに入れられるメガクラスチップの枚数を+3"
@@ -817,7 +1300,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "Custom3", "ja": "カスタム3" },
+    "name": {
+      "en": "Custom3",
+      "ja": "カスタム3"
+    },
     "effect": {
       "en": "Custom+3",
       "ja": "カスタム画面で選べるチップの枚数を+3"
@@ -826,7 +1312,10 @@
   },
   {
     "slot": 0,
-    "name": { "en": "GigaFolder1", "ja": "ギガフォルダ1" },
+    "name": {
+      "en": "GigaFolder1",
+      "ja": "ギガフォルダ1"
+    },
     "effect": {
       "en": "GigaChip+1",
       "ja": "フォルダに入れられるギガクラスチップの枚数を+1"
@@ -835,7 +1324,10 @@
   },
   {
     "slot": 3,
-    "name": { "en": "B+Left Execution", "ja": "B+左で技発動" },
+    "name": {
+      "en": "B+Left Execution",
+      "ja": "B+左で技発動"
+    },
     "effect": {
       "en": "B+Left TripleCrack",
       "ja": "B+左でトリプルクラック発動"
@@ -844,7 +1336,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WideShot3",
       "ja": "チャージショットをワイドショット3に"
@@ -853,7 +1348,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge Thunder3",
       "ja": "チャージショットをサンダーボール3に"
@@ -862,7 +1360,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WindRack",
       "ja": "チャージショットをフウジンラケットに"
@@ -871,7 +1372,10 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge MegaEnergyBomb",
       "ja": "チャージショットをメガエナジーボムに"
@@ -880,13 +1384,22 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
-    "effect": { "en": "B Charge Ball", "ja": "チャージショットをホウガンに" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
+    "effect": {
+      "en": "B Charge Ball",
+      "ja": "チャージショットをホウガンに"
+    },
     "bug": null
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge BugBomb",
       "ja": "チャージショットをバグボムに"
@@ -895,128 +1408,212 @@
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge WideBlade",
       "ja": "チャージショットをワイドブレードに"
     },
-    "bug": { "en": "Auto move forward", "ja": "エリア前方に引き寄せられる" }
+    "bug": {
+      "en": "Auto move forward",
+      "ja": "エリア前方に引き寄せられる"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Charge Weapon Change", "ja": "チャージ武器を変更" },
+    "name": {
+      "en": "Charge Weapon Change",
+      "ja": "チャージ武器を変更"
+    },
     "effect": {
       "en": "B Charge LongBlade",
       "ja": "チャージショットをロングブレードに"
     },
-    "bug": { "en": "Auto move forward", "ja": "エリア前方に引き寄せられる" }
+    "bug": {
+      "en": "Auto move forward",
+      "ja": "エリア前方に引き寄せられる"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Roll Soul", "ja": "ロールソウル" },
+    "name": {
+      "en": "Roll Soul",
+      "ja": "ロールソウル"
+    },
     "effect": {
       "en": "Roll Soul",
       "ja": "常にロールソウル状態(レッドサン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Guts Soul", "ja": "ガッツソウル" },
+    "name": {
+      "en": "Guts Soul",
+      "ja": "ガッツソウル"
+    },
     "effect": {
       "en": "Guts Soul",
       "ja": "常にガッツソウル状態(レッドサン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Wind Soul", "ja": "ウインドソウル" },
+    "name": {
+      "en": "Wind Soul",
+      "ja": "ウインドソウル"
+    },
     "effect": {
       "en": "Wind Soul",
       "ja": "常にウインドソウル状態(レッドサン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Search Soul", "ja": "サーチソウル" },
+    "name": {
+      "en": "Search Soul",
+      "ja": "サーチソウル"
+    },
     "effect": {
       "en": "Search Soul",
       "ja": "常にサーチソウル状態(レッドサン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Fire Soul", "ja": "ファイアソウル" },
+    "name": {
+      "en": "Fire Soul",
+      "ja": "ファイアソウル"
+    },
     "effect": {
       "en": "Fire Soul",
       "ja": "常にファイアソウル状態(レッドサン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Thunder Soul", "ja": "サンダーソウル" },
+    "name": {
+      "en": "Thunder Soul",
+      "ja": "サンダーソウル"
+    },
     "effect": {
       "en": "Thunder Soul",
       "ja": "常にサンダーソウル状態(レッドサン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Proto Soul", "ja": "ブルースソウル" },
+    "name": {
+      "en": "Proto Soul",
+      "ja": "ブルースソウル"
+    },
     "effect": {
       "en": "Proto Soul",
       "ja": "常にブルースソウル状態(ブルームーン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Number Soul", "ja": "ナンバーソウル" },
+    "name": {
+      "en": "Number Soul",
+      "ja": "ナンバーソウル"
+    },
     "effect": {
       "en": "Number Soul",
       "ja": "常にナンバーソウル状態(ブルームーン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Metal Soul", "ja": "メタルソウル" },
+    "name": {
+      "en": "Metal Soul",
+      "ja": "メタルソウル"
+    },
     "effect": {
       "en": "Metal Soul",
       "ja": "常にメタルソウル状態(ブルームーン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Junk Soul", "ja": "ジャンクソウル" },
+    "name": {
+      "en": "Junk Soul",
+      "ja": "ジャンクソウル"
+    },
     "effect": {
       "en": "Junk Soul",
       "ja": "常にジャンクソウル状態(ブルームーン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Aqua Soul", "ja": "アクアソウル" },
+    "name": {
+      "en": "Aqua Soul",
+      "ja": "アクアソウル"
+    },
     "effect": {
       "en": "Aqua Soul",
       "ja": "常にアクアソウル状態(ブルームーン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   },
   {
     "slot": 4,
-    "name": { "en": "Wood Soul", "ja": "ウッドソウル" },
+    "name": {
+      "en": "Wood Soul",
+      "ja": "ウッドソウル"
+    },
     "effect": {
       "en": "Wood Soul",
       "ja": "常にウッドソウル状態(ブルームーン専用)"
     },
-    "bug": { "en": "HP Bug", "ja": "戦闘中HPが減少" }
+    "bug": {
+      "en": "HP Bug",
+      "ja": "戦闘中HPが減少"
+    }
   }
 ]
