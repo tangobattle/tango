@@ -61,14 +61,6 @@ The core is written in Rust. Despite being for Windows, you must have a POSIX-y 
     sudo apt-get install -y mingw-w64
     ```
 
-1.  Dowload the DLLs for SDL2.
-
-    ```sh
-    pushd core &&
-    ./get-windows-sdl.sh &&
-    popd
-    ```
-
 1.  Ensure mingw-w64 is using the POSIX threading model.
 
     ```sh
@@ -164,7 +156,7 @@ The order of language support is as follows:
 
 -   **Japanese (ja):** This is Tango's secondary but fully supported language. All text in the UI, barring some extremely supplementary text (e.g. the About screen) is expected to be available in Japanese. If new UI text is added, a Japanese translation SHOULD also be provided. Tango releases MUST NOT contain missing Japanese text.
 
--   **Simplified Chinese (zh-Hans), Spanish (es):** These are Tango's tertiary languages. Support is provided on a best effort basis and translations are provided as available.
+-   **All other languages:** These are Tango's tertiary languages. Support is provided on a best effort basis and translations are provided as available.
 
 ## License
 
