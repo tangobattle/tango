@@ -458,7 +458,7 @@ export class Editor extends EditorBase {
       }
 
       for (let i = 0; i < squares.nrows; ++i) {
-        for (let j = 0; j < squares.nrows; ++j) {
+        for (let j = 0; j < squares.ncols; ++j) {
           const i2 = i + placement.row - 2;
           const j2 = j + placement.col - 2;
           if (i2 >= 5 || j2 >= 5) {
