@@ -8,10 +8,15 @@ pub async fn connect(
     peer_conn: &mut datachannel_wrapper::PeerConnection,
     mut event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
     session_id: &str,
-) -> Result<(), anyhow::Error>
-where
-{
-    let mut req = addr.into_client_request()?;
+) -> Result<(), anyhow::Error> {
+    let mut url = url::Url::parse(addr)?;
+    url.set_query(Some(
+        &url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("session_id", session_id)
+            .finish(),
+    ));
+
+    let mut req = url.to_string().into_client_request()?;
     req.headers_mut().append(
         "User-Agent",
         tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!(
@@ -29,7 +34,7 @@ where
             tango_protos::signaling::Packet {
                 which: Some(tango_protos::signaling::packet::Which::Start(
                     tango_protos::signaling::packet::Start {
-                        session_id: session_id.to_string(),
+                        session_id: "".to_string(),
                         offer_sdp: local_description.sdp.to_string(),
                     },
                 )),

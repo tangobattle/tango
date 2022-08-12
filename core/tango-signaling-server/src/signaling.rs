@@ -31,6 +31,7 @@ impl Server {
     pub async fn handle_stream(
         &self,
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
+        session_id: Option<&str>,
     ) -> anyhow::Result<()> {
         let (tx, mut rx) = ws.split();
         let session_id_for_cleanup = std::sync::Arc::new(tokio::sync::Mutex::new(None));
@@ -58,21 +59,26 @@ impl Server {
                     log::debug!("received message: {:?}", msg);
                     match msg.which {
                         Some(tango_protos::signaling::packet::Which::Start(start)) => {
+                            let session_id = if let Some(session_id) = session_id {
+                                session_id.to_string()
+                            } else {
+                                start.session_id
+                            };
+
                             let mut sessions = sessions.lock().await;
-                            session =
-                                Some(if let Some(session) = sessions.remove(&start.session_id) {
-                                    session
-                                } else {
-                                    sessions
-                                        .entry(start.session_id.clone())
-                                        .or_insert_with(|| {
-                                            std::sync::Arc::new(tokio::sync::Mutex::new(Session {
-                                                offer_sdp: start.offer_sdp.clone(),
-                                                sinks: vec![],
-                                            }))
-                                        })
-                                        .clone()
-                                });
+                            session = Some(if let Some(session) = sessions.remove(&session_id) {
+                                session
+                            } else {
+                                sessions
+                                    .entry(session_id.clone())
+                                    .or_insert_with(|| {
+                                        std::sync::Arc::new(tokio::sync::Mutex::new(Session {
+                                            offer_sdp: start.offer_sdp.clone(),
+                                            sinks: vec![],
+                                        }))
+                                    })
+                                    .clone()
+                            });
 
                             let session = if let Some(session) = session.as_ref() {
                                 session
@@ -80,7 +86,7 @@ impl Server {
                                 anyhow::bail!("no such session");
                             };
                             let mut session = session.lock().await;
-                            *session_id_for_cleanup.lock().await = Some(start.session_id.clone());
+                            *session_id_for_cleanup.lock().await = Some(session_id);
                             let offer_sdp = session.offer_sdp.to_string();
 
                             me = session.sinks.len();
