@@ -34,7 +34,6 @@ pub async fn connect(
             tango_protos::signaling::Packet {
                 which: Some(tango_protos::signaling::packet::Which::Start(
                     tango_protos::signaling::packet::Start {
-                        session_id: "".to_string(),
                         offer_sdp: local_description.sdp.to_string(),
                     },
                 )),

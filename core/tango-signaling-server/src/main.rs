@@ -15,13 +15,18 @@ struct State {
 async fn handle_signaling_request(
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
-    let session_id = if let Some(query) = request.uri().query() {
+    let session_id = if let Some(session_id) = request.uri().query().and_then(|query| {
         url::form_urlencoded::parse(query.as_bytes())
             .into_owned()
             .find(|(k, _)| k == "session_id")
             .map(|(_, v)| v)
+    }) {
+        session_id
     } else {
-        None
+        return Ok(hyper::Response::builder()
+            .status(hyper::StatusCode::BAD_REQUEST)
+            .body(hyper::Body::from("missing session_id"))
+            .unwrap());
     };
 
     if !hyper_tungstenite::is_upgrade_request(&request) {
@@ -53,10 +58,7 @@ async fn handle_signaling_request(
                 return;
             }
         };
-        if let Err(e) = signaling_server
-            .handle_stream(websocket, session_id.as_deref())
-            .await
-        {
+        if let Err(e) = signaling_server.handle_stream(websocket, &session_id).await {
             log::error!("error in websocket connection: {}", e);
         }
     });

@@ -3,10 +3,7 @@ syntax = "proto3";
 package tango.signaling;
 
 message Packet {
-  message Start {
-    string session_id = 1;
-    string offer_sdp = 2;
-  }
+  message Start { string offer_sdp = 2; }
 
   message Offer { string sdp = 1; }
 

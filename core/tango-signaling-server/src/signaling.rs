@@ -31,7 +31,7 @@ impl Server {
     pub async fn handle_stream(
         &self,
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
-        session_id: Option<&str>,
+        session_id: &str,
     ) -> anyhow::Result<()> {
         let (tx, mut rx) = ws.split();
         let session_id_for_cleanup = std::sync::Arc::new(tokio::sync::Mutex::new(None));
@@ -59,18 +59,12 @@ impl Server {
                     log::debug!("received message: {:?}", msg);
                     match msg.which {
                         Some(tango_protos::signaling::packet::Which::Start(start)) => {
-                            let session_id = if let Some(session_id) = session_id {
-                                session_id.to_string()
-                            } else {
-                                start.session_id
-                            };
-
                             let mut sessions = sessions.lock().await;
-                            session = Some(if let Some(session) = sessions.remove(&session_id) {
+                            session = Some(if let Some(session) = sessions.remove(session_id) {
                                 session
                             } else {
                                 sessions
-                                    .entry(session_id.clone())
+                                    .entry(session_id.to_string())
                                     .or_insert_with(|| {
                                         std::sync::Arc::new(tokio::sync::Mutex::new(Session {
                                             offer_sdp: start.offer_sdp.clone(),
@@ -176,7 +170,7 @@ impl Server {
             .await
         };
 
-        if let Some(session_id) = &*session_id_for_cleanup.lock().await {
+        if let Some(session_id) = *session_id_for_cleanup.lock().await {
             let mut sessions = self.sessions.lock().await;
             sessions.remove(session_id);
         }
