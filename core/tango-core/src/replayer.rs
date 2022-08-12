@@ -272,9 +272,6 @@ impl Fastforwarder {
         let mut traps = hooks.common_traps();
         traps.extend(hooks.replayer_traps(state.clone()));
         core.set_traps(traps);
-        if let Some(opponent_nickname) = opponent_nickname.as_ref() {
-            hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
-        };
         core.as_mut().reset();
 
         Ok(Fastforwarder {

@@ -196,9 +196,6 @@ impl Game {
                 facade::Facade::new(inner_match.clone(), cancellation_token.clone()),
             ));
             core.set_traps(traps);
-            if let Some(opponent_nickname) = match_init.settings.opponent_nickname.as_ref() {
-                hooks.replace_opponent_name(core.as_mut(), opponent_nickname);
-            }
         }
 
         let thread = mgba::thread::Thread::new(core);

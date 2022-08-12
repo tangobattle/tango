@@ -120,11 +120,6 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango ends its match here.
     pub(super) comm_menu_end_battle_entry: u32,
-
-    /// This is where the opponent's name (usually MegaMan) is stored in ROM.
-    ///
-    /// This is strictly a whimsical thing. Set it to 0 if you don't care for it.
-    pub(super) opponent_name: u32,
 }
 
 #[rustfmt::skip]
@@ -179,7 +174,6 @@ pub static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803deb4,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812b5ca,
         comm_menu_end_battle_entry:                                 0x0812b708,
-        opponent_name:                                              0x086f12cb,
     },
 };
 
@@ -209,7 +203,6 @@ pub static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803de88,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812d3a6,
         comm_menu_end_battle_entry:                                 0x0812d4e4,
-        opponent_name:                                              0x086ef24f,
     },
 };
 
@@ -239,7 +232,6 @@ pub static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803eef8,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08133fca,
         comm_menu_end_battle_entry:                                 0x08134108,
-        opponent_name:                                              0,
     },
 };
 
@@ -269,6 +261,5 @@ pub static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803eecc,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08135d92,
         comm_menu_end_battle_entry:                                 0x08135ed0,
-        opponent_name:                                              0,
     },
 };
