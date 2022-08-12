@@ -1,4 +1,4 @@
-const NUM_CHANNELS: usize = 2;
+pub const NUM_CHANNELS: usize = 2;
 
 pub struct MGBAStream {
     handle: mgba::thread::Handle,

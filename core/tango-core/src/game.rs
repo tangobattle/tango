@@ -268,7 +268,7 @@ impl Game {
                 None,
                 &sdl2::audio::AudioSpecDesired {
                     freq: Some(48000),
-                    channels: Some(2),
+                    channels: Some(audio::NUM_CHANNELS as u8),
                     samples: Some(512),
                 },
                 |spec| audio::MGBAStream::new(thread.handle(), spec.freq),
