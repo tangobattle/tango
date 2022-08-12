@@ -1065,17 +1065,17 @@ export default function BattleStarter({
       return;
     }
 
-    discord.setLinkCode(
-      linkCode,
-      gameInfo != null
-        ? {
-            title: getGameFamilyTitle(gameInfo),
-            family: FAMILY_BY_ROM_NAME[gameInfo.rom],
-          }
-        : null
-    );
-
     if (pendingStates != null && pendingStates.own != null) {
+      discord.setLinkCode(
+        linkCode,
+        gameInfo != null
+          ? {
+              title: getGameFamilyTitle(gameInfo),
+              family: FAMILY_BY_ROM_NAME[gameInfo.rom],
+            }
+          : null
+      );
+
       changeLocalPendingState({
         ...pendingStates.own.settings,
         gameInfo: gameInfo ?? undefined,
