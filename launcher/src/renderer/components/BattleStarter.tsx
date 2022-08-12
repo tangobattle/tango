@@ -232,6 +232,9 @@ function useAvailableGames() {
           const patch = patches[patchName];
           for (const version of Object.keys(patch.versions)) {
             for (const r of patch.versions[version].forROMs) {
+              if (!Object.prototype.hasOwnProperty.call(roms, r.name)) {
+                continue;
+              }
               yield {
                 rom: r.name,
                 patch: { name: patchName, version },
