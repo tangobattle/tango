@@ -52,7 +52,7 @@ struct VideoCli {
 }
 
 #[derive(clap::Parser)]
-struct EWRAMCli {}
+struct WRAMCli {}
 
 #[derive(clap::Parser)]
 struct TextCli {}
@@ -78,7 +78,7 @@ struct StepCli {
 #[derive(clap::Subcommand)]
 enum Action {
     Video(VideoCli),
-    EWRAM(EWRAMCli),
+    WRAM(WRAMCli),
     Text(TextCli),
     InputInfo(InputInfoCli),
     Eval(EvalCli),
@@ -104,7 +104,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     match args.action {
         Action::Video(args) => dump_video(args, replay),
-        Action::EWRAM(args) => dump_ewram(args, replay),
+        Action::WRAM(args) => dump_wram(args, replay),
         Action::Text(args) => dump_text(args, replay),
         Action::InputInfo(args) => dump_input_info(args, replay),
         Action::Eval(args) => dump_eval(args, replay),
@@ -288,7 +288,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     Ok(())
 }
 
-fn dump_ewram(_args: EWRAMCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_wram(_args: WRAMCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
     std::io::stdout().write_all(replay.local_state.unwrap().wram())?;
     std::io::stdout().flush()?;
     Ok(())

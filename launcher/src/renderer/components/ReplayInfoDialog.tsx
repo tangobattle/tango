@@ -59,7 +59,7 @@ export default function ReplayInfoDialog({
       const proc = spawn(
         app,
         "replaydump",
-        [path.join(config.paths.replays, filename), "ewram"],
+        [path.join(config.paths.replays, filename), "wram"],
         {
           env: {
             ...process.env,
