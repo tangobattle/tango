@@ -116,12 +116,7 @@ fn main() -> Result<(), anyhow::Error> {
                 channels: Some(2),
                 samples: Some(512),
             },
-            |spec| {
-                tango_core::audio::mgba_stretch_stream::MGBAStretchStream::new(
-                    thread.handle(),
-                    spec.freq,
-                )
-            },
+            |spec| tango_core::audio::MGBAStream::new(thread.handle(), spec.freq),
         )
         .unwrap();
     device.resume();

@@ -100,7 +100,7 @@ pub struct Game {
     game_controller: sdl2::GameControllerSubsystem,
     canvas: sdl2::render::Canvas<sdl2::video::Window>,
     video_filter: Box<dyn video::Filter>,
-    _audio_device: sdl2::audio::AudioDevice<audio::mgba_stretch_stream::MGBAStretchStream>,
+    _audio_device: sdl2::audio::AudioDevice<audio::MGBAStream>,
     vbuf: Arc<Mutex<Vec<u8>>>,
     joyflags: Arc<std::sync::atomic::AtomicU32>,
     input_mapping: InputMapping,
@@ -271,9 +271,7 @@ impl Game {
                     channels: Some(2),
                     samples: Some(512),
                 },
-                |spec| {
-                    audio::mgba_stretch_stream::MGBAStretchStream::new(thread.handle(), spec.freq)
-                },
+                |spec| audio::MGBAStream::new(thread.handle(), spec.freq),
             )
             .unwrap();
         log::info!("audio spec: {:?}", audio_device.spec());
