@@ -411,12 +411,7 @@ impl Match {
                 local_player_index,
                 self.hooks.packet_size() as u8,
             )?),
-            replayer: replayer::Fastforwarder::new(
-                &self.rom,
-                self.hooks,
-                local_player_index,
-                &self.settings.opponent_nickname,
-            )?,
+            replayer: replayer::Fastforwarder::new(&self.rom, self.hooks, local_player_index)?,
             primary_thread_handle: self.primary_thread_handle.clone(),
             transport: self.transport.clone(),
             shadow: self.shadow.clone(),

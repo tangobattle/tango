@@ -260,7 +260,6 @@ impl Fastforwarder {
         rom: &[u8],
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         local_player_index: u8,
-        opponent_nickname: &Option<String>,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         let rom_vf = mgba::vfile::VFile::open_memory(rom);
