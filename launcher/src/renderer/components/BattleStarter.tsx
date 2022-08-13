@@ -889,6 +889,7 @@ function GenerateRandomCodeButton({
 }: {
   onClick: (e: React.MouseEvent<HTMLButtonElement>, code: string) => void;
 }) {
+  const { i18n } = useTranslation();
   const [clicked, setClicked] = React.useState(false);
 
   return (
@@ -904,7 +905,7 @@ function GenerateRandomCodeButton({
       <IconButton
         edge="end"
         onClick={(e) => {
-          const code = randomCode();
+          const code = randomCode(i18n.resolvedLanguage);
           clipboard.writeText(code);
           onClick(e, code);
           setClicked(true);
