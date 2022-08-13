@@ -500,6 +500,7 @@ const CHOICES: {
   ja: {
     starts: [
       "abunai",
+      "akan",
       "bokuno",
       "haroharo",
       "hazimete",
