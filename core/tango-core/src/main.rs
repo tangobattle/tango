@@ -317,7 +317,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let video_filter = tango_core::video::filter_by_name(&start_req.video_filter).unwrap();
 
-    let g = tango_core::game::Game::new(
+    tango_core::game::run(
         rt,
         std::sync::Arc::new(parking_lot::Mutex::new(ipc_sender)),
         start_req.window_title,
@@ -346,6 +346,5 @@ fn main() -> Result<(), anyhow::Error> {
             }),
         },
     )?;
-    g.run()?;
     Ok(())
 }
