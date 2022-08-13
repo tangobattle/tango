@@ -549,6 +549,7 @@ const CHOICES: {
       "masutaakurasu",
       "netto",
       "nige",
+      "nontan",
       "onegai",
       "rokkuman",
       "siniakurasu",
