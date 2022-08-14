@@ -549,6 +549,7 @@ const CHOICES: {
       "basutaa",
       "batoru",
       "dekao",
+      "dhuuo",
       "eguchi",
       "faruzaa",
       "furusinkuro",
