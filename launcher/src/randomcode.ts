@@ -645,8 +645,8 @@ export default function randomCode(lang: string) {
   if (!Object.prototype.hasOwnProperty.call(CHOICES, lang)) {
     lang = "en";
   }
-  if (randomInt(10) <= 0) {
-    const otherLangs = Object.keys(CHOICES).filter((key) => key !== lang);
+  if (randomInt(5) <= 0) {
+    const otherLangs = Object.keys(CHOICES).filter((key) => key != lang);
     lang = otherLangs[randomInt(otherLangs.length)];
   }
   const choices = CHOICES[lang];
