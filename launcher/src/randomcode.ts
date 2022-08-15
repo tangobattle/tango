@@ -584,9 +584,11 @@ const CHOICES: {
       "syoubu",
       "taisen",
       "tango",
+      "tengu",
       "tikara",
       "tisao",
       "tyouzetu",
+      "waburuwiisuto",
     ],
     ends: [
       "bakari",
@@ -643,8 +645,12 @@ export default function randomCode(lang: string) {
   if (!Object.prototype.hasOwnProperty.call(CHOICES, lang)) {
     lang = "en";
   }
+  if (randomInt(10) <= 0) {
+    const otherLangs = Object.keys(CHOICES).filter((key) => key !== lang);
+    lang = otherLangs[randomInt(otherLangs.length)];
+  }
   const choices = CHOICES[lang];
-  return `${choices.starts[randomInt(0, choices.starts.length)]}-${
-    choices.middles[randomInt(0, choices.middles.length)]
-  }-${choices.ends[randomInt(0, choices.ends.length)]}`.slice(0, 40);
+  return `${choices.starts[randomInt(choices.starts.length)]}-${
+    choices.middles[randomInt(choices.middles.length)]
+  }-${choices.ends[randomInt(choices.ends.length)]}`.slice(0, 40);
 }
