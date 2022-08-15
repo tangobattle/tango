@@ -551,7 +551,7 @@ const CHOICES: {
       "dekao",
       "dhuuo",
       "doyoubi",
-      "eguchi",
+      "eguti",
       "eguze",
       "faruzaa",
       "furusinkuro",
