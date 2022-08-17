@@ -56,9 +56,7 @@ import { GetRequest, GetResponse } from "../../protos/generated/iceconfig";
 import {
     FromCoreMessage_StateEvent_State, ToCoreMessage_StartRequest
 } from "../../protos/generated/ipc";
-import {
-    GameInfo, GameInfo_Patch, Message, NegotiatedState, SetSettings
-} from "../../protos/generated/lobby";
+import { GameInfo, Message, NegotiatedState, SetSettings } from "../../protos/generated/lobby";
 import { ReplayMetadata } from "../../protos/generated/replay";
 import randomCode from "../../randomcode";
 import { FAMILY_BY_ROM_NAME, getROMInfo, KNOWN_ROM_FAMILIES } from "../../rom";
@@ -296,6 +294,10 @@ async function runCallback(
       patch: { name: string; version: string }
     ) => string;
     getROMPath: (romName: string) => string;
+    isSettingsChangeTrivial: (
+      previousSettings: SetSettings,
+      settings: SetSettings
+    ) => boolean;
     onOpponentSettingsChange: (settings: SetSettings | null) => void;
     pendingStates: PendingStates | null;
     setPendingStates: React.Dispatch<
@@ -586,7 +588,7 @@ async function runCallback(
           ...pendingStates!.own!,
           negotiatedState:
             pendingStates!.opponent != null &&
-            isSettingsChangeTrivial(
+            ref.current.isSettingsChangeTrivial(
               pendingStates!.opponent!.settings,
               lobbyMsg.setSettings!
             )
@@ -934,34 +936,42 @@ interface PendingStates {
 interface TrivializedSettings {
   matchType: number;
   matchSubtype: number;
-  gameFamily: string | null;
-  patch: GameInfo_Patch | null;
+  netplayCompatibility: string | null;
   revealSetup: boolean;
 }
 
-function trivializeSettings(settings: SetSettings): TrivializedSettings {
-  return {
-    matchType: settings.matchType,
-    matchSubtype: settings.matchSubtype,
-    gameFamily:
-      settings.gameInfo != null
-        ? FAMILY_BY_ROM_NAME[settings.gameInfo.rom]
-        : null,
-    patch: (settings.gameInfo != null ? settings.gameInfo.patch : null) ?? null,
-    revealSetup: settings.revealSetup,
+function useTrivializeSettings(): (
+  settings: SetSettings
+) => TrivializedSettings {
+  const getNetplayCompatiblity = useGetNetplayCompatibility();
+
+  return (settings: SetSettings) => {
+    return {
+      matchType: settings.matchType,
+      matchSubtype: settings.matchSubtype,
+      netplayCompatibility:
+        settings.gameInfo != null
+          ? getNetplayCompatiblity(settings.gameInfo)
+          : null,
+      revealSetup: settings.revealSetup,
+    };
   };
 }
 
-function isSettingsChangeTrivial(
+function useIsSettingsChangeTrivial(): (
   previousSettings: SetSettings,
   settings: SetSettings
-) {
-  return (
-    isEqual(
-      trivializeSettings(previousSettings),
-      trivializeSettings(settings)
-    ) || settings.revealSetup
-  );
+) => boolean {
+  const trivializeSettings = useTrivializeSettings();
+
+  return (previousSettings: SetSettings, settings: SetSettings) => {
+    return (
+      isEqual(
+        trivializeSettings(previousSettings),
+        trivializeSettings(settings)
+      ) || settings.revealSetup
+    );
+  };
 }
 
 export default function BattleStarter({
@@ -1014,6 +1024,7 @@ export default function BattleStarter({
 
   const getGameTitle = useGetGameTitle();
   const getGameFamilyTitle = useGetGameFamilyTitle();
+  const isSettingsChangeTrivial = useIsSettingsChangeTrivial();
 
   const changeLocalPendingState = React.useCallback(
     (settings: SetSettings) => {
@@ -1055,7 +1066,7 @@ export default function BattleStarter({
         startReq: undefined,
       });
     },
-    [saveConfig]
+    [saveConfig, isSettingsChangeTrivial]
   );
 
   React.useEffect(() => {
@@ -1119,6 +1130,7 @@ export default function BattleStarter({
     getPatchPath,
     getPatchInfo,
     getROMPath,
+    isSettingsChangeTrivial,
     onOpponentSettingsChange,
     pendingStates,
     setPendingStates,

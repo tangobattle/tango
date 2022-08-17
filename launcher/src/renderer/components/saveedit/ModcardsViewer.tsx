@@ -56,9 +56,9 @@ export default function ModcardsViewer({
                       <Stack spacing={0.5}>
                         {modcard.effects
                           .filter((e) => !e.isAbility)
-                          .map((a) => (
+                          .map((a, j) => (
                             <Chip
-                              key={a.id}
+                              key={j}
                               label={a.name}
                               size="small"
                               sx={{
@@ -79,9 +79,9 @@ export default function ModcardsViewer({
                       <Stack spacing={0.5}>
                         {modcard.effects
                           .filter((e) => e.isAbility)
-                          .map((a) => (
+                          .map((a, j) => (
                             <Chip
-                              key={a.id}
+                              key={j}
                               label={a.name}
                               size="small"
                               sx={{
