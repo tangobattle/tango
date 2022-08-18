@@ -403,13 +403,11 @@ pub fn run(
         canvas.clear();
 
         let viewport = canvas.viewport();
-        let (vp_width, vp_height) = (viewport.width() as f64, viewport.height() as f64);
         let scaling_factor = std::cmp::max(
-            std::cmp::min_by(
-                vp_width / vbuf_width as f64,
-                vp_height / vbuf_height as f64,
-                |a, b| a.partial_cmp(b).unwrap(),
-            ) as u32,
+            std::cmp::min(
+                viewport.width() / vbuf_width as u32,
+                viewport.height() / vbuf_height as u32,
+            ),
             1,
         );
         let (new_width, new_height) = (
@@ -421,8 +419,8 @@ pub fn run(
                 &texture,
                 None,
                 sdl2::rect::Rect::new(
-                    (vp_width as i32 - new_width as i32) / 2,
-                    (vp_height as i32 - new_height as i32) / 2,
+                    viewport.x() + (viewport.width() as i32 - new_width as i32) / 2,
+                    viewport.y() + (viewport.height() as i32 - new_height as i32) / 2,
                     new_width,
                     new_height,
                 ),
