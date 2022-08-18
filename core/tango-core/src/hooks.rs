@@ -1,4 +1,4 @@
-use crate::{facade, replayer, shadow};
+use crate::{battle, replayer, shadow};
 
 mod bn1;
 mod bn2;
@@ -58,7 +58,7 @@ pub trait Hooks {
         &self,
         handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        facade: facade::Facade,
+        match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn packet_size(&self) -> usize {

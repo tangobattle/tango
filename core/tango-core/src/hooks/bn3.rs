@@ -3,7 +3,7 @@ mod offsets;
 
 use byteorder::ByteOrder;
 
-use crate::{battle, facade, hooks, input, replayer, shadow};
+use crate::{battle, hooks, input, replayer, shadow};
 
 #[derive(Clone)]
 pub struct BN3 {
@@ -109,10 +109,10 @@ impl hooks::Hooks for BN3 {
         &self,
         handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-        facade: facade::Facade,
+        match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
-            let facade = facade.clone();
+            let match_ = match_.clone();
             let munger = self.munger.clone();
             let handle = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
@@ -120,7 +120,8 @@ impl hooks::Hooks for BN3 {
                     let pc = core.as_ref().gba().cpu().thumb_pc();
                     core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-                    let match_ = match facade.match_().await {
+                    let match_ = match_.lock().await;
+                    let match_ = match &*match_ {
                         Some(match_) => match_,
                         None => {
                             core.gba_mut().cpu_mut().set_gpr(0, 0);
@@ -151,14 +152,15 @@ impl hooks::Hooks for BN3 {
 
         vec![
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -189,26 +191,27 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.match_end_ret,
                     Box::new(move |_core| {
                         handle.block_on(async {
                             log::info!("match ended");
-                            facade.end_match().await;
+                            std::process::exit(0);
                         });
                     }),
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -222,13 +225,14 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -242,13 +246,14 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_damage_judge_set_win,
                     Box::new(move |_| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -262,13 +267,14 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_damage_judge_set_loss,
                     Box::new(move |_| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -282,13 +288,14 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_damage_judge_set_draw,
                     Box::new(move |_| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -306,11 +313,12 @@ impl hooks::Hooks for BN3 {
                 )
             },
             (self.offsets.rom.round_ending_entry, {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 Box::new(move |_| {
                     handle.block_on(async {
-                        let match_ = match facade.match_().await {
+                        let match_ = match_.lock().await;
+                        let match_ = match &*match_ {
                             Some(match_) => match_,
                             None => {
                                 return;
@@ -332,13 +340,14 @@ impl hooks::Hooks for BN3 {
                 })
             }),
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |_core| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -350,13 +359,14 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.battle_is_p2_ret,
                     Box::new(move |mut core| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -374,13 +384,14 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;
@@ -403,59 +414,57 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |core| {
                         handle.block_on(async {
-                            'abort: loop {
-                                let match_ = match facade.match_().await {
-                                    Some(match_) => match_,
-                                    None => {
-                                        return;
-                                    }
-                                };
-
-                                let mut round_state = match_.lock_round_state().await;
-
-                                let round = match round_state.round.as_mut() {
-                                    Some(round) => round,
-                                    None => {
-                                        return;
-                                    }
-                                };
-
-                                if !munger.is_linking(core) {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
+                                Some(match_) => match_,
+                                None => {
                                     return;
                                 }
+                            };
 
-                                if !round.has_committed_state() {
-                                    let mut rng = match_.lock_rng().await;
+                            let mut round_state = match_.lock_round_state().await;
 
-                                    // rng2 is the shared rng, it must be synced.
-                                    munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
-
-                                    round.set_first_committed_state(
-                                        core.save_state().expect("save state"),
-                                        match_
-                                            .advance_shadow_until_first_committed_state()
-                                            .await
-                                            .expect("shadow save state"),
-                                        &munger.tx_packet(core),
-                                    );
-                                    log::info!(
-                                        "primary rng1 state: {:08x}, rng2 state: {:08x}",
-                                        munger.rng1_state(core),
-                                        munger.rng2_state(core),
-                                    );
-                                    log::info!(
-                                        "battle state committed on {}",
-                                        round.current_tick()
-                                    );
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
                                 }
+                            };
 
+                            if !munger.is_linking(core) {
+                                return;
+                            }
+
+                            if !round.has_committed_state() {
+                                let mut rng = match_.lock_rng().await;
+
+                                // rng2 is the shared rng, it must be synced.
+                                munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+
+                                round.set_first_committed_state(
+                                    core.save_state().expect("save state"),
+                                    match_
+                                        .advance_shadow_until_first_committed_state()
+                                        .await
+                                        .expect("shadow save state"),
+                                    &munger.tx_packet(core),
+                                );
+                                log::info!(
+                                    "primary rng1 state: {:08x}, rng2 state: {:08x}",
+                                    munger.rng1_state(core),
+                                    munger.rng2_state(core),
+                                );
+                                log::info!("battle state committed on {}", round.current_tick());
+                            }
+
+                            'abort: loop {
                                 if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
@@ -468,7 +477,7 @@ impl hooks::Hooks for BN3 {
                                 }
                                 return;
                             }
-                            facade.abort_match().await;
+                            match_.cancel();
                         });
                     }),
                 )
@@ -517,12 +526,13 @@ impl hooks::Hooks for BN3 {
                 )
             },
             {
-                let facade = facade.clone();
+                let match_ = match_.clone();
                 (
                     self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_| {
                         handle.block_on(async {
-                            let match_ = match facade.match_().await {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
                                 Some(match_) => match_,
                                 None => {
                                     return;

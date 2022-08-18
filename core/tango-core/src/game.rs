@@ -1,4 +1,4 @@
-use crate::{audio, battle, facade, font, hooks, ipc, tps, video};
+use crate::{audio, battle, font, hooks, ipc, tps, video};
 use ab_glyph::{Font, ScaleFont};
 use parking_lot::Mutex;
 use rand::SeedableRng;
@@ -170,11 +170,7 @@ pub fn run(
     if let Some(match_init) = match_init.as_ref() {
         let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.primary_traps(
-            handle.clone(),
-            joyflags.clone(),
-            facade::Facade::new(inner_match.clone(), cancellation_token.clone()),
-        ));
+        traps.extend(hooks.primary_traps(handle.clone(), joyflags.clone(), inner_match.clone()));
         core.set_traps(traps);
     }
 
@@ -220,7 +216,7 @@ pub fn run(
                         Err(e) = inner_match.run(dc_rx) => {
                             log::info!("match thread ending: {:?}", e);
                         }
-                        _ = cancellation_token.cancelled() => {
+                        _ = inner_match.cancelled() => {
                         }
                     }
                 }

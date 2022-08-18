@@ -89,6 +89,7 @@ pub struct Match {
     _peer_conn: datachannel_wrapper::PeerConnection,
     transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
+    cancellation_token: tokio_util::sync::CancellationToken,
     settings: Settings,
     is_offerer: bool,
     round_state: tokio::sync::Mutex<RoundState>,
@@ -205,6 +206,7 @@ impl Match {
             ))),
             transport_rendezvous_tx: tokio::sync::Mutex::new(Some(transport_rendezvous_tx)),
             rng: tokio::sync::Mutex::new(rng),
+            cancellation_token: tokio_util::sync::CancellationToken::new(),
             settings,
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
@@ -218,6 +220,14 @@ impl Match {
             round_started_rx: tokio::sync::Mutex::new(round_started_rx),
         });
         Ok(match_)
+    }
+
+    pub fn cancel(&self) {
+        self.cancellation_token.cancel()
+    }
+
+    pub fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture {
+        self.cancellation_token.cancelled()
     }
 
     pub async fn advance_shadow_until_round_end(&self) -> anyhow::Result<()> {
