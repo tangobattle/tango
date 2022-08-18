@@ -166,11 +166,11 @@ pub fn run(
 
     let cancellation_token = tokio_util::sync::CancellationToken::new();
 
-    let inner_match = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+    let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
     if let Some(match_init) = match_init.as_ref() {
         let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
         let mut traps = hooks.common_traps();
-        traps.extend(hooks.primary_traps(handle.clone(), joyflags.clone(), inner_match.clone()));
+        traps.extend(hooks.primary_traps(handle.clone(), joyflags.clone(), match_.clone()));
         core.set_traps(traps);
     }
 
@@ -180,7 +180,7 @@ pub fn run(
         let (dc_rx, dc_tx) = match_init.dc.split();
 
         {
-            let inner_match = inner_match.clone();
+            let match_ = match_.clone();
             handle.block_on(async {
                 let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
                     == datachannel_wrapper::SdpType::Offer;
@@ -190,7 +190,7 @@ pub fn run(
                     .clone()
                     .try_into()
                     .expect("rng seed");
-                *inner_match.lock().await = Some(
+                *match_.lock().await = Some(
                     battle::Match::new(
                         rom,
                         hooks,
@@ -208,23 +208,23 @@ pub fn run(
         }
 
         {
-            let inner_match = inner_match.clone();
+            let match_ = match_.clone();
             handle.spawn(async move {
                 {
-                    let inner_match = inner_match.lock().await.clone().unwrap();
+                    let match_ = match_.lock().await.clone().unwrap();
                     tokio::select! {
-                        Err(e) = inner_match.run(dc_rx) => {
+                        Err(e) = match_.run(dc_rx) => {
                             log::info!("match thread ending: {:?}", e);
                         }
-                        _ = inner_match.cancelled() => {
+                        _ = match_.cancelled() => {
                         }
                     }
                 }
-                *inner_match.lock().await = None;
+                *match_.lock().await = None;
             });
         }
 
-        Some(inner_match)
+        Some(match_)
     } else {
         None
     };
