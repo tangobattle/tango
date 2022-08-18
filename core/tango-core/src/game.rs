@@ -271,11 +271,6 @@ pub fn run(
         .build()
         .unwrap();
 
-    canvas
-        .set_logical_size(vbuf_width as u32, vbuf_height as u32)
-        .unwrap();
-    canvas.set_integer_scale(true).unwrap();
-
     log::info!("running...");
     rt.block_on(async {
         ipc_sender
@@ -296,7 +291,7 @@ pub fn run(
 
     let font =
         ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
-    let scale = ab_glyph::PxScale::from(8.0);
+    let scale = ab_glyph::PxScale::from(16.0);
     let scaled_font = font.as_scaled(scale);
 
     let (vbuf_width, vbuf_height) = video_filter.output_size((
@@ -405,9 +400,34 @@ pub fn run(
         texture
             .update(None, &vbuf, vbuf_width as usize * 4)
             .unwrap();
-
         canvas.clear();
-        canvas.copy(&texture, None, None).unwrap();
+
+        let viewport = canvas.viewport();
+        let (vp_width, vp_height) = (viewport.width() as f64, viewport.height() as f64);
+        let scaling_factor = std::cmp::max(
+            std::cmp::min_by(
+                vp_width / vbuf_width as f64,
+                vp_height / vbuf_height as f64,
+                |a, b| a.partial_cmp(b).unwrap(),
+            ) as u32,
+            1,
+        );
+        let (new_width, new_height) = (
+            vbuf_width as u32 * scaling_factor,
+            vbuf_height as u32 * scaling_factor,
+        );
+        canvas
+            .copy(
+                &texture,
+                None,
+                sdl2::rect::Rect::new(
+                    (vp_width as i32 - new_width as i32) / 2,
+                    (vp_height as i32 - new_height as i32) / 2,
+                    new_width,
+                    new_height,
+                ),
+            )
+            .unwrap();
 
         // Update title to show P1/P2 state.
         let mut title = title_prefix.to_string();
