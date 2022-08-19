@@ -1,5 +1,11 @@
 pub const NUM_CHANNELS: usize = 2;
 
+#[derive(thiserror::Error, Debug)]
+pub enum BindingError {
+    #[error("already bound")]
+    AlreadyBound,
+}
+
 pub struct Binding<C>
 where
     C: Clone,
@@ -39,10 +45,10 @@ where
     pub fn bind(
         &self,
         stream: Option<Box<dyn sdl2::audio::AudioCallback<Channel = C>>>,
-    ) -> Result<Binding<C>, anyhow::Error> {
+    ) -> Result<Binding<C>, BindingError> {
         let mut stream_guard = self.stream.lock();
         if stream_guard.is_some() {
-            anyhow::bail!("audio stream already bound");
+            return Err(BindingError::AlreadyBound);
         }
 
         *stream_guard = stream;

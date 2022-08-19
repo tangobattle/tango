@@ -1952,6 +1952,7 @@ dependencies = [
  "subtle",
  "tango-protos",
  "tempfile",
+ "thiserror",
  "time",
  "tokio",
  "tokio-stream",
