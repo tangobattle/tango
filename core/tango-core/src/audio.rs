@@ -1,27 +1,60 @@
 pub const NUM_CHANNELS: usize = 2;
 
+pub struct Binding<C>
+where
+    C: Clone,
+{
+    binder: LateBinder<C>,
+}
+
+impl<C> Drop for Binding<C>
+where
+    C: Clone,
+{
+    fn drop(&mut self) {
+        *self.binder.stream.lock() = None;
+    }
+}
+
 #[derive(Clone)]
-pub struct LateBinder<C> {
+pub struct LateBinder<C>
+where
+    C: Clone,
+{
     stream: std::sync::Arc<
         parking_lot::Mutex<Option<Box<dyn sdl2::audio::AudioCallback<Channel = C>>>>,
     >,
 }
 
-impl<C> LateBinder<C> {
+impl<C> LateBinder<C>
+where
+    C: Clone,
+{
     pub fn new() -> Self {
         Self {
             stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
         }
     }
 
-    pub fn bind(&self, stream: Option<Box<dyn sdl2::audio::AudioCallback<Channel = C>>>) {
-        *self.stream.lock() = stream;
+    pub fn bind(
+        &self,
+        stream: Option<Box<dyn sdl2::audio::AudioCallback<Channel = C>>>,
+    ) -> Result<Binding<C>, anyhow::Error> {
+        let mut stream_guard = self.stream.lock();
+        if stream_guard.is_some() {
+            anyhow::bail!("audio stream already bound");
+        }
+
+        *stream_guard = stream;
+        Ok(Binding {
+            binder: self.clone(),
+        })
     }
 }
 
 impl<C> sdl2::audio::AudioCallback for LateBinder<C>
 where
-    C: sdl2::audio::AudioFormatNum + 'static,
+    C: Clone + sdl2::audio::AudioFormatNum + 'static,
 {
     type Channel = C;
 
