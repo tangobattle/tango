@@ -102,23 +102,22 @@ pub fn run(
 ) -> Result<(), anyhow::Error> {
     let handle = rt.handle().clone();
 
-    let emu_vbuf = Arc::new(Mutex::new(vec![
-        0u8;
-        (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-            as usize
-    ]));
-
     let sdl = sdl2::init().unwrap();
     let video = sdl.video().unwrap();
     let game_controller = sdl.game_controller().unwrap();
     let audio = sdl.audio().unwrap();
 
     let title_prefix = format!("Tango: {}", window_title);
-
     let (vbuf_width, vbuf_height) = video_filter.output_size((
         mgba::gba::SCREEN_WIDTH as usize,
         mgba::gba::SCREEN_HEIGHT as usize,
     ));
+    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
+    let emu_vbuf = Arc::new(Mutex::new(vec![
+        0u8;
+        (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
+            as usize
+    ]));
 
     let window = video
         .window(
@@ -131,173 +130,12 @@ pub fn run(
         .build()
         .unwrap();
 
-    let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
-    let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
-
-    let mut core = mgba::core::Core::new_gba("tango")?;
-    core.enable_video_buffer();
-
-    let rom = std::fs::read(rom_path)?;
-    let rom_vf = mgba::vfile::VFile::open_memory(&rom);
-    core.as_mut().load_rom(rom_vf)?;
-
-    log::info!(
-        "loaded game: {} rev {}",
-        std::str::from_utf8(&core.as_mut().full_rom_name()).unwrap(),
-        core.as_mut().rom_revision(),
-    );
-
-    let save_vf = if match_init.is_none() {
-        mgba::vfile::VFile::open(
-            &save_path,
-            mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
-        )?
-    } else {
-        log::info!("in pvp mode, save file will not be written back to disk");
-        mgba::vfile::VFile::open_memory(&std::fs::read(save_path)?)
-    };
-
-    core.as_mut().load_save(save_vf)?;
-
-    let hooks = hooks::get(core.as_mut()).unwrap();
-    hooks.patch(core.as_mut());
-
-    let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
-
-    let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
-    if let Some(match_init) = match_init.as_ref() {
-        let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
-        let mut traps = hooks.common_traps();
-        traps.extend(hooks.primary_traps(handle.clone(), joyflags.clone(), match_.clone()));
-        core.set_traps(traps);
-    }
-
-    let thread = mgba::thread::Thread::new(core);
-
-    let match_ = if let Some(match_init) = match_init {
-        let (dc_rx, dc_tx) = match_init.dc.split();
-
-        {
-            let match_ = match_.clone();
-            handle.block_on(async {
-                let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
-                    == datachannel_wrapper::SdpType::Offer;
-                let rng_seed = match_init
-                    .settings
-                    .rng_seed
-                    .clone()
-                    .try_into()
-                    .expect("rng seed");
-                *match_.lock().await = Some(
-                    battle::Match::new(
-                        rom,
-                        hooks,
-                        match_init.peer_conn,
-                        dc_tx,
-                        rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
-                        is_offerer,
-                        thread.handle(),
-                        ipc_sender.clone(),
-                        match_init.settings,
-                    )
-                    .expect("new match"),
-                );
-            });
-        }
-
-        {
-            let match_ = match_.clone();
-            handle.spawn(async move {
-                {
-                    let match_ = match_.lock().await.clone().unwrap();
-                    tokio::select! {
-                        Err(e) = match_.run(dc_rx) => {
-                            log::info!("match thread ending: {:?}", e);
-                        }
-                        _ = match_.cancelled() => {
-                        }
-                    }
-                }
-            });
-        }
-
-        Some(match_)
-    } else {
-        None
-    };
-
-    thread.start()?;
-    thread
-        .handle()
-        .lock_audio()
-        .sync_mut()
-        .set_fps_target(EXPECTED_FPS);
-
-    let audio_device = audio
-        .open_playback(
-            None,
-            &sdl2::audio::AudioSpecDesired {
-                freq: Some(48000),
-                channels: Some(audio::NUM_CHANNELS as u8),
-                samples: Some(512),
-            },
-            |spec| audio::MGBAStream::new(thread.handle(), spec.freq),
-        )
-        .unwrap();
-    log::info!("audio spec: {:?}", audio_device.spec());
-    audio_device.resume();
-
-    {
-        let joyflags = joyflags.clone();
-        let emu_vbuf = emu_vbuf.clone();
-        let emu_tps_counter = emu_tps_counter.clone();
-        thread.set_frame_callback(move |mut core, video_buffer| {
-            let mut emu_vbuf = emu_vbuf.lock();
-            emu_vbuf.copy_from_slice(video_buffer);
-            for i in (0..emu_vbuf.len()).step_by(4) {
-                emu_vbuf[i + 3] = 0xff;
-            }
-            core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
-            let mut emu_tps_counter = emu_tps_counter.lock();
-            emu_tps_counter.mark();
-        });
-    }
-
     let mut canvas = window
         .into_canvas()
         .accelerated()
         .present_vsync()
         .build()
         .unwrap();
-
-    log::info!("running...");
-    rt.block_on(async {
-        ipc_sender
-            .lock()
-            .send(ipc::protos::FromCoreMessage {
-                which: Some(ipc::protos::from_core_message::Which::StateEv(
-                    ipc::protos::from_core_message::StateEvent {
-                        state: ipc::protos::from_core_message::state_event::State::Running.into(),
-                    },
-                )),
-            })
-            .await?;
-        anyhow::Result::<()>::Ok(())
-    })?;
-
-    let mut show_debug_pressed = false;
-    let mut show_debug = false;
-
-    let font =
-        ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
-    let scale = ab_glyph::PxScale::from(16.0);
-    let scaled_font = font.as_scaled(scale);
-
-    let (vbuf_width, vbuf_height) = video_filter.output_size((
-        mgba::gba::SCREEN_WIDTH as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-    ));
-    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
 
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
@@ -307,6 +145,12 @@ pub fn run(
             vbuf_height as u32,
         )
         .unwrap();
+
+    let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
+    let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
+
+    let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let mut input_state = sdl2_input_helper::State::new();
 
     let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
         std::collections::HashMap::new();
@@ -319,148 +163,302 @@ pub fn run(
         log::info!("controller added: {}", controller.name());
         controllers.insert(which, controller);
     }
-    let mut input_state = sdl2_input_helper::State::new();
 
-    let thread_handle = thread.handle();
+    let font =
+        ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
+    let scale = ab_glyph::PxScale::from(16.0);
+    let scaled_font = font.as_scaled(scale);
 
     let mut event_loop = sdl.event_pump().unwrap();
-    'toplevel: loop {
-        // Handle events.
-        for event in event_loop.poll_iter() {
-            match event {
-                sdl2::event::Event::Quit { .. } => {
-                    break 'toplevel;
-                }
-                sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
-                    if !game_controller.is_game_controller(which) {
-                        continue;
+
+    {
+        let mut core = mgba::core::Core::new_gba("tango")?;
+        core.enable_video_buffer();
+
+        let rom = std::fs::read(rom_path)?;
+        let rom_vf = mgba::vfile::VFile::open_memory(&rom);
+        core.as_mut().load_rom(rom_vf)?;
+
+        log::info!(
+            "loaded game: {} rev {}",
+            std::str::from_utf8(&core.as_mut().full_rom_name()).unwrap(),
+            core.as_mut().rom_revision(),
+        );
+
+        let save_vf = if match_init.is_none() {
+            mgba::vfile::VFile::open(
+                &save_path,
+                mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
+            )?
+        } else {
+            log::info!("in pvp mode, save file will not be written back to disk");
+            mgba::vfile::VFile::open_memory(&std::fs::read(save_path)?)
+        };
+
+        core.as_mut().load_save(save_vf)?;
+
+        let hooks = hooks::get(core.as_mut()).unwrap();
+        hooks.patch(core.as_mut());
+
+        let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        if let Some(match_init) = match_init.as_ref() {
+            let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
+            let mut traps = hooks.common_traps();
+            traps.extend(hooks.primary_traps(handle.clone(), joyflags.clone(), match_.clone()));
+            core.set_traps(traps);
+        }
+
+        let thread = mgba::thread::Thread::new(core);
+
+        let match_ = if let Some(match_init) = match_init {
+            let (dc_rx, dc_tx) = match_init.dc.split();
+
+            {
+                let match_ = match_.clone();
+                handle.block_on(async {
+                    let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
+                        == datachannel_wrapper::SdpType::Offer;
+                    let rng_seed = match_init
+                        .settings
+                        .rng_seed
+                        .clone()
+                        .try_into()
+                        .expect("rng seed");
+                    *match_.lock().await = Some(
+                        battle::Match::new(
+                            rom,
+                            hooks,
+                            match_init.peer_conn,
+                            dc_tx,
+                            rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
+                            is_offerer,
+                            thread.handle(),
+                            ipc_sender.clone(),
+                            match_init.settings,
+                        )
+                        .expect("new match"),
+                    );
+                });
+            }
+
+            {
+                let match_ = match_.clone();
+                handle.spawn(async move {
+                    {
+                        let match_ = match_.lock().await.clone().unwrap();
+                        tokio::select! {
+                            Err(e) = match_.run(dc_rx) => {
+                                log::info!("match thread ending: {:?}", e);
+                            }
+                            _ = match_.cancelled() => {
+                            }
+                        }
                     }
-                    let controller = game_controller.open(which).unwrap();
-                    log::info!("controller added: {}", controller.name());
-                    controllers.insert(which, controller);
-                }
-                sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
-                    if let Some(controller) = controllers.remove(&which) {
-                        log::info!("controller removed: {}", controller.name());
-                    }
-                }
-                _ => {}
+                });
             }
 
-            if input_state.handle_event(&event) {
-                let last_show_debug_pressed = show_debug_pressed;
-                show_debug_pressed = input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
-                if show_debug_pressed && !last_show_debug_pressed {
-                    show_debug = !show_debug;
-                }
-                joyflags.store(
-                    input_mapping.to_mgba_keys(&input_state),
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-            }
-        }
+            Some(match_)
+        } else {
+            None
+        };
 
-        // If we're in single-player mode, allow speedup.
-        if match_.is_none() {
-            let audio_guard = thread_handle.lock_audio();
-            audio_guard.sync_mut().set_fps_target(
-                if input_mapping
-                    .speed_up
-                    .iter()
-                    .any(|c| c.is_active(&input_state))
-                {
-                    EXPECTED_FPS * 3.0
-                } else {
-                    EXPECTED_FPS
-                },
-            );
-        }
+        thread.start()?;
+        thread
+            .handle()
+            .lock_audio()
+            .sync_mut()
+            .set_fps_target(EXPECTED_FPS);
 
-        if let Some(match_) = &match_ {
-            if handle.block_on(async { match_.lock().await.is_none() }) {
-                break 'toplevel;
-            }
-        }
-
-        // If we've crashed, log the error and panic.
-        if thread_handle.has_crashed() {
-            // HACK: No better way to lock the core.
-            let audio_guard = thread_handle.lock_audio();
-            panic!(
-                "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
-                audio_guard.core().gba().cpu().gpr(14),
-                audio_guard.core().gba().cpu().thumb_pc()
-            );
-        }
-
-        // Apply stupid video scaling filter that only mint wants 🥴
-        video_filter.apply(
-            &emu_vbuf.lock(),
-            &mut vbuf,
-            (
-                mgba::gba::SCREEN_WIDTH as usize,
-                mgba::gba::SCREEN_HEIGHT as usize,
-            ),
-        );
-        texture
-            .update(None, &vbuf, vbuf_width as usize * 4)
-            .unwrap();
-        canvas.clear();
-
-        let viewport = canvas.viewport();
-        let scaling_factor = std::cmp::max(
-            std::cmp::min(
-                viewport.width() / vbuf_width as u32,
-                viewport.height() / vbuf_height as u32,
-            ),
-            1,
-        );
-        let (new_width, new_height) = (
-            vbuf_width as u32 * scaling_factor,
-            vbuf_height as u32 * scaling_factor,
-        );
-        canvas
-            .copy(
-                &texture,
+        let audio_device = audio
+            .open_playback(
                 None,
-                sdl2::rect::Rect::new(
-                    viewport.x() + (viewport.width() as i32 - new_width as i32) / 2,
-                    viewport.y() + (viewport.height() as i32 - new_height as i32) / 2,
-                    new_width,
-                    new_height,
-                ),
+                &sdl2::audio::AudioSpecDesired {
+                    freq: Some(48000),
+                    channels: Some(audio::NUM_CHANNELS as u8),
+                    samples: Some(512),
+                },
+                |spec| audio::MGBAStream::new(thread.handle(), spec.freq),
             )
             .unwrap();
+        log::info!("audio spec: {:?}", audio_device.spec());
+        audio_device.resume();
 
-        // Update title to show P1/P2 state.
-        let mut title = title_prefix.to_string();
-        if let Some(match_) = match_.as_ref() {
-            rt.block_on(async {
-                if let Some(match_) = &*match_.lock().await {
-                    let round_state = match_.lock_round_state().await;
-                    if let Some(round) = round_state.round.as_ref() {
-                        title = format!("{} [P{}]", title, round.local_player_index() + 1);
-                    }
+        {
+            let joyflags = joyflags.clone();
+            let emu_vbuf = emu_vbuf.clone();
+            let emu_tps_counter = emu_tps_counter.clone();
+            thread.set_frame_callback(move |mut core, video_buffer| {
+                let mut emu_vbuf = emu_vbuf.lock();
+                emu_vbuf.copy_from_slice(video_buffer);
+                for i in (0..emu_vbuf.len()).step_by(4) {
+                    emu_vbuf[i + 3] = 0xff;
                 }
+                core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
+                let mut emu_tps_counter = emu_tps_counter.lock();
+                emu_tps_counter.mark();
             });
         }
-        canvas.window_mut().set_title(&title).unwrap();
 
-        if show_debug {
-            draw_debug(
-                handle.clone(),
-                &match_,
-                &mut canvas,
-                &texture_creator,
-                &scaled_font,
-                &*fps_counter.lock(),
-                &*emu_tps_counter.lock(),
+        log::info!("running...");
+        rt.block_on(async {
+            ipc_sender
+                .lock()
+                .send(ipc::protos::FromCoreMessage {
+                    which: Some(ipc::protos::from_core_message::Which::StateEv(
+                        ipc::protos::from_core_message::StateEvent {
+                            state: ipc::protos::from_core_message::state_event::State::Running
+                                .into(),
+                        },
+                    )),
+                })
+                .await?;
+            anyhow::Result::<()>::Ok(())
+        })?;
+
+        let mut show_debug_pressed = false;
+        let mut show_debug = false;
+
+        let thread_handle = thread.handle();
+
+        'toplevel: loop {
+            // Handle events.
+            for event in event_loop.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. } => {
+                        break 'toplevel;
+                    }
+                    sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                        if !game_controller.is_game_controller(which) {
+                            continue;
+                        }
+                        let controller = game_controller.open(which).unwrap();
+                        log::info!("controller added: {}", controller.name());
+                        controllers.insert(which, controller);
+                    }
+                    sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                        if let Some(controller) = controllers.remove(&which) {
+                            log::info!("controller removed: {}", controller.name());
+                        }
+                    }
+                    _ => {}
+                }
+
+                if input_state.handle_event(&event) {
+                    let last_show_debug_pressed = show_debug_pressed;
+                    show_debug_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
+                    if show_debug_pressed && !last_show_debug_pressed {
+                        show_debug = !show_debug;
+                    }
+                    joyflags.store(
+                        input_mapping.to_mgba_keys(&input_state),
+                        std::sync::atomic::Ordering::Relaxed,
+                    );
+                }
+            }
+
+            // If we're in single-player mode, allow speedup.
+            if match_.is_none() {
+                let audio_guard = thread_handle.lock_audio();
+                audio_guard.sync_mut().set_fps_target(
+                    if input_mapping
+                        .speed_up
+                        .iter()
+                        .any(|c| c.is_active(&input_state))
+                    {
+                        EXPECTED_FPS * 3.0
+                    } else {
+                        EXPECTED_FPS
+                    },
+                );
+            }
+
+            if let Some(match_) = &match_ {
+                if handle.block_on(async { match_.lock().await.is_none() }) {
+                    break 'toplevel;
+                }
+            }
+
+            // If we've crashed, log the error and panic.
+            if thread_handle.has_crashed() {
+                // HACK: No better way to lock the core.
+                let audio_guard = thread_handle.lock_audio();
+                panic!(
+                    "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
+                    audio_guard.core().gba().cpu().gpr(14),
+                    audio_guard.core().gba().cpu().thumb_pc()
+                );
+            }
+
+            // Apply stupid video scaling filter that only mint wants 🥴
+            video_filter.apply(
+                &emu_vbuf.lock(),
+                &mut vbuf,
+                (
+                    mgba::gba::SCREEN_WIDTH as usize,
+                    mgba::gba::SCREEN_HEIGHT as usize,
+                ),
             );
-        }
+            texture
+                .update(None, &vbuf, vbuf_width as usize * 4)
+                .unwrap();
+            canvas.clear();
 
-        // Done!
-        canvas.present();
-        fps_counter.lock().mark();
+            let viewport = canvas.viewport();
+            let scaling_factor = std::cmp::max(
+                std::cmp::min(
+                    viewport.width() / vbuf_width as u32,
+                    viewport.height() / vbuf_height as u32,
+                ),
+                1,
+            );
+            let (new_width, new_height) = (
+                vbuf_width as u32 * scaling_factor,
+                vbuf_height as u32 * scaling_factor,
+            );
+            canvas
+                .copy(
+                    &texture,
+                    None,
+                    sdl2::rect::Rect::new(
+                        viewport.x() + (viewport.width() as i32 - new_width as i32) / 2,
+                        viewport.y() + (viewport.height() as i32 - new_height as i32) / 2,
+                        new_width,
+                        new_height,
+                    ),
+                )
+                .unwrap();
+
+            // Update title to show P1/P2 state.
+            let mut title = title_prefix.to_string();
+            if let Some(match_) = match_.as_ref() {
+                rt.block_on(async {
+                    if let Some(match_) = &*match_.lock().await {
+                        let round_state = match_.lock_round_state().await;
+                        if let Some(round) = round_state.round.as_ref() {
+                            title = format!("{} [P{}]", title, round.local_player_index() + 1);
+                        }
+                    }
+                });
+            }
+            canvas.window_mut().set_title(&title).unwrap();
+
+            if show_debug {
+                draw_debug(
+                    handle.clone(),
+                    &match_,
+                    &mut canvas,
+                    &texture_creator,
+                    &scaled_font,
+                    &*fps_counter.lock(),
+                    &*emu_tps_counter.lock(),
+                );
+            }
+
+            // Done!
+            canvas.present();
+            fps_counter.lock().mark();
+        }
     }
 
     log::info!("goodbye");
