@@ -93,7 +93,7 @@ pub fn run(
     let scaled_font = font.as_scaled(scale);
 
     {
-        let session = Some(session::Session::new(
+        let mut current_session = Some(session::Session::new(
             rt.handle().clone(),
             ipc_sender.clone(),
             audio_cb.clone(),
@@ -155,7 +155,7 @@ pub fn run(
                         show_debug = !show_debug;
                     }
 
-                    if let Some(session) = session.as_ref() {
+                    if let Some(session) = current_session.as_ref() {
                         session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
                     }
                 }
@@ -163,7 +163,25 @@ pub fn run(
 
             canvas.clear();
 
-            if let Some(session) = session.as_ref() {
+            let is_session_active = current_session
+                .as_ref()
+                .map(|s| {
+                    s.match_()
+                        .as_ref()
+                        .map(|match_| handle.block_on(async { match_.lock().await.is_some() }))
+                        .unwrap_or(true)
+                })
+                .unwrap_or(false);
+            if !is_session_active {
+                current_session = None;
+            }
+
+            // TODO: Figure out why the mgba thread is still active.
+            if current_session.is_none() {
+                break 'toplevel;
+            }
+
+            if let Some(session) = &current_session {
                 // If we're in single-player mode, allow speedup.
                 if session.match_().is_none() {
                     session.set_fps(
@@ -177,12 +195,6 @@ pub fn run(
                             EXPECTED_FPS
                         },
                     );
-                }
-
-                if let Some(match_) = &session.match_() {
-                    if handle.block_on(async { match_.lock().await.is_none() }) {
-                        break 'toplevel;
-                    }
                 }
 
                 // If we've crashed, log the error and panic.
