@@ -156,7 +156,11 @@ impl hooks::Hooks for BN4 {
                     Box::new(move |_core| {
                         handle.block_on(async {
                             log::info!("match ended");
-                            *match_.lock().await = None;
+                            let mut match_ = match_.lock().await;
+                            if let Some(match_) = &*match_ {
+                                match_.cancel();
+                            }
+                            *match_ = None;
                         });
                     }),
                 )
