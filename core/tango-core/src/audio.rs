@@ -90,7 +90,12 @@ impl sdl2::audio::AudioCallback for MGBAStream {
     type Channel = i16;
 
     fn callback(&mut self, buf: &mut [i16]) {
-        assert!(self.spec.channels as usize == NUM_CHANNELS);
+        assert!(
+            self.spec.channels as usize == NUM_CHANNELS,
+            "spec channels != NUM_CHANNELS: {} != {}",
+            self.spec.channels,
+            NUM_CHANNELS
+        );
 
         let frame_count = (buf.len() / NUM_CHANNELS) as i32;
 
