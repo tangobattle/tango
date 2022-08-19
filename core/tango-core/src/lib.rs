@@ -15,6 +15,6 @@ pub mod replay;
 pub mod replayer;
 pub mod shadow;
 pub mod signaling;
-pub mod tps;
+pub mod stats;
 pub mod transport;
 pub mod video;

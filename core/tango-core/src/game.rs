@@ -1,4 +1,4 @@
-use crate::{audio, battle, font, hooks, input, ipc, tps, video};
+use crate::{audio, battle, font, hooks, input, ipc, stats, video};
 use ab_glyph::{Font, ScaleFont};
 use parking_lot::Mutex;
 use rand::SeedableRng;
@@ -81,8 +81,8 @@ pub fn run(
     log::info!("audio spec: {:?}", audio_device.spec());
     audio_device.resume();
 
-    let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
-    let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
+    let fps_counter = Arc::new(Mutex::new(stats::Counter::new(30)));
+    let emu_tps_counter = Arc::new(Mutex::new(stats::Counter::new(10)));
 
     let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
     let mut input_state = sdl2_input_helper::State::new();
@@ -397,8 +397,8 @@ fn draw_debug(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     texture_creator: &sdl2::render::TextureCreator<sdl2::video::WindowContext>,
     scaled_font: &ab_glyph::PxScaleFont<&ab_glyph::FontRef>,
-    fps_counter: &tps::Counter,
-    emu_tps_counter: &tps::Counter,
+    fps_counter: &stats::Counter,
+    emu_tps_counter: &stats::Counter,
 ) {
     let mut lines = vec![format!(
         "fps: {:.02}",
