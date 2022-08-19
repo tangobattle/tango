@@ -97,7 +97,7 @@ pub async fn negotiate(
 
     signaling::connect(signaling_connect_addr, &mut peer_conn, event_rx, session_id).await?;
 
-    let (mut dc_rx, mut dc_tx) = dc.split();
+    let (mut dc_tx, mut dc_rx) = dc.split();
 
     log::debug!(
         "local sdp (type = {:?}): {}",

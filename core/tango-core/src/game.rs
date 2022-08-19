@@ -176,7 +176,6 @@ pub fn run(
                 current_session = None;
             }
 
-            // TODO: Figure out why the mgba thread is still active.
             if current_session.is_none() {
                 break 'toplevel;
             }

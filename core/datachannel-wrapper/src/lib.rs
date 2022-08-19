@@ -208,14 +208,14 @@ impl DataChannel {
         dc_receive(&mut self.message_rx).await
     }
 
-    pub fn split(self) -> (DataChannelReceiver, DataChannelSender) {
+    pub fn split(self) -> (DataChannelSender, DataChannelReceiver) {
         (
-            DataChannelReceiver {
-                message_rx: self.message_rx,
-            },
             DataChannelSender {
                 state: self.state,
                 dc: self.dc,
+            },
+            DataChannelReceiver {
+                message_rx: self.message_rx,
             },
         )
     }

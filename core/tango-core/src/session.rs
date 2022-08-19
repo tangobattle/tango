@@ -57,51 +57,31 @@ impl Session {
         let thread = mgba::thread::Thread::new(core);
 
         let match_ = if let Some(match_init) = match_init {
-            let (dc_rx, dc_tx) = match_init.dc.split();
-
-            {
-                let match_ = match_.clone();
-                handle.block_on(async {
-                    let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
-                        == datachannel_wrapper::SdpType::Offer;
-                    let rng_seed = match_init
-                        .settings
-                        .rng_seed
-                        .clone()
-                        .try_into()
-                        .expect("rng seed");
-                    *match_.lock().await = Some(
-                        battle::Match::new(
-                            rom,
-                            hooks,
-                            match_init.peer_conn,
-                            dc_tx,
-                            rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
-                            is_offerer,
-                            thread.handle(),
-                            ipc_sender.clone(),
-                            match_init.settings,
-                        )
-                        .expect("new match"),
-                    );
-                });
-            }
-
-            {
-                let match_ = match_.clone();
-                handle.spawn(async move {
-                    {
-                        let match_ = match_.lock().await.clone().unwrap();
-                        tokio::select! {
-                            Err(e) = match_.run(dc_rx) => {
-                                log::info!("match thread ending: {:?}", e);
-                            }
-                            _ = match_.cancelled() => {
-                            }
-                        }
-                    }
-                });
-            }
+            let match_ = match_.clone();
+            handle.block_on(async {
+                let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
+                    == datachannel_wrapper::SdpType::Offer;
+                let rng_seed = match_init
+                    .settings
+                    .rng_seed
+                    .clone()
+                    .try_into()
+                    .expect("rng seed");
+                *match_.lock().await = Some(
+                    battle::Match::new(
+                        rom,
+                        hooks,
+                        match_init.peer_conn,
+                        match_init.dc,
+                        rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
+                        is_offerer,
+                        thread.handle(),
+                        ipc_sender.clone(),
+                        match_init.settings,
+                    )
+                    .expect("new match"),
+                );
+            });
 
             Some(match_)
         } else {

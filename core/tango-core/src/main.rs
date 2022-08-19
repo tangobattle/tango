@@ -170,7 +170,7 @@ fn main() -> Result<(), anyhow::Error> {
                 }
             };
 
-            let (mut dc_rx, mut dc_tx) = dc.split();
+            let (mut dc_tx, mut dc_rx) = dc.split();
 
             let mut ping_timer = tokio::time::interval(std::time::Duration::from_secs(1));
             let mut hola_received = false;
