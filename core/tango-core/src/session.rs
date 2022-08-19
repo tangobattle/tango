@@ -4,10 +4,10 @@ use rand::SeedableRng;
 use std::sync::Arc;
 
 pub struct Session {
-    pub vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
-    pub thread: mgba::thread::Thread,
+    vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
+    thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-    pub match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>>,
+    match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>>,
 }
 
 impl Session {
@@ -144,6 +144,20 @@ impl Session {
             joyflags,
             match_,
         })
+    }
+
+    pub fn match_(
+        &self,
+    ) -> &Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>> {
+        &self.match_
+    }
+
+    pub fn thread_handle(&self) -> mgba::thread::Handle {
+        self.thread.handle()
+    }
+
+    pub fn lock_vbuf(&self) -> parking_lot::MutexGuard<Vec<u8>> {
+        self.vbuf.lock()
     }
 
     pub fn set_joyflags(&self, joyflags: u32) {

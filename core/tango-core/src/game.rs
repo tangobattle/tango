@@ -166,10 +166,10 @@ pub fn run(
         canvas.clear();
 
         if let Some(session) = session.as_ref() {
-            let thread_handle = session.thread.handle();
+            let thread_handle = session.thread_handle();
 
             // If we're in single-player mode, allow speedup.
-            if session.match_.is_none() {
+            if session.match_().is_none() {
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
                     if input_mapping
@@ -184,7 +184,7 @@ pub fn run(
                 );
             }
 
-            if let Some(match_) = &session.match_ {
+            if let Some(match_) = &session.match_() {
                 if handle.block_on(async { match_.lock().await.is_none() }) {
                     break 'toplevel;
                 }
@@ -203,7 +203,7 @@ pub fn run(
 
             // Apply stupid video scaling filter that only mint wants 🥴
             video_filter.apply(
-                &session.vbuf.lock(),
+                &session.lock_vbuf(),
                 &mut vbuf,
                 (
                     mgba::gba::SCREEN_WIDTH as usize,
@@ -241,7 +241,7 @@ pub fn run(
 
             // Update title to show P1/P2 state.
             let mut title = title_prefix.to_string();
-            if let Some(match_) = session.match_.as_ref() {
+            if let Some(match_) = session.match_().as_ref() {
                 rt.block_on(async {
                     if let Some(match_) = &*match_.lock().await {
                         let round_state = match_.lock_round_state().await;
@@ -256,7 +256,7 @@ pub fn run(
             if show_debug {
                 draw_debug(
                     handle.clone(),
-                    &session.match_,
+                    &session.match_(),
                     &mut canvas,
                     &texture_creator,
                     &scaled_font,
