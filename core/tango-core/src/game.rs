@@ -218,7 +218,6 @@ pub fn run(
                         }
                     }
                 }
-                *match_.lock().await = None;
             });
         }
 
@@ -377,6 +376,12 @@ pub fn run(
             );
         }
 
+        if let Some(match_) = &match_ {
+            if handle.block_on(async { match_.lock().await.is_none() }) {
+                break 'toplevel;
+            }
+        }
+
         // If we've crashed, log the error and panic.
         if thread_handle.has_crashed() {
             // HACK: No better way to lock the core.
@@ -458,6 +463,7 @@ pub fn run(
         fps_counter.lock().mark();
     }
 
+    log::info!("goodbye");
     Ok(())
 }
 

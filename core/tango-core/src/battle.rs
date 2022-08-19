@@ -230,6 +230,10 @@ impl Match {
         self.cancellation_token.cancelled()
     }
 
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation_token.is_cancelled()
+    }
+
     pub async fn advance_shadow_until_round_end(&self) -> anyhow::Result<()> {
         self.shadow.lock().advance_until_round_end()
     }
