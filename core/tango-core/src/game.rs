@@ -92,202 +92,206 @@ pub fn run(
     let scale = ab_glyph::PxScale::from(16.0);
     let scaled_font = font.as_scaled(scale);
 
-    let session = Some(session::Session::new(
-        rt.handle().clone(),
-        ipc_sender.clone(),
-        audio_cb.clone(),
-        audio_device.spec(),
-        rom_path,
-        save_path,
-        emu_tps_counter.clone(),
-        match_init,
-    )?);
+    {
+        let session = Some(session::Session::new(
+            rt.handle().clone(),
+            ipc_sender.clone(),
+            audio_cb.clone(),
+            audio_device.spec(),
+            rom_path,
+            save_path,
+            emu_tps_counter.clone(),
+            match_init,
+        )?);
 
-    let mut event_loop = sdl.event_pump().unwrap();
+        let mut event_loop = sdl.event_pump().unwrap();
 
-    rt.block_on(async {
-        ipc_sender
-            .lock()
-            .send(ipc::protos::FromCoreMessage {
-                which: Some(ipc::protos::from_core_message::Which::StateEv(
-                    ipc::protos::from_core_message::StateEvent {
-                        state: ipc::protos::from_core_message::state_event::State::Running.into(),
-                    },
-                )),
-            })
-            .await?;
-        anyhow::Result::<()>::Ok(())
-    })?;
+        rt.block_on(async {
+            ipc_sender
+                .lock()
+                .send(ipc::protos::FromCoreMessage {
+                    which: Some(ipc::protos::from_core_message::Which::StateEv(
+                        ipc::protos::from_core_message::StateEvent {
+                            state: ipc::protos::from_core_message::state_event::State::Running
+                                .into(),
+                        },
+                    )),
+                })
+                .await?;
+            anyhow::Result::<()>::Ok(())
+        })?;
 
-    let mut show_debug_pressed = false;
-    let mut show_debug = false;
+        let mut show_debug_pressed = false;
+        let mut show_debug = false;
 
-    'toplevel: loop {
-        // Handle events.
-        for event in event_loop.poll_iter() {
-            match event {
-                sdl2::event::Event::Quit { .. } => {
-                    break 'toplevel;
-                }
-                sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
-                    if !game_controller.is_game_controller(which) {
-                        continue;
+        'toplevel: loop {
+            // Handle events.
+            for event in event_loop.poll_iter() {
+                match event {
+                    sdl2::event::Event::Quit { .. } => {
+                        break 'toplevel;
                     }
-                    let controller = game_controller.open(which).unwrap();
-                    log::info!("controller added: {}", controller.name());
-                    controllers.insert(which, controller);
-                }
-                sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
-                    if let Some(controller) = controllers.remove(&which) {
-                        log::info!("controller removed: {}", controller.name());
+                    sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                        if !game_controller.is_game_controller(which) {
+                            continue;
+                        }
+                        let controller = game_controller.open(which).unwrap();
+                        log::info!("controller added: {}", controller.name());
+                        controllers.insert(which, controller);
                     }
-                }
-                _ => {}
-            }
-
-            if input_state.handle_event(&event) {
-                let last_show_debug_pressed = show_debug_pressed;
-                show_debug_pressed = input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
-                if show_debug_pressed && !last_show_debug_pressed {
-                    show_debug = !show_debug;
-                }
-
-                if let Some(session) = session.as_ref() {
-                    session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
-                }
-            }
-        }
-
-        canvas.clear();
-
-        if let Some(session) = session.as_ref() {
-            // If we're in single-player mode, allow speedup.
-            if session.match_().is_none() {
-                session.set_fps(
-                    if input_mapping
-                        .speed_up
-                        .iter()
-                        .any(|c| c.is_active(&input_state))
-                    {
-                        EXPECTED_FPS * 3.0
-                    } else {
-                        EXPECTED_FPS
-                    },
-                );
-            }
-
-            if let Some(match_) = &session.match_() {
-                if handle.block_on(async { match_.lock().await.is_none() }) {
-                    break 'toplevel;
-                }
-            }
-
-            // If we've crashed, log the error and panic.
-            if let Some(thread_handle) = session.has_crashed() {
-                // HACK: No better way to lock the core.
-                let audio_guard = thread_handle.lock_audio();
-                panic!(
-                    "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
-                    audio_guard.core().gba().cpu().gpr(14),
-                    audio_guard.core().gba().cpu().thumb_pc()
-                );
-            }
-
-            // Apply stupid video scaling filter that only mint wants 🥴
-            let (vbuf_width, vbuf_height) = video_filter.output_size((
-                mgba::gba::SCREEN_WIDTH as usize,
-                mgba::gba::SCREEN_HEIGHT as usize,
-            ));
-
-            let tq = texture.query();
-            if tq.width != vbuf_width as u32 || tq.height != vbuf_height as u32 {
-                log::info!(
-                    "texture reallocated: ({}, {}) -> ({}, {})",
-                    tq.width,
-                    tq.height,
-                    vbuf_width,
-                    vbuf_height
-                );
-                texture = texture_creator
-                    .create_texture_streaming(
-                        sdl2::pixels::PixelFormatEnum::ABGR8888,
-                        vbuf_width as u32,
-                        vbuf_height as u32,
-                    )
-                    .unwrap();
-            }
-            texture
-                .with_lock(
-                    sdl2::rect::Rect::new(0, 0, vbuf_width as u32, vbuf_height as u32),
-                    |buf, _pitch| {
-                        video_filter.apply(
-                            &session.lock_vbuf(),
-                            buf,
-                            (
-                                mgba::gba::SCREEN_WIDTH as usize,
-                                mgba::gba::SCREEN_HEIGHT as usize,
-                            ),
-                        );
-                    },
-                )
-                .unwrap();
-
-            let viewport = canvas.viewport();
-            let scaling_factor = std::cmp::max(
-                std::cmp::min(
-                    viewport.width() / mgba::gba::SCREEN_WIDTH,
-                    viewport.height() / mgba::gba::SCREEN_HEIGHT,
-                ),
-                1,
-            );
-
-            let (new_width, new_height) = (
-                (mgba::gba::SCREEN_WIDTH * scaling_factor) as u32,
-                (mgba::gba::SCREEN_HEIGHT * scaling_factor) as u32,
-            );
-            canvas
-                .copy(
-                    &texture,
-                    None,
-                    sdl2::rect::Rect::new(
-                        viewport.x() + (viewport.width() as i32 - new_width as i32) / 2,
-                        viewport.y() + (viewport.height() as i32 - new_height as i32) / 2,
-                        new_width,
-                        new_height,
-                    ),
-                )
-                .unwrap();
-
-            // Update title to show P1/P2 state.
-            let mut title = title_prefix.to_string();
-            if let Some(match_) = session.match_().as_ref() {
-                rt.block_on(async {
-                    if let Some(match_) = &*match_.lock().await {
-                        let round_state = match_.lock_round_state().await;
-                        if let Some(round) = round_state.round.as_ref() {
-                            title = format!("{} [P{}]", title, round.local_player_index() + 1);
+                    sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                        if let Some(controller) = controllers.remove(&which) {
+                            log::info!("controller removed: {}", controller.name());
                         }
                     }
-                });
-            }
-            canvas.window_mut().set_title(&title).unwrap();
+                    _ => {}
+                }
 
-            if show_debug {
-                draw_debug(
-                    handle.clone(),
-                    &session.match_(),
-                    &mut canvas,
-                    &texture_creator,
-                    &scaled_font,
-                    &*fps_counter.lock(),
-                    &*emu_tps_counter.lock(),
+                if input_state.handle_event(&event) {
+                    let last_show_debug_pressed = show_debug_pressed;
+                    show_debug_pressed =
+                        input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
+                    if show_debug_pressed && !last_show_debug_pressed {
+                        show_debug = !show_debug;
+                    }
+
+                    if let Some(session) = session.as_ref() {
+                        session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
+                    }
+                }
+            }
+
+            canvas.clear();
+
+            if let Some(session) = session.as_ref() {
+                // If we're in single-player mode, allow speedup.
+                if session.match_().is_none() {
+                    session.set_fps(
+                        if input_mapping
+                            .speed_up
+                            .iter()
+                            .any(|c| c.is_active(&input_state))
+                        {
+                            EXPECTED_FPS * 3.0
+                        } else {
+                            EXPECTED_FPS
+                        },
+                    );
+                }
+
+                if let Some(match_) = &session.match_() {
+                    if handle.block_on(async { match_.lock().await.is_none() }) {
+                        break 'toplevel;
+                    }
+                }
+
+                // If we've crashed, log the error and panic.
+                if let Some(thread_handle) = session.has_crashed() {
+                    // HACK: No better way to lock the core.
+                    let audio_guard = thread_handle.lock_audio();
+                    panic!(
+                        "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
+                        audio_guard.core().gba().cpu().gpr(14),
+                        audio_guard.core().gba().cpu().thumb_pc()
+                    );
+                }
+
+                // Apply stupid video scaling filter that only mint wants 🥴
+                let (vbuf_width, vbuf_height) = video_filter.output_size((
+                    mgba::gba::SCREEN_WIDTH as usize,
+                    mgba::gba::SCREEN_HEIGHT as usize,
+                ));
+
+                let tq = texture.query();
+                if tq.width != vbuf_width as u32 || tq.height != vbuf_height as u32 {
+                    log::info!(
+                        "texture reallocated: ({}, {}) -> ({}, {})",
+                        tq.width,
+                        tq.height,
+                        vbuf_width,
+                        vbuf_height
+                    );
+                    texture = texture_creator
+                        .create_texture_streaming(
+                            sdl2::pixels::PixelFormatEnum::ABGR8888,
+                            vbuf_width as u32,
+                            vbuf_height as u32,
+                        )
+                        .unwrap();
+                }
+                texture
+                    .with_lock(
+                        sdl2::rect::Rect::new(0, 0, vbuf_width as u32, vbuf_height as u32),
+                        |buf, _pitch| {
+                            video_filter.apply(
+                                &session.lock_vbuf(),
+                                buf,
+                                (
+                                    mgba::gba::SCREEN_WIDTH as usize,
+                                    mgba::gba::SCREEN_HEIGHT as usize,
+                                ),
+                            );
+                        },
+                    )
+                    .unwrap();
+
+                let viewport = canvas.viewport();
+                let scaling_factor = std::cmp::max(
+                    std::cmp::min(
+                        viewport.width() / mgba::gba::SCREEN_WIDTH,
+                        viewport.height() / mgba::gba::SCREEN_HEIGHT,
+                    ),
+                    1,
                 );
-            }
-        }
 
-        // Done!
-        canvas.present();
-        fps_counter.lock().mark();
+                let (new_width, new_height) = (
+                    (mgba::gba::SCREEN_WIDTH * scaling_factor) as u32,
+                    (mgba::gba::SCREEN_HEIGHT * scaling_factor) as u32,
+                );
+                canvas
+                    .copy(
+                        &texture,
+                        None,
+                        sdl2::rect::Rect::new(
+                            viewport.x() + (viewport.width() as i32 - new_width as i32) / 2,
+                            viewport.y() + (viewport.height() as i32 - new_height as i32) / 2,
+                            new_width,
+                            new_height,
+                        ),
+                    )
+                    .unwrap();
+
+                // Update title to show P1/P2 state.
+                let mut title = title_prefix.to_string();
+                if let Some(match_) = session.match_().as_ref() {
+                    rt.block_on(async {
+                        if let Some(match_) = &*match_.lock().await {
+                            let round_state = match_.lock_round_state().await;
+                            if let Some(round) = round_state.round.as_ref() {
+                                title = format!("{} [P{}]", title, round.local_player_index() + 1);
+                            }
+                        }
+                    });
+                }
+                canvas.window_mut().set_title(&title).unwrap();
+
+                if show_debug {
+                    draw_debug(
+                        handle.clone(),
+                        &session.match_(),
+                        &mut canvas,
+                        &texture_creator,
+                        &scaled_font,
+                        &*fps_counter.lock(),
+                        &*emu_tps_counter.lock(),
+                    );
+                }
+            }
+
+            // Done!
+            canvas.present();
+            fps_counter.lock().mark();
+        }
     }
 
     log::info!("goodbye");
