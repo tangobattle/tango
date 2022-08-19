@@ -1,5 +1,5 @@
 use byteorder::ByteOrder;
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use prost::Message;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -9,20 +9,22 @@ pub mod protos {
 
 pub struct Sender {
     writer: std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + 'static>>,
+    buf: bytes::BytesMut,
 }
 
 impl Sender {
     pub fn new_from_stdout() -> Self {
         Sender {
             writer: Box::pin(tokio::io::stdout()),
+            buf: bytes::BytesMut::new(),
         }
     }
 
     pub async fn send(&mut self, req: protos::FromCoreMessage) -> anyhow::Result<()> {
         let buf = req.encode_to_vec();
-        self.writer.write_u32_le(buf.len() as u32).await?;
-        self.writer.flush().await?;
-        self.writer.write_all(&buf).await?;
+        self.buf.put_u32_le(buf.len() as u32);
+        self.buf.put_slice(&buf[..]);
+        self.writer.write_all_buf(&mut self.buf).await?;
         self.writer.flush().await?;
         Ok(())
     }
