@@ -1,9 +1,9 @@
 use super::{core, sync};
 
 #[repr(transparent)]
-pub struct Thread(std::sync::Arc<parking_lot::Mutex<Box<InnerThread>>>);
+pub struct Thread(std::sync::Arc<parking_lot::Mutex<Box<ThreadImpl>>>);
 
-pub struct InnerThread {
+struct ThreadImpl {
     core: core::Core,
     raw: mgba_sys::mCoreThread,
     frame_callback: Option<Box<dyn Fn(core::CoreMutRef, &[u8]) + Send + 'static>>,
@@ -11,10 +11,10 @@ pub struct InnerThread {
         std::cell::RefCell<Option<Box<dyn Fn(crate::core::CoreMutRef<'_>) + Send + Sync>>>,
 }
 
-unsafe impl Send for InnerThread {}
+unsafe impl Send for ThreadImpl {}
 
 unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
-    let t = &*((*ptr).userData as *mut InnerThread);
+    let t = &*((*ptr).userData as *mut ThreadImpl);
     if let Some(cb) = t.frame_callback.as_ref() {
         cb(
             core::CoreMutRef {
@@ -28,7 +28,7 @@ unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
 
 pub struct AudioGuard<'a> {
     sync: sync::SyncMutRef<'a>,
-    thread: parking_lot::MutexGuard<'a, Box<InnerThread>>,
+    thread: parking_lot::MutexGuard<'a, Box<ThreadImpl>>,
 }
 
 impl<'a> AudioGuard<'a> {
@@ -64,7 +64,7 @@ impl<'a> Drop for AudioGuard<'a> {
 impl Thread {
     pub fn new(core: core::Core) -> Self {
         let core_ptr = core.ptr;
-        let mut t = Box::new(InnerThread {
+        let mut t = Box::new(ThreadImpl {
             core,
             raw: unsafe { std::mem::zeroed::<mgba_sys::mCoreThread>() },
             frame_callback: None,
@@ -95,7 +95,7 @@ impl Thread {
     }
 }
 
-impl Drop for InnerThread {
+impl Drop for ThreadImpl {
     fn drop(&mut self) {
         unsafe { mgba_sys::mCoreThreadEnd(&mut self.raw) }
         unsafe { mgba_sys::mCoreThreadJoin(&mut self.raw) }
@@ -105,11 +105,11 @@ impl Drop for InnerThread {
 
 #[derive(Clone)]
 pub struct Handle {
-    thread: std::sync::Arc<parking_lot::Mutex<Box<InnerThread>>>,
+    thread: std::sync::Arc<parking_lot::Mutex<Box<ThreadImpl>>>,
 }
 
 unsafe extern "C" fn c_run_function(ptr: *mut mgba_sys::mCoreThread) {
-    let t = &mut *((*ptr).userData as *mut InnerThread);
+    let t = &mut *((*ptr).userData as *mut ThreadImpl);
     let mut cc = t.current_callback.borrow_mut();
     let cc = cc.as_mut().unwrap();
     cc(crate::core::CoreMutRef {
