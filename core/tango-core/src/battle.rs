@@ -453,12 +453,6 @@ impl Match {
     }
 }
 
-impl Drop for Match {
-    fn drop(&mut self) {
-        self.cancel();
-    }
-}
-
 pub struct Round {
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     number: u8,
