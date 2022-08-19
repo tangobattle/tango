@@ -24,17 +24,12 @@ pub fn run(
     let audio = sdl.audio().unwrap();
 
     let title_prefix = format!("Tango: {}", window_title);
-    let (vbuf_width, vbuf_height) = video_filter.output_size((
-        mgba::gba::SCREEN_WIDTH as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-    ));
-    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
 
     let window = video
         .window(
             &title_prefix,
-            std::cmp::max(mgba::gba::SCREEN_WIDTH * window_scale, vbuf_width as u32),
-            std::cmp::max(mgba::gba::SCREEN_HEIGHT * window_scale, vbuf_height as u32),
+            mgba::gba::SCREEN_WIDTH * window_scale,
+            mgba::gba::SCREEN_HEIGHT * window_scale,
         )
         .opengl()
         .resizable()
@@ -52,8 +47,8 @@ pub fn run(
     let mut texture = texture_creator
         .create_texture_streaming(
             sdl2::pixels::PixelFormatEnum::ABGR8888,
-            vbuf_width as u32,
-            vbuf_height as u32,
+            mgba::gba::SCREEN_WIDTH as u32,
+            mgba::gba::SCREEN_HEIGHT as u32,
         )
         .unwrap();
 
@@ -199,16 +194,42 @@ pub fn run(
             }
 
             // Apply stupid video scaling filter that only mint wants 🥴
-            video_filter.apply(
-                &session.lock_vbuf(),
-                &mut vbuf,
-                (
-                    mgba::gba::SCREEN_WIDTH as usize,
-                    mgba::gba::SCREEN_HEIGHT as usize,
-                ),
-            );
+            let (vbuf_width, vbuf_height) = video_filter.output_size((
+                mgba::gba::SCREEN_WIDTH as usize,
+                mgba::gba::SCREEN_HEIGHT as usize,
+            ));
+
+            let tq = texture.query();
+            if tq.width != vbuf_width as u32 || tq.height != vbuf_height as u32 {
+                log::info!(
+                    "texture reallocated: ({}, {}) -> ({}, {})",
+                    tq.width,
+                    tq.height,
+                    vbuf_width,
+                    vbuf_height
+                );
+                texture = texture_creator
+                    .create_texture_streaming(
+                        sdl2::pixels::PixelFormatEnum::ABGR8888,
+                        vbuf_width as u32,
+                        vbuf_height as u32,
+                    )
+                    .unwrap();
+            }
             texture
-                .update(None, &vbuf, vbuf_width as usize * 4)
+                .with_lock(
+                    sdl2::rect::Rect::new(0, 0, vbuf_width as u32, vbuf_height as u32),
+                    |buf, _pitch| {
+                        video_filter.apply(
+                            &session.lock_vbuf(),
+                            buf,
+                            (
+                                mgba::gba::SCREEN_WIDTH as usize,
+                                mgba::gba::SCREEN_HEIGHT as usize,
+                            ),
+                        );
+                    },
+                )
                 .unwrap();
 
             let viewport = canvas.viewport();
