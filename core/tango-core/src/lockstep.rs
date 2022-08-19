@@ -85,8 +85,16 @@ where
         self.local_queue.push_back(v);
     }
 
+    pub fn can_add_local_input(&self) -> bool {
+        self.local_queue.len() < self.max_length
+    }
+
     pub fn add_remote_input(&mut self, v: U) {
         self.remote_queue.push_back(v);
+    }
+
+    pub fn can_add_remote_input(&self) -> bool {
+        self.remote_queue.len() < self.max_length
     }
 
     pub fn local_delay(&self) -> u32 {

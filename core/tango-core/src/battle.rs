@@ -320,7 +320,7 @@ impl Match {
                         Some(b) => b,
                     };
 
-                    if !round.can_add_remote_input() {
+                    if !round.iq.can_add_remote_input() {
                         anyhow::bail!("remote overflowed our input buffer");
                     }
 
@@ -514,7 +514,7 @@ impl Round {
         // 3. We add the input to our buffer: no overflow is guaranteed because we already checked ahead of time.
         //
         // This is all done while the self is locked, so there are no TOCTTOU issues.
-        if !self.can_add_local_input() {
+        if !self.iq.can_add_local_input() {
             anyhow::bail!("local input buffer overflow!");
         }
 
@@ -689,17 +689,9 @@ impl Round {
         self.iq.remote_queue_length()
     }
 
-    pub fn can_add_local_input(&mut self) -> bool {
-        self.iq.local_queue_length() < self.iq.max_length()
-    }
-
     pub fn add_local_input(&mut self, input: lockstep::PartialInput) {
         log::debug!("local input: {:?}", input);
         self.iq.add_local_input(input);
-    }
-
-    pub fn can_add_remote_input(&mut self) -> bool {
-        self.iq.remote_queue_length() < self.iq.max_length()
     }
 
     pub fn add_remote_input(&mut self, input: lockstep::PartialInput) {
