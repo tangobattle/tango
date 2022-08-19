@@ -97,7 +97,7 @@ pub fn run(
             rt.handle().clone(),
             ipc_sender.clone(),
             audio_cb.clone(),
-            audio_device.spec(),
+            audio_device.spec().clone(),
             rom_path,
             save_path,
             emu_tps_counter.clone(),

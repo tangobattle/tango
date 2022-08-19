@@ -16,7 +16,7 @@ impl Session {
         handle: tokio::runtime::Handle,
         ipc_sender: Arc<Mutex<ipc::Sender>>,
         audio_cb: audio::LateBinder<i16>,
-        audio_spec: &sdl2::audio::AudioSpec,
+        audio_spec: sdl2::audio::AudioSpec,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -117,7 +117,7 @@ impl Session {
 
         let audio_binding = audio_cb.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            audio_spec.freq,
+            audio_spec,
         ))))?;
 
         let vbuf = Arc::new(Mutex::new(vec![
