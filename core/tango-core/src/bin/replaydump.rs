@@ -99,7 +99,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut replay = tango_core::replay::Replay::decode(&mut f)?;
 
     if args.remote {
-        replay = replay.into_remote().unwrap();
+        replay = replay.into_remote();
     }
 
     match args.action {

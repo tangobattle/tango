@@ -24,7 +24,7 @@ pub struct Replay {
 }
 
 impl Replay {
-    pub fn into_remote(mut self) -> Option<Self> {
+    pub fn into_remote(mut self) -> Self {
         let remote_state = self.remote_state.take();
         self.remote_state = self.local_state;
         self.local_state = remote_state;
@@ -32,7 +32,7 @@ impl Replay {
         for ip in self.input_pairs.iter_mut() {
             std::mem::swap(&mut ip.local, &mut ip.remote);
         }
-        Some(self)
+        self
     }
 
     pub fn decode(mut r: impl std::io::Read) -> std::io::Result<Self> {
