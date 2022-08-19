@@ -6,114 +6,30 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: f32 = 60.0;
 
-pub fn run(
-    rt: tokio::runtime::Runtime,
-    ipc_sender: Arc<Mutex<ipc::Sender>>,
-    window_title: String,
-    input_mapping: input::Mapping,
-    rom_path: std::path::PathBuf,
-    save_path: std::path::PathBuf,
-    window_scale: u32,
-    video_filter: Box<dyn video::Filter>,
-    match_init: Option<battle::MatchInit>,
-) -> Result<(), anyhow::Error> {
-    let handle = rt.handle().clone();
+struct Session {
+    vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
+    thread: mgba::thread::Thread,
+    joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
+    match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>>,
+}
 
-    let sdl = sdl2::init().unwrap();
-    let video = sdl.video().unwrap();
-    let game_controller = sdl.game_controller().unwrap();
-    let audio = sdl.audio().unwrap();
-
-    let title_prefix = format!("Tango: {}", window_title);
-    let (vbuf_width, vbuf_height) = video_filter.output_size((
-        mgba::gba::SCREEN_WIDTH as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-    ));
-    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
-
-    let window = video
-        .window(
-            &title_prefix,
-            std::cmp::max(mgba::gba::SCREEN_WIDTH * window_scale, vbuf_width as u32),
-            std::cmp::max(mgba::gba::SCREEN_HEIGHT * window_scale, vbuf_height as u32),
-        )
-        .opengl()
-        .resizable()
-        .build()
-        .unwrap();
-
-    let mut canvas = window
-        .into_canvas()
-        .accelerated()
-        .present_vsync()
-        .build()
-        .unwrap();
-
-    let texture_creator = canvas.texture_creator();
-    let mut texture = texture_creator
-        .create_texture_streaming(
-            sdl2::pixels::PixelFormatEnum::ABGR8888,
-            vbuf_width as u32,
-            vbuf_height as u32,
-        )
-        .unwrap();
-
-    let audio_cb = audio::LateBinder::<i16>::new();
-    let audio_device = audio
-        .open_playback(
-            None,
-            &sdl2::audio::AudioSpecDesired {
-                freq: Some(48000),
-                channels: Some(audio::NUM_CHANNELS as u8),
-                samples: Some(512),
-            },
-            {
-                let audio_cb = audio_cb.clone();
-                |_| audio_cb
-            },
-        )
-        .unwrap();
-    log::info!("audio spec: {:?}", audio_device.spec());
-    audio_device.resume();
-
-    let fps_counter = Arc::new(Mutex::new(stats::Counter::new(30)));
-    let emu_tps_counter = Arc::new(Mutex::new(stats::Counter::new(10)));
-
-    let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
-    let mut input_state = sdl2_input_helper::State::new();
-
-    let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
-        std::collections::HashMap::new();
-    // Preemptively enumerate controllers.
-    for which in 0..game_controller.num_joysticks().unwrap() {
-        if !game_controller.is_game_controller(which) {
-            continue;
-        }
-        let controller = game_controller.open(which).unwrap();
-        log::info!("controller added: {}", controller.name());
-        controllers.insert(which, controller);
-    }
-
-    let font =
-        ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
-    let scale = ab_glyph::PxScale::from(16.0);
-    let scaled_font = font.as_scaled(scale);
-
-    let mut event_loop = sdl.event_pump().unwrap();
-
-    {
+impl Session {
+    fn new(
+        handle: tokio::runtime::Handle,
+        ipc_sender: Arc<Mutex<ipc::Sender>>,
+        audio_cb: audio::LateBinder<i16>,
+        audio_spec: &sdl2::audio::AudioSpec,
+        rom_path: std::path::PathBuf,
+        save_path: std::path::PathBuf,
+        emu_tps_counter: Arc<Mutex<stats::Counter>>,
+        match_init: Option<battle::MatchInit>,
+    ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
         let rom = std::fs::read(rom_path)?;
         let rom_vf = mgba::vfile::VFile::open_memory(&rom);
         core.as_mut().load_rom(rom_vf)?;
-
-        log::info!(
-            "loaded game: {} rev {}",
-            std::str::from_utf8(&core.as_mut().full_rom_name()).unwrap(),
-            core.as_mut().rom_revision(),
-        );
 
         let save_vf = if match_init.is_none() {
             mgba::vfile::VFile::open(
@@ -126,6 +42,8 @@ pub fn run(
         };
 
         core.as_mut().load_save(save_vf)?;
+
+        let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
         let hooks = hooks::get(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
@@ -201,29 +119,148 @@ pub fn run(
 
         audio_cb.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            audio_device.spec().freq,
+            audio_spec.freq,
         ))));
 
-        let emu_vbuf = Arc::new(Mutex::new(vec![
+        let vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
                 as usize
         ]));
         {
             let joyflags = joyflags.clone();
-            let emu_vbuf = emu_vbuf.clone();
+            let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
             thread.set_frame_callback(move |mut core, video_buffer| {
-                let mut emu_vbuf = emu_vbuf.lock();
-                emu_vbuf.copy_from_slice(video_buffer);
-                for i in (0..emu_vbuf.len()).step_by(4) {
-                    emu_vbuf[i + 3] = 0xff;
+                let mut vbuf = vbuf.lock();
+                vbuf.copy_from_slice(video_buffer);
+                for i in (0..vbuf.len()).step_by(4) {
+                    vbuf[i + 3] = 0xff;
                 }
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
             });
         }
+        Ok(Session {
+            vbuf,
+            thread,
+            joyflags,
+            match_,
+        })
+    }
 
+    fn set_joyflags(&self, joyflags: u32) {
+        self.joyflags
+            .store(joyflags, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+pub fn run(
+    rt: tokio::runtime::Runtime,
+    ipc_sender: Arc<Mutex<ipc::Sender>>,
+    window_title: String,
+    input_mapping: input::Mapping,
+    rom_path: std::path::PathBuf,
+    save_path: std::path::PathBuf,
+    window_scale: u32,
+    video_filter: Box<dyn video::Filter>,
+    match_init: Option<battle::MatchInit>,
+) -> Result<(), anyhow::Error> {
+    let handle = rt.handle().clone();
+
+    let sdl = sdl2::init().unwrap();
+    let video = sdl.video().unwrap();
+    let game_controller = sdl.game_controller().unwrap();
+    let audio = sdl.audio().unwrap();
+
+    let title_prefix = format!("Tango: {}", window_title);
+    let (vbuf_width, vbuf_height) = video_filter.output_size((
+        mgba::gba::SCREEN_WIDTH as usize,
+        mgba::gba::SCREEN_HEIGHT as usize,
+    ));
+    let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
+
+    let window = video
+        .window(
+            &title_prefix,
+            std::cmp::max(mgba::gba::SCREEN_WIDTH * window_scale, vbuf_width as u32),
+            std::cmp::max(mgba::gba::SCREEN_HEIGHT * window_scale, vbuf_height as u32),
+        )
+        .opengl()
+        .resizable()
+        .build()
+        .unwrap();
+
+    let mut canvas = window
+        .into_canvas()
+        .accelerated()
+        .present_vsync()
+        .build()
+        .unwrap();
+
+    let texture_creator = canvas.texture_creator();
+    let mut texture = texture_creator
+        .create_texture_streaming(
+            sdl2::pixels::PixelFormatEnum::ABGR8888,
+            vbuf_width as u32,
+            vbuf_height as u32,
+        )
+        .unwrap();
+
+    let audio_cb = audio::LateBinder::<i16>::new();
+    let audio_device = audio
+        .open_playback(
+            None,
+            &sdl2::audio::AudioSpecDesired {
+                freq: Some(48000),
+                channels: Some(audio::NUM_CHANNELS as u8),
+                samples: Some(512),
+            },
+            {
+                let audio_cb = audio_cb.clone();
+                |_| audio_cb
+            },
+        )
+        .unwrap();
+    log::info!("audio spec: {:?}", audio_device.spec());
+    audio_device.resume();
+
+    let fps_counter = Arc::new(Mutex::new(stats::Counter::new(30)));
+    let emu_tps_counter = Arc::new(Mutex::new(stats::Counter::new(10)));
+
+    let mut input_state = sdl2_input_helper::State::new();
+
+    let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
+        std::collections::HashMap::new();
+    // Preemptively enumerate controllers.
+    for which in 0..game_controller.num_joysticks().unwrap() {
+        if !game_controller.is_game_controller(which) {
+            continue;
+        }
+        let controller = game_controller.open(which).unwrap();
+        log::info!("controller added: {}", controller.name());
+        controllers.insert(which, controller);
+    }
+
+    let font =
+        ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
+    let scale = ab_glyph::PxScale::from(16.0);
+    let scaled_font = font.as_scaled(scale);
+
+    let session = Session::new(
+        rt.handle().clone(),
+        ipc_sender.clone(),
+        audio_cb.clone(),
+        audio_device.spec(),
+        rom_path,
+        save_path,
+        emu_tps_counter.clone(),
+        match_init,
+    )?;
+
+    let mut event_loop = sdl.event_pump().unwrap();
+
+    {
         log::info!("running...");
         rt.block_on(async {
             ipc_sender
@@ -243,7 +280,7 @@ pub fn run(
         let mut show_debug_pressed = false;
         let mut show_debug = false;
 
-        let thread_handle = thread.handle();
+        let thread_handle = session.thread.handle();
 
         'toplevel: loop {
             // Handle events.
@@ -275,15 +312,12 @@ pub fn run(
                     if show_debug_pressed && !last_show_debug_pressed {
                         show_debug = !show_debug;
                     }
-                    joyflags.store(
-                        input_mapping.to_mgba_keys(&input_state),
-                        std::sync::atomic::Ordering::Relaxed,
-                    );
+                    session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
                 }
             }
 
             // If we're in single-player mode, allow speedup.
-            if match_.is_none() {
+            if session.match_.is_none() {
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
                     if input_mapping
@@ -298,7 +332,7 @@ pub fn run(
                 );
             }
 
-            if let Some(match_) = &match_ {
+            if let Some(match_) = &session.match_ {
                 if handle.block_on(async { match_.lock().await.is_none() }) {
                     break 'toplevel;
                 }
@@ -317,7 +351,7 @@ pub fn run(
 
             // Apply stupid video scaling filter that only mint wants 🥴
             video_filter.apply(
-                &emu_vbuf.lock(),
+                &session.vbuf.lock(),
                 &mut vbuf,
                 (
                     mgba::gba::SCREEN_WIDTH as usize,
@@ -356,7 +390,7 @@ pub fn run(
 
             // Update title to show P1/P2 state.
             let mut title = title_prefix.to_string();
-            if let Some(match_) = match_.as_ref() {
+            if let Some(match_) = session.match_.as_ref() {
                 rt.block_on(async {
                     if let Some(match_) = &*match_.lock().await {
                         let round_state = match_.lock_round_state().await;
@@ -371,7 +405,7 @@ pub fn run(
             if show_debug {
                 draw_debug(
                     handle.clone(),
-                    &match_,
+                    &session.match_,
                     &mut canvas,
                     &texture_creator,
                     &scaled_font,
