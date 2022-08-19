@@ -115,12 +115,12 @@ where
                 0,
             );
 
-            let local_inputs = self.local_queue.drain(..n as usize);
-            let remote_inputs = self.remote_queue.drain(..n as usize);
-            local_inputs
-                .zip(remote_inputs)
-                .map(|(local, remote)| Pair { local, remote })
-                .collect()
+            std::iter::zip(
+                self.local_queue.drain(..n as usize),
+                self.remote_queue.drain(..n as usize),
+            )
+            .map(|(local, remote)| Pair { local, remote })
+            .collect()
         };
 
         let peeked = self

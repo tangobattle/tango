@@ -379,19 +379,13 @@ fn dump_input_info(
     let mut side_independent_sha3 = sha3::Sha3_256::new();
     for ip in &replay.input_pairs {
         side_dependent_sha3.update(
-            &ip.local
-                .packet
-                .iter()
-                .zip(ip.remote.packet.iter())
+            std::iter::zip(ip.local.packet.iter(), ip.remote.packet.iter())
                 .flat_map(|(x, y)| [*x, *y])
                 .collect::<Vec<_>>(),
         );
 
         side_independent_sha3.update(
-            &ip.local
-                .packet
-                .iter()
-                .zip(ip.remote.packet.iter())
+            std::iter::zip(ip.local.packet.iter(), ip.remote.packet.iter())
                 .map(|(x, y)| *x ^ *y)
                 .collect::<Vec<_>>(),
         );
