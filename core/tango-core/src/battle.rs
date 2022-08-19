@@ -708,7 +708,9 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        (self.dtick * game::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
+        let ddelay = self.local_delay() as i32 - self.remote_delay() as i32;
+        let ddelay = 0;
+        ((self.dtick + ddelay) * game::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
     }
 }
 
