@@ -214,14 +214,15 @@ pub fn run(
             let viewport = canvas.viewport();
             let scaling_factor = std::cmp::max(
                 std::cmp::min(
-                    viewport.width() / vbuf_width as u32,
-                    viewport.height() / vbuf_height as u32,
+                    viewport.width() / mgba::gba::SCREEN_WIDTH,
+                    viewport.height() / mgba::gba::SCREEN_HEIGHT,
                 ),
                 1,
             );
+
             let (new_width, new_height) = (
-                vbuf_width as u32 * scaling_factor,
-                vbuf_height as u32 * scaling_factor,
+                (mgba::gba::SCREEN_WIDTH * scaling_factor) as u32,
+                (mgba::gba::SCREEN_HEIGHT * scaling_factor) as u32,
             );
             canvas
                 .copy(
