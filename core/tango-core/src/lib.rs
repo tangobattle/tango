@@ -13,6 +13,7 @@ pub mod net;
 pub mod protocol;
 pub mod replay;
 pub mod replayer;
+pub mod session;
 pub mod shadow;
 pub mod signaling;
 pub mod stats;
