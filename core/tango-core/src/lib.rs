@@ -9,7 +9,7 @@ pub mod hooks;
 pub mod input;
 pub mod ipc;
 pub mod lockstep;
-pub mod negotiation;
+pub mod net;
 pub mod protocol;
 pub mod replay;
 pub mod replayer;

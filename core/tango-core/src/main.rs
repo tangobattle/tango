@@ -144,7 +144,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let (start_req, pvp_init) = if let Some(session_id) = &args.session_id {
         rt.block_on(async {
-            let (dc, peer_conn) = match tango_core::negotiation::negotiate(
+            let (dc, peer_conn) = match tango_core::net::negotiate(
                 &mut ipc_sender,
                 session_id,
                 &args.signaling_connect_addr,
@@ -154,16 +154,16 @@ fn main() -> Result<(), anyhow::Error> {
                 Ok(v) => v,
                 Err(err) => {
                     match err {
-                        tango_core::negotiation::Error::ExpectedHello => {
+                        tango_core::net::Error::ExpectedHello => {
                             return Err(err.into());
                         }
-                        tango_core::negotiation::Error::ProtocolVersionTooOld => {
+                        tango_core::net::Error::ProtocolVersionTooOld => {
                             std::process::exit(ExitCode::ProtocolVersionTooOld as i32);
                         }
-                        tango_core::negotiation::Error::ProtocolVersionTooNew => {
+                        tango_core::net::Error::ProtocolVersionTooNew => {
                             std::process::exit(ExitCode::ProtocolVersionTooNew as i32);
                         }
-                        tango_core::negotiation::Error::Other(_) => {
+                        tango_core::net::Error::Other(_) => {
                             return Err(err.into());
                         }
                     }
