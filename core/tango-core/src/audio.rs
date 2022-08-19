@@ -1,5 +1,41 @@
 pub const NUM_CHANNELS: usize = 2;
 
+#[derive(Clone)]
+pub struct LateBinder<C> {
+    stream: std::sync::Arc<
+        parking_lot::Mutex<Option<Box<dyn sdl2::audio::AudioCallback<Channel = C>>>>,
+    >,
+}
+
+impl<C> LateBinder<C> {
+    pub fn new() -> Self {
+        Self {
+            stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+        }
+    }
+
+    pub fn bind(&self, stream: Option<Box<dyn sdl2::audio::AudioCallback<Channel = C>>>) {
+        *self.stream.lock() = stream;
+    }
+}
+
+impl<C> sdl2::audio::AudioCallback for LateBinder<C>
+where
+    C: sdl2::audio::AudioFormatNum + 'static,
+{
+    type Channel = C;
+
+    fn callback(&mut self, buf: &mut [C]) {
+        if let Some(stream) = &mut *self.stream.lock() {
+            stream.callback(buf);
+        } else {
+            for sample in buf {
+                *sample = C::SILENCE;
+            }
+        }
+    }
+}
+
 pub struct MGBAStream {
     handle: mgba::thread::Handle,
     sample_rate: i32,

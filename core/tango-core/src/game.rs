@@ -146,6 +146,24 @@ pub fn run(
         )
         .unwrap();
 
+    let audio_cb = audio::LateBinder::<i16>::new();
+    let audio_device = audio
+        .open_playback(
+            None,
+            &sdl2::audio::AudioSpecDesired {
+                freq: Some(48000),
+                channels: Some(audio::NUM_CHANNELS as u8),
+                samples: Some(512),
+            },
+            {
+                let audio_cb = audio_cb.clone();
+                |_| audio_cb
+            },
+        )
+        .unwrap();
+    log::info!("audio spec: {:?}", audio_device.spec());
+    audio_device.resume();
+
     let fps_counter = Arc::new(Mutex::new(tps::Counter::new(30)));
     let emu_tps_counter = Arc::new(Mutex::new(tps::Counter::new(10)));
 
@@ -269,19 +287,10 @@ pub fn run(
             .sync_mut()
             .set_fps_target(EXPECTED_FPS);
 
-        let audio_device = audio
-            .open_playback(
-                None,
-                &sdl2::audio::AudioSpecDesired {
-                    freq: Some(48000),
-                    channels: Some(audio::NUM_CHANNELS as u8),
-                    samples: Some(512),
-                },
-                |spec| audio::MGBAStream::new(thread.handle(), spec.freq),
-            )
-            .unwrap();
-        log::info!("audio spec: {:?}", audio_device.spec());
-        audio_device.resume();
+        audio_cb.bind(Some(Box::new(audio::MGBAStream::new(
+            thread.handle(),
+            audio_device.spec().freq,
+        ))));
 
         {
             let joyflags = joyflags.clone();
