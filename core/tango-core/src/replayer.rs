@@ -1,18 +1,21 @@
 use crate::battle;
 use crate::hooks;
-use crate::input;
+use crate::lockstep;
 
 pub struct InnerState {
     current_tick: u32,
     local_player_index: u8,
-    input_pairs: std::collections::VecDeque<input::Pair<input::PartialInput, input::PartialInput>>,
-    output_pairs: Vec<input::Pair<input::Input, input::Input>>,
+    input_pairs:
+        std::collections::VecDeque<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>>,
+    output_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
     apply_shadow_input: Box<
-        dyn FnMut(input::Pair<input::Input, input::PartialInput>) -> anyhow::Result<Vec<u8>>
+        dyn FnMut(
+                lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
+            ) -> anyhow::Result<Vec<u8>>
             + Sync
             + Send,
     >,
-    local_packet: Option<input::Packet>,
+    local_packet: Option<lockstep::Packet>,
     commit_tick: u32,
     committed_state: Option<battle::CommittedState>,
     dirty_tick: u32,
@@ -79,22 +82,22 @@ impl InnerState {
 
     pub fn peek_input_pair(
         &self,
-    ) -> Option<&input::Pair<input::PartialInput, input::PartialInput>> {
+    ) -> Option<&lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>> {
         self.input_pairs.front()
     }
 
     pub fn pop_input_pair(
         &mut self,
-    ) -> Option<input::Pair<input::PartialInput, input::PartialInput>> {
+    ) -> Option<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>> {
         self.input_pairs.pop_front()
     }
 
     pub fn apply_shadow_input(
         &mut self,
-        input: input::Pair<input::Input, input::PartialInput>,
+        input: lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
     ) -> anyhow::Result<Vec<u8>> {
         let remote_packet = (self.apply_shadow_input)(input.clone())?;
-        self.output_pairs.push(input::Pair {
+        self.output_pairs.push(lockstep::Pair {
             local: input.local,
             remote: input.remote.with_packet(remote_packet.clone()),
         });
@@ -102,10 +105,10 @@ impl InnerState {
     }
 
     pub fn set_local_packet(&mut self, tick: u32, packet: Vec<u8>) {
-        self.local_packet = Some(input::Packet { tick, packet });
+        self.local_packet = Some(lockstep::Packet { tick, packet });
     }
 
-    pub fn peek_local_packet(&mut self) -> Option<&input::Packet> {
+    pub fn peek_local_packet(&mut self) -> Option<&lockstep::Packet> {
         self.local_packet.as_ref()
     }
 
@@ -159,7 +162,7 @@ pub struct FastforwardResult {
     pub committed_state: battle::CommittedState,
     pub dirty_state: battle::CommittedState,
     pub round_result: Option<RoundResult>,
-    pub output_pairs: Vec<input::Pair<input::Input, input::Input>>,
+    pub output_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
 }
 
 #[derive(Clone, Copy, serde_repr::Serialize_repr)]
@@ -196,11 +199,11 @@ pub struct State(std::sync::Arc<parking_lot::Mutex<Option<InnerState>>>);
 impl State {
     pub fn new(
         local_player_index: u8,
-        input_pairs: Vec<input::Pair<input::Input, input::Input>>,
+        input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
         commit_tick: u32,
         on_round_ended: Box<dyn Fn() + Sync + Send>,
     ) -> State {
-        let local_packet = input_pairs.first().map(|ip| input::Packet {
+        let local_packet = input_pairs.first().map(|ip| lockstep::Packet {
             tick: ip.local.local_tick,
             packet: ip.local.packet.clone(),
         });
@@ -210,13 +213,13 @@ impl State {
                 local_player_index,
                 input_pairs: input_pairs
                     .iter()
-                    .map(|ip| input::Pair {
-                        local: input::PartialInput {
+                    .map(|ip| lockstep::Pair {
+                        local: lockstep::PartialInput {
                             local_tick: ip.local.local_tick,
                             remote_tick: ip.local.remote_tick,
                             joyflags: ip.local.joyflags,
                         },
-                        remote: input::PartialInput {
+                        remote: lockstep::PartialInput {
                             local_tick: ip.remote.local_tick,
                             remote_tick: ip.remote.remote_tick,
                             joyflags: ip.remote.joyflags,
@@ -284,13 +287,15 @@ impl Fastforwarder {
     pub fn fastforward(
         &mut self,
         state: &mgba::state::State,
-        input_pairs: Vec<input::Pair<input::PartialInput, input::PartialInput>>,
+        input_pairs: Vec<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>>,
         current_tick: u32,
         commit_tick: u32,
         dirty_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<
-            dyn FnMut(input::Pair<input::Input, input::PartialInput>) -> anyhow::Result<Vec<u8>>
+            dyn FnMut(
+                    lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
+                ) -> anyhow::Result<Vec<u8>>
                 + Sync
                 + Send,
         >,
@@ -304,7 +309,7 @@ impl Fastforwarder {
             input_pairs: input_pairs.into_iter().collect(),
             output_pairs: vec![],
             apply_shadow_input,
-            local_packet: Some(input::Packet {
+            local_packet: Some(lockstep::Packet {
                 tick: current_tick,
                 packet: last_local_packet.to_vec(),
             }),

@@ -2,8 +2,8 @@ use rand::Rng;
 
 use crate::game;
 use crate::hooks;
-use crate::input;
 use crate::ipc;
+use crate::lockstep;
 use crate::protocol;
 use crate::replay;
 use crate::replayer;
@@ -324,7 +324,7 @@ impl Match {
                         anyhow::bail!("remote overflowed our input buffer");
                     }
 
-                    round.add_remote_input(input::PartialInput {
+                    round.add_remote_input(lockstep::PartialInput {
                         local_tick: input.local_tick,
                         remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
                         joyflags: input.joyflags as u16,
@@ -380,21 +380,21 @@ impl Match {
             tokio::sync::oneshot::channel();
 
         let mut iq =
-            input::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
+            lockstep::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
         log::info!(
             "filling input delay: local = {}, remote = {}",
             self.settings.input_delay,
             self.settings.shadow_input_delay
         );
         for i in 0..self.settings.input_delay {
-            iq.add_local_input(input::PartialInput {
+            iq.add_local_input(lockstep::PartialInput {
                 local_tick: i,
                 remote_tick: 0,
                 joyflags: 0,
             });
         }
         for i in 0..self.settings.shadow_input_delay {
-            iq.add_remote_input(input::PartialInput {
+            iq.add_remote_input(lockstep::PartialInput {
                 local_tick: i,
                 remote_tick: 0,
                 joyflags: 0,
@@ -409,7 +409,7 @@ impl Match {
             dtick: 0,
             iq,
             remote_delay: self.settings.shadow_input_delay,
-            last_committed_remote_input: input::Input {
+            last_committed_remote_input: lockstep::Input {
                 local_tick: 0,
                 remote_tick: 0,
                 joyflags: 0,
@@ -442,9 +442,9 @@ pub struct Round {
     local_player_index: u8,
     current_tick: u32,
     dtick: i32,
-    iq: input::PairQueue<input::PartialInput, input::PartialInput>,
+    iq: lockstep::PairQueue<lockstep::PartialInput, lockstep::PartialInput>,
     remote_delay: u32,
-    last_committed_remote_input: input::Input,
+    last_committed_remote_input: lockstep::Input,
     first_state_committed_local_packet: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
@@ -528,7 +528,7 @@ impl Round {
             )
             .await?;
 
-        self.add_local_input(input::PartialInput {
+        self.add_local_input(lockstep::PartialInput {
             local_tick,
             remote_tick,
             joyflags,
@@ -546,9 +546,9 @@ impl Round {
             .chain(predict_required.into_iter().map(|local| {
                 let local_tick = local.local_tick;
                 let remote_tick = local.remote_tick;
-                input::Pair {
+                lockstep::Pair {
                     local,
-                    remote: input::PartialInput {
+                    remote: lockstep::PartialInput {
                         local_tick,
                         remote_tick,
                         joyflags: {
@@ -570,7 +570,7 @@ impl Round {
                     },
                 }
             }))
-            .collect::<Vec<input::Pair<input::PartialInput, input::PartialInput>>>();
+            .collect::<Vec<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>>>();
         let last_local_input = input_pairs.last().unwrap().local.clone();
 
         let ff_result = self.replayer.fastforward(
@@ -692,7 +692,7 @@ impl Round {
         self.iq.local_queue_length() < self.iq.max_length()
     }
 
-    pub fn add_local_input(&mut self, input: input::PartialInput) {
+    pub fn add_local_input(&mut self, input: lockstep::PartialInput) {
         log::debug!("local input: {:?}", input);
         self.iq.add_local_input(input);
     }
@@ -701,7 +701,7 @@ impl Round {
         self.iq.remote_queue_length() < self.iq.max_length()
     }
 
-    pub fn add_remote_input(&mut self, input: input::PartialInput) {
+    pub fn add_remote_input(&mut self, input: lockstep::PartialInput) {
         log::debug!("remote input: {:?}", input);
         self.iq.add_remote_input(input);
     }

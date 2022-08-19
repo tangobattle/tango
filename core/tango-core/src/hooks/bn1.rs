@@ -4,7 +4,7 @@ mod offsets;
 use byteorder::ByteOrder;
 use rand::Rng;
 
-use crate::{battle, hooks, input, replayer, shadow};
+use crate::{battle, hooks, lockstep, replayer, shadow};
 
 #[derive(Clone)]
 pub struct BN2 {
@@ -755,7 +755,7 @@ impl hooks::Hooks for BN2 {
                     core,
                     replayer_state.remote_player_index() as u32,
                     &replayer_state
-                        .apply_shadow_input(input::Pair {
+                        .apply_shadow_input(lockstep::Pair {
                             local: ip.local.with_packet(local_packet.packet),
                             remote: ip.remote,
                         })

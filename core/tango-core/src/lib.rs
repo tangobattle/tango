@@ -8,6 +8,7 @@ pub mod game;
 pub mod hooks;
 pub mod input;
 pub mod ipc;
+pub mod lockstep;
 pub mod negotiation;
 pub mod protocol;
 pub mod replay;

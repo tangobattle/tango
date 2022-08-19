@@ -1,7 +1,7 @@
 mod munger;
 mod offsets;
 
-use crate::{battle, hooks, input, replayer, shadow};
+use crate::{battle, hooks, lockstep, replayer, shadow};
 
 #[derive(Clone)]
 pub struct EXE45 {
@@ -1058,7 +1058,7 @@ impl hooks::Hooks for EXE45 {
                             core,
                             replayer_state.remote_player_index() as u32,
                             &replayer_state
-                                .apply_shadow_input(input::Pair {
+                                .apply_shadow_input(lockstep::Pair {
                                     local: ip.local.with_packet(local_packet.packet),
                                     remote: ip.remote,
                                 })

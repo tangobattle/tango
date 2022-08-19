@@ -1,132 +1,82 @@
-#[derive(Clone)]
-pub struct Packet {
-    pub packet: Vec<u8>,
-    pub tick: u32,
-}
-
 #[derive(Clone, Debug)]
-pub struct Input {
-    pub local_tick: u32,
-    pub remote_tick: u32,
-    pub joyflags: u16,
-    pub packet: Vec<u8>,
+pub enum PhysicalInput {
+    Key(sdl2::keyboard::Scancode),
+    Button(sdl2::controller::Button),
+    Axis(sdl2::controller::Axis, i16),
 }
 
-impl Input {
-    pub fn lag(&self) -> i32 {
-        self.remote_tick as i32 - self.local_tick as i32
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct PartialInput {
-    pub local_tick: u32,
-    pub remote_tick: u32,
-    pub joyflags: u16,
-}
-
-impl PartialInput {
-    pub fn lag(&self) -> i32 {
-        self.remote_tick as i32 - self.local_tick as i32
-    }
-
-    pub fn with_packet(self, packet: Vec<u8>) -> Input {
-        Input {
-            local_tick: self.local_tick,
-            remote_tick: self.remote_tick,
-            joyflags: self.joyflags,
-            packet: packet,
+impl PhysicalInput {
+    pub fn is_active(&self, input: &sdl2_input_helper::State) -> bool {
+        match *self {
+            PhysicalInput::Key(key) => input.is_key_pressed(key),
+            PhysicalInput::Button(button) => input
+                .iter_controllers()
+                .any(|(_, c)| c.is_button_pressed(button)),
+            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
+                (threshold > 0 && c.axis(axis) >= threshold)
+                    || (threshold < 0 && c.axis(axis) <= threshold)
+            }),
         }
     }
 }
 
-pub struct PairQueue<T, U>
-where
-    T: Clone,
-    U: Clone,
-{
-    local_queue: std::collections::VecDeque<T>,
-    remote_queue: std::collections::VecDeque<U>,
-    local_delay: u32,
-    max_length: usize,
-}
-
 #[derive(Clone, Debug)]
-pub struct Pair<T, U>
-where
-    T: Clone,
-    U: Clone,
-{
-    pub local: T,
-    pub remote: U,
+pub struct Mapping {
+    pub up: Vec<PhysicalInput>,
+    pub down: Vec<PhysicalInput>,
+    pub left: Vec<PhysicalInput>,
+    pub right: Vec<PhysicalInput>,
+    pub a: Vec<PhysicalInput>,
+    pub b: Vec<PhysicalInput>,
+    pub l: Vec<PhysicalInput>,
+    pub r: Vec<PhysicalInput>,
+    pub select: Vec<PhysicalInput>,
+    pub start: Vec<PhysicalInput>,
+    pub speed_up: Vec<PhysicalInput>,
 }
 
-impl<T, U> PairQueue<T, U>
-where
-    T: Clone,
-    U: Clone,
-{
-    pub fn new(capacity: usize, local_delay: u32) -> Self {
-        PairQueue {
-            local_queue: std::collections::VecDeque::with_capacity(capacity),
-            remote_queue: std::collections::VecDeque::with_capacity(capacity),
-            local_delay,
-            max_length: capacity,
-        }
-    }
-
-    pub fn max_length(&self) -> usize {
-        self.max_length
-    }
-
-    pub fn add_local_input(&mut self, v: T) {
-        self.local_queue.push_back(v);
-    }
-
-    pub fn add_remote_input(&mut self, v: U) {
-        self.remote_queue.push_back(v);
-    }
-
-    pub fn local_delay(&self) -> u32 {
-        self.local_delay
-    }
-
-    pub fn local_queue_length(&self) -> usize {
-        self.local_queue.len()
-    }
-
-    pub fn remote_queue_length(&self) -> usize {
-        self.remote_queue.len()
-    }
-
-    pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<T, U>>, Vec<T>) {
-        let to_commit = {
-            let mut n = self.local_queue.len() as isize - self.local_delay as isize;
-            if (self.remote_queue.len() as isize) < n {
-                n = self.remote_queue.len() as isize;
-            }
-
-            if n < 0 {
-                vec![]
-            } else {
-                let local_inputs = self.local_queue.drain(..n as usize);
-                let remote_inputs = self.remote_queue.drain(..n as usize);
-                local_inputs
-                    .zip(remote_inputs)
-                    .map(|(local, remote)| Pair { local, remote })
-                    .collect()
-            }
-        };
-
-        let peeked = {
-            let n = self.local_queue.len() as isize - self.local_delay as isize;
-            if n < 0 {
-                vec![]
-            } else {
-                self.local_queue.range(..n as usize).cloned().collect()
-            }
-        };
-
-        (to_commit, peeked)
+impl Mapping {
+    pub fn to_mgba_keys(&self, input: &sdl2_input_helper::State) -> u32 {
+        (if self.left.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::LEFT
+        } else {
+            0
+        }) | (if self.right.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::RIGHT
+        } else {
+            0
+        }) | (if self.up.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::UP
+        } else {
+            0
+        }) | (if self.down.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::DOWN
+        } else {
+            0
+        }) | (if self.a.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::A
+        } else {
+            0
+        }) | (if self.b.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::B
+        } else {
+            0
+        }) | (if self.l.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::L
+        } else {
+            0
+        }) | (if self.r.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::R
+        } else {
+            0
+        }) | (if self.select.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::SELECT
+        } else {
+            0
+        }) | (if self.start.iter().any(|c| c.is_active(input)) {
+            mgba::input::keys::START
+        } else {
+            0
+        })
     }
 }

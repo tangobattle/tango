@@ -1,11 +1,11 @@
-use crate::{battle, hooks, input};
+use crate::{battle, hooks, lockstep};
 
 pub struct Round {
     current_tick: u32,
     local_player_index: u8,
     first_committed_state: Option<mgba::state::State>,
-    pending_shadow_input: Option<input::Pair<input::Input, input::PartialInput>>,
-    pending_remote_packet: Option<input::Packet>,
+    pending_shadow_input: Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>>,
+    pending_remote_packet: Option<lockstep::Packet>,
     input_injected: bool,
 }
 
@@ -36,7 +36,7 @@ impl Round {
 
     pub fn set_first_committed_state(&mut self, state: mgba::state::State, packet: &[u8]) {
         self.first_committed_state = Some(state);
-        self.pending_remote_packet = Some(input::Packet {
+        self.pending_remote_packet = Some(lockstep::Packet {
             tick: 0,
             packet: packet.to_vec(),
         });
@@ -46,19 +46,23 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub fn take_shadow_input(&mut self) -> Option<input::Pair<input::Input, input::PartialInput>> {
+    pub fn take_shadow_input(
+        &mut self,
+    ) -> Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
         self.pending_shadow_input.take()
     }
 
     pub fn set_remote_packet(&mut self, tick: u32, packet: Vec<u8>) {
-        self.pending_remote_packet = Some(input::Packet { tick, packet });
+        self.pending_remote_packet = Some(lockstep::Packet { tick, packet });
     }
 
-    pub fn peek_remote_packet(&self) -> Option<input::Packet> {
+    pub fn peek_remote_packet(&self) -> Option<lockstep::Packet> {
         self.pending_remote_packet.clone()
     }
 
-    pub fn peek_shadow_input(&mut self) -> &Option<input::Pair<input::Input, input::PartialInput>> {
+    pub fn peek_shadow_input(
+        &mut self,
+    ) -> &Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
         &self.pending_shadow_input
     }
 
@@ -268,8 +272,8 @@ impl Shadow {
 
     pub fn apply_input(
         &mut self,
-        ip: input::Pair<input::Input, input::PartialInput>,
-    ) -> anyhow::Result<input::Packet> {
+        ip: lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
+    ) -> anyhow::Result<lockstep::Packet> {
         let pending_remote_packet = {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");

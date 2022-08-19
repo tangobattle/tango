@@ -1,4 +1,4 @@
-use crate::{battle, hooks, input, replayer, shadow};
+use crate::{battle, hooks, lockstep, replayer, shadow};
 
 mod munger;
 mod offsets;
@@ -1121,7 +1121,7 @@ impl hooks::Hooks for BN6 {
                             core,
                             replayer_state.remote_player_index() as u32,
                             &replayer_state
-                                .apply_shadow_input(input::Pair {
+                                .apply_shadow_input(lockstep::Pair {
                                     local: ip.local.with_packet(local_packet.packet),
                                     remote: ip.remote,
                                 })

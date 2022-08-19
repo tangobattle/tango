@@ -1,4 +1,4 @@
-use crate::{audio, battle, font, hooks, ipc, tps, video};
+use crate::{audio, battle, font, hooks, input, ipc, tps, video};
 use ab_glyph::{Font, ScaleFont};
 use parking_lot::Mutex;
 use rand::SeedableRng;
@@ -6,94 +6,11 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: f32 = 60.0;
 
-#[derive(Clone, Debug)]
-pub enum PhysicalInput {
-    Key(sdl2::keyboard::Scancode),
-    Button(sdl2::controller::Button),
-    Axis(sdl2::controller::Axis, i16),
-}
-
-impl PhysicalInput {
-    fn is_active(&self, input: &sdl2_input_helper::State) -> bool {
-        match *self {
-            PhysicalInput::Key(key) => input.is_key_pressed(key),
-            PhysicalInput::Button(button) => input
-                .iter_controllers()
-                .any(|(_, c)| c.is_button_pressed(button)),
-            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
-                (threshold > 0 && c.axis(axis) >= threshold)
-                    || (threshold < 0 && c.axis(axis) <= threshold)
-            }),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct InputMapping {
-    pub up: Vec<PhysicalInput>,
-    pub down: Vec<PhysicalInput>,
-    pub left: Vec<PhysicalInput>,
-    pub right: Vec<PhysicalInput>,
-    pub a: Vec<PhysicalInput>,
-    pub b: Vec<PhysicalInput>,
-    pub l: Vec<PhysicalInput>,
-    pub r: Vec<PhysicalInput>,
-    pub select: Vec<PhysicalInput>,
-    pub start: Vec<PhysicalInput>,
-    pub speed_up: Vec<PhysicalInput>,
-}
-
-impl InputMapping {
-    fn to_mgba_keys(&self, input: &sdl2_input_helper::State) -> u32 {
-        (if self.left.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::LEFT
-        } else {
-            0
-        }) | (if self.right.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::RIGHT
-        } else {
-            0
-        }) | (if self.up.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::UP
-        } else {
-            0
-        }) | (if self.down.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::DOWN
-        } else {
-            0
-        }) | (if self.a.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::A
-        } else {
-            0
-        }) | (if self.b.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::B
-        } else {
-            0
-        }) | (if self.l.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::L
-        } else {
-            0
-        }) | (if self.r.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::R
-        } else {
-            0
-        }) | (if self.select.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::SELECT
-        } else {
-            0
-        }) | (if self.start.iter().any(|c| c.is_active(input)) {
-            mgba::input::keys::START
-        } else {
-            0
-        })
-    }
-}
-
 pub fn run(
     rt: tokio::runtime::Runtime,
     ipc_sender: Arc<Mutex<ipc::Sender>>,
     window_title: String,
-    input_mapping: InputMapping,
+    input_mapping: input::Mapping,
     rom_path: std::path::PathBuf,
     save_path: std::path::PathBuf,
     window_scale: u32,

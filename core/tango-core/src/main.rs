@@ -26,16 +26,16 @@ pub struct InputMapping {
     pub speed_up: Vec<PhysicalInput>,
 }
 
-fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::game::PhysicalInput> {
+fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::input::PhysicalInput> {
     const THRESHOLD: i16 = 0x4000;
     match input {
-        PhysicalInput::Key(key) => Some(tango_core::game::PhysicalInput::Key(
+        PhysicalInput::Key(key) => Some(tango_core::input::PhysicalInput::Key(
             sdl2::keyboard::Scancode::from_name(key)?,
         )),
-        PhysicalInput::Button(button) => Some(tango_core::game::PhysicalInput::Button(
+        PhysicalInput::Button(button) => Some(tango_core::input::PhysicalInput::Button(
             sdl2::controller::Button::from_string(button)?,
         )),
-        PhysicalInput::Axis(axis, sign) => Some(tango_core::game::PhysicalInput::Axis(
+        PhysicalInput::Axis(axis, sign) => Some(tango_core::input::PhysicalInput::Axis(
             sdl2::controller::Axis::from_string(axis)?,
             if *sign > 0 {
                 THRESHOLD
@@ -75,7 +75,7 @@ fn main() -> Result<(), anyhow::Error> {
     let args = Cli::parse();
 
     let raw_input_mapping = serde_json::from_str::<InputMapping>(&args.input_mapping)?;
-    let input_mapping = tango_core::game::InputMapping {
+    let input_mapping = tango_core::input::Mapping {
         up: raw_input_mapping
             .up
             .iter()

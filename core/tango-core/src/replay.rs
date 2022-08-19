@@ -1,4 +1,4 @@
-use crate::input;
+use crate::lockstep;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use std::io::Read;
@@ -20,7 +20,7 @@ pub struct Replay {
     pub local_player_index: u8,
     pub local_state: Option<mgba::state::State>,
     pub remote_state: Option<mgba::state::State>,
-    pub input_pairs: Vec<input::Pair<input::Input, input::Input>>,
+    pub input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
 }
 
 impl Replay {
@@ -94,7 +94,7 @@ impl Replay {
                 break;
             };
 
-            let mut p1_input = input::Input {
+            let mut p1_input = lockstep::Input {
                 local_tick,
                 remote_tick,
                 joyflags: if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
@@ -108,7 +108,7 @@ impl Replay {
                 break;
             }
 
-            let mut p2_input = input::Input {
+            let mut p2_input = lockstep::Input {
                 local_tick,
                 remote_tick: local_tick,
                 joyflags: if let Ok(v) = zr.read_u16::<byteorder::LittleEndian>() {
@@ -128,7 +128,7 @@ impl Replay {
                 (p2_input, p1_input)
             };
 
-            input_pairs.push(input::Pair { local, remote });
+            input_pairs.push(lockstep::Pair { local, remote });
         }
 
         Ok(Self {
@@ -177,7 +177,7 @@ impl Writer {
     pub fn write_input(
         &mut self,
         local_player_index: u8,
-        ip: &input::Pair<input::Input, input::Input>,
+        ip: &lockstep::Pair<lockstep::Input, lockstep::Input>,
     ) -> std::io::Result<()> {
         self.encoder
             .as_mut()
