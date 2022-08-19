@@ -107,31 +107,32 @@ where
 
     pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<T, U>>, Vec<T>) {
         let to_commit = {
-            let n = std::cmp::min(
-                self.local_queue.len() as isize - self.local_delay as isize,
-                self.remote_queue.len() as isize,
+            let n = std::cmp::max(
+                std::cmp::min(
+                    self.local_queue.len() as isize - self.local_delay as isize,
+                    self.remote_queue.len() as isize,
+                ),
+                0,
             );
 
-            if n < 0 {
-                vec![]
-            } else {
-                let local_inputs = self.local_queue.drain(..n as usize);
-                let remote_inputs = self.remote_queue.drain(..n as usize);
-                local_inputs
-                    .zip(remote_inputs)
-                    .map(|(local, remote)| Pair { local, remote })
-                    .collect()
-            }
+            let local_inputs = self.local_queue.drain(..n as usize);
+            let remote_inputs = self.remote_queue.drain(..n as usize);
+            local_inputs
+                .zip(remote_inputs)
+                .map(|(local, remote)| Pair { local, remote })
+                .collect()
         };
 
-        let peeked = {
-            let n = self.local_queue.len() as isize - self.local_delay as isize;
-            if n < 0 {
-                vec![]
-            } else {
-                self.local_queue.range(..n as usize).cloned().collect()
-            }
-        };
+        let peeked = self
+            .local_queue
+            .range(
+                ..std::cmp::max(
+                    self.local_queue.len() as isize - self.local_delay as isize,
+                    0,
+                ) as usize,
+            )
+            .cloned()
+            .collect();
 
         (to_commit, peeked)
     }
