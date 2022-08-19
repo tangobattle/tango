@@ -152,8 +152,19 @@ impl Session {
         &self.match_
     }
 
-    pub fn thread_handle(&self) -> mgba::thread::Handle {
-        self.thread.handle()
+    pub fn set_fps(&self, fps: f32) {
+        let handle = self.thread.handle();
+        let audio_guard = handle.lock_audio();
+        audio_guard.sync_mut().set_fps_target(fps);
+    }
+
+    pub fn has_crashed(&self) -> Option<mgba::thread::Handle> {
+        let handle = self.thread.handle();
+        if handle.has_crashed() {
+            Some(handle)
+        } else {
+            None
+        }
     }
 
     pub fn lock_vbuf(&self) -> parking_lot::MutexGuard<Vec<u8>> {

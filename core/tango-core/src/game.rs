@@ -166,12 +166,9 @@ pub fn run(
         canvas.clear();
 
         if let Some(session) = session.as_ref() {
-            let thread_handle = session.thread_handle();
-
             // If we're in single-player mode, allow speedup.
             if session.match_().is_none() {
-                let audio_guard = thread_handle.lock_audio();
-                audio_guard.sync_mut().set_fps_target(
+                session.set_fps(
                     if input_mapping
                         .speed_up
                         .iter()
@@ -191,7 +188,7 @@ pub fn run(
             }
 
             // If we've crashed, log the error and panic.
-            if thread_handle.has_crashed() {
+            if let Some(thread_handle) = session.has_crashed() {
                 // HACK: No better way to lock the core.
                 let audio_guard = thread_handle.lock_audio();
                 panic!(
