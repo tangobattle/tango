@@ -110,7 +110,7 @@ where
             let n = std::cmp::max(
                 std::cmp::min(
                     self.local_queue.len() as isize - self.local_delay as isize,
-                    self.remote_queue.len() as isize - self.remote_delay as isize,
+                    self.remote_queue.len() as isize,
                 ),
                 0,
             );
