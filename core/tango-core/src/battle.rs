@@ -379,8 +379,11 @@ impl Match {
         let (first_state_committed_local_packet, first_state_committed_rx) =
             tokio::sync::oneshot::channel();
 
-        let mut iq =
-            lockstep::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
+        let mut iq = lockstep::PairQueue::new(
+            self.settings.max_queue_length,
+            self.settings.input_delay,
+            self.settings.shadow_input_delay,
+        );
         log::info!(
             "filling input delay: local = {}, remote = {}",
             self.settings.input_delay,
@@ -408,7 +411,6 @@ impl Match {
             current_tick: 0,
             dtick: 0,
             iq,
-            remote_delay: self.settings.shadow_input_delay,
             last_committed_remote_input: lockstep::Input {
                 local_tick: 0,
                 remote_tick: 0,
@@ -443,7 +445,6 @@ pub struct Round {
     current_tick: u32,
     dtick: i32,
     iq: lockstep::PairQueue<lockstep::PartialInput, lockstep::PartialInput>,
-    remote_delay: u32,
     last_committed_remote_input: lockstep::Input,
     first_state_committed_local_packet: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
@@ -677,7 +678,7 @@ impl Round {
     }
 
     pub fn remote_delay(&self) -> u32 {
-        self.remote_delay
+        self.iq.remote_delay()
     }
 
     pub fn local_queue_length(&self) -> usize {

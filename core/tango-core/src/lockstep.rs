@@ -48,6 +48,7 @@ where
     local_queue: std::collections::VecDeque<T>,
     remote_queue: std::collections::VecDeque<U>,
     local_delay: u32,
+    remote_delay: u32,
     max_length: usize,
 }
 
@@ -66,11 +67,12 @@ where
     T: Clone,
     U: Clone,
 {
-    pub fn new(capacity: usize, local_delay: u32) -> Self {
+    pub fn new(capacity: usize, local_delay: u32, remote_delay: u32) -> Self {
         PairQueue {
             local_queue: std::collections::VecDeque::with_capacity(capacity),
             remote_queue: std::collections::VecDeque::with_capacity(capacity),
             local_delay,
+            remote_delay,
             max_length: capacity,
         }
     }
@@ -91,6 +93,10 @@ where
         self.local_delay
     }
 
+    pub fn remote_delay(&self) -> u32 {
+        self.remote_delay
+    }
+
     pub fn local_queue_length(&self) -> usize {
         self.local_queue.len()
     }
@@ -101,10 +107,10 @@ where
 
     pub fn consume_and_peek_local(&mut self) -> (Vec<Pair<T, U>>, Vec<T>) {
         let to_commit = {
-            let mut n = self.local_queue.len() as isize - self.local_delay as isize;
-            if (self.remote_queue.len() as isize) < n {
-                n = self.remote_queue.len() as isize;
-            }
+            let n = std::cmp::min(
+                self.local_queue.len() as isize - self.local_delay as isize,
+                self.remote_queue.len() as isize,
+            );
 
             if n < 0 {
                 vec![]
