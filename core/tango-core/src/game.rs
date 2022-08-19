@@ -30,11 +30,6 @@ pub fn run(
         mgba::gba::SCREEN_HEIGHT as usize,
     ));
     let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
-    let emu_vbuf = Arc::new(Mutex::new(vec![
-        0u8;
-        (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
-            as usize
-    ]));
 
     let window = video
         .window(
@@ -209,6 +204,11 @@ pub fn run(
             audio_device.spec().freq,
         ))));
 
+        let emu_vbuf = Arc::new(Mutex::new(vec![
+            0u8;
+            (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
+                as usize
+        ]));
         {
             let joyflags = joyflags.clone();
             let emu_vbuf = emu_vbuf.clone();
@@ -220,8 +220,7 @@ pub fn run(
                     emu_vbuf[i + 3] = 0xff;
                 }
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
-                let mut emu_tps_counter = emu_tps_counter.lock();
-                emu_tps_counter.mark();
+                emu_tps_counter.lock().mark();
             });
         }
 
