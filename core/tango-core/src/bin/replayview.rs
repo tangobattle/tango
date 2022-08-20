@@ -211,7 +211,7 @@ fn main() -> Result<(), anyhow::Error> {
             };
 
             texture
-                .update(None, &*vbuf, mgba::gba::SCREEN_WIDTH as usize * 4)
+                .update(None, &vbuf, mgba::gba::SCREEN_WIDTH as usize * 4)
                 .unwrap();
             canvas.clear();
             canvas.copy(&texture, None, None).unwrap();

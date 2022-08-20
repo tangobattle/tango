@@ -87,8 +87,7 @@ pub fn run(
         controllers.insert(which, controller);
     }
 
-    let font =
-        ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/04B_03__.TTF")[..]).unwrap();
+    let font = ab_glyph::FontRef::try_from_slice(&include_bytes!("fonts/FSEX300.ttf")[..]).unwrap();
     let scale = ab_glyph::PxScale::from(16.0);
     let scaled_font = font.as_scaled(scale);
 
@@ -289,7 +288,7 @@ pub fn run(
                 // TODO: Figure out why moving this into its own function locks fps to tps.
                 if show_debug {
                     let mut lines = vec![format!(
-                        "fps: {:.02}",
+                        "fps: {:3.02}",
                         1.0 / fps_counter.lock().mean_duration().as_secs_f32()
                     )];
 
@@ -299,12 +298,13 @@ pub fn run(
                                 lines.push("match active".to_string());
                                 let round_state = match_.lock_round_state().await;
                                 if let Some(round) = round_state.round.as_ref() {
+                                    lines.push(format!("current tick: {:4}", round.current_tick()));
                                     lines.push(format!(
                                         "local player index: {}",
                                         round.local_player_index()
                                     ));
                                     lines.push(format!(
-                                        "qlen: {} vs {} (delay = {})",
+                                        "qlen: {:2} vs {:2} (delay = {:1})",
                                         round.local_queue_length(),
                                         round.remote_queue_length(),
                                         round.local_delay(),
@@ -322,7 +322,7 @@ pub fn run(
                     };
 
                     lines.push(format!(
-                        "emu tps: {:.02} ({:+.02})",
+                        "emu tps: {:3.02} ({:+1.02})",
                         1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
                         tps_adjustment
                     ));
@@ -383,8 +383,8 @@ pub fn run(
                                 &texture,
                                 None,
                                 Some(sdl2::rect::Rect::new(
-                                    1,
-                                    (1 + i * height as usize) as i32,
+                                    0,
+                                    (i * height as usize) as i32,
                                     width as u32,
                                     height as u32,
                                 )),
