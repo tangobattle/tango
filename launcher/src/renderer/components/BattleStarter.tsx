@@ -279,6 +279,14 @@ function addToArrayCapped<T>(xs: T[], x: T, limit: number) {
   return [...(xs.length >= limit ? xs.slice(1) : xs), x];
 }
 
+const DEFAULT_ICE_SERVERS = [
+  "stun://stun.l.google.com:19302",
+  "stun://stun1.l.google.com:19302",
+  "stun://stun2.l.google.com:19302",
+  "stun://stun3.l.google.com:19302",
+  "stun://stun4.l.google.com:19302",
+];
+
 async function runCallback(
   config: Config,
   signal: AbortSignal,
@@ -314,7 +322,7 @@ async function runCallback(
     setRevealedSetupEditor: React.Dispatch<React.SetStateAction<Editor | null>>;
   }>
 ) {
-  let iceServers = config.iceServers;
+  let iceServers = DEFAULT_ICE_SERVERS;
 
   if (linkCode != "") {
     try {
