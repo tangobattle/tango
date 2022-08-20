@@ -286,16 +286,111 @@ pub fn run(
                 }
                 canvas.window_mut().set_title(&title).unwrap();
 
+                // TODO: Figure out why moving this into its own function locks fps to tps.
                 if show_debug {
-                    draw_debug(
-                        handle.clone(),
-                        &session.match_(),
-                        &mut canvas,
-                        &texture_creator,
-                        &scaled_font,
-                        &*fps_counter.lock(),
-                        &*emu_tps_counter.lock(),
-                    );
+                    let mut lines = vec![format!(
+                        "fps: {:.02}",
+                        1.0 / fps_counter.lock().mean_duration().as_secs_f32()
+                    )];
+
+                    let tps_adjustment = if let Some(match_) = session.match_().as_ref() {
+                        handle.block_on(async {
+                            if let Some(match_) = &*match_.lock().await {
+                                lines.push("match active".to_string());
+                                let round_state = match_.lock_round_state().await;
+                                if let Some(round) = round_state.round.as_ref() {
+                                    lines.push(format!(
+                                        "local player index: {}",
+                                        round.local_player_index()
+                                    ));
+                                    lines.push(format!(
+                                        "qlen: {} vs {} (delay = {})",
+                                        round.local_queue_length(),
+                                        round.remote_queue_length(),
+                                        round.local_delay(),
+                                    ));
+                                    round.tps_adjustment()
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                0.0
+                            }
+                        })
+                    } else {
+                        0.0
+                    };
+
+                    lines.push(format!(
+                        "emu tps: {:.02} ({:+.02})",
+                        1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                        tps_adjustment
+                    ));
+
+                    for (i, line) in lines.iter().enumerate() {
+                        let mut glyphs = Vec::new();
+                        font::layout_paragraph(
+                            scaled_font,
+                            ab_glyph::point(0.0, 0.0),
+                            9999.0,
+                            &line,
+                            &mut glyphs,
+                        );
+
+                        let height = scaled_font.height().ceil() as i32;
+                        let width = {
+                            let min_x = glyphs.first().unwrap().position.x;
+                            let last_glyph = glyphs.last().unwrap();
+                            let max_x =
+                                last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
+                            (max_x - min_x).ceil() as i32
+                        };
+
+                        let mut texture = texture_creator
+                            .create_texture_streaming(
+                                sdl2::pixels::PixelFormatEnum::ABGR8888,
+                                width as u32,
+                                height as u32,
+                            )
+                            .unwrap();
+                        texture
+                            .with_lock(
+                                sdl2::rect::Rect::new(0, 0, width as u32, height as u32),
+                                |buf, _pitch| {
+                                    for glyph in glyphs {
+                                        if let Some(outlined) = scaled_font.outline_glyph(glyph) {
+                                            let bounds = outlined.px_bounds();
+                                            outlined.draw(|x, y, v| {
+                                                let x = x as i32 + bounds.min.x as i32;
+                                                let y = y as i32 + bounds.min.y as i32;
+                                                if x >= width || y >= height || x < 0 || y < 0 {
+                                                    return;
+                                                }
+                                                let gray = (v * 0xff as f32) as u8;
+                                                buf[((y * width + x) * 4) as usize + 0] = gray;
+                                                buf[((y * width + x) * 4) as usize + 1] = gray;
+                                                buf[((y * width + x) * 4) as usize + 2] = gray;
+                                                buf[((y * width + x) * 4) as usize + 3] = 0xff;
+                                            });
+                                        }
+                                    }
+                                },
+                            )
+                            .unwrap();
+
+                        canvas
+                            .copy(
+                                &texture,
+                                None,
+                                Some(sdl2::rect::Rect::new(
+                                    1,
+                                    (1 + i * height as usize) as i32,
+                                    width as u32,
+                                    height as u32,
+                                )),
+                            )
+                            .unwrap();
+                    }
                 }
             }
 
@@ -307,115 +402,4 @@ pub fn run(
 
     log::info!("goodbye");
     Ok(())
-}
-
-fn draw_debug(
-    handle: tokio::runtime::Handle,
-    match_: &Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>>,
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    texture_creator: &sdl2::render::TextureCreator<sdl2::video::WindowContext>,
-    scaled_font: &ab_glyph::PxScaleFont<&ab_glyph::FontRef>,
-    fps_counter: &stats::Counter,
-    emu_tps_counter: &stats::Counter,
-) {
-    let mut lines = vec![format!(
-        "fps: {:.02}",
-        1.0 / fps_counter.mean_duration().as_secs_f32()
-    )];
-
-    let tps_adjustment = if let Some(match_) = match_.as_ref() {
-        handle.block_on(async {
-            if let Some(match_) = &*match_.lock().await {
-                lines.push("match active".to_string());
-                let round_state = match_.lock_round_state().await;
-                if let Some(round) = round_state.round.as_ref() {
-                    lines.push(format!(
-                        "local player index: {}",
-                        round.local_player_index()
-                    ));
-                    lines.push(format!(
-                        "qlen: {} vs {} (delay = {})",
-                        round.local_queue_length(),
-                        round.remote_queue_length(),
-                        round.local_delay(),
-                    ));
-                    round.tps_adjustment()
-                } else {
-                    0.0
-                }
-            } else {
-                0.0
-            }
-        })
-    } else {
-        0.0
-    };
-
-    lines.push(format!(
-        "emu tps: {:.02} ({:+.02})",
-        1.0 / emu_tps_counter.mean_duration().as_secs_f32(),
-        tps_adjustment
-    ));
-
-    for (i, line) in lines.iter().enumerate() {
-        let mut glyphs = Vec::new();
-        font::layout_paragraph(
-            scaled_font,
-            ab_glyph::point(0.0, 0.0),
-            9999.0,
-            &line,
-            &mut glyphs,
-        );
-
-        let height = scaled_font.height().ceil() as i32;
-        let width = {
-            let min_x = glyphs.first().unwrap().position.x;
-            let last_glyph = glyphs.last().unwrap();
-            let max_x = last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
-            (max_x - min_x).ceil() as i32
-        };
-
-        let mut texture = texture_creator
-            .create_texture_streaming(
-                sdl2::pixels::PixelFormatEnum::ABGR8888,
-                width as u32,
-                height as u32,
-            )
-            .unwrap();
-
-        let mut font_buf = vec![0x0u8; (width * height * 4) as usize];
-        for glyph in glyphs {
-            if let Some(outlined) = scaled_font.outline_glyph(glyph) {
-                let bounds = outlined.px_bounds();
-                outlined.draw(|x, y, v| {
-                    let x = x as i32 + bounds.min.x as i32;
-                    let y = y as i32 + bounds.min.y as i32;
-                    if x >= width || y >= height || x < 0 || y < 0 {
-                        return;
-                    }
-                    let gray = (v * 0xff as f32) as u8;
-                    font_buf[((y * width + x) * 4) as usize + 0] = gray;
-                    font_buf[((y * width + x) * 4) as usize + 1] = gray;
-                    font_buf[((y * width + x) * 4) as usize + 2] = gray;
-                    font_buf[((y * width + x) * 4) as usize + 3] = 0xff;
-                });
-            }
-        }
-        texture
-            .update(None, &font_buf[..], (width * 4) as usize)
-            .unwrap();
-
-        canvas
-            .copy(
-                &texture,
-                None,
-                Some(sdl2::rect::Rect::new(
-                    1,
-                    (1 + i * height as usize) as i32,
-                    width as u32,
-                    height as u32,
-                )),
-            )
-            .unwrap();
-    }
 }
