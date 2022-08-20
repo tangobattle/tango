@@ -45,7 +45,6 @@ message ToCoreMessage {
       string shadow_save_path = 1;
       string shadow_rom_path = 2;
       uint32 input_delay = 3;
-      uint32 shadow_input_delay = 4;
       uint32 match_type = 5;
       uint32 match_subtype = 6;
       string replays_path = 7;

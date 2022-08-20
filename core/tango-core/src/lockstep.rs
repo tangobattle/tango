@@ -48,7 +48,6 @@ where
     local_queue: std::collections::VecDeque<T>,
     remote_queue: std::collections::VecDeque<U>,
     local_delay: u32,
-    remote_delay: u32,
     max_length: usize,
 }
 
@@ -67,12 +66,11 @@ where
     T: Clone,
     U: Clone,
 {
-    pub fn new(capacity: usize, local_delay: u32, remote_delay: u32) -> Self {
+    pub fn new(capacity: usize, local_delay: u32) -> Self {
         PairQueue {
             local_queue: std::collections::VecDeque::with_capacity(capacity),
             remote_queue: std::collections::VecDeque::with_capacity(capacity),
             local_delay,
-            remote_delay,
             max_length: capacity,
         }
     }
@@ -99,10 +97,6 @@ where
 
     pub fn local_delay(&self) -> u32 {
         self.local_delay
-    }
-
-    pub fn remote_delay(&self) -> u32 {
-        self.remote_delay
     }
 
     pub fn local_queue_length(&self) -> usize {

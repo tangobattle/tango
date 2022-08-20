@@ -334,11 +334,10 @@ fn draw_debug(
                         round.local_player_index()
                     ));
                     lines.push(format!(
-                        "qlen: {} (-{}) vs {} (-{})",
+                        "qlen: {} vs {} (delay = {})",
                         round.local_queue_length(),
-                        round.local_delay(),
                         round.remote_queue_length(),
-                        round.remote_delay(),
+                        round.local_delay(),
                     ));
                     round.tps_adjustment()
                 } else {

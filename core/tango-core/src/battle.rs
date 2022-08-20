@@ -36,7 +36,6 @@ pub struct Settings {
     pub replay_metadata: Vec<u8>,
     pub match_type: (u8, u8),
     pub input_delay: u32,
-    pub shadow_input_delay: u32,
     pub rng_seed: Vec<u8>,
     pub opponent_nickname: Option<String>,
     pub max_queue_length: usize,
@@ -394,29 +393,20 @@ impl Match {
         let (first_state_committed_local_packet, first_state_committed_rx) =
             tokio::sync::oneshot::channel();
 
-        let mut iq = lockstep::PairQueue::new(
-            self.settings.max_queue_length,
-            self.settings.input_delay,
-            self.settings.shadow_input_delay,
-        );
-        log::info!(
-            "filling input delay: local = {}, remote = {}",
-            self.settings.input_delay,
-            self.settings.shadow_input_delay
-        );
-        for i in 0..self.settings.input_delay {
-            iq.add_local_input(lockstep::PartialInput {
-                local_tick: i,
-                remote_tick: 0,
-                joyflags: 0,
-            });
-        }
-        for i in 0..self.settings.shadow_input_delay {
-            iq.add_remote_input(lockstep::PartialInput {
-                local_tick: i,
-                remote_tick: 0,
-                joyflags: 0,
-            });
+        let mut iq =
+            lockstep::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
+        log::info!("filling {} ticks of input delay", self.settings.input_delay,);
+
+        {
+            let mut transport = self.transport.lock().await;
+            for i in 0..self.settings.input_delay {
+                iq.add_local_input(lockstep::PartialInput {
+                    local_tick: i,
+                    remote_tick: 0,
+                    joyflags: 0,
+                });
+                transport.send_input(round_state.number, i, 0, 0).await?;
+            }
         }
 
         round_state.round = Some(Round {
@@ -690,10 +680,6 @@ impl Round {
 
     pub fn local_delay(&self) -> u32 {
         self.iq.local_delay()
-    }
-
-    pub fn remote_delay(&self) -> u32 {
-        self.iq.remote_delay()
     }
 
     pub fn local_queue_length(&self) -> usize {

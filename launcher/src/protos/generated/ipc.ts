@@ -149,7 +149,6 @@ export interface ToCoreMessage_StartRequest_MatchSettings {
   shadowSavePath: string;
   shadowRomPath: string;
   inputDelay: number;
-  shadowInputDelay: number;
   matchType: number;
   matchSubtype: number;
   replaysPath: string;
@@ -774,7 +773,6 @@ function createBaseToCoreMessage_StartRequest_MatchSettings(): ToCoreMessage_Sta
     shadowSavePath: "",
     shadowRomPath: "",
     inputDelay: 0,
-    shadowInputDelay: 0,
     matchType: 0,
     matchSubtype: 0,
     replaysPath: "",
@@ -798,9 +796,6 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     }
     if (message.inputDelay !== 0) {
       writer.uint32(24).uint32(message.inputDelay);
-    }
-    if (message.shadowInputDelay !== 0) {
-      writer.uint32(32).uint32(message.shadowInputDelay);
     }
     if (message.matchType !== 0) {
       writer.uint32(40).uint32(message.matchType);
@@ -845,9 +840,6 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         case 3:
           message.inputDelay = reader.uint32();
           break;
-        case 4:
-          message.shadowInputDelay = reader.uint32();
-          break;
         case 5:
           message.matchType = reader.uint32();
           break;
@@ -886,9 +878,6 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
         ? String(object.shadowRomPath)
         : "",
       inputDelay: isSet(object.inputDelay) ? Number(object.inputDelay) : 0,
-      shadowInputDelay: isSet(object.shadowInputDelay)
-        ? Number(object.shadowInputDelay)
-        : 0,
       matchType: isSet(object.matchType) ? Number(object.matchType) : 0,
       matchSubtype: isSet(object.matchSubtype)
         ? Number(object.matchSubtype)
@@ -917,8 +906,6 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
       (obj.shadowRomPath = message.shadowRomPath);
     message.inputDelay !== undefined &&
       (obj.inputDelay = Math.round(message.inputDelay));
-    message.shadowInputDelay !== undefined &&
-      (obj.shadowInputDelay = Math.round(message.shadowInputDelay));
     message.matchType !== undefined &&
       (obj.matchType = Math.round(message.matchType));
     message.matchSubtype !== undefined &&
@@ -949,7 +936,6 @@ export const ToCoreMessage_StartRequest_MatchSettings = {
     message.shadowSavePath = object.shadowSavePath ?? "";
     message.shadowRomPath = object.shadowRomPath ?? "";
     message.inputDelay = object.inputDelay ?? 0;
-    message.shadowInputDelay = object.shadowInputDelay ?? 0;
     message.matchType = object.matchType ?? 0;
     message.matchSubtype = object.matchSubtype ?? 0;
     message.replaysPath = object.replaysPath ?? "";

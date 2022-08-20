@@ -804,7 +804,6 @@ async function runCallback(
         shadowSavePath,
         shadowRomPath: outOpponentROMPath,
         inputDelay: ownGameSettings.inputDelay,
-        shadowInputDelay: opponentGameSettings.inputDelay,
         matchType: ownGameSettings.matchType,
         matchSubtype: ownGameSettings.matchSubtype,
         opponentNickname:
