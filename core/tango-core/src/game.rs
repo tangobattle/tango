@@ -84,7 +84,7 @@ pub fn run(
     let fps_counter = Arc::new(Mutex::new(stats::Counter::new(30)));
     let emu_tps_counter = Arc::new(Mutex::new(stats::Counter::new(10)));
 
-    let mut input_state = sdl2_input_helper::State::new();
+    let mut input_state = input_helper::State::new();
 
     let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
         std::collections::HashMap::new();
@@ -153,6 +153,20 @@ pub fn run(
                     sdl2::event::Event::Quit { .. } => {
                         break 'toplevel;
                     }
+                    sdl2::event::Event::KeyDown {
+                        scancode: Some(scancode),
+                        repeat: false,
+                        ..
+                    } => {
+                        input_state.handle_key_down(scancode as usize);
+                    }
+                    sdl2::event::Event::KeyUp {
+                        scancode: Some(scancode),
+                        repeat: false,
+                        ..
+                    } => {
+                        input_state.handle_key_up(scancode as usize);
+                    }
                     sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                         if !game_controller.is_game_controller(which) {
                             continue;
@@ -160,26 +174,40 @@ pub fn run(
                         let controller = game_controller.open(which).unwrap();
                         log::info!("controller added: {}", controller.name());
                         controllers.insert(which, controller);
+                        input_state.handle_controller_connected(
+                            which,
+                            sdl2::sys::SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX as usize,
+                        );
                     }
                     sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
                         if let Some(controller) = controllers.remove(&which) {
                             log::info!("controller removed: {}", controller.name());
+                            input_state.handle_controller_disconnected(which);
                         }
+                    }
+                    sdl2::event::Event::ControllerAxisMotion {
+                        axis, value, which, ..
+                    } => {
+                        input_state.handle_controller_axis_motion(which, axis as usize, value);
+                    }
+                    sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
+                        input_state.handle_controller_button_down(which, button as usize);
+                    }
+                    sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
+                        input_state.handle_controller_button_up(which, button as usize);
                     }
                     _ => {}
                 }
 
-                if input_state.handle_event(&event) {
-                    let last_show_debug_pressed = show_debug_pressed;
-                    show_debug_pressed =
-                        input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave);
-                    if show_debug_pressed && !last_show_debug_pressed {
-                        show_debug = !show_debug;
-                    }
+                let last_show_debug_pressed = show_debug_pressed;
+                show_debug_pressed =
+                    input_state.is_key_pressed(sdl2::keyboard::Scancode::Grave as usize);
+                if show_debug_pressed && !last_show_debug_pressed {
+                    show_debug = !show_debug;
+                }
 
-                    if let Some(session) = current_session.as_ref() {
-                        session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
-                    }
+                if let Some(session) = current_session.as_ref() {
+                    session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
                 }
             }
 

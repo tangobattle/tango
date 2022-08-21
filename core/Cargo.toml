@@ -10,7 +10,7 @@ members = [
     "datachannel-wrapper",
     "hqx",
     "mmpx",
-    "sdl2-input-helper",
+    "input-helper",
 ]
 
 [patch.crates-io]

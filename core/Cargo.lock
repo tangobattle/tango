@@ -1321,6 +1321,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "input-helper"
+version = "0.1.0"
+
+[[package]]
 name = "instant"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2288,13 +2292,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sdl2-input-helper"
-version = "0.1.0"
-dependencies = [
- "sdl2",
-]
-
-[[package]]
 name = "sdl2-sys"
 version = "0.35.2"
 source = "git+https://github.com/Rust-SDL2/rust-sdl2?rev=bae03beaafc0040b8166d36a4bdbe570a05aa52a#bae03beaafc0040b8166d36a4bdbe570a05aa52a"
@@ -2564,6 +2561,7 @@ dependencies = [
  "hex",
  "hqx",
  "image",
+ "input-helper",
  "lazy_static",
  "log",
  "mgba",
@@ -2575,7 +2573,6 @@ dependencies = [
  "rand",
  "rand_pcg",
  "sdl2",
- "sdl2-input-helper",
  "serde",
  "serde_json",
  "serde_repr",

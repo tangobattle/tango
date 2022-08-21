@@ -149,7 +149,7 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .unwrap();
 
-        let mut input_state = sdl2_input_helper::State::new();
+        let mut input_state = input_helper::State::new();
 
         let mut take_screenshot_pressed = false;
         'toplevel: loop {
@@ -157,19 +157,31 @@ fn main() -> Result<(), anyhow::Error> {
             for event in event_loop.poll_iter() {
                 match event {
                     sdl2::event::Event::Quit { .. } => break 'toplevel,
+                    sdl2::event::Event::KeyDown {
+                        scancode: Some(scancode),
+                        repeat: false,
+                        ..
+                    } => {
+                        input_state.handle_key_down(scancode as usize);
+                    }
+                    sdl2::event::Event::KeyUp {
+                        scancode: Some(scancode),
+                        repeat: false,
+                        ..
+                    } => {
+                        input_state.handle_key_up(scancode as usize);
+                    }
                     _ => {}
                 }
 
-                if input_state.handle_event(&event) {
-                    let last_take_screenshot_pressed = take_screenshot_pressed;
-                    take_screenshot_pressed =
-                        input_state.is_key_pressed(sdl2::keyboard::Scancode::S);
-                    taking_screenshot = take_screenshot_pressed && !last_take_screenshot_pressed;
-                }
+                let last_take_screenshot_pressed = take_screenshot_pressed;
+                take_screenshot_pressed =
+                    input_state.is_key_pressed(sdl2::keyboard::Scancode::S as usize);
+                taking_screenshot = take_screenshot_pressed && !last_take_screenshot_pressed;
 
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
-                    if input_state.is_key_pressed(sdl2::keyboard::Scancode::Tab) {
+                    if input_state.is_key_pressed(sdl2::keyboard::Scancode::Tab as usize) {
                         EXPECTED_FPS * 3.0
                     } else {
                         EXPECTED_FPS
