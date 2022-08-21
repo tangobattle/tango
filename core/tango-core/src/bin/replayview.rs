@@ -3,6 +3,7 @@
 pub const EXPECTED_FPS: f32 = 60.0;
 
 use clap::Parser;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -51,8 +52,6 @@ fn main() -> Result<(), anyhow::Error> {
         (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
             as usize
     ]));
-
-    let audio = sdl.audio().unwrap();
 
     let window = video
         .window(
@@ -108,18 +107,22 @@ fn main() -> Result<(), anyhow::Error> {
         });
     }
 
-    let device = audio
-        .open_playback(
-            None,
-            &sdl2::audio::AudioSpecDesired {
-                freq: Some(48000),
-                channels: Some(2),
-                samples: Some(512),
-            },
-            |spec| tango_core::audio::MGBAStream::new(thread.handle(), spec),
-        )
-        .unwrap();
-    device.resume();
+    let audio_device = cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
+    log::info!(
+        "supported audio output configs: {:?}",
+        audio_device.supported_output_configs()?.collect::<Vec<_>>()
+    );
+    let audio_supported_config = tango_core::audio::get_supported_config(&audio_device)?;
+    log::info!("selected audio config: {:?}", audio_supported_config);
+
+    let stream = tango_core::audio::open_stream(
+        &audio_device,
+        &audio_supported_config,
+        tango_core::audio::MGBAStream::new(thread.handle(), audio_supported_config.sample_rate()),
+    )?;
+    stream.play()?;
 
     thread.handle().run_on_core(move |mut core| {
         core.load_state(replay.local_state.as_ref().unwrap())

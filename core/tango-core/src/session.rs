@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 pub struct Session {
     vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
-    _audio_binding: audio::Binding<i16>,
+    _audio_binding: audio::Binding,
     thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>>,
@@ -15,8 +15,8 @@ impl Session {
     pub fn new(
         handle: tokio::runtime::Handle,
         ipc_sender: Arc<Mutex<ipc::Sender>>,
-        audio_cb: audio::LateBinder<i16>,
-        audio_spec: sdl2::audio::AudioSpec,
+        audio_binder: audio::LateBinder,
+        sample_rate: cpal::SampleRate,
         rom_path: std::path::PathBuf,
         save_path: std::path::PathBuf,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -95,9 +95,9 @@ impl Session {
             .sync_mut()
             .set_fps_target(game::EXPECTED_FPS);
 
-        let audio_binding = audio_cb.bind(Some(Box::new(audio::MGBAStream::new(
+        let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            audio_spec,
+            sample_rate,
         ))))?;
 
         let vbuf = Arc::new(Mutex::new(vec![

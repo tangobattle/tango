@@ -52,8 +52,9 @@ thiserror = "1.0"
 egui = "0.19"
 glow = "0.11"
 egui_glow = "0.19"
-glutin = "0.28.0"
+glutin = "0.28"
 glowfb = { path = "../glowfb" }
+cpal = "0.13"
 
 [build-dependencies]
 winres = "0.1"
