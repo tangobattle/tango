@@ -169,13 +169,17 @@ impl Framebuffer {
 
     pub fn draw(&mut self, viewport_size: (u32, u32), buffer_size: (u32, u32), pixels: &[u8]) {
         unsafe {
-            let scaling_factor = std::cmp::min(
-                viewport_size.0 / buffer_size.0,
-                viewport_size.1 / buffer_size.1,
+            let mut scaling_factor = std::cmp::min_by(
+                viewport_size.0 as f32 / buffer_size.0 as f32,
+                viewport_size.1 as f32 / buffer_size.1 as f32,
+                |a, b| a.partial_cmp(b).unwrap(),
             );
+            if scaling_factor >= 1.0 {
+                scaling_factor = scaling_factor.floor();
+            }
 
-            let width = buffer_size.0 * scaling_factor;
-            let height = buffer_size.1 * scaling_factor;
+            let width = (buffer_size.0 as f32 * scaling_factor) as u32;
+            let height = (buffer_size.1 as f32 * scaling_factor) as u32;
 
             self.gl.viewport(
                 ((viewport_size.0 - width) / 2) as i32,

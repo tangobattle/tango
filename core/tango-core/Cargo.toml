@@ -53,6 +53,7 @@ egui = "0.19"
 glow = "0.11"
 egui_glow = "0.19"
 glutin = "0.28.0"
+glowfb = { path = "../glowfb" }
 
 [build-dependencies]
 winres = "0.1"
