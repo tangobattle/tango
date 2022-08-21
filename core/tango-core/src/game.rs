@@ -35,6 +35,12 @@ pub fn run(
         .resizable()
         .build()
         .unwrap();
+    let gl_context = window.gl_create_context().unwrap();
+    let gl = std::sync::Arc::new(unsafe {
+        glow::Context::from_loader_function(|procname| {
+            video.gl_get_proc_address(procname) as *const _
+        })
+    });
 
     let mut canvas = window
         .into_canvas()
@@ -42,6 +48,11 @@ pub fn run(
         .present_vsync()
         .build()
         .unwrap();
+
+    assert!(gl_context.is_current());
+
+    let mut egui_painter = egui_glow::Painter::new(gl.clone(), None, "").unwrap();
+    let mut egui_ctx = egui::Context::default();
 
     let texture_creator = canvas.texture_creator();
     let mut texture = texture_creator
@@ -124,6 +135,18 @@ pub fn run(
         let mut show_debug = false;
 
         'toplevel: loop {
+            // Handle egui.
+            let egui::FullOutput {
+                platform_output,
+                mut textures_delta,
+                shapes,
+                ..
+            } = egui_ctx.run(egui::RawInput::default(), |egui_ctx| {
+                egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
+                    ui.heading("Hello World!");
+                });
+            });
+
             // Handle events.
             for event in event_loop.poll_iter() {
                 match event {
@@ -284,6 +307,23 @@ pub fn run(
                     });
                 }
                 canvas.window_mut().set_title(&title).unwrap();
+
+                // Paint egui.
+                for (id, image_delta) in textures_delta.set {
+                    egui_painter.set_texture(id, &image_delta);
+                }
+
+                let clipped_primitives = egui_ctx.tessellate(shapes);
+                let (w, h) = canvas.window().size();
+                egui_painter.paint_primitives(
+                    [w, h],
+                    egui_ctx.pixels_per_point(),
+                    &clipped_primitives,
+                );
+
+                for id in textures_delta.free.drain(..) {
+                    egui_painter.free_texture(id);
+                }
 
                 // TODO: Figure out why moving this into its own function locks fps to tps.
                 if show_debug {
