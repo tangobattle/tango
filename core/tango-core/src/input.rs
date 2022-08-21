@@ -6,15 +6,15 @@ pub enum PhysicalInput {
 }
 
 impl PhysicalInput {
-    pub fn is_active(&self, input: &sdl2_input_helper::State) -> bool {
+    pub fn is_active(&self, input: &input_helper::State) -> bool {
         match *self {
-            PhysicalInput::Key(key) => input.is_key_pressed(key),
+            PhysicalInput::Key(key) => input.is_key_pressed(key as usize),
             PhysicalInput::Button(button) => input
                 .iter_controllers()
-                .any(|(_, c)| c.is_button_pressed(button)),
+                .any(|(_, c)| c.is_button_pressed(button as usize)),
             PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
-                (threshold > 0 && c.axis(axis) >= threshold)
-                    || (threshold < 0 && c.axis(axis) <= threshold)
+                (threshold > 0 && c.axis(axis as usize) >= threshold)
+                    || (threshold < 0 && c.axis(axis as usize) <= threshold)
             }),
         }
     }
@@ -36,7 +36,7 @@ pub struct Mapping {
 }
 
 impl Mapping {
-    pub fn to_mgba_keys(&self, input: &sdl2_input_helper::State) -> u32 {
+    pub fn to_mgba_keys(&self, input: &input_helper::State) -> u32 {
         (if self.left.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::LEFT
         } else {
