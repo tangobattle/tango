@@ -30,7 +30,26 @@ pub struct Gui {
 }
 
 impl Gui {
-    pub fn new() -> Self {
+    pub fn new(ctx: &egui::Context) -> Self {
+        let font_families = FontFamilies {
+            latn: egui::FontFamily::Name("Latn".into()),
+            jpan: egui::FontFamily::Name("Jpan".into()),
+            hans: egui::FontFamily::Name("Hans".into()),
+            hant: egui::FontFamily::Name("Hant".into()),
+        };
+
+        ctx.set_fonts(egui::FontDefinitions {
+            font_data: std::collections::BTreeMap::default(),
+            families: std::collections::BTreeMap::from([
+                (egui::FontFamily::Proportional, vec![]),
+                (egui::FontFamily::Monospace, vec![]),
+                (font_families.latn.clone(), vec![]),
+                (font_families.jpan.clone(), vec![]),
+                (font_families.hans.clone(), vec![]),
+                (font_families.hant.clone(), vec![]),
+            ]),
+        });
+
         Self {
             vbuf: None,
             icons: Icons {
@@ -71,12 +90,7 @@ impl Gui {
                     egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
                 ),
             ]),
-            font_families: FontFamilies {
-                latn: egui::FontFamily::Name("Latn".into()),
-                jpan: egui::FontFamily::Name("Jpan".into()),
-                hans: egui::FontFamily::Name("Hans".into()),
-                hant: egui::FontFamily::Name("Hant".into()),
-            },
+            font_families,
             current_language: None,
         }
     }
@@ -553,7 +567,6 @@ impl Gui {
         if self.current_language.as_ref() != Some(&state.config.language) {
             let mut language = state.config.language.clone();
             language.maximize();
-            log::info!("language is changing to {}", language);
 
             ctx.set_fonts(egui::FontDefinitions {
                 font_data: self.font_data.clone(),
@@ -616,6 +629,10 @@ impl Gui {
                 ]),
             });
             self.current_language = Some(state.config.language.clone());
+            log::info!(
+                "language was changed to {}",
+                self.current_language.as_ref().unwrap()
+            );
         }
 
         ctx.set_visuals(match state.config.theme {

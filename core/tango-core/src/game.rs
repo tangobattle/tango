@@ -82,8 +82,8 @@ pub fn run(
         gl.get_parameter_string(glow::VERSION)
     });
 
-    let mut gui = gui::Gui::new();
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
+    let mut gui = gui::Gui::new(&egui_glow.egui_ctx);
 
     let audio_device = cpal::default_host()
         .default_output_device()
