@@ -55,7 +55,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let window = video
         .window(
-            "tango replayview",
+            "taango replayview",
             mgba::gba::SCREEN_WIDTH * 3,
             mgba::gba::SCREEN_HEIGHT * 3,
         )
@@ -179,12 +179,12 @@ fn main() -> Result<(), anyhow::Error> {
 
                 let last_take_screenshot_pressed = take_screenshot_pressed;
                 take_screenshot_pressed =
-                    input_state.is_key_pressed(sdl2::keyboard::Scancode::S as usize);
+                    input_state.is_key_held(sdl2::keyboard::Scancode::S as usize);
                 taking_screenshot = take_screenshot_pressed && !last_take_screenshot_pressed;
 
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
-                    if input_state.is_key_pressed(sdl2::keyboard::Scancode::Tab as usize) {
+                    if input_state.is_key_held(sdl2::keyboard::Scancode::Tab as usize) {
                         EXPECTED_FPS * 3.0
                     } else {
                         EXPECTED_FPS

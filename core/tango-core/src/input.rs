@@ -8,10 +8,10 @@ pub enum PhysicalInput {
 impl PhysicalInput {
     pub fn is_active(&self, input: &input_helper::State) -> bool {
         match *self {
-            PhysicalInput::Key(key) => input.is_key_pressed(key as usize),
+            PhysicalInput::Key(key) => input.is_key_held(key as usize),
             PhysicalInput::Button(button) => input
                 .iter_controllers()
-                .any(|(_, c)| c.is_button_pressed(button as usize)),
+                .any(|(_, c)| c.is_button_held(button as usize)),
             PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
                 (threshold > 0 && c.axis(axis as usize) >= threshold)
                     || (threshold < 0 && c.axis(axis as usize) <= threshold)

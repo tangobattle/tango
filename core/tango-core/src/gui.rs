@@ -14,9 +14,10 @@ impl Gui {
         Self { vbuf: None }
     }
 
-    fn draw_debug(&mut self, ctx: &egui::Context, state: &game::State) {
+    fn draw_debug(&mut self, ctx: &egui::Context, state: &mut game::State) {
         egui::Window::new("Debug")
             .id(egui::Id::new("debug"))
+            .open(&mut state.show_debug)
             .show(ctx, |ui| {
                 egui::Grid::new("debug_grid").show(ui, |ui| {
                     ui.label("FPS");
@@ -101,9 +102,13 @@ impl Gui {
         &mut self,
         ctx: &egui::Context,
         window: &glutin::window::Window,
+        input_state: &input_helper::State,
         state: &mut game::State,
     ) {
         ctx.set_pixels_per_point(window.scale_factor() as f32);
+        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave as usize) {
+            state.show_debug = !state.show_debug;
+        }
         self.draw_debug(ctx, state);
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(

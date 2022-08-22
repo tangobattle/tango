@@ -11,6 +11,7 @@ pub struct State {
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
     pub video_filter: Box<dyn video::Filter>,
+    pub show_debug: bool,
 }
 
 pub fn run(
@@ -105,6 +106,7 @@ pub fn run(
         emu_tps_counter: emu_tps_counter.clone(),
         session: None,
         video_filter,
+        show_debug: false,
     };
 
     state.session = Some(session::Session::new(
@@ -141,6 +143,7 @@ pub fn run(
                 ..
             } => {
                 let handled_by_egui = egui_glow.on_event(&window_event);
+                log::info!("{:?}, {}", window_event, handled_by_egui);
                 match window_event {
                     glutin::event::WindowEvent::Resized(size) => {
                         gl_window.resize(size);
@@ -151,19 +154,24 @@ pub fn run(
                     glutin::event::WindowEvent::KeyboardInput {
                         input:
                             glutin::event::KeyboardInput {
-                                scancode, state, ..
+                                virtual_keycode: Some(virutal_keycode),
+                                state,
+                                ..
                             },
                         ..
                     } if !handled_by_egui => match state {
                         glutin::event::ElementState::Pressed => {
-                            input_state.handle_key_down(scancode as usize);
+                            input_state.handle_key_down(virutal_keycode as usize);
                         }
                         glutin::event::ElementState::Released => {
-                            input_state.handle_key_up(scancode as usize);
+                            input_state.handle_key_up(virutal_keycode as usize);
                         }
                     },
                     _ => {}
                 };
+            }
+            glutin::event::Event::NewEvents(_) => {
+                input_state.digest();
             }
             glutin::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
@@ -201,6 +209,7 @@ pub fn run(
                         _ => {}
                     }
                 }
+
                 if let Some(session) = &state.session {
                     session.set_joyflags(input_mapping.to_mgba_keys(&input_state))
                 }
@@ -279,7 +288,7 @@ pub fn run(
                 }
 
                 egui_glow.run(gl_window.window(), |ctx| {
-                    gui.draw(ctx, gl_window.window(), &mut state)
+                    gui.draw(ctx, gl_window.window(), &input_state, &mut state)
                 });
                 egui_glow.paint(gl_window.window());
 
