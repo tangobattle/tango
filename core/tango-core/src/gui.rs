@@ -19,16 +19,11 @@ struct FontFamilies {
     jpan: egui::FontFamily,
     hans: egui::FontFamily,
     hant: egui::FontFamily,
-}
-
-struct Icons {
-    sports_esports: egui_extras::RetainedImage,
-    keyboard: egui_extras::RetainedImage,
+    icons: egui::FontFamily,
 }
 
 pub struct Gui {
     vbuf: Option<VBuf>,
-    icons: Icons,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -42,6 +37,7 @@ impl Gui {
             jpan: egui::FontFamily::Name("Jpan".into()),
             hans: egui::FontFamily::Name("Hans".into()),
             hant: egui::FontFamily::Name("Hant".into()),
+            icons: egui::FontFamily::Name("icons".into()),
         };
 
         ctx.set_fonts(egui::FontDefinitions {
@@ -53,23 +49,12 @@ impl Gui {
                 (font_families.jpan.clone(), vec![]),
                 (font_families.hans.clone(), vec![]),
                 (font_families.hant.clone(), vec![]),
+                (font_families.icons.clone(), vec![]),
             ]),
         });
 
         Self {
             vbuf: None,
-            icons: Icons {
-                sports_esports: egui_extras::RetainedImage::from_image_bytes(
-                    "icons.sports_esports",
-                    include_bytes!("icons/sports_esports.png"),
-                )
-                .unwrap(),
-                keyboard: egui_extras::RetainedImage::from_image_bytes(
-                    "icons.keyboard",
-                    include_bytes!("icons/keyboard.png"),
-                )
-                .unwrap(),
-            },
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
@@ -94,6 +79,10 @@ impl Gui {
                 (
                     "NotoEmoji-Regular".to_string(),
                     egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
+                ),
+                (
+                    "MaterialIcons-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/MaterialIcons-Regular.ttf")),
                 ),
             ]),
             font_families,
@@ -283,53 +272,61 @@ impl Gui {
                     let mapping = get_mapping(input_mapping);
                     for (i, c) in mapping.clone().iter().enumerate() {
                         ui.group(|ui| {
-                            ui.add(
-                                egui::Image::new(
-                                    match c {
-                                        input::PhysicalInput::Key(_) => &self.icons.keyboard,
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.label(match c {
+                                        input::PhysicalInput::Key(_) => {
+                                            egui::RichText::new("\u{e312}")
+                                                .family(self.font_families.icons.clone())
+                                        }
                                         input::PhysicalInput::Button(_)
                                         | input::PhysicalInput::Axis { .. } => {
-                                            &self.icons.sports_esports
+                                            egui::RichText::new("\u{ea28}")
+                                                .family(self.font_families.icons.clone())
                                         }
+                                    });
+                                    ui.label(match c {
+                                        input::PhysicalInput::Key(key) => {
+                                            let raw = serde_plain::to_string(key).unwrap();
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    lang,
+                                                    &format!("physical-input-keys.{}", raw),
+                                                )
+                                                .unwrap_or(raw)
+                                        }
+                                        input::PhysicalInput::Button(button) => {
+                                            let raw = button.string();
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    lang,
+                                                    &format!("physical-input-buttons.{}", raw),
+                                                )
+                                                .unwrap_or(raw)
+                                        }
+                                        input::PhysicalInput::Axis { axis, direction } => {
+                                            let raw = format!(
+                                                "{}{}",
+                                                axis.string(),
+                                                match direction {
+                                                    input::AxisDirection::Positive => "plus",
+                                                    input::AxisDirection::Negative => "minus",
+                                                }
+                                            );
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    lang,
+                                                    &format!("physical-input-axes.{}", raw),
+                                                )
+                                                .unwrap_or(raw)
+                                        }
+                                    });
+                                    if ui.add(egui::Button::new("×").small()).clicked() {
+                                        mapping.remove(i);
                                     }
-                                    .texture_id(ui.ctx()),
-                                    egui::Vec2::new(
-                                        ui.text_style_height(&egui::TextStyle::Body),
-                                        ui.text_style_height(&egui::TextStyle::Body),
-                                    ),
-                                )
-                                .tint(ui.style().visuals.widgets.noninteractive.fg_stroke.color),
+                                },
                             );
-                            ui.label(match c {
-                                input::PhysicalInput::Key(key) => {
-                                    let raw = serde_plain::to_string(key).unwrap();
-                                    i18n::LOCALES
-                                        .lookup(lang, &format!("physical-input-keys.{}", raw))
-                                        .unwrap_or(raw)
-                                }
-                                input::PhysicalInput::Button(button) => {
-                                    let raw = button.string();
-                                    i18n::LOCALES
-                                        .lookup(lang, &format!("physical-input-buttons.{}", raw))
-                                        .unwrap_or(raw)
-                                }
-                                input::PhysicalInput::Axis { axis, direction } => {
-                                    let raw = format!(
-                                        "{}{}",
-                                        axis.string(),
-                                        match direction {
-                                            input::AxisDirection::Positive => "plus",
-                                            input::AxisDirection::Negative => "minus",
-                                        }
-                                    );
-                                    i18n::LOCALES
-                                        .lookup(lang, &format!("physical-input-axes.{}", raw))
-                                        .unwrap_or(raw)
-                                }
-                            });
-                            if ui.add(egui::Button::new("×").small()).clicked() {
-                                mapping.remove(i);
-                            }
                         });
                     }
                     if ui.add(egui::Button::new("➕")).clicked() {
@@ -659,6 +656,13 @@ impl Gui {
                     (
                         self.font_families.latn.clone(),
                         vec!["NotoSans-Regular".to_string()],
+                    ),
+                    (
+                        self.font_families.icons.clone(),
+                        vec![
+                            "MaterialIcons-Regular".to_string(),
+                            "NotoSans-Regular".to_string(),
+                        ],
                     ),
                 ]),
             });
