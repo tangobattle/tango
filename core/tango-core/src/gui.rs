@@ -521,6 +521,22 @@ impl Gui {
                             "NotoEmoji-Regular".to_string(),
                         ],
                     ),
+                    (
+                        egui::FontFamily::Name("Jpan".into()),
+                        vec!["NotoSansJP-Regular".to_string()],
+                    ),
+                    (
+                        egui::FontFamily::Name("Hans".into()),
+                        vec!["NotoSansSC-Regular".to_string()],
+                    ),
+                    (
+                        egui::FontFamily::Name("Hant".into()),
+                        vec!["NotoSansTC-Regular".to_string()],
+                    ),
+                    (
+                        egui::FontFamily::Name("Latn".into()),
+                        vec!["NotoSans-Regular".to_string()],
+                    ),
                 ]),
             });
             self.current_language = Some(state.config.language.clone());
