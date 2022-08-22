@@ -272,61 +272,44 @@ impl Gui {
                     let mapping = get_mapping(input_mapping);
                     for (i, c) in mapping.clone().iter().enumerate() {
                         ui.group(|ui| {
-                            ui.with_layout(
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.label(match c {
-                                        input::PhysicalInput::Key(_) => {
-                                            egui::RichText::new("\u{e312}")
-                                                .family(self.font_families.icons.clone())
-                                        }
-                                        input::PhysicalInput::Button(_)
-                                        | input::PhysicalInput::Axis { .. } => {
-                                            egui::RichText::new("\u{ea28}")
-                                                .family(self.font_families.icons.clone())
-                                        }
-                                    });
-                                    ui.label(match c {
-                                        input::PhysicalInput::Key(key) => {
-                                            let raw = serde_plain::to_string(key).unwrap();
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-keys.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                        input::PhysicalInput::Button(button) => {
-                                            let raw = button.string();
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-buttons.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                        input::PhysicalInput::Axis { axis, direction } => {
-                                            let raw = format!(
-                                                "{}{}",
-                                                axis.string(),
-                                                match direction {
-                                                    input::AxisDirection::Positive => "plus",
-                                                    input::AxisDirection::Negative => "minus",
-                                                }
-                                            );
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-axes.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                    });
-                                    if ui.add(egui::Button::new("×").small()).clicked() {
-                                        mapping.remove(i);
-                                    }
-                                },
+                            ui.label(
+                                egui::RichText::new(match c {
+                                    input::PhysicalInput::Key(_) => "\u{e312}",
+                                    input::PhysicalInput::Button(_)
+                                    | input::PhysicalInput::Axis { .. } => "\u{ea28}",
+                                })
+                                .family(self.font_families.icons.clone()),
                             );
+                            ui.label(match c {
+                                input::PhysicalInput::Key(key) => {
+                                    let raw = serde_plain::to_string(key).unwrap();
+                                    i18n::LOCALES
+                                        .lookup(lang, &format!("physical-input-keys.{}", raw))
+                                        .unwrap_or(raw)
+                                }
+                                input::PhysicalInput::Button(button) => {
+                                    let raw = button.string();
+                                    i18n::LOCALES
+                                        .lookup(lang, &format!("physical-input-buttons.{}", raw))
+                                        .unwrap_or(raw)
+                                }
+                                input::PhysicalInput::Axis { axis, direction } => {
+                                    let raw = format!(
+                                        "{}{}",
+                                        axis.string(),
+                                        match direction {
+                                            input::AxisDirection::Positive => "plus",
+                                            input::AxisDirection::Negative => "minus",
+                                        }
+                                    );
+                                    i18n::LOCALES
+                                        .lookup(lang, &format!("physical-input-axes.{}", raw))
+                                        .unwrap_or(raw)
+                                }
+                            });
+                            if ui.add(egui::Button::new("×").small()).clicked() {
+                                mapping.remove(i);
+                            }
                         });
                     }
                     if ui.add(egui::Button::new("➕")).clicked() {
