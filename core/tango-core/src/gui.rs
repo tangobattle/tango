@@ -210,7 +210,7 @@ impl Gui {
         handle: tokio::runtime::Handle,
         state: &mut game::State,
     ) {
-        egui::Window::new("Debug 令")
+        egui::Window::new("Debug")
             .id(egui::Id::new("debug-window"))
             .open(&mut state.show_debug)
             .show(ctx, |ui| {
