@@ -3,7 +3,7 @@ mod shader_version;
 mod vao;
 
 pub struct Framebuffer {
-    gl: std::rc::Rc<glow::Context>,
+    gl: std::sync::Arc<glow::Context>,
     program: glow::Program,
     vao: vao::VertexArrayObject,
     vbo: glow::Buffer,
@@ -11,7 +11,7 @@ pub struct Framebuffer {
 }
 
 impl Framebuffer {
-    pub fn new(gl: std::rc::Rc<glow::Context>) -> Result<Self, String> {
+    pub fn new(gl: std::sync::Arc<glow::Context>) -> Result<Self, String> {
         unsafe {
             let shader_version = shader_version::ShaderVersion::get(&gl);
 

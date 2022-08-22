@@ -112,6 +112,9 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
+                for i in (0..vbuf.len()).step_by(4) {
+                    vbuf[i + 3] = 0xff;
+                }
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
             });

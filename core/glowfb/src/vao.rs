@@ -24,13 +24,13 @@ pub(crate) struct VertexArrayObject {
     vao: Option<glow::VertexArray>,
     vbo: glow::Buffer,
     buffer_infos: Vec<BufferInfo>,
-    gl: std::rc::Rc<glow::Context>,
+    gl: std::sync::Arc<glow::Context>,
 }
 
 impl VertexArrayObject {
     #[allow(clippy::needless_pass_by_value)] // false positive
     pub(crate) unsafe fn new(
-        gl: std::rc::Rc<glow::Context>,
+        gl: std::sync::Arc<glow::Context>,
         vbo: glow::Buffer,
         buffer_infos: Vec<BufferInfo>,
     ) -> Self {

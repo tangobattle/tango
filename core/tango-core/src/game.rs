@@ -22,47 +22,49 @@ pub fn run(
     let title_prefix = format!("Tango: {}", window_title);
 
     let sdl = sdl2::init().unwrap();
-    let video = sdl.video().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
-    let _window = video.window("", 0, 0).hidden().build().unwrap();
+    // let _window = video.window("", 0, 0).hidden().build().unwrap();
 
     let event_loop = glutin::event_loop::EventLoop::new();
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
-    let wb = {
-        let size = glutin::dpi::LogicalSize::new(
+    let wb = glutin::window::WindowBuilder::new()
+        .with_title(window_title.clone())
+        .with_inner_size(glutin::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH * window_scale,
             mgba::gba::SCREEN_HEIGHT * window_scale,
-        );
-        glutin::window::WindowBuilder::new()
-            .with_title(window_title.clone())
-            .with_inner_size(size)
-            .with_min_inner_size(glutin::dpi::LogicalSize::new(
-                mgba::gba::SCREEN_WIDTH,
-                mgba::gba::SCREEN_HEIGHT,
-            ))
-    };
+        ))
+        .with_min_inner_size(glutin::dpi::LogicalSize::new(
+            mgba::gba::SCREEN_WIDTH,
+            mgba::gba::SCREEN_HEIGHT,
+        ));
 
-    let gl_window = unsafe {
-        glutin::ContextBuilder::new()
-            .with_vsync(true)
-            .build_windowed(wb, &event_loop)
-            .unwrap()
-            .make_current()
-            .unwrap()
-    };
+    let gl_window = glutin::ContextBuilder::new()
+        .with_depth_buffer(0)
+        .with_stencil_buffer(0)
+        .with_vsync(true)
+        .build_windowed(wb, &event_loop)
+        .unwrap();
+    let gl_window = unsafe { gl_window.make_current().unwrap() };
 
-    let gl = std::rc::Rc::new(unsafe {
+    let gl = std::sync::Arc::new(unsafe {
         glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
     });
+    unsafe {
+        gl.clear_color(0.0, 0.0, 0.0, 1.0);
+        gl.clear(glow::COLOR_BUFFER_BIT);
+    }
+    gl_window.swap_buffers().unwrap();
+
     log::info!("GL version: {}", unsafe {
         gl.get_parameter_string(glow::VERSION)
     });
 
     let mut vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
-    let mut fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
-    let mut egui_ctx = egui::Context::default();
+    let mut vbuf_texture: Option<egui::TextureHandle> = None;
+    // let mut fb = glowfb::Framebuffer::new(gl.clone()).map_err(|e| anyhow::format_err!("{}", e))?;
+    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
 
     let audio_device = cpal::default_host()
         .default_output_device()
@@ -122,57 +124,41 @@ pub fn run(
             anyhow::Result::<()>::Ok(())
         })?;
 
-        let mut show_debug_pressed = false;
-        let mut show_debug = false;
-
         event_loop.run(move |event, _, control_flow| {
-            *control_flow = glutin::event_loop::ControlFlow::Poll;
+            control_flow.set_poll();
 
             // Handle glutin events.
             match event {
                 glutin::event::Event::WindowEvent {
-                    event: ref window_event,
+                    event: window_event,
                     ..
                 } => match window_event {
                     glutin::event::WindowEvent::Resized(size) => {
-                        gl_window.resize(*size);
+                        gl_window.resize(size);
                     }
                     glutin::event::WindowEvent::CloseRequested => {
-                        *control_flow = glutin::event_loop::ControlFlow::Exit;
-                    } // glutin::event::WindowEvent::KeyboardInput {
-                    //     input:
-                    //         glutin::event::KeyboardInput {
-                    //             scancode, state, ..
-                    //         },
-                    //     ..
-                    // } => match state {
-                    //     glutin::event::ElementState::Pressed => {
-                    //         input_state.handle_key_down(*scancode as usize);
-                    //     }
-                    //     glutin::event::ElementState::Released => {
-                    //         input_state.handle_key_up(*scancode as usize);
-                    //     }
-                    // },
+                        control_flow.set_exit();
+                    }
+                    glutin::event::WindowEvent::KeyboardInput {
+                        input:
+                            glutin::event::KeyboardInput {
+                                scancode, state, ..
+                            },
+                        ..
+                    } => match state {
+                        glutin::event::ElementState::Pressed => {
+                            input_state.handle_key_down(scancode as usize);
+                        }
+                        glutin::event::ElementState::Released => {
+                            input_state.handle_key_up(scancode as usize);
+                        }
+                    },
                     _ => {}
                 },
                 glutin::event::Event::MainEventsCleared => {
                     // Handle SDL events.
                     for sdl_event in sdl_event_loop.poll_iter() {
                         match sdl_event {
-                            sdl2::event::Event::KeyDown {
-                                scancode: Some(scancode),
-                                repeat: false,
-                                ..
-                            } => {
-                                input_state.handle_key_down(scancode as usize);
-                            }
-                            sdl2::event::Event::KeyUp {
-                                scancode: Some(scancode),
-                                repeat: false,
-                                ..
-                            } => {
-                                input_state.handle_key_up(scancode as usize);
-                            }
                             sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                                 if game_controller.is_game_controller(which) {
                                     let controller = game_controller.open(which).unwrap();
@@ -209,27 +195,14 @@ pub fn run(
                             _ => {}
                         }
                     }
-
-                    if let Some(session) = current_session.as_ref() {
-                        session.set_joyflags(input_mapping.to_mgba_keys(&input_state));
+                    if let Some(session) = &current_session {
+                        session.set_joyflags(input_mapping.to_mgba_keys(&input_state))
                     }
 
                     gl_window.window().request_redraw();
                 }
 
                 glutin::event::Event::RedrawRequested(_) => {
-                    // Handle egui.
-                    let egui::FullOutput {
-                        platform_output,
-                        mut textures_delta,
-                        shapes,
-                        ..
-                    } = egui_ctx.run(egui::RawInput::default(), |egui_ctx| {
-                        egui::SidePanel::left("my_side_panel").show(egui_ctx, |ui| {
-                            ui.heading("Hello World!");
-                        });
-                    });
-
                     unsafe {
                         gl.clear_color(0.0, 0.0, 0.0, 1.0);
                         gl.clear(glow::COLOR_BUFFER_BIT);
@@ -282,57 +255,90 @@ pub fn run(
                             );
                         }
 
-                        // Apply stupid video scaling filter that only mint wants 🥴
-                        let (vbuf_width, vbuf_height) = video_filter.output_size((
-                            mgba::gba::SCREEN_WIDTH as usize,
-                            mgba::gba::SCREEN_HEIGHT as usize,
-                        ));
-
-                        if vbuf.len() != vbuf_width * vbuf_height * 4 {
-                            vbuf = vec![0u8; vbuf_width * vbuf_height * 4];
-                            log::info!("vbuf reallocated to ({}, {})", vbuf_width, vbuf_height);
-                        }
-                        video_filter.apply(
-                            &session.lock_vbuf(),
-                            &mut vbuf,
-                            (
+                        // Handle egui.
+                        egui_glow.run(gl_window.window(), |egui_ctx| {
+                            // Apply stupid video scaling filter that only mint wants 🥴
+                            let (vbuf_width, vbuf_height) = video_filter.output_size((
                                 mgba::gba::SCREEN_WIDTH as usize,
                                 mgba::gba::SCREEN_HEIGHT as usize,
-                            ),
-                        );
+                            ));
 
-                        let viewport = gl_window.window().inner_size();
-                        fb.draw(
-                            (viewport.width, viewport.height),
-                            (vbuf_width as u32, vbuf_height as u32),
-                            &vbuf,
-                        );
+                            let vbuf_texture = vbuf_texture.get_or_insert_with(|| {
+                                egui_ctx.load_texture(
+                                    "vbuf",
+                                    egui::ColorImage::new(
+                                        [vbuf_width, vbuf_height],
+                                        egui::Color32::BLACK,
+                                    ),
+                                    egui::TextureFilter::Nearest,
+                                )
+                            });
 
-                        // let viewport = canvas.viewport();
-                        // let scaling_factor = std::cmp::max(
-                        //     std::cmp::min(
-                        //         viewport.width() / mgba::gba::SCREEN_WIDTH,
-                        //         viewport.height() / mgba::gba::SCREEN_HEIGHT,
-                        //     ),
-                        //     1,
-                        // );
+                            if vbuf_texture.size() != [vbuf_width, vbuf_height] {
+                                *vbuf_texture = egui_ctx.load_texture(
+                                    "vbuf",
+                                    egui::ColorImage::new(
+                                        [vbuf_width, vbuf_height],
+                                        egui::Color32::BLACK,
+                                    ),
+                                    egui::TextureFilter::Nearest,
+                                );
+                            }
 
-                        // let (new_width, new_height) = (
-                        //     (mgba::gba::SCREEN_WIDTH * scaling_factor) as u32,
-                        //     (mgba::gba::SCREEN_HEIGHT * scaling_factor) as u32,
-                        // );
-                        // canvas
-                        //     .copy(
-                        //         &texture,
-                        //         None,
-                        //         sdl2::rect::Rect::new(
-                        //             viewport.x() + (viewport.width() as i32 - new_width as i32) / 2,
-                        //             viewport.y() + (viewport.height() as i32 - new_height as i32) / 2,
-                        //             new_width,
-                        //             new_height,
-                        //         ),
-                        //     )
-                        //     .unwrap();
+                            if vbuf.len() != vbuf_width * vbuf_height * 4 {
+                                vbuf = vec![0u8; vbuf_width * vbuf_height * 4];
+                                log::info!("vbuf reallocated to ({}, {})", vbuf_width, vbuf_height);
+                            }
+
+                            video_filter.apply(
+                                &session.lock_vbuf(),
+                                &mut vbuf,
+                                (
+                                    mgba::gba::SCREEN_WIDTH as usize,
+                                    mgba::gba::SCREEN_HEIGHT as usize,
+                                ),
+                            );
+
+                            vbuf_texture.set(
+                                egui::ColorImage::from_rgba_unmultiplied(
+                                    [vbuf_width, vbuf_height],
+                                    &vbuf,
+                                ),
+                                egui::TextureFilter::Nearest,
+                            );
+
+                            let vbuf_texture: &egui::TextureHandle = vbuf_texture;
+                            egui::CentralPanel::default().show(egui_ctx, |ui| {
+                                ui.with_layout(
+                                    egui::Layout::centered_and_justified(
+                                        egui::Direction::LeftToRight,
+                                    ),
+                                    |ui| {
+                                        let scaling_factor = std::cmp::max_by(
+                                            std::cmp::min_by(
+                                                ui.available_width()
+                                                    / mgba::gba::SCREEN_WIDTH as f32,
+                                                ui.available_height()
+                                                    / mgba::gba::SCREEN_HEIGHT as f32,
+                                                |a, b| a.partial_cmp(b).unwrap(),
+                                            )
+                                            .floor(),
+                                            1.0,
+                                            |a, b| a.partial_cmp(b).unwrap(),
+                                        );
+                                        ui.image(
+                                            vbuf_texture,
+                                            egui::Vec2::new(
+                                                mgba::gba::SCREEN_WIDTH as f32
+                                                    * scaling_factor as f32,
+                                                mgba::gba::SCREEN_HEIGHT as f32
+                                                    * scaling_factor as f32,
+                                            ),
+                                        );
+                                    },
+                                );
+                            });
+                        });
 
                         // Update title to show P1/P2 state.
                         let mut title = title_prefix.to_string();
@@ -350,115 +356,9 @@ pub fn run(
                                 }
                             });
                         }
+
+                        egui_glow.paint(gl_window.window());
                         gl_window.window().set_title(&title);
-
-                        //     // TODO: Figure out why moving this into its own function locks fps to tps.
-                        //     if show_debug {
-                        //         let mut lines = vec![format!(
-                        //             "fps: {:3.02}",
-                        //             1.0 / fps_counter.lock().mean_duration().as_secs_f32()
-                        //         )];
-
-                        //         let tps_adjustment = if let Some(match_) = session.match_().as_ref() {
-                        //             handle.block_on(async {
-                        //                 if let Some(match_) = &*match_.lock().await {
-                        //                     lines.push("match active".to_string());
-                        //                     let round_state = match_.lock_round_state().await;
-                        //                     if let Some(round) = round_state.round.as_ref() {
-                        //                         lines.push(format!("current tick: {:4}", round.current_tick()));
-                        //                         lines.push(format!(
-                        //                             "local player index: {}",
-                        //                             round.local_player_index()
-                        //                         ));
-                        //                         lines.push(format!(
-                        //                             "qlen: {:2} vs {:2} (delay = {:1})",
-                        //                             round.local_queue_length(),
-                        //                             round.remote_queue_length(),
-                        //                             round.local_delay(),
-                        //                         ));
-                        //                         round.tps_adjustment()
-                        //                     } else {
-                        //                         0.0
-                        //                     }
-                        //                 } else {
-                        //                     0.0
-                        //                 }
-                        //             })
-                        //         } else {
-                        //             0.0
-                        //         };
-
-                        //         lines.push(format!(
-                        //             "emu tps: {:3.02} ({:+1.02})",
-                        //             1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                        //             tps_adjustment
-                        //         ));
-
-                        //         for (i, line) in lines.iter().enumerate() {
-                        //             let mut glyphs = Vec::new();
-                        //             font::layout_paragraph(
-                        //                 scaled_font,
-                        //                 ab_glyph::point(0.0, 0.0),
-                        //                 9999.0,
-                        //                 &line,
-                        //                 &mut glyphs,
-                        //             );
-
-                        //             let height = scaled_font.height().ceil() as i32;
-                        //             let width = {
-                        //                 let min_x = glyphs.first().unwrap().position.x;
-                        //                 let last_glyph = glyphs.last().unwrap();
-                        //                 let max_x =
-                        //                     last_glyph.position.x + scaled_font.h_advance(last_glyph.id);
-                        //                 (max_x - min_x).ceil() as i32
-                        //             };
-
-                        //             let mut texture = texture_creator
-                        //                 .create_texture_streaming(
-                        //                     sdl2::pixels::PixelFormatEnum::ABGR8888,
-                        //                     width as u32,
-                        //                     height as u32,
-                        //                 )
-                        //                 .unwrap();
-                        //             texture
-                        //                 .with_lock(
-                        //                     sdl2::rect::Rect::new(0, 0, width as u32, height as u32),
-                        //                     |buf, _pitch| {
-                        //                         for glyph in glyphs {
-                        //                             if let Some(outlined) = scaled_font.outline_glyph(glyph) {
-                        //                                 let bounds = outlined.px_bounds();
-                        //                                 outlined.draw(|x, y, v| {
-                        //                                     let x = x as i32 + bounds.min.x as i32;
-                        //                                     let y = y as i32 + bounds.min.y as i32;
-                        //                                     if x >= width || y >= height || x < 0 || y < 0 {
-                        //                                         return;
-                        //                                     }
-                        //                                     let gray = (v * 0xff as f32) as u8;
-                        //                                     buf[((y * width + x) * 4) as usize + 0] = gray;
-                        //                                     buf[((y * width + x) * 4) as usize + 1] = gray;
-                        //                                     buf[((y * width + x) * 4) as usize + 2] = gray;
-                        //                                     buf[((y * width + x) * 4) as usize + 3] = 0xff;
-                        //                                 });
-                        //                             }
-                        //                         }
-                        //                     },
-                        //                 )
-                        //                 .unwrap();
-
-                        //             canvas
-                        //                 .copy(
-                        //                     &texture,
-                        //                     None,
-                        //                     Some(sdl2::rect::Rect::new(
-                        //                         0,
-                        //                         (i * height as usize) as i32,
-                        //                         width as u32,
-                        //                         height as u32,
-                        //                     )),
-                        //                 )
-                        //                 .unwrap();
-                        //         }
-                        //     }
                     }
 
                     // Done!
