@@ -121,7 +121,7 @@ impl Gui {
                                                 )
                                                 .unwrap_or(raw)
                                         }
-                                    }); // TODO
+                                    });
                                     if ui.add(egui::Button::new("×").small()).clicked() {
                                         mapping.remove(i);
                                     }
