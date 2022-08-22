@@ -255,58 +255,82 @@ pub fn run(
                             );
                         }
 
-                        // Handle egui.
-                        egui_glow.run(gl_window.window(), |egui_ctx| {
-                            // Apply stupid video scaling filter that only mint wants 🥴
-                            let (vbuf_width, vbuf_height) = video_filter.output_size((
-                                mgba::gba::SCREEN_WIDTH as usize,
-                                mgba::gba::SCREEN_HEIGHT as usize,
-                            ));
+                        // Update title to show P1/P2 state.
+                        let mut title = title_prefix.to_string();
+                        if let Some(match_) = session.match_().as_ref() {
+                            rt.block_on(async {
+                                if let Some(match_) = &*match_.lock().await {
+                                    let round_state = match_.lock_round_state().await;
+                                    if let Some(round) = round_state.round.as_ref() {
+                                        title = format!(
+                                            "{} [P{}]",
+                                            title,
+                                            round.local_player_index() + 1
+                                        );
+                                    }
+                                }
+                            });
+                        }
 
-                            let make_vbuf_texture = || {
-                                egui_ctx.load_texture(
-                                    "vbuf",
-                                    egui::ColorImage::new(
-                                        [vbuf_width, vbuf_height],
-                                        egui::Color32::BLACK,
-                                    ),
-                                    egui::TextureFilter::Nearest,
-                                )
-                            };
+                        gl_window.window().set_title(&title);
+                    }
 
-                            let vbuf_texture = vbuf_texture.get_or_insert_with(make_vbuf_texture);
-                            if vbuf_texture.size() != [vbuf_width, vbuf_height] {
-                                *vbuf_texture = make_vbuf_texture();
-                            }
+                    // Handle egui.
+                    egui_glow.run(gl_window.window(), |egui_ctx| {
+                        egui::CentralPanel::default().show(egui_ctx, |ui| {
+                            ui.with_layout(
+                                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                                |ui| {
+                                    if let Some(session) = &current_session {
+                                        // Apply stupid video scaling filter that only mint wants 🥴
+                                        let (vbuf_width, vbuf_height) = video_filter.output_size((
+                                            mgba::gba::SCREEN_WIDTH as usize,
+                                            mgba::gba::SCREEN_HEIGHT as usize,
+                                        ));
 
-                            if vbuf.len() != vbuf_width * vbuf_height * 4 {
-                                vbuf = vec![0u8; vbuf_width * vbuf_height * 4];
-                                log::info!("vbuf reallocated to ({}, {})", vbuf_width, vbuf_height);
-                            }
+                                        let make_vbuf_texture = || {
+                                            egui_ctx.load_texture(
+                                                "vbuf",
+                                                egui::ColorImage::new(
+                                                    [vbuf_width, vbuf_height],
+                                                    egui::Color32::BLACK,
+                                                ),
+                                                egui::TextureFilter::Nearest,
+                                            )
+                                        };
 
-                            video_filter.apply(
-                                &session.lock_vbuf(),
-                                &mut vbuf,
-                                (
-                                    mgba::gba::SCREEN_WIDTH as usize,
-                                    mgba::gba::SCREEN_HEIGHT as usize,
-                                ),
-                            );
+                                        let vbuf_texture =
+                                            vbuf_texture.get_or_insert_with(make_vbuf_texture);
+                                        if vbuf_texture.size() != [vbuf_width, vbuf_height] {
+                                            *vbuf_texture = make_vbuf_texture();
+                                        }
 
-                            vbuf_texture.set(
-                                egui::ColorImage::from_rgba_unmultiplied(
-                                    [vbuf_width, vbuf_height],
-                                    &vbuf,
-                                ),
-                                egui::TextureFilter::Nearest,
-                            );
+                                        if vbuf.len() != vbuf_width * vbuf_height * 4 {
+                                            vbuf = vec![0u8; vbuf_width * vbuf_height * 4];
+                                            log::info!(
+                                                "vbuf reallocated to ({}, {})",
+                                                vbuf_width,
+                                                vbuf_height
+                                            );
+                                        }
 
-                            egui::CentralPanel::default().show(egui_ctx, |ui| {
-                                ui.with_layout(
-                                    egui::Layout::centered_and_justified(
-                                        egui::Direction::LeftToRight,
-                                    ),
-                                    |ui| {
+                                        video_filter.apply(
+                                            &session.lock_vbuf(),
+                                            &mut vbuf,
+                                            (
+                                                mgba::gba::SCREEN_WIDTH as usize,
+                                                mgba::gba::SCREEN_HEIGHT as usize,
+                                            ),
+                                        );
+
+                                        vbuf_texture.set(
+                                            egui::ColorImage::from_rgba_unmultiplied(
+                                                [vbuf_width, vbuf_height],
+                                                &vbuf,
+                                            ),
+                                            egui::TextureFilter::Nearest,
+                                        );
+
                                         let scaling_factor = std::cmp::max_by(
                                             std::cmp::min_by(
                                                 ui.available_width()
@@ -328,33 +352,15 @@ pub fn run(
                                                     * scaling_factor as f32,
                                             ),
                                         );
-                                    },
-                                );
-                            });
-                        });
-
-                        // Update title to show P1/P2 state.
-                        let mut title = title_prefix.to_string();
-                        if let Some(match_) = session.match_().as_ref() {
-                            rt.block_on(async {
-                                if let Some(match_) = &*match_.lock().await {
-                                    let round_state = match_.lock_round_state().await;
-                                    if let Some(round) = round_state.round.as_ref() {
-                                        title = format!(
-                                            "{} [P{}]",
-                                            title,
-                                            round.local_player_index() + 1
-                                        );
                                     }
-                                }
-                            });
-                        }
-
-                        egui_glow.paint(gl_window.window());
-                        gl_window.window().set_title(&title);
-                    }
+                                },
+                            );
+                        });
+                    });
 
                     // Done!
+                    egui_glow.paint(gl_window.window());
+
                     gl_window.swap_buffers().unwrap();
                     fps_counter.lock().mark();
                 }
