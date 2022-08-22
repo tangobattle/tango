@@ -8,7 +8,12 @@ pub struct Session {
     _audio_binding: audio::Binding,
     thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
-    match_: Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>>,
+    mode: Mode,
+}
+
+pub enum Mode {
+    SinglePlayer,
+    PvP(std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>),
 }
 
 impl Session {
@@ -56,7 +61,7 @@ impl Session {
 
         let thread = mgba::thread::Thread::new(core);
 
-        let match_ = if let Some(match_init) = match_init {
+        let mode = if let Some(match_init) = match_init {
             let (dc_tx, dc_rx) = match_init.dc.split();
 
             let match_ = match_.clone();
@@ -103,9 +108,9 @@ impl Session {
                 });
             });
 
-            Some(match_)
+            Mode::PvP(match_)
         } else {
-            None
+            Mode::SinglePlayer
         };
 
         thread.start()?;
@@ -144,14 +149,12 @@ impl Session {
             _audio_binding: audio_binding,
             thread,
             joyflags,
-            match_,
+            mode,
         })
     }
 
-    pub fn match_(
-        &self,
-    ) -> &Option<std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>> {
-        &self.match_
+    pub fn mode(&self) -> &Mode {
+        &self.mode
     }
 
     pub fn set_fps(&self, fps: f32) {

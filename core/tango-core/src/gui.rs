@@ -197,7 +197,7 @@ impl Gui {
                     ui.end_row();
 
                     if let Some(session) = &state.session {
-                        let tps_adjustment = if let Some(match_) = session.match_().as_ref() {
+                        let tps_adjustment = if let session::Mode::PvP(match_) = session.mode() {
                             handle.block_on(async {
                                 if let Some(match_) = &*match_.lock().await {
                                     ui.label("Match active");
@@ -338,7 +338,7 @@ impl Gui {
         session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
         // If we're in single-player mode, allow speedup.
-        if session.match_().is_none() {
+        if let session::Mode::SinglePlayer = session.mode() {
             session.set_fps(
                 if input_mapping
                     .speed_up
@@ -365,7 +365,7 @@ impl Gui {
 
         // Update title to show P1/P2 state.
         let mut title = title_prefix.to_string();
-        if let Some(match_) = session.match_().as_ref() {
+        if let session::Mode::PvP(match_) = session.mode() {
             handle.block_on(async {
                 if let Some(match_) = &*match_.lock().await {
                     let round_state = match_.lock_round_state().await;
