@@ -298,7 +298,7 @@ impl Gui {
                             }
                         });
                     }
-                    if ui.add(egui::Button::new("+")).clicked() {
+                    if ui.add(egui::Button::new("➕")).clicked() {
                         *steal_input = game::StealInputState::Stealing {
                             callback: {
                                 let get_mapping = get_mapping.clone();
