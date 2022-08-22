@@ -108,15 +108,30 @@ impl Gui {
 
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
         egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
-            ui.label(egui::RichText::new("Theme").strong());
+            ui.label(
+                egui::RichText::new(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-theme")
+                        .unwrap(),
+                )
+                .strong(),
+            );
+
+            let light_label = i18n::LOCALES
+                .lookup(&config.language, "settings-theme.light")
+                .unwrap();
+            let dark_label = i18n::LOCALES
+                .lookup(&config.language, "settings-theme.dark")
+                .unwrap();
+
             egui::ComboBox::from_id_source("settings-windoow-general-theme")
                 .selected_text(match config.theme {
-                    config::Theme::Light => "Light",
-                    config::Theme::Dark => "Dark",
+                    config::Theme::Light => &light_label,
+                    config::Theme::Dark => &dark_label,
                 })
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut config.theme, config::Theme::Light, "Light");
-                    ui.selectable_value(&mut config.theme, config::Theme::Dark, "Dark");
+                    ui.selectable_value(&mut config.theme, config::Theme::Light, &light_label);
+                    ui.selectable_value(&mut config.theme, config::Theme::Dark, &dark_label);
                 });
             ui.end_row();
         });
