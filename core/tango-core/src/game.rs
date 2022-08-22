@@ -11,6 +11,7 @@ pub struct State {
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
     pub video_filter: Box<dyn video::Filter>,
+    pub title_prefix: String,
     pub show_debug: bool,
 }
 
@@ -26,8 +27,6 @@ pub fn run(
     match_init: Option<battle::MatchInit>,
 ) -> Result<(), anyhow::Error> {
     let handle = rt.handle().clone();
-
-    let title_prefix = format!("Tango: {}", window_title);
 
     let sdl = sdl2::init().unwrap();
     let game_controller = sdl.game_controller().unwrap();
@@ -106,6 +105,7 @@ pub fn run(
         emu_tps_counter: emu_tps_counter.clone(),
         session: None,
         video_filter,
+        title_prefix: format!("Tango: {}", window_title),
         show_debug: false,
     };
 
@@ -242,53 +242,15 @@ pub fn run(
                     return;
                 }
 
-                // HACK: No better place to put this for now.
-                if let Some(session) = &state.session {
-                    // If we're in single-player mode, allow speedup.
-                    if session.match_().is_none() {
-                        session.set_fps(
-                            if input_mapping
-                                .speed_up
-                                .iter()
-                                .any(|c| c.is_active(&input_state))
-                            {
-                                EXPECTED_FPS * 3.0
-                            } else {
-                                EXPECTED_FPS
-                            },
-                        );
-                    }
-
-                    // If we've crashed, log the error and panic.
-                    if let Some(thread_handle) = session.has_crashed() {
-                        // HACK: No better way to lock the core.
-                        let audio_guard = thread_handle.lock_audio();
-                        panic!(
-                            "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
-                            audio_guard.core().gba().cpu().gpr(14),
-                            audio_guard.core().gba().cpu().thumb_pc()
-                        );
-                    }
-
-                    // Update title to show P1/P2 state.
-                    let mut title = title_prefix.to_string();
-                    if let Some(match_) = session.match_().as_ref() {
-                        rt.block_on(async {
-                            if let Some(match_) = &*match_.lock().await {
-                                let round_state = match_.lock_round_state().await;
-                                if let Some(round) = round_state.round.as_ref() {
-                                    title =
-                                        format!("{} [P{}]", title, round.local_player_index() + 1);
-                                }
-                            }
-                        });
-                    }
-
-                    gl_window.window().set_title(&title);
-                }
-
                 egui_glow.run(gl_window.window(), |ctx| {
-                    gui.draw(ctx, gl_window.window(), &input_state, &mut state)
+                    gui.draw(
+                        ctx,
+                        handle.clone(),
+                        gl_window.window(),
+                        &input_state,
+                        &input_mapping,
+                        &mut state,
+                    )
                 });
                 egui_glow.paint(gl_window.window());
 

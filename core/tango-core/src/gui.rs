@@ -1,4 +1,4 @@
-use crate::{game, session, video};
+use crate::{game, input, session, video};
 
 struct VBuf {
     buf: Vec<u8>,
@@ -101,11 +101,56 @@ impl Gui {
     pub fn draw(
         &mut self,
         ctx: &egui::Context,
+        handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
         input_state: &input_helper::State,
+        input_mapping: &input::Mapping,
         state: &mut game::State,
     ) {
         ctx.set_pixels_per_point(window.scale_factor() as f32);
+
+        if let Some(session) = &state.session {
+            // If we're in single-player mode, allow speedup.
+            if session.match_().is_none() {
+                session.set_fps(
+                    if input_mapping
+                        .speed_up
+                        .iter()
+                        .any(|c| c.is_active(&input_state))
+                    {
+                        game::EXPECTED_FPS * 3.0
+                    } else {
+                        game::EXPECTED_FPS
+                    },
+                );
+            }
+
+            // If we've crashed, log the error and panic.
+            if let Some(thread_handle) = session.has_crashed() {
+                // HACK: No better way to lock the core.
+                let audio_guard = thread_handle.lock_audio();
+                panic!(
+                    "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
+                    audio_guard.core().gba().cpu().gpr(14),
+                    audio_guard.core().gba().cpu().thumb_pc()
+                );
+            }
+
+            // Update title to show P1/P2 state.
+            let mut title = state.title_prefix.clone();
+            if let Some(match_) = session.match_().as_ref() {
+                handle.block_on(async {
+                    if let Some(match_) = &*match_.lock().await {
+                        let round_state = match_.lock_round_state().await;
+                        if let Some(round) = round_state.round.as_ref() {
+                            title = format!("{} [P{}]", title, round.local_player_index() + 1);
+                        }
+                    }
+                });
+            }
+
+            window.set_title(&title);
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(
