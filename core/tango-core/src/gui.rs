@@ -84,8 +84,6 @@ impl Gui {
                         );
                     });
 
-                    ui.separator();
-
                     self.draw_input_mapping_tab(
                         ui,
                         &config.language,
