@@ -5,6 +5,12 @@ pub const EXPECTED_FPS: f32 = 60.0;
 use clap::Parser;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+struct InputStateTypes;
+impl input_helper::StateTypes for InputStateTypes {
+    type Key = sdl2::keyboard::Scancode;
+    type Button = sdl2::controller::Button;
+}
+
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
@@ -152,7 +158,7 @@ fn main() -> Result<(), anyhow::Error> {
             )
             .unwrap();
 
-        let mut input_state = input_helper::State::new();
+        let mut input_state = input_helper::State::<InputStateTypes>::new();
 
         let mut take_screenshot_pressed = false;
         'toplevel: loop {
@@ -165,26 +171,25 @@ fn main() -> Result<(), anyhow::Error> {
                         repeat: false,
                         ..
                     } => {
-                        input_state.handle_key_down(scancode as usize);
+                        input_state.handle_key_down(scancode);
                     }
                     sdl2::event::Event::KeyUp {
                         scancode: Some(scancode),
                         repeat: false,
                         ..
                     } => {
-                        input_state.handle_key_up(scancode as usize);
+                        input_state.handle_key_up(scancode);
                     }
                     _ => {}
                 }
 
                 let last_take_screenshot_pressed = take_screenshot_pressed;
-                take_screenshot_pressed =
-                    input_state.is_key_held(sdl2::keyboard::Scancode::S as usize);
+                take_screenshot_pressed = input_state.is_key_held(sdl2::keyboard::Scancode::S);
                 taking_screenshot = take_screenshot_pressed && !last_take_screenshot_pressed;
 
                 let audio_guard = thread_handle.lock_audio();
                 audio_guard.sync_mut().set_fps_target(
-                    if input_state.is_key_held(sdl2::keyboard::Scancode::Tab as usize) {
+                    if input_state.is_key_held(sdl2::keyboard::Scancode::Tab) {
                         EXPECTED_FPS * 3.0
                     } else {
                         EXPECTED_FPS

@@ -147,7 +147,7 @@ impl Gui {
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
-        input_state: &input_helper::State,
+        input_state: &input::State,
         input_mapping: &input::Mapping,
         session: &session::Session,
         title_prefix: &str,
@@ -211,7 +211,7 @@ impl Gui {
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
-        input_state: &input_helper::State,
+        input_state: &input::State,
         input_mapping: &input::Mapping,
         state: &mut game::State,
     ) {
@@ -230,7 +230,7 @@ impl Gui {
             );
         }
 
-        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave as usize) {
+        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave) {
             state.show_debug = !state.show_debug;
         }
         self.draw_debug(ctx, handle.clone(), state);

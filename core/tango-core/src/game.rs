@@ -86,7 +86,7 @@ pub fn run(
     let fps_counter = Arc::new(Mutex::new(stats::Counter::new(30)));
     let emu_tps_counter = Arc::new(Mutex::new(stats::Counter::new(10)));
 
-    let mut input_state = input_helper::State::new();
+    let mut input_state = input::State::new();
 
     let mut controllers: std::collections::HashMap<u32, sdl2::controller::GameController> =
         std::collections::HashMap::new();
@@ -161,10 +161,10 @@ pub fn run(
                         ..
                     } if !handled_by_egui => match state {
                         glutin::event::ElementState::Pressed => {
-                            input_state.handle_key_down(virutal_keycode as usize);
+                            input_state.handle_key_down(virutal_keycode);
                         }
                         glutin::event::ElementState::Released => {
-                            input_state.handle_key_up(virutal_keycode as usize);
+                            input_state.handle_key_up(virutal_keycode);
                         }
                     },
                     _ => {}
@@ -201,10 +201,10 @@ pub fn run(
                             input_state.handle_controller_axis_motion(which, axis as usize, value);
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
-                            input_state.handle_controller_button_down(which, button as usize);
+                            input_state.handle_controller_button_down(which, button);
                         }
                         sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
-                            input_state.handle_controller_button_up(which, button as usize);
+                            input_state.handle_controller_button_up(which, button);
                         }
                         _ => {}
                     }

@@ -1,3 +1,11 @@
+pub struct StateTypes;
+impl input_helper::StateTypes for StateTypes {
+    type Key = glutin::event::VirtualKeyCode;
+    type Button = sdl2::controller::Button;
+}
+
+pub type State = input_helper::State<StateTypes>;
+
 #[derive(Clone, Debug)]
 pub enum PhysicalInput {
     Key(glutin::event::VirtualKeyCode),
@@ -6,12 +14,12 @@ pub enum PhysicalInput {
 }
 
 impl PhysicalInput {
-    pub fn is_active(&self, input: &input_helper::State) -> bool {
+    pub fn is_active(&self, input: &State) -> bool {
         match *self {
-            PhysicalInput::Key(key) => input.is_key_held(key as usize),
+            PhysicalInput::Key(key) => input.is_key_held(key),
             PhysicalInput::Button(button) => input
                 .iter_controllers()
-                .any(|(_, c)| c.is_button_held(button as usize)),
+                .any(|(_, c)| c.is_button_held(button)),
             PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
                 (threshold > 0 && c.axis(axis as usize) >= threshold)
                     || (threshold < 0 && c.axis(axis as usize) <= threshold)
@@ -36,7 +44,7 @@ pub struct Mapping {
 }
 
 impl Mapping {
-    pub fn to_mgba_keys(&self, input: &input_helper::State) -> u32 {
+    pub fn to_mgba_keys(&self, input: &State) -> u32 {
         (if self.left.iter().any(|c| c.is_active(input)) {
             mgba::input::keys::LEFT
         } else {

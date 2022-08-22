@@ -1,12 +1,18 @@
 #[derive(Clone)]
-pub struct ControllerState {
-    buttons_held: std::collections::HashSet<usize>,
-    last_buttons_held: std::collections::HashSet<usize>,
+pub struct ControllerState<ST>
+where
+    ST: StateTypes,
+{
+    buttons_held: std::collections::HashSet<ST::Button>,
+    last_buttons_held: std::collections::HashSet<ST::Button>,
     axes: Vec<i16>,
     last_axes: Vec<i16>,
 }
 
-impl ControllerState {
+impl<ST> ControllerState<ST>
+where
+    ST: StateTypes,
+{
     pub fn new(num_axes: usize) -> Self {
         Self {
             buttons_held: std::collections::HashSet::new(),
@@ -16,15 +22,15 @@ impl ControllerState {
         }
     }
 
-    pub fn is_button_pressed(&self, button: usize) -> bool {
+    pub fn is_button_pressed(&self, button: ST::Button) -> bool {
         !self.last_buttons_held.contains(&button) && self.buttons_held.contains(&button)
     }
 
-    pub fn is_button_released(&self, button: usize) -> bool {
+    pub fn is_button_released(&self, button: ST::Button) -> bool {
         self.last_buttons_held.contains(&button) && !self.buttons_held.contains(&button)
     }
 
-    pub fn is_button_held(&self, button: usize) -> bool {
+    pub fn is_button_held(&self, button: ST::Button) -> bool {
         self.buttons_held.contains(&button)
     }
 
@@ -42,14 +48,29 @@ impl ControllerState {
     }
 }
 
-#[derive(Clone)]
-pub struct State {
-    keys_held: std::collections::HashSet<usize>,
-    last_keys_held: std::collections::HashSet<usize>,
-    controllers: std::collections::HashMap<u32, ControllerState>,
+pub trait StateTypes
+where
+    Self::Key: std::hash::Hash + Eq + Copy + Clone,
+    Self::Button: std::hash::Hash + Eq + Copy + Clone,
+{
+    type Key;
+    type Button;
 }
 
-impl State {
+#[derive(Clone)]
+pub struct State<ST>
+where
+    ST: StateTypes,
+{
+    keys_held: std::collections::HashSet<ST::Key>,
+    last_keys_held: std::collections::HashSet<ST::Key>,
+    controllers: std::collections::HashMap<u32, ControllerState<ST>>,
+}
+
+impl<ST> State<ST>
+where
+    ST: StateTypes,
+{
     pub fn new() -> Self {
         Self {
             last_keys_held: std::collections::HashSet::new(),
@@ -58,11 +79,11 @@ impl State {
         }
     }
 
-    pub fn handle_key_up(&mut self, key: usize) {
+    pub fn handle_key_up(&mut self, key: ST::Key) {
         self.keys_held.remove(&key);
     }
 
-    pub fn handle_key_down(&mut self, key: usize) {
+    pub fn handle_key_down(&mut self, key: ST::Key) {
         self.keys_held.insert(key);
     }
 
@@ -75,7 +96,7 @@ impl State {
         controller_state.axes[axis] = value;
     }
 
-    pub fn handle_controller_button_up(&mut self, id: u32, button: usize) {
+    pub fn handle_controller_button_up(&mut self, id: u32, button: ST::Button) {
         let controller_state = if let Some(controller_state) = self.controllers.get_mut(&id) {
             controller_state
         } else {
@@ -84,7 +105,7 @@ impl State {
         controller_state.buttons_held.remove(&button);
     }
 
-    pub fn handle_controller_button_down(&mut self, id: u32, button: usize) {
+    pub fn handle_controller_button_down(&mut self, id: u32, button: ST::Button) {
         let controller_state = if let Some(controller_state) = self.controllers.get_mut(&id) {
             controller_state
         } else {
@@ -101,19 +122,21 @@ impl State {
         self.controllers.remove(&id);
     }
 
-    pub fn is_key_pressed(&self, scancode: usize) -> bool {
-        !self.last_keys_held.contains(&scancode) && self.keys_held.contains(&scancode)
+    pub fn is_key_pressed(&self, key: ST::Key) -> bool {
+        !self.last_keys_held.contains(&key) && self.keys_held.contains(&key)
     }
 
-    pub fn is_key_released(&self, scancode: usize) -> bool {
-        self.last_keys_held.contains(&scancode) && !self.keys_held.contains(&scancode)
+    pub fn is_key_released(&self, key: ST::Key) -> bool {
+        self.last_keys_held.contains(&key) && !self.keys_held.contains(&key)
     }
 
-    pub fn is_key_held(&self, scancode: usize) -> bool {
-        self.keys_held.contains(&scancode)
+    pub fn is_key_held(&self, key: ST::Key) -> bool {
+        self.keys_held.contains(&key)
     }
 
-    pub fn iter_controllers(&self) -> impl std::iter::Iterator<Item = (&u32, &ControllerState)> {
+    pub fn iter_controllers(
+        &self,
+    ) -> impl std::iter::Iterator<Item = (&u32, &ControllerState<ST>)> {
         self.controllers.iter()
     }
 
