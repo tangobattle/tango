@@ -26,15 +26,17 @@ impl Gui {
             mgba::gba::SCREEN_HEIGHT as usize,
         ));
 
-        let make_vbuf = || VBuf {
-            buf: vec![0u8; vbuf_width * vbuf_height * 4],
-            texture: ui.ctx().load_texture(
-                "vbuf",
-                egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
-                egui::TextureFilter::Nearest,
-            ),
+        let make_vbuf = || {
+            log::info!("vbuf reallocation: ({}, {})", vbuf_width, vbuf_height);
+            VBuf {
+                buf: vec![0u8; vbuf_width * vbuf_height * 4],
+                texture: ui.ctx().load_texture(
+                    "vbuf",
+                    egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
+                    egui::TextureFilter::Nearest,
+                ),
+            }
         };
-
         let vbuf = self.vbuf.get_or_insert_with(make_vbuf);
         if vbuf.texture.size() != [vbuf_width, vbuf_height] {
             *vbuf = make_vbuf();
