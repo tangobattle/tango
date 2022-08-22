@@ -65,143 +65,149 @@ impl Gui {
         }
     }
 
-    fn draw_input_mapping_window(
+    fn draw_settings_window(
         &mut self,
         ctx: &egui::Context,
+        config: &mut config::Config,
+        steal_input: &mut game::StealInputState,
+    ) {
+        egui::Window::new(i18n::LOCALES.lookup(&config.language, "settings").unwrap())
+            .id(egui::Id::new("settings-window"))
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_label(
+                            true,
+                            i18n::LOCALES
+                                .lookup(&config.language, "input-mapping")
+                                .unwrap(),
+                        );
+                    });
+
+                    ui.separator();
+
+                    self.draw_input_mapping_tab(
+                        ui,
+                        &config.language,
+                        &mut config.input_mapping,
+                        steal_input,
+                    );
+                });
+            });
+    }
+
+    fn draw_input_mapping_tab(
+        &mut self,
+        ui: &mut egui::Ui,
         lang: &unic_langid::LanguageIdentifier,
         input_mapping: &mut input::Mapping,
         steal_input: &mut game::StealInputState,
     ) {
-        egui::Window::new(i18n::LOCALES.lookup(lang, "input-mapping").unwrap())
-            .id(egui::Id::new("input-mapping-window"))
-            .show(ctx, |ui| {
-                egui::Grid::new("input-mapping-window-grid").show(ui, |ui| {
-                    let mut add_row = |label_text_id,
-                                       get_mapping: fn(
-                        &mut input::Mapping,
-                    )
-                        -> &mut Vec<input::PhysicalInput>| {
-                        ui.label(
-                            egui::RichText::new(i18n::LOCALES.lookup(lang, label_text_id).unwrap())
-                                .strong(),
-                        );
-                        ui.horizontal(|ui| {
-                            let mapping = get_mapping(input_mapping);
-                            for (i, c) in mapping.clone().iter().enumerate() {
-                                ui.group(|ui| {
-                                    ui.add(
-                                        egui::Image::new(
-                                            match c {
-                                                input::PhysicalInput::Key(_) => {
-                                                    &self.icons.keyboard
-                                                }
-                                                input::PhysicalInput::Button(_)
-                                                | input::PhysicalInput::Axis { .. } => {
-                                                    &self.icons.sports_esports
-                                                }
-                                            }
-                                            .texture_id(ctx),
-                                            egui::Vec2::new(
-                                                ui.text_style_height(&egui::TextStyle::Body),
-                                                ui.text_style_height(&egui::TextStyle::Body),
-                                            ),
-                                        )
-                                        .tint(
-                                            ui.style()
-                                                .visuals
-                                                .widgets
-                                                .noninteractive
-                                                .fg_stroke
-                                                .color,
-                                        ),
-                                    );
-                                    ui.label(match c {
-                                        input::PhysicalInput::Key(key) => {
-                                            let raw = serde_plain::to_string(key).unwrap();
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-keys.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
+        egui::Grid::new("input-mapping-window-grid").show(ui, |ui| {
+            let mut add_row = |label_text_id,
+                               get_mapping: fn(
+                &mut input::Mapping,
+            ) -> &mut Vec<input::PhysicalInput>| {
+                ui.label(
+                    egui::RichText::new(i18n::LOCALES.lookup(lang, label_text_id).unwrap())
+                        .strong(),
+                );
+                ui.horizontal(|ui| {
+                    let mapping = get_mapping(input_mapping);
+                    for (i, c) in mapping.clone().iter().enumerate() {
+                        ui.group(|ui| {
+                            ui.add(
+                                egui::Image::new(
+                                    match c {
+                                        input::PhysicalInput::Key(_) => &self.icons.keyboard,
+                                        input::PhysicalInput::Button(_)
+                                        | input::PhysicalInput::Axis { .. } => {
+                                            &self.icons.sports_esports
                                         }
-                                        input::PhysicalInput::Button(button) => {
-                                            let raw = button.string();
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-buttons.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                        input::PhysicalInput::Axis { axis, direction } => {
-                                            let raw = format!(
-                                                "{}{}",
-                                                axis.string(),
-                                                match direction {
-                                                    input::AxisDirection::Positive => "plus",
-                                                    input::AxisDirection::Negative => "minus",
-                                                }
-                                            );
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-axes.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                    });
-                                    if ui.add(egui::Button::new("×").small()).clicked() {
-                                        mapping.remove(i);
                                     }
-                                });
-                            }
-                            if ui.add(egui::Button::new("+")).clicked() {
-                                *steal_input = game::StealInputState::Stealing {
-                                    callback: {
-                                        let get_mapping = get_mapping.clone();
-                                        Box::new(move |phy, input_mapping| {
-                                            let mapping = get_mapping(input_mapping);
-                                            mapping.push(phy);
-                                            mapping.sort_by_key(|c| match c {
-                                                input::PhysicalInput::Key(key) => {
-                                                    (0, *key as usize, 0)
-                                                }
-                                                input::PhysicalInput::Button(button) => {
-                                                    (1, *button as usize, 0)
-                                                }
-                                                input::PhysicalInput::Axis { axis, direction } => {
-                                                    (2, *axis as usize, *direction as usize)
-                                                }
-                                            });
-                                            mapping.dedup();
-                                        })
-                                    },
-                                    userdata: Box::new(label_text_id),
-                                };
+                                    .texture_id(ui.ctx()),
+                                    egui::Vec2::new(
+                                        ui.text_style_height(&egui::TextStyle::Body),
+                                        ui.text_style_height(&egui::TextStyle::Body),
+                                    ),
+                                )
+                                .tint(ui.style().visuals.widgets.noninteractive.fg_stroke.color),
+                            );
+                            ui.label(match c {
+                                input::PhysicalInput::Key(key) => {
+                                    let raw = serde_plain::to_string(key).unwrap();
+                                    i18n::LOCALES
+                                        .lookup(lang, &format!("physical-input-keys.{}", raw))
+                                        .unwrap_or(raw)
+                                }
+                                input::PhysicalInput::Button(button) => {
+                                    let raw = button.string();
+                                    i18n::LOCALES
+                                        .lookup(lang, &format!("physical-input-buttons.{}", raw))
+                                        .unwrap_or(raw)
+                                }
+                                input::PhysicalInput::Axis { axis, direction } => {
+                                    let raw = format!(
+                                        "{}{}",
+                                        axis.string(),
+                                        match direction {
+                                            input::AxisDirection::Positive => "plus",
+                                            input::AxisDirection::Negative => "minus",
+                                        }
+                                    );
+                                    i18n::LOCALES
+                                        .lookup(lang, &format!("physical-input-axes.{}", raw))
+                                        .unwrap_or(raw)
+                                }
+                            });
+                            if ui.add(egui::Button::new("×").small()).clicked() {
+                                mapping.remove(i);
                             }
                         });
-                        ui.end_row();
-                    };
-
-                    add_row("input-button.left", |input_mapping| &mut input_mapping.left);
-                    add_row("input-button.right", |input_mapping| {
-                        &mut input_mapping.right
-                    });
-                    add_row("input-button.up", |input_mapping| &mut input_mapping.up);
-                    add_row("input-button.down", |input_mapping| &mut input_mapping.down);
-                    add_row("input-button.a", |input_mapping| &mut input_mapping.a);
-                    add_row("input-button.b", |input_mapping| &mut input_mapping.b);
-                    add_row("input-button.l", |input_mapping| &mut input_mapping.l);
-                    add_row("input-button.r", |input_mapping| &mut input_mapping.r);
-                    add_row("input-button.start", |input_mapping| {
-                        &mut input_mapping.start
-                    });
-                    add_row("input-button.select", |input_mapping| {
-                        &mut input_mapping.select
-                    });
+                    }
+                    if ui.add(egui::Button::new("+")).clicked() {
+                        *steal_input = game::StealInputState::Stealing {
+                            callback: {
+                                let get_mapping = get_mapping.clone();
+                                Box::new(move |phy, input_mapping| {
+                                    let mapping = get_mapping(input_mapping);
+                                    mapping.push(phy);
+                                    mapping.sort_by_key(|c| match c {
+                                        input::PhysicalInput::Key(key) => (0, *key as usize, 0),
+                                        input::PhysicalInput::Button(button) => {
+                                            (1, *button as usize, 0)
+                                        }
+                                        input::PhysicalInput::Axis { axis, direction } => {
+                                            (2, *axis as usize, *direction as usize)
+                                        }
+                                    });
+                                    mapping.dedup();
+                                })
+                            },
+                            userdata: Box::new(label_text_id),
+                        };
+                    }
                 });
+                ui.end_row();
+            };
+
+            add_row("input-button.left", |input_mapping| &mut input_mapping.left);
+            add_row("input-button.right", |input_mapping| {
+                &mut input_mapping.right
             });
+            add_row("input-button.up", |input_mapping| &mut input_mapping.up);
+            add_row("input-button.down", |input_mapping| &mut input_mapping.down);
+            add_row("input-button.a", |input_mapping| &mut input_mapping.a);
+            add_row("input-button.b", |input_mapping| &mut input_mapping.b);
+            add_row("input-button.l", |input_mapping| &mut input_mapping.l);
+            add_row("input-button.r", |input_mapping| &mut input_mapping.r);
+            add_row("input-button.start", |input_mapping| {
+                &mut input_mapping.start
+            });
+            add_row("input-button.select", |input_mapping| {
+                &mut input_mapping.select
+            });
+        });
     }
 
     fn draw_debug_window(
@@ -483,12 +489,7 @@ impl Gui {
             state.show_debug = !state.show_debug;
         }
         self.draw_debug_window(ctx, handle.clone(), state);
-        self.draw_input_mapping_window(
-            ctx,
-            &state.config.language,
-            &mut state.config.input_mapping,
-            &mut state.steal_input,
-        );
+        self.draw_settings_window(ctx, &mut state.config, &mut state.steal_input);
 
         let mut steal_input_open = match state.steal_input {
             game::StealInputState::Idle => false,
