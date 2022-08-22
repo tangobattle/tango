@@ -152,18 +152,16 @@ impl Gui {
             }
 
             window.set_title(&title);
-        }
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(
-                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-                |ui| {
-                    if let Some(session) = &state.session {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.with_layout(
+                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                    |ui| {
                         self.draw_emulator(ui, session, &state.video_filter);
-                    }
-                },
-            );
-        });
+                    },
+                );
+            });
+        }
 
         if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave as usize) {
             state.show_debug = !state.show_debug;
