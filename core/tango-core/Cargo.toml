@@ -51,7 +51,7 @@ image = { version = "0.24", features = ["png"] }
 thiserror = "1.0"
 egui = "0.19"
 glow = "0.11"
-egui_glow = { version = "0.19", features = ["winit"] }
+egui_glow = { version = "0.19", features = ["winit", "clipboard", "links"] }
 glutin = { version = "0.29", features = ["serde"] }
 cpal = "0.13"
 fluent-bundle = "0.15"
