@@ -2892,7 +2892,6 @@ dependencies = [
 name = "tango-core"
 version = "0.0.0"
 dependencies = [
- "ab_glyph",
  "anyhow",
  "bincode",
  "bitvec",

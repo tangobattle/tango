@@ -3,8 +3,8 @@ extern crate lazy_static;
 
 pub mod audio;
 pub mod battle;
-pub mod font;
 pub mod game;
+pub mod gui;
 pub mod hooks;
 pub mod input;
 pub mod ipc;
