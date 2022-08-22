@@ -5,5 +5,6 @@ settings = 設定
 settings-theme = テーマ
     .light = ライト
     .dark = ダーク
+    .system = システム設定に従う
 
 settings-language = 言語

@@ -9,16 +9,21 @@ struct VBuf {
     texture: egui::TextureHandle,
 }
 
-pub struct FontFamilies {
+struct Themes {
+    light: egui::style::Visuals,
+    dark: egui::style::Visuals,
+}
+
+struct FontFamilies {
     latn: egui::FontFamily,
     jpan: egui::FontFamily,
     hans: egui::FontFamily,
     hant: egui::FontFamily,
 }
 
-pub struct Icons {
-    pub sports_esports: egui_extras::RetainedImage,
-    pub keyboard: egui_extras::RetainedImage,
+struct Icons {
+    sports_esports: egui_extras::RetainedImage,
+    keyboard: egui_extras::RetainedImage,
 }
 
 pub struct Gui {
@@ -26,6 +31,7 @@ pub struct Gui {
     icons: Icons,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
+    themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
 }
 
@@ -91,6 +97,10 @@ impl Gui {
                 ),
             ]),
             font_families,
+            themes: Themes {
+                light: egui::style::Visuals::light(),
+                dark: egui::style::Visuals::dark(),
+            },
             current_language: None,
         }
     }
@@ -148,6 +158,9 @@ impl Gui {
                     .strong(),
                 );
 
+                let system_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-theme.system")
+                    .unwrap();
                 let light_label = i18n::LOCALES
                     .lookup(&config.language, "settings-theme.light")
                     .unwrap();
@@ -157,10 +170,16 @@ impl Gui {
 
                 egui::ComboBox::from_id_source("settings-window-general-theme")
                     .selected_text(match config.theme {
+                        config::Theme::System => &system_label,
                         config::Theme::Light => &light_label,
                         config::Theme::Dark => &dark_label,
                     })
                     .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut config.theme,
+                            config::Theme::System,
+                            &system_label,
+                        );
                         ui.selectable_value(&mut config.theme, config::Theme::Light, &light_label);
                         ui.selectable_value(&mut config.theme, config::Theme::Dark, &dark_label);
                     });
@@ -636,8 +655,12 @@ impl Gui {
         }
 
         ctx.set_visuals(match state.config.theme {
-            config::Theme::Light => egui::style::Visuals::light(),
-            config::Theme::Dark => egui::style::Visuals::dark(),
+            config::Theme::System => match dark_light::detect() {
+                dark_light::Mode::Light => self.themes.light.clone(),
+                dark_light::Mode::Dark => self.themes.dark.clone(),
+            },
+            config::Theme::Light => self.themes.light.clone(),
+            config::Theme::Dark => self.themes.dark.clone(),
         });
 
         if let Some(session) = &state.session {

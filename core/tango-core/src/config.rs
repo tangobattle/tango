@@ -6,6 +6,7 @@ use crate::{i18n, input};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum Theme {
+    System,
     Light,
     Dark,
 }
@@ -75,7 +76,7 @@ impl Config {
 
         Ok(Self {
             nickname: None,
-            theme: Theme::Light,
+            theme: Theme::System,
             language: sys_locale::get_locale()
                 .unwrap_or(i18n::FALLBACK_LANG.to_string())
                 .parse()?,
