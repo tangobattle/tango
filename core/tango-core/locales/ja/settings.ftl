@@ -8,3 +8,4 @@ settings-theme = テーマ
     .system = システム設定に従う
 
 settings-language = 言語
+settings-nickname = ニックネーム

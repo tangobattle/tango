@@ -8,3 +8,4 @@ settings-theme = Theme
     .system = Follow system setting
 
 settings-language = Language
+settings-nickname = Nickname

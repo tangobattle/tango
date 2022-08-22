@@ -149,6 +149,21 @@ impl Gui {
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
         egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
             {
+                let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                ui.label(
+                    egui::RichText::new(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-nickname")
+                            .unwrap(),
+                    )
+                    .strong(),
+                );
+                ui.text_edit_singleline(&mut nickname);
+                config.nickname = Some(nickname);
+                ui.end_row();
+            }
+
+            {
                 ui.label(
                     egui::RichText::new(
                         i18n::LOCALES
