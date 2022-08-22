@@ -1,4 +1,4 @@
-use crate::{battle, hooks, lockstep, replayer, shadow};
+use crate::{battle, hooks, lockstep, replayer, session, shadow};
 
 mod munger;
 mod offsets;
@@ -95,6 +95,7 @@ impl hooks::Hooks for BN5 {
         handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
+        completion_token: session::CompletionToken,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
@@ -364,18 +365,12 @@ impl hooks::Hooks for BN5 {
                 )
             },
             {
-                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.comm_menu_end_battle_entry,
                     Box::new(move |_core| {
                         handle.block_on(async {
-                            log::info!("match ended");
-                            let mut match_ = match_.lock().await;
-                            if let Some(match_) = &*match_ {
-                                match_.cancel();
-                            }
-                            *match_ = None;
+                            completion_token.complete();
                         });
                     }),
                 )

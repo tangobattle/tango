@@ -3,7 +3,7 @@ mod offsets;
 
 use byteorder::ByteOrder;
 
-use crate::{battle, hooks, lockstep, replayer, shadow};
+use crate::{battle, hooks, lockstep, replayer, session, shadow};
 
 #[derive(Clone)]
 pub struct BN2 {
@@ -87,6 +87,7 @@ impl hooks::Hooks for BN2 {
         handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
+        completion_token: session::CompletionToken,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let match_ = match_.clone();
@@ -142,18 +143,12 @@ impl hooks::Hooks for BN2 {
                 )
             },
             {
-                let match_ = match_.clone();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.match_end_ret,
                     Box::new(move |_core| {
                         handle.block_on(async {
-                            log::info!("match ended");
-                            let mut match_ = match_.lock().await;
-                            if let Some(match_) = &*match_ {
-                                match_.cancel();
-                            }
-                            *match_ = None;
+                            completion_token.complete();
                         });
                     }),
                 )

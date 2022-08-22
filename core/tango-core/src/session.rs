@@ -9,6 +9,18 @@ pub struct Session {
     thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     mode: Mode,
+    completed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+pub struct CompletionToken {
+    completed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl CompletionToken {
+    pub fn complete(&self) {
+        self.completed
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 pub enum Mode {
@@ -51,11 +63,20 @@ impl Session {
         let hooks = hooks::get(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
 
+        let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         if let Some(match_init) = match_init.as_ref() {
             let _ = std::fs::create_dir_all(match_init.settings.replays_path.parent().unwrap());
             let mut traps = hooks.common_traps();
-            traps.extend(hooks.primary_traps(handle.clone(), joyflags.clone(), match_.clone()));
+            traps.extend(hooks.primary_traps(
+                handle.clone(),
+                joyflags.clone(),
+                match_.clone(),
+                CompletionToken {
+                    completed: completed.clone(),
+                },
+            ));
             core.set_traps(traps);
         }
 
@@ -150,7 +171,12 @@ impl Session {
             thread,
             joyflags,
             mode,
+            completed,
         })
+    }
+
+    pub fn completed(&self) -> bool {
+        self.completed.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn mode(&self) -> &Mode {

@@ -309,24 +309,19 @@ pub fn run(
                     gl.clear(glow::COLOR_BUFFER_BIT);
                 }
 
-                // let is_session_active = state
-                //     .session
-                //     .as_ref()
-                //     .map(|s| {
-                //         s.match_()
-                //             .as_ref()
-                //             .map(|match_| handle.block_on(async { match_.lock().await.is_some() }))
-                //             .unwrap_or(true)
-                //     })
-                //     .unwrap_or(false);
-                // if !is_session_active {
-                //     state.session = None;
-                // }
+                if state
+                    .session
+                    .as_ref()
+                    .map(|s| s.completed())
+                    .unwrap_or(false)
+                {
+                    state.session = None;
+                }
 
-                // if state.session.is_none() {
-                //     *control_flow = glutin::event_loop::ControlFlow::Exit;
-                //     return;
-                // }
+                if state.session.is_none() {
+                    *control_flow = glutin::event_loop::ControlFlow::Exit;
+                    return;
+                }
 
                 egui_glow.run(gl_window.window(), |ctx| {
                     ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
