@@ -170,7 +170,7 @@ impl Match {
         rom: Vec<u8>,
         hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
         peer_conn: datachannel_wrapper::PeerConnection,
-        dc: datachannel_wrapper::DataChannel,
+        dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
@@ -179,7 +179,6 @@ impl Match {
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let shadow_rom = std::fs::read(&settings.shadow_rom_path)?;
 
-        let (dc_tx, dc_rx) = dc.split();
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let (transport_rendezvous_tx, transport_rendezvous_rx) = tokio::sync::oneshot::channel();
         let did_polite_win_last_round = rng.gen::<bool>();
@@ -219,20 +218,6 @@ impl Match {
             round_started_tx,
             round_started_rx: tokio::sync::Mutex::new(round_started_rx),
         });
-        {
-            // TODO: Remove cyclical Arc reference.
-            let match_ = match_.clone();
-            tokio::task::spawn(async move {
-                tokio::select! {
-                    Err(e) = match_.run(dc_rx) => {
-                        log::info!("match thread ending: {:?}", e);
-                    }
-                    _ = match_.cancelled() => {
-                    }
-                }
-                log::info!("match thread ended");
-            });
-        }
         Ok(match_)
     }
 
@@ -242,10 +227,6 @@ impl Match {
 
     pub fn cancelled(&self) -> tokio_util::sync::WaitForCancellationFuture {
         self.cancellation_token.cancelled()
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        self.cancellation_token.is_cancelled()
     }
 
     pub async fn advance_shadow_until_round_end(&self) -> anyhow::Result<()> {

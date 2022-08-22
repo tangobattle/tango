@@ -57,6 +57,8 @@ impl Session {
         let thread = mgba::thread::Thread::new(core);
 
         let match_ = if let Some(match_init) = match_init {
+            let (dc_tx, dc_rx) = match_init.dc.split();
+
             let match_ = match_.clone();
             handle.block_on(async {
                 let is_offerer = match_init.peer_conn.local_description().unwrap().sdp_type
@@ -67,20 +69,38 @@ impl Session {
                     .clone()
                     .try_into()
                     .expect("rng seed");
-                *match_.lock().await = Some(
-                    battle::Match::new(
+                *match_.lock().await = Some({
+                    let inner_match = battle::Match::new(
                         rom,
                         hooks,
                         match_init.peer_conn,
-                        match_init.dc,
+                        dc_tx,
                         rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                         is_offerer,
                         thread.handle(),
                         ipc_sender.clone(),
                         match_init.settings,
                     )
-                    .expect("new match"),
-                );
+                    .expect("new match");
+
+                    {
+                        let match_ = match_.clone();
+                        let inner_match = inner_match.clone();
+                        handle.spawn(async move {
+                            tokio::select! {
+                                Err(e) = inner_match.run(dc_rx) => {
+                                    log::info!("match thread ending: {:?}", e);
+                                }
+                                _ = inner_match.cancelled() => {
+                                }
+                            }
+                            log::info!("match thread ended");
+                            *match_.lock().await = None;
+                        });
+                    }
+
+                    inner_match
+                });
             });
 
             Some(match_)

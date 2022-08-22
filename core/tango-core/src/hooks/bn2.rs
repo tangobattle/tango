@@ -98,7 +98,7 @@ impl hooks::Hooks for BN2 {
 
                     let match_ = match_.lock().await;
                     match &*match_ {
-                        Some(match_) if !match_.is_cancelled() => match_,
+                        Some(match_) => match_,
                         _ => {
                             core.gba_mut().cpu_mut().set_gpr(0, 0);
                             return;
@@ -119,7 +119,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -167,7 +167,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -188,7 +188,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -209,7 +209,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -230,7 +230,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -251,7 +251,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -330,7 +330,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -349,7 +349,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -380,7 +380,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -475,7 +475,7 @@ impl hooks::Hooks for BN2 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }

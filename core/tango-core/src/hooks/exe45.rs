@@ -126,7 +126,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -176,7 +176,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -197,7 +197,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -218,7 +218,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -239,7 +239,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -260,7 +260,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -285,7 +285,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -310,7 +310,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -329,7 +329,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -354,7 +354,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -393,17 +393,7 @@ impl hooks::Hooks for EXE45 {
                             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                             munger.set_copy_data_input_state(
                                 core,
-                                if match_
-                                    .lock()
-                                    .await
-                                    .as_ref()
-                                    .map(|m| !m.is_cancelled())
-                                    .unwrap_or(false)
-                                {
-                                    2
-                                } else {
-                                    4
-                                },
+                                if match_.lock().await.is_some() { 2 } else { 4 },
                             );
                         });
                     }),
@@ -419,7 +409,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
@@ -502,7 +492,7 @@ impl hooks::Hooks for EXE45 {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
-                                Some(match_) if !match_.is_cancelled() => match_,
+                                Some(match_) => match_,
                                 _ => {
                                     return;
                                 }
