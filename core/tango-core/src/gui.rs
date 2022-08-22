@@ -675,39 +675,47 @@ impl Gui {
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                egui::Frame::none()
-                    .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
-                    .show(ui, |ui| {
-                        let userdata = if let game::StealInputState::Stealing { userdata, .. } =
-                            &state.steal_input
-                        {
-                            userdata
-                        } else {
-                            unreachable!();
-                        };
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Center),
+                    |ui| {
+                        egui::Frame::none()
+                            .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
+                            .show(ui, |ui| {
+                                let userdata =
+                                    if let game::StealInputState::Stealing { userdata, .. } =
+                                        &state.steal_input
+                                    {
+                                        userdata
+                                    } else {
+                                        unreachable!();
+                                    };
 
-                        ui.label(
-                            egui::RichText::new(
-                                i18n::LOCALES
-                                    .lookup_with_args(
-                                        &state.config.language,
-                                        "input-mapping.prompt",
-                                        &std::collections::HashMap::from([(
-                                            "key",
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    &state.config.language,
-                                                    userdata.downcast_ref::<&str>().unwrap(),
-                                                )
-                                                .unwrap()
-                                                .into(),
-                                        )]),
+                                ui.label(
+                                    egui::RichText::new(
+                                        i18n::LOCALES
+                                            .lookup_with_args(
+                                                &state.config.language,
+                                                "input-mapping.prompt",
+                                                &std::collections::HashMap::from([(
+                                                    "key",
+                                                    i18n::LOCALES
+                                                        .lookup(
+                                                            &state.config.language,
+                                                            userdata
+                                                                .downcast_ref::<&str>()
+                                                                .unwrap(),
+                                                        )
+                                                        .unwrap()
+                                                        .into(),
+                                                )]),
+                                            )
+                                            .unwrap(),
                                     )
-                                    .unwrap(),
-                            )
-                            .size(32.0),
-                        );
-                    });
+                                    .size(32.0),
+                                );
+                            });
+                    },
+                );
             })
         {
             ctx.move_to_top(inner_response.response.layer_id);

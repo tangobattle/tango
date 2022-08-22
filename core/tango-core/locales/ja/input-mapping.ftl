@@ -1,0 +1,44 @@
+input-mapping =
+    .prompt = 「{$key}」の入力を押してください。
+
+input-button =
+    .left = ⬅
+    .right = ➡
+    .up = ⬆
+    .down = ⬇
+    .a = A
+    .b = B
+    .l = L
+    .r = R
+    .start = START
+    .select = SELECT
+
+physical-input-buttons =
+  .dpup = 十字ボタン ⬆
+  .dpdown = 十字ボタン ⬇
+  .dpleft = 十字ボタン ⬅
+  .dpright = 十字ボタン ⮕
+  .a = A
+  .b = B
+  .x = X
+  .y = Y
+  .leftstick = Lスティックボタン
+  .rightstick = Rスティックボタン
+  .leftshoulder = Lボタン
+  .rightshoulder = Rボタン
+  .back = BACK
+  .guide = ガイド
+  .start = START
+  .touchpad = タッチパッド
+
+physical-input-axes =
+  .leftxminus = Lスティック ⬅
+  .leftxplus = Lスティック ➡
+  .leftyminus = Lスティック ⬆
+  .leftyplus = Lスティック ⬇
+  .rightxminus = Rスティック ⬅
+  .rightxplus = Rスティック ➡
+  .rightyminus = Rスティック ⬆
+  .rightyplus = Rスティック ⬇
+  .lefttriggerplus = Lスティック
+  .righttriggerplus = Rスティック

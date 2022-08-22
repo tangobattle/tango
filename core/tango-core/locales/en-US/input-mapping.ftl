@@ -2,10 +2,10 @@ input-mapping =
     .prompt = Press input for {$key}.
 
 input-button =
-    .left = Left
-    .right = Right
-    .up = Up
-    .down = Down
+    .left = ⬅
+    .right = ➡
+    .up = ⬆
+    .down = ⬇
     .a = A
     .b = B
     .l = L
