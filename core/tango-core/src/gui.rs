@@ -55,10 +55,12 @@ impl Gui {
                     egui::FontData::from_static(include_bytes!("fonts/NotoSansTC-Regular.otf")),
                 ),
                 (
-                    "NotoSansSymbols2-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!(
-                        "fonts/NotoSansSymbols2-Regular.ttf"
-                    )),
+                    "NotoSansMono-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/NotoSansMono-Regular.ttf")),
+                ),
+                (
+                    "NotoEmoji-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
                 ),
             ]),
             current_language: None,
@@ -475,36 +477,52 @@ impl Gui {
         if self.current_language.as_ref() != Some(&state.config.language) {
             let mut language = state.config.language.clone();
             language.maximize();
-
             log::info!("language is changing to {}", language);
 
-            let mut fonts = egui::FontDefinitions::default();
-            fonts.font_data.extend(self.font_data.clone());
-            let proportional = fonts
-                .families
-                .get_mut(&egui::FontFamily::Proportional)
-                .unwrap();
-            *proportional = vec![
-                match language.script {
-                    Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
-                        "NotoSansJP-Regular"
-                    }
-                    Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
-                        "NotoSansSC-Regular"
-                    }
-                    Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
-                        "NotoSansTC-Regular"
-                    }
-                    _ => "NotoSans-Regular",
-                }
-                .to_string(),
-                "NotoSans-Regular".to_string(),
-                "NotoSansJP-Regular".to_string(),
-                "NotoSansSC-Regular".to_string(),
-                "NotoSansTC-Regular".to_string(),
-                "NotoSansSymbols2-Regular".to_string(),
-            ];
-            ctx.set_fonts(fonts);
+            ctx.set_fonts(egui::FontDefinitions {
+                font_data: self.font_data.clone(),
+                families: std::collections::BTreeMap::from([
+                    (
+                        egui::FontFamily::Proportional,
+                        vec![
+                            match language.script {
+                                Some(s)
+                                    if s == unic_langid::subtags::Script::from_str("Jpan")
+                                        .unwrap() =>
+                                {
+                                    "NotoSansJP-Regular"
+                                }
+                                Some(s)
+                                    if s == unic_langid::subtags::Script::from_str("Hans")
+                                        .unwrap() =>
+                                {
+                                    "NotoSansSC-Regular"
+                                }
+                                Some(s)
+                                    if s == unic_langid::subtags::Script::from_str("Hant")
+                                        .unwrap() =>
+                                {
+                                    "NotoSansTC-Regular"
+                                }
+                                _ => "NotoSans-Regular",
+                            }
+                            .to_string(),
+                            "NotoSans-Regular".to_string(),
+                            "NotoSansJP-Regular".to_string(),
+                            "NotoSansSC-Regular".to_string(),
+                            "NotoSansTC-Regular".to_string(),
+                            "NotoEmoji-Regular".to_string(),
+                        ],
+                    ),
+                    (
+                        egui::FontFamily::Monospace,
+                        vec![
+                            "NotoSansMono-Regular".to_string(),
+                            "NotoEmoji-Regular".to_string(),
+                        ],
+                    ),
+                ]),
+            });
             self.current_language = Some(state.config.language.clone());
         }
 
