@@ -209,11 +209,6 @@ pub fn run(
                         _ => {}
                     }
                 }
-
-                if let Some(session) = &state.session {
-                    session.set_joyflags(input_mapping.to_mgba_keys(&input_state))
-                }
-
                 gl_window.window().request_redraw();
             }
 

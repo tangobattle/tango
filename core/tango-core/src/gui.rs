@@ -110,6 +110,8 @@ impl Gui {
         ctx.set_pixels_per_point(window.scale_factor() as f32);
 
         if let Some(session) = &state.session {
+            session.set_joyflags(input_mapping.to_mgba_keys(input_state));
+
             // If we're in single-player mode, allow speedup.
             if session.match_().is_none() {
                 session.set_fps(
