@@ -29,8 +29,6 @@ pub fn run(
     let sdl = sdl2::init().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
-    // let _window = video.window("", 0, 0).hidden().build().unwrap();
-
     let event_loop = glutin::event_loop::EventLoop::new();
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
@@ -137,29 +135,32 @@ pub fn run(
             glutin::event::Event::WindowEvent {
                 event: window_event,
                 ..
-            } => match window_event {
-                glutin::event::WindowEvent::Resized(size) => {
-                    gl_window.resize(size);
-                }
-                glutin::event::WindowEvent::CloseRequested => {
-                    control_flow.set_exit();
-                }
-                glutin::event::WindowEvent::KeyboardInput {
-                    input:
-                        glutin::event::KeyboardInput {
-                            scancode, state, ..
-                        },
-                    ..
-                } => match state {
-                    glutin::event::ElementState::Pressed => {
-                        input_state.handle_key_down(scancode as usize);
+            } => {
+                let handled_by_egui = egui_glow.on_event(&window_event);
+                match window_event {
+                    glutin::event::WindowEvent::Resized(size) => {
+                        gl_window.resize(size);
                     }
-                    glutin::event::ElementState::Released => {
-                        input_state.handle_key_up(scancode as usize);
+                    glutin::event::WindowEvent::CloseRequested => {
+                        control_flow.set_exit();
                     }
-                },
-                _ => {}
-            },
+                    glutin::event::WindowEvent::KeyboardInput {
+                        input:
+                            glutin::event::KeyboardInput {
+                                scancode, state, ..
+                            },
+                        ..
+                    } if !handled_by_egui => match state {
+                        glutin::event::ElementState::Pressed => {
+                            input_state.handle_key_down(scancode as usize);
+                        }
+                        glutin::event::ElementState::Released => {
+                            input_state.handle_key_up(scancode as usize);
+                        }
+                    },
+                    _ => {}
+                };
+            }
             glutin::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
                 for sdl_event in sdl_event_loop.poll_iter() {
