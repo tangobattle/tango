@@ -54,6 +54,10 @@ glow = "0.11"
 egui_glow = { version = "0.19", features = ["winit"] }
 glutin = { version = "0.29", features = ["serde"] }
 cpal = "0.13"
+fluent-bundle = "0.15"
+fluent-templates = "0.8"
+unic-langid = "0.9"
+sys-locale = "0.2"
 
 [build-dependencies]
 winres = "0.1"

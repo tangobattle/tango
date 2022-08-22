@@ -6,6 +6,7 @@ pub mod battle;
 pub mod game;
 pub mod gui;
 pub mod hooks;
+pub mod i18n;
 pub mod input;
 pub mod ipc;
 pub mod lockstep;

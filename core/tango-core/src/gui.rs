@@ -1,4 +1,6 @@
-use crate::{game, input, session, video};
+use fluent_templates::Loader;
+
+use crate::{game, i18n, input, session, video};
 
 struct VBuf {
     buf: Vec<u8>,
@@ -14,22 +16,98 @@ impl Gui {
         Self { vbuf: None }
     }
 
-    fn draw_debug(
+    fn draw_input_mapping_window(
+        &mut self,
+        ctx: &egui::Context,
+        lang: &unic_langid::LanguageIdentifier,
+        input_mapping: &mut input::Mapping,
+        show_input_capture: &mut bool,
+    ) {
+        if let Some(inner_response) = egui::Window::new("")
+            .id(egui::Id::new("input-capture-window"))
+            .open(show_input_capture)
+            .title_bar(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                let response = ui.label(
+                    egui::RichText::new(
+                        i18n::LOCALES
+                            .lookup_with_args(
+                                lang,
+                                "input-mapping.prompt",
+                                &std::collections::HashMap::from([("key", "TODO".into())]),
+                            )
+                            .unwrap(),
+                    )
+                    .size(32.0),
+                );
+                return true;
+            })
+        {
+            if let Some(inner) = inner_response.inner {
+                *show_input_capture = inner;
+            }
+        }
+
+        egui::Window::new(i18n::LOCALES.lookup(lang, "input-mapping").unwrap())
+            .id(egui::Id::new("input-mapping-window"))
+            .show(ctx, |ui| {
+                egui::Grid::new("input-mapping-window-grid").show(ui, |ui| {
+                    let mut add_row = |label_text_id, mapping: &mut Vec<input::PhysicalInput>| {
+                        ui.label(
+                            egui::RichText::new(i18n::LOCALES.lookup(lang, label_text_id).unwrap())
+                                .strong(),
+                        );
+                        ui.horizontal(|ui| {
+                            for (i, c) in mapping.clone().iter().enumerate() {
+                                ui.group(|ui| {
+                                    ui.label(format!("{:?}", c)); // TODO
+                                    if ui.add(egui::Button::new("×").small()).clicked() {
+                                        mapping.remove(i);
+                                    }
+                                });
+                            }
+                            if ui.add(egui::Button::new("+")).clicked() {
+                                *show_input_capture = true;
+                            }
+                        });
+                        ui.end_row();
+                    };
+
+                    add_row("input-button.left", &mut input_mapping.left);
+                    add_row("input-button.right", &mut input_mapping.right);
+                    add_row("input-button.up", &mut input_mapping.up);
+                    add_row("input-button.down", &mut input_mapping.down);
+                    add_row("input-button.a", &mut input_mapping.a);
+                    add_row("input-button.b", &mut input_mapping.b);
+                    add_row("input-button.l", &mut input_mapping.l);
+                    add_row("input-button.r", &mut input_mapping.r);
+                    add_row("input-button.start", &mut input_mapping.start);
+                    add_row("input-button.select", &mut input_mapping.select);
+                });
+            });
+    }
+
+    fn draw_debug_window(
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
         state: &mut game::State,
     ) {
         egui::Window::new("Debug")
-            .id(egui::Id::new("debug"))
+            .id(egui::Id::new("debug-window"))
             .open(&mut state.show_debug)
             .show(ctx, |ui| {
-                egui::Grid::new("debug_grid").show(ui, |ui| {
+                egui::Grid::new("debug-window-grid").show(ui, |ui| {
                     ui.label("FPS");
-                    ui.label(format!(
-                        "{:3.02}",
-                        1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
-                    ));
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{:3.02}",
+                            1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
+                        ))
+                        .family(egui::FontFamily::Monospace),
+                    );
                     ui.end_row();
 
                     if let Some(session) = &state.session {
@@ -42,20 +120,35 @@ impl Gui {
                                     let round_state = match_.lock_round_state().await;
                                     if let Some(round) = round_state.round.as_ref() {
                                         ui.label("Current tick");
-                                        ui.label(format!("{:4}", round.current_tick()));
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:4}",
+                                                round.current_tick()
+                                            ))
+                                            .family(egui::FontFamily::Monospace),
+                                        );
                                         ui.end_row();
 
                                         ui.label("Local player index");
-                                        ui.label(format!("{:1}", round.local_player_index()));
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:1}",
+                                                round.local_player_index()
+                                            ))
+                                            .family(egui::FontFamily::Monospace),
+                                        );
                                         ui.end_row();
 
                                         ui.label("Queue length");
-                                        ui.label(format!(
-                                            "{:2} vs {:2} (delay = {:1})",
-                                            round.local_queue_length(),
-                                            round.remote_queue_length(),
-                                            round.local_delay(),
-                                        ));
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:2} vs {:2} (delay = {:1})",
+                                                round.local_queue_length(),
+                                                round.remote_queue_length(),
+                                                round.local_delay(),
+                                            ))
+                                            .family(egui::FontFamily::Monospace),
+                                        );
                                         ui.end_row();
                                         round.tps_adjustment()
                                     } else {
@@ -70,11 +163,14 @@ impl Gui {
                         };
 
                         ui.label("Emu TPS");
-                        ui.label(format!(
-                            "{:3.02} ({:+1.02})",
-                            1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                            tps_adjustment
-                        ));
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{:3.02} ({:+1.02})",
+                                1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                                tps_adjustment
+                            ))
+                            .family(egui::FontFamily::Monospace),
+                        );
                         ui.end_row();
                     }
                 });
@@ -212,18 +308,15 @@ impl Gui {
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
         input_state: &input::State,
-        input_mapping: &input::Mapping,
         state: &mut game::State,
     ) {
-        ctx.set_pixels_per_point(window.scale_factor() as f32);
-
         if let Some(session) = &state.session {
             self.draw_session(
                 ctx,
                 handle.clone(),
                 window,
                 input_state,
-                input_mapping,
+                &state.input_mapping,
                 session,
                 &state.title_prefix,
                 &state.video_filter,
@@ -233,6 +326,12 @@ impl Gui {
         if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave) {
             state.show_debug = !state.show_debug;
         }
-        self.draw_debug(ctx, handle.clone(), state);
+        self.draw_debug_window(ctx, handle.clone(), state);
+        self.draw_input_mapping_window(
+            ctx,
+            &state.lang,
+            &mut state.input_mapping,
+            &mut state.show_input_capture,
+        );
     }
 }

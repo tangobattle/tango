@@ -1,4 +1,4 @@
-use crate::{audio, battle, gui, input, ipc, session, stats, video};
+use crate::{audio, battle, gui, i18n, input, ipc, session, stats, video};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use glow::HasContext;
 use parking_lot::Mutex;
@@ -11,8 +11,11 @@ pub struct State {
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
     pub video_filter: Box<dyn video::Filter>,
+    pub input_mapping: input::Mapping,
     pub title_prefix: String,
+    pub show_input_capture: bool,
     pub show_debug: bool,
+    pub lang: unic_langid::LanguageIdentifier,
 }
 
 pub fn run(
@@ -68,6 +71,37 @@ pub fn run(
 
     let mut gui = gui::Gui::new();
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
+    egui_glow.egui_ctx.set_fonts({
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "NotoSans-Regular".to_string(),
+            egui::FontData::from_static(include_bytes!("fonts/NotoSans-Regular.ttf")),
+        );
+        fonts.font_data.insert(
+            "NotoSansJP-Regular".to_string(),
+            egui::FontData::from_static(include_bytes!("fonts/NotoSansJP-Regular.otf")),
+        );
+        fonts.font_data.insert(
+            "NotoSansSC-Regular".to_string(),
+            egui::FontData::from_static(include_bytes!("fonts/NotoSansSC-Regular.otf")),
+        );
+        fonts.font_data.insert(
+            "NotoSansSymbols2-Regular".to_string(),
+            egui::FontData::from_static(include_bytes!("fonts/NotoSansSymbols2-Regular.ttf")),
+        );
+
+        let proportional = fonts
+            .families
+            .get_mut(&egui::FontFamily::Proportional)
+            .unwrap();
+        *proportional = vec![
+            "NotoSans-Regular".to_string(),
+            "NotoSansJP-Regular".to_string(),
+            "NotoSansSC-Regular".to_string(),
+            "NotoSansSymbols2-Regular".to_string(),
+        ];
+        fonts
+    });
 
     let audio_device = cpal::default_host()
         .default_output_device()
@@ -101,11 +135,17 @@ pub fn run(
     }
 
     let mut state = State {
+        lang: sys_locale::get_locale()
+            .unwrap_or_else(|| i18n::FALLBACK_LANG.to_string())
+            .parse()
+            .unwrap(),
         fps_counter: fps_counter.clone(),
         emu_tps_counter: emu_tps_counter.clone(),
         session: None,
+        input_mapping,
         video_filter,
         title_prefix: format!("Tango: {}", window_title),
+        show_input_capture: false,
         show_debug: false,
     };
 
@@ -238,12 +278,13 @@ pub fn run(
                 }
 
                 egui_glow.run(gl_window.window(), |ctx| {
+                    ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
+
                     gui.draw(
                         ctx,
                         handle.clone(),
                         gl_window.window(),
                         &input_state,
-                        &input_mapping,
                         &mut state,
                     )
                 });
