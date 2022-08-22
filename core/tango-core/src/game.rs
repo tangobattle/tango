@@ -77,37 +77,6 @@ pub fn run(
 
     let mut gui = gui::Gui::new();
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
-    egui_glow.egui_ctx.set_fonts({
-        let mut fonts = egui::FontDefinitions::default();
-        fonts.font_data.insert(
-            "NotoSans-Regular".to_string(),
-            egui::FontData::from_static(include_bytes!("fonts/NotoSans-Regular.ttf")),
-        );
-        fonts.font_data.insert(
-            "NotoSansJP-Regular".to_string(),
-            egui::FontData::from_static(include_bytes!("fonts/NotoSansJP-Regular.otf")),
-        );
-        fonts.font_data.insert(
-            "NotoSansSC-Regular".to_string(),
-            egui::FontData::from_static(include_bytes!("fonts/NotoSansSC-Regular.otf")),
-        );
-        fonts.font_data.insert(
-            "NotoSansSymbols2-Regular".to_string(),
-            egui::FontData::from_static(include_bytes!("fonts/NotoSansSymbols2-Regular.ttf")),
-        );
-
-        let proportional = fonts
-            .families
-            .get_mut(&egui::FontFamily::Proportional)
-            .unwrap();
-        *proportional = vec![
-            "NotoSans-Regular".to_string(),
-            "NotoSansJP-Regular".to_string(),
-            "NotoSansSC-Regular".to_string(),
-            "NotoSansSymbols2-Regular".to_string(),
-        ];
-        fonts
-    });
 
     let audio_device = cpal::default_host()
         .default_output_device()

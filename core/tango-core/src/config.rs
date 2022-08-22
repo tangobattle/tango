@@ -95,22 +95,29 @@ impl Config {
         })
     }
 
+    pub fn create() -> Result<Self, anyhow::Error> {
+        let config_path = get_config_path()?;
+        let config = Self::system_defaults()?;
+        std::fs::create_dir_all(config_path.parent().unwrap())?;
+        std::fs::write(&config_path, serde_json::to_string(&config)?)?;
+        Ok(config)
+    }
+
     pub fn load_or_create() -> Result<Self, anyhow::Error> {
         let config_path = get_config_path()?;
         match std::fs::File::open(&config_path) {
             Ok(mut file) => {
                 let mut contents = String::new();
                 file.read_to_string(&mut contents)?;
-                let config = serde_json::from_str(&contents)?;
-                Ok(config)
+                match serde_json::from_str(&contents) {
+                    Ok(config) => Ok(config),
+                    Err(err) => {
+                        log::error!("error loading config, creating new config: {}", err);
+                        Self::create()
+                    }
+                }
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
-                let config = Self::system_defaults()?;
-                let contents = serde_json::to_string(&config)?;
-                std::fs::create_dir_all(config_path.parent().unwrap())?;
-                std::fs::File::create(&config_path)?.write_all(contents.as_bytes())?;
-                Ok(config)
-            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Self::create(),
             Err(e) => Err(e.into()),
         }
     }

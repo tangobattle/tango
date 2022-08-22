@@ -1,6 +1,8 @@
+use std::str::FromStr;
+
 use fluent_templates::Loader;
 
-use crate::{game, i18n, input, session, video};
+use crate::{config, game, i18n, input, session, video};
 
 struct VBuf {
     buf: Vec<u8>,
@@ -15,6 +17,8 @@ pub struct Icons {
 pub struct Gui {
     vbuf: Option<VBuf>,
     icons: Icons,
+    font_data: std::collections::BTreeMap<String, egui::FontData>,
+    current_language: Option<unic_langid::LanguageIdentifier>,
 }
 
 impl Gui {
@@ -33,6 +37,31 @@ impl Gui {
                 )
                 .unwrap(),
             },
+            font_data: std::collections::BTreeMap::from([
+                (
+                    "NotoSans-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/NotoSans-Regular.ttf")),
+                ),
+                (
+                    "NotoSansJP-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/NotoSansJP-Regular.otf")),
+                ),
+                (
+                    "NotoSansSC-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/NotoSansSC-Regular.otf")),
+                ),
+                (
+                    "NotoSansTC-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!("fonts/NotoSansTC-Regular.otf")),
+                ),
+                (
+                    "NotoSansSymbols2-Regular".to_string(),
+                    egui::FontData::from_static(include_bytes!(
+                        "fonts/NotoSansSymbols2-Regular.ttf"
+                    )),
+                ),
+            ]),
+            current_language: None,
         }
     }
 
@@ -181,7 +210,7 @@ impl Gui {
         handle: tokio::runtime::Handle,
         state: &mut game::State,
     ) {
-        egui::Window::new("Debug")
+        egui::Window::new("Debug 令")
             .id(egui::Id::new("debug-window"))
             .open(&mut state.show_debug)
             .show(ctx, |ui| {
@@ -396,7 +425,46 @@ impl Gui {
         input_state: &input::State,
         state: &mut game::State,
     ) {
-        ctx.set_visuals(egui::style::Visuals::light());
+        if self.current_language.as_ref() != Some(&state.config.language) {
+            let mut language = state.config.language.clone();
+            language.maximize();
+
+            log::info!("language is changing to {}", language);
+
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.extend(self.font_data.clone());
+            let proportional = fonts
+                .families
+                .get_mut(&egui::FontFamily::Proportional)
+                .unwrap();
+            *proportional = vec![
+                match language.script {
+                    Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
+                        "NotoSansJP-Regular"
+                    }
+                    Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
+                        "NotoSansSC-Regular"
+                    }
+                    Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
+                        "NotoSansTC-Regular"
+                    }
+                    _ => "NotoSans-Regular",
+                }
+                .to_string(),
+                "NotoSans-Regular".to_string(),
+                "NotoSansJP-Regular".to_string(),
+                "NotoSansSC-Regular".to_string(),
+                "NotoSansTC-Regular".to_string(),
+                "NotoSansSymbols2-Regular".to_string(),
+            ];
+            ctx.set_fonts(fonts);
+            self.current_language = Some(state.config.language.clone());
+        }
+
+        ctx.set_visuals(match state.config.theme {
+            config::Theme::Light => egui::style::Visuals::light(),
+            config::Theme::Dark => egui::style::Visuals::dark(),
+        });
 
         if let Some(session) = &state.session {
             self.draw_session(
