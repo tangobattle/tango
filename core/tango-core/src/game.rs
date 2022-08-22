@@ -263,7 +263,7 @@ pub fn run(
                                 mgba::gba::SCREEN_HEIGHT as usize,
                             ));
 
-                            let vbuf_texture = vbuf_texture.get_or_insert_with(|| {
+                            let make_vbuf_texture = || {
                                 egui_ctx.load_texture(
                                     "vbuf",
                                     egui::ColorImage::new(
@@ -272,17 +272,11 @@ pub fn run(
                                     ),
                                     egui::TextureFilter::Nearest,
                                 )
-                            });
+                            };
 
+                            let vbuf_texture = vbuf_texture.get_or_insert_with(make_vbuf_texture);
                             if vbuf_texture.size() != [vbuf_width, vbuf_height] {
-                                *vbuf_texture = egui_ctx.load_texture(
-                                    "vbuf",
-                                    egui::ColorImage::new(
-                                        [vbuf_width, vbuf_height],
-                                        egui::Color32::BLACK,
-                                    ),
-                                    egui::TextureFilter::Nearest,
-                                );
+                                *vbuf_texture = make_vbuf_texture();
                             }
 
                             if vbuf.len() != vbuf_width * vbuf_height * 4 {
@@ -307,7 +301,6 @@ pub fn run(
                                 egui::TextureFilter::Nearest,
                             );
 
-                            let vbuf_texture: &egui::TextureHandle = vbuf_texture;
                             egui::CentralPanel::default().show(egui_ctx, |ui| {
                                 ui.with_layout(
                                     egui::Layout::centered_and_justified(
@@ -327,7 +320,7 @@ pub fn run(
                                             |a, b| a.partial_cmp(b).unwrap(),
                                         );
                                         ui.image(
-                                            vbuf_texture,
+                                            &*vbuf_texture,
                                             egui::Vec2::new(
                                                 mgba::gba::SCREEN_WIDTH as f32
                                                     * scaling_factor as f32,
