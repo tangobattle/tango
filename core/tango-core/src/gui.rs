@@ -97,7 +97,13 @@ impl Gui {
         );
     }
 
-    pub fn draw(&mut self, ctx: &egui::Context, state: &mut game::State) {
+    pub fn draw(
+        &mut self,
+        ctx: &egui::Context,
+        window: &glutin::window::Window,
+        state: &mut game::State,
+    ) {
+        ctx.set_pixels_per_point(window.scale_factor() as f32);
         self.draw_debug(ctx, state);
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(

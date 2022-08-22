@@ -278,7 +278,9 @@ pub fn run(
                     gl_window.window().set_title(&title);
                 }
 
-                egui_glow.run(gl_window.window(), |ctx| gui.draw(ctx, &mut state));
+                egui_glow.run(gl_window.window(), |ctx| {
+                    gui.draw(ctx, gl_window.window(), &mut state)
+                });
                 egui_glow.paint(gl_window.window());
 
                 gl_window.swap_buffers().unwrap();
