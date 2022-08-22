@@ -7,13 +7,33 @@ struct VBuf {
     texture: egui::TextureHandle,
 }
 
+pub struct Icons {
+    pub sports_esports: egui_extras::RetainedImage,
+    pub keyboard: egui_extras::RetainedImage,
+}
+
 pub struct Gui {
     vbuf: Option<VBuf>,
+    icons: Icons,
 }
 
 impl Gui {
     pub fn new() -> Self {
-        Self { vbuf: None }
+        Self {
+            vbuf: None,
+            icons: Icons {
+                sports_esports: egui_extras::RetainedImage::from_image_bytes(
+                    "icons.sports_esports",
+                    include_bytes!("icons/sports_esports.png"),
+                )
+                .unwrap(),
+                keyboard: egui_extras::RetainedImage::from_image_bytes(
+                    "icons.keyboard",
+                    include_bytes!("icons/keyboard.png"),
+                )
+                .unwrap(),
+            },
+        }
     }
 
     fn draw_input_mapping_window(
@@ -23,14 +43,14 @@ impl Gui {
         input_mapping: &mut input::Mapping,
         show_input_capture: &mut bool,
     ) {
-        if let Some(inner_response) = egui::Window::new("")
+        egui::Window::new("")
             .id(egui::Id::new("input-capture-window"))
             .open(show_input_capture)
             .title_bar(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                let response = ui.label(
+                ui.label(
                     egui::RichText::new(
                         i18n::LOCALES
                             .lookup_with_args(
@@ -41,14 +61,8 @@ impl Gui {
                             .unwrap(),
                     )
                     .size(32.0),
-                );
-                return true;
-            })
-        {
-            if let Some(inner) = inner_response.inner {
-                *show_input_capture = inner;
-            }
-        }
+                )
+            });
 
         egui::Window::new(i18n::LOCALES.lookup(lang, "input-mapping").unwrap())
             .id(egui::Id::new("input-mapping-window"))
@@ -62,6 +76,32 @@ impl Gui {
                         ui.horizontal(|ui| {
                             for (i, c) in mapping.clone().iter().enumerate() {
                                 ui.group(|ui| {
+                                    ui.add(
+                                        egui::Image::new(
+                                            match c {
+                                                input::PhysicalInput::Key(_) => {
+                                                    &self.icons.keyboard
+                                                }
+                                                input::PhysicalInput::Button(_)
+                                                | input::PhysicalInput::Axis(_, _) => {
+                                                    &self.icons.sports_esports
+                                                }
+                                            }
+                                            .texture_id(ctx),
+                                            egui::Vec2::new(
+                                                ui.text_style_height(&egui::TextStyle::Body),
+                                                ui.text_style_height(&egui::TextStyle::Body),
+                                            ),
+                                        )
+                                        .tint(
+                                            ui.style()
+                                                .visuals
+                                                .widgets
+                                                .noninteractive
+                                                .fg_stroke
+                                                .color,
+                                        ),
+                                    );
                                     ui.label(format!("{:?}", c)); // TODO
                                     if ui.add(egui::Button::new("×").small()).clicked() {
                                         mapping.remove(i);
@@ -292,14 +332,16 @@ impl Gui {
 
         window.set_title(&title);
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.with_layout(
-                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-                |ui| {
-                    self.draw_emulator(ui, session, video_filter);
-                },
-            );
-        });
+        egui::CentralPanel::default()
+            .frame(egui::Frame::none().fill(egui::Color32::BLACK))
+            .show(ctx, |ui| {
+                ui.with_layout(
+                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                    |ui| {
+                        self.draw_emulator(ui, session, video_filter);
+                    },
+                );
+            });
     }
 
     pub fn draw(
@@ -310,6 +352,8 @@ impl Gui {
         input_state: &input::State,
         state: &mut game::State,
     ) {
+        ctx.set_visuals(egui::style::Visuals::light());
+
         if let Some(session) = &state.session {
             self.draw_session(
                 ctx,

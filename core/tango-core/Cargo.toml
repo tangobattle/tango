@@ -47,7 +47,7 @@ bitvec = "1.0"
 png = "0.17"
 hqx = { path = "../hqx" }
 mmpx = { path = "../mmpx" }
-image = "0.24"
+image = { version = "0.24", features = ["png"] }
 thiserror = "1.0"
 egui = "0.19"
 glow = "0.11"
@@ -58,6 +58,7 @@ fluent-bundle = "0.15"
 fluent-templates = "0.8"
 unic-langid = "0.9"
 sys-locale = "0.2"
+egui_extras = { version = "0.19", features = ["image"] }
 
 [build-dependencies]
 winres = "0.1"

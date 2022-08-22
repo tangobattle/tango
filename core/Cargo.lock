@@ -887,6 +887,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_extras"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f698f685bb0ad39e87109e2f695ded0bccde77d5d40bbf7590cb5561c1e3039d"
+dependencies = [
+ "egui",
+ "image",
+]
+
+[[package]]
 name = "egui_glow"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3118,6 +3128,7 @@ dependencies = [
  "cpal",
  "datachannel-wrapper",
  "egui",
+ "egui_extras",
  "egui_glow",
  "env_logger 0.9.0",
  "fluent-bundle",
