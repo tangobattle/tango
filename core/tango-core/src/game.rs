@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, gui, input, ipc, session, stats, video};
+use crate::{audio, battle, config, gui, input, ipc, session, stats};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use glow::HasContext;
 use parking_lot::Mutex;
@@ -19,7 +19,6 @@ pub struct State {
     pub fps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
-    pub video_filter: Box<dyn video::Filter>,
     pub title_prefix: String,
     pub steal_input: StealInputState,
     pub show_debug: bool,
@@ -32,7 +31,6 @@ pub fn run(
     rom_path: std::path::PathBuf,
     save_path: std::path::PathBuf,
     window_scale: u32,
-    video_filter: Box<dyn video::Filter>,
     match_init: Option<battle::MatchInit>,
 ) -> Result<(), anyhow::Error> {
     let config = config::Config::load_or_create()?;
@@ -147,7 +145,6 @@ pub fn run(
         fps_counter: fps_counter.clone(),
         emu_tps_counter: emu_tps_counter.clone(),
         session: None,
-        video_filter,
         title_prefix: format!("Tango: {}", window_title),
         steal_input: StealInputState::Idle,
         show_debug: false,

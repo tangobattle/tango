@@ -209,8 +209,6 @@ fn main() -> Result<(), anyhow::Error> {
 
     mgba::log::init();
 
-    let video_filter = tango_core::video::filter_by_name(&start_req.video_filter).unwrap();
-
     tango_core::game::run(
         rt,
         std::sync::Arc::new(parking_lot::Mutex::new(ipc_sender)),
@@ -218,7 +216,6 @@ fn main() -> Result<(), anyhow::Error> {
         start_req.rom_path.into(),
         start_req.save_path.into(),
         start_req.window_scale,
-        video_filter,
         match pvp_init {
             None => None,
             Some((peer_conn, dc, settings)) => Some(tango_core::battle::MatchInit {

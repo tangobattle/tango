@@ -263,12 +263,10 @@ impl Gui {
             });
     }
 
-    fn draw_emulator(
-        &mut self,
-        ui: &mut egui::Ui,
-        session: &session::Session,
-        video_filter: &Box<dyn video::Filter>,
-    ) {
+    fn draw_emulator(&mut self, ui: &mut egui::Ui, session: &session::Session, video_filter: &str) {
+        let video_filter =
+            video::filter_by_name(video_filter).unwrap_or(Box::new(video::NullFilter));
+
         // Apply stupid video scaling filter that only mint wants 🥴
         let (vbuf_width, vbuf_height) = video_filter.output_size((
             mgba::gba::SCREEN_WIDTH as usize,
@@ -333,7 +331,7 @@ impl Gui {
         input_mapping: &input::Mapping,
         session: &session::Session,
         title_prefix: &str,
-        video_filter: &Box<dyn video::Filter>,
+        video_filter: &str,
     ) {
         session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
@@ -409,7 +407,7 @@ impl Gui {
                 &state.config.input_mapping,
                 session,
                 &state.title_prefix,
-                &state.video_filter,
+                &state.config.video_filter,
             );
         }
 

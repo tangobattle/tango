@@ -40,6 +40,7 @@ pub struct Config {
     )]
     pub language: unic_langid::LanguageIdentifier,
     pub max_queue_length: u32,
+    pub video_filter: String,
     pub input_mapping: input::Mapping,
     pub signaling_endpoint: String,
     pub iceconfig_endpoint: String,
@@ -79,6 +80,7 @@ impl Config {
                 .unwrap_or(i18n::FALLBACK_LANG.to_string())
                 .parse()?,
             max_queue_length: 1200,
+            video_filter: "".to_string(),
             input_mapping: input::Mapping::default(),
             signaling_endpoint: "".to_string(),
             iceconfig_endpoint: "".to_string(),
