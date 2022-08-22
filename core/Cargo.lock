@@ -1739,21 +1739,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67c21572b4949434e4fc1e1978b99c5f77064153c59d998bf13ecd96fb5ecba7"
 
 [[package]]
-name = "keymaptool"
-version = "0.1.0"
-dependencies = [
- "ab_glyph",
- "anyhow",
- "clap 3.1.8",
- "env_logger 0.9.0",
- "log",
- "parking_lot 0.12.0",
- "sdl2",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "khronos_api"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

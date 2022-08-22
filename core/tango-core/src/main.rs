@@ -27,7 +27,6 @@ pub struct InputMapping {
 }
 
 fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::input::PhysicalInput> {
-    const THRESHOLD: i16 = 0x4000;
     match input {
         PhysicalInput::Key(key) => Some(tango_core::input::PhysicalInput::Key(
             serde_plain::from_str(key).ok()?,
@@ -38,9 +37,9 @@ fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::input::Phys
         PhysicalInput::Axis(axis, sign) => Some(tango_core::input::PhysicalInput::Axis(
             sdl2::controller::Axis::from_string(axis)?,
             if *sign > 0 {
-                THRESHOLD
+                tango_core::input::AxisDirection::Positive
             } else if *sign < 0 {
-                -THRESHOLD
+                tango_core::input::AxisDirection::Negative
             } else {
                 None?
             },

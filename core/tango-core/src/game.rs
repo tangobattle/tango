@@ -6,6 +6,14 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: f32 = 60.0;
 
+pub enum StealInputState {
+    Idle,
+    Stealing {
+        callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
+        userdata: Box<dyn std::any::Any>,
+    },
+}
+
 pub struct State {
     pub fps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
@@ -13,7 +21,7 @@ pub struct State {
     pub video_filter: Box<dyn video::Filter>,
     pub input_mapping: input::Mapping,
     pub title_prefix: String,
-    pub show_input_capture: bool,
+    pub steal_input: StealInputState,
     pub show_debug: bool,
     pub lang: unic_langid::LanguageIdentifier,
 }
@@ -145,7 +153,7 @@ pub fn run(
         input_mapping,
         video_filter,
         title_prefix: format!("Tango: {}", window_title),
-        show_input_capture: false,
+        steal_input: StealInputState::Idle,
         show_debug: false,
     };
 
@@ -195,16 +203,30 @@ pub fn run(
                         input:
                             glutin::event::KeyboardInput {
                                 virtual_keycode: Some(virutal_keycode),
-                                state,
+                                state: element_state,
                                 ..
                             },
                         ..
-                    } if !handled_by_egui => match state {
+                    } => match element_state {
                         glutin::event::ElementState::Pressed => {
-                            input_state.handle_key_down(virutal_keycode);
+                            let mut steal_input_state = StealInputState::Idle;
+                            std::mem::swap(&mut state.steal_input, &mut steal_input_state);
+                            if let StealInputState::Stealing { callback, .. } = steal_input_state {
+                                callback(
+                                    input::PhysicalInput::Key(virutal_keycode),
+                                    &mut state.input_mapping,
+                                );
+                                return;
+                            }
+
+                            if !handled_by_egui {
+                                input_state.handle_key_down(virutal_keycode);
+                            }
                         }
                         glutin::event::ElementState::Released => {
-                            input_state.handle_key_up(virutal_keycode);
+                            if !handled_by_egui {
+                                input_state.handle_key_up(virutal_keycode);
+                            }
                         }
                     },
                     _ => {}
@@ -238,9 +260,39 @@ pub fn run(
                         sdl2::event::Event::ControllerAxisMotion {
                             axis, value, which, ..
                         } => {
+                            if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
+                                let mut steal_input_state = StealInputState::Idle;
+                                std::mem::swap(&mut state.steal_input, &mut steal_input_state);
+                                if let StealInputState::Stealing { callback, .. } =
+                                    steal_input_state
+                                {
+                                    callback(
+                                        input::PhysicalInput::Axis(
+                                            axis,
+                                            if value > input::AXIS_THRESHOLD {
+                                                input::AxisDirection::Positive
+                                            } else {
+                                                input::AxisDirection::Negative
+                                            },
+                                        ),
+                                        &mut state.input_mapping,
+                                    );
+                                    return;
+                                }
+                            }
                             input_state.handle_controller_axis_motion(which, axis as usize, value);
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
+                            let mut steal_input_state = StealInputState::Idle;
+                            std::mem::swap(&mut state.steal_input, &mut steal_input_state);
+                            if let StealInputState::Stealing { callback, .. } = steal_input_state {
+                                callback(
+                                    input::PhysicalInput::Button(button),
+                                    &mut state.input_mapping,
+                                );
+                                return;
+                            }
+
                             input_state.handle_controller_button_down(which, button);
                         }
                         sdl2::event::Event::ControllerButtonUp { button, which, .. } => {

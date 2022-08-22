@@ -6,12 +6,20 @@ impl input_helper::StateTypes for StateTypes {
 
 pub type State = input_helper::State<StateTypes>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PhysicalInput {
     Key(glutin::event::VirtualKeyCode),
     Button(sdl2::controller::Button),
-    Axis(sdl2::controller::Axis, i16),
+    Axis(sdl2::controller::Axis, AxisDirection),
 }
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+pub enum AxisDirection {
+    Positive,
+    Negative,
+}
+
+pub const AXIS_THRESHOLD: i16 = 0x4000;
 
 impl PhysicalInput {
     pub fn is_active(&self, input: &State) -> bool {
@@ -20,9 +28,12 @@ impl PhysicalInput {
             PhysicalInput::Button(button) => input
                 .iter_controllers()
                 .any(|(_, c)| c.is_button_held(button)),
-            PhysicalInput::Axis(axis, threshold) => input.iter_controllers().any(|(_, c)| {
-                (threshold > 0 && c.axis(axis as usize) >= threshold)
-                    || (threshold < 0 && c.axis(axis as usize) <= threshold)
+            PhysicalInput::Axis(axis, dir) => input.iter_controllers().any(|(_, c)| {
+                let v = c.axis(axis as usize);
+                match dir {
+                    AxisDirection::Positive => v > AXIS_THRESHOLD,
+                    AxisDirection::Negative => v < -AXIS_THRESHOLD,
+                }
             }),
         }
     }

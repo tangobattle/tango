@@ -6,7 +6,6 @@ members = [
     "tango-protos",
     "tango-signaling-server",
     "mgba-sys",
-    "keymaptool",
     "datachannel-wrapper",
     "hqx",
     "mmpx",
