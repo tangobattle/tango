@@ -130,3 +130,7 @@ impl Config {
         Ok(())
     }
 }
+
+pub const DEFAULT_SIGNALING_ENDPOINT: &str = "wss://signaling.tangobattle.com";
+pub const DEFAULT_ICECONFIG_ENDPOINT: &str = "https://iceconfig.tangobattle.com";
+pub const DEFAULT_PATCH_REPO: &str = "https://github.com/tangobattle/patches";
