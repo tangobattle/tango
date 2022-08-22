@@ -60,6 +60,7 @@ unic-langid = "0.9"
 sys-locale = "0.2"
 egui_extras = { version = "0.19", features = ["image"] }
 directories-next = "2.0"
+toml = "0.5"
 
 [build-dependencies]
 winres = "0.1"

@@ -3,6 +3,7 @@ extern crate lazy_static;
 
 pub mod audio;
 pub mod battle;
+pub mod config;
 pub mod game;
 pub mod gui;
 pub mod hooks;
@@ -18,5 +19,4 @@ pub mod session;
 pub mod shadow;
 pub mod signaling;
 pub mod stats;
-pub mod transport;
 pub mod video;

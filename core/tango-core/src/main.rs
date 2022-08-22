@@ -3,50 +3,6 @@
 use clap::StructOpt;
 use tango_core::ipc::protos::ExitCode;
 
-#[derive(Clone, serde::Deserialize)]
-pub enum PhysicalInput {
-    Key(String),
-    Button(String),
-    Axis(String, i16),
-}
-
-#[derive(Clone, serde::Deserialize)]
-pub struct InputMapping {
-    pub up: Vec<PhysicalInput>,
-    pub down: Vec<PhysicalInput>,
-    pub left: Vec<PhysicalInput>,
-    pub right: Vec<PhysicalInput>,
-    pub a: Vec<PhysicalInput>,
-    pub b: Vec<PhysicalInput>,
-    pub l: Vec<PhysicalInput>,
-    pub r: Vec<PhysicalInput>,
-    pub select: Vec<PhysicalInput>,
-    pub start: Vec<PhysicalInput>,
-    #[serde(rename = "speedUp")]
-    pub speed_up: Vec<PhysicalInput>,
-}
-
-fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::input::PhysicalInput> {
-    match input {
-        PhysicalInput::Key(key) => Some(tango_core::input::PhysicalInput::Key(
-            serde_plain::from_str(key).ok()?,
-        )),
-        PhysicalInput::Button(button) => Some(tango_core::input::PhysicalInput::Button(
-            sdl2::controller::Button::from_string(button)?,
-        )),
-        PhysicalInput::Axis(axis, sign) => Some(tango_core::input::PhysicalInput::Axis(
-            sdl2::controller::Axis::from_string(axis)?,
-            if *sign > 0 {
-                tango_core::input::AxisDirection::Positive
-            } else if *sign < 0 {
-                tango_core::input::AxisDirection::Negative
-            } else {
-                None?
-            },
-        )),
-    }
-}
-
 #[derive(clap::Parser)]
 struct Cli {
     #[clap(long)]
@@ -72,67 +28,6 @@ fn main() -> Result<(), anyhow::Error> {
     log::info!("welcome to tango-core {}!", git_version::git_version!());
 
     let args = Cli::parse();
-
-    let raw_input_mapping = serde_json::from_str::<InputMapping>(&args.input_mapping)?;
-    let input_mapping = tango_core::input::Mapping {
-        up: raw_input_mapping
-            .up
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        down: raw_input_mapping
-            .down
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        left: raw_input_mapping
-            .left
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        right: raw_input_mapping
-            .right
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        a: raw_input_mapping
-            .a
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        b: raw_input_mapping
-            .b
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        l: raw_input_mapping
-            .l
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        r: raw_input_mapping
-            .r
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        select: raw_input_mapping
-            .select
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        start: raw_input_mapping
-            .start
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-        speed_up: raw_input_mapping
-            .speed_up
-            .iter()
-            .flat_map(|v| parse_physical_input(v).into_iter().collect::<Vec<_>>())
-            .collect(),
-    };
-
-    log::info!("input mapping: {:?}", input_mapping);
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -320,7 +215,6 @@ fn main() -> Result<(), anyhow::Error> {
         rt,
         std::sync::Arc::new(parking_lot::Mutex::new(ipc_sender)),
         start_req.window_title,
-        input_mapping,
         start_req.rom_path.into(),
         start_req.save_path.into(),
         start_req.window_scale,

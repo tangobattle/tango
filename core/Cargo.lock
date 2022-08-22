@@ -3186,6 +3186,7 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite 0.16.1",
  "tokio-util",
+ "toml",
  "unic-langid",
  "url",
  "winres",

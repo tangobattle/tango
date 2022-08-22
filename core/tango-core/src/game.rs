@@ -1,4 +1,4 @@
-use crate::{audio, battle, gui, i18n, input, ipc, session, stats, video};
+use crate::{audio, battle, config, gui, input, ipc, session, stats, video};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use glow::HasContext;
 use parking_lot::Mutex;
@@ -15,28 +15,28 @@ pub enum StealInputState {
 }
 
 pub struct State {
+    pub config: config::Config,
     pub fps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
     pub video_filter: Box<dyn video::Filter>,
-    pub input_mapping: input::Mapping,
     pub title_prefix: String,
     pub steal_input: StealInputState,
     pub show_debug: bool,
-    pub lang: unic_langid::LanguageIdentifier,
 }
 
 pub fn run(
     rt: tokio::runtime::Runtime,
     ipc_sender: Arc<Mutex<ipc::Sender>>,
     window_title: String,
-    input_mapping: input::Mapping,
     rom_path: std::path::PathBuf,
     save_path: std::path::PathBuf,
     window_scale: u32,
     video_filter: Box<dyn video::Filter>,
     match_init: Option<battle::MatchInit>,
 ) -> Result<(), anyhow::Error> {
+    let config = config::Config::load_or_create()?;
+
     let handle = rt.handle().clone();
 
     let sdl = sdl2::init().unwrap();
@@ -143,14 +143,10 @@ pub fn run(
     }
 
     let mut state = State {
-        lang: sys_locale::get_locale()
-            .unwrap_or_else(|| i18n::FALLBACK_LANG.to_string())
-            .parse()
-            .unwrap(),
+        config,
         fps_counter: fps_counter.clone(),
         emu_tps_counter: emu_tps_counter.clone(),
         session: None,
-        input_mapping,
         video_filter,
         title_prefix: format!("Tango: {}", window_title),
         steal_input: StealInputState::Idle,
@@ -213,7 +209,7 @@ pub fn run(
                             if let StealInputState::Stealing { callback, .. } = steal_input_state {
                                 callback(
                                     input::PhysicalInput::Key(virutal_keycode),
-                                    &mut state.input_mapping,
+                                    &mut state.config.input_mapping,
                                 );
                                 return;
                             }
@@ -266,15 +262,15 @@ pub fn run(
                                     steal_input_state
                                 {
                                     callback(
-                                        input::PhysicalInput::Axis(
+                                        input::PhysicalInput::Axis {
                                             axis,
-                                            if value > input::AXIS_THRESHOLD {
+                                            direction: if value > input::AXIS_THRESHOLD {
                                                 input::AxisDirection::Positive
                                             } else {
                                                 input::AxisDirection::Negative
                                             },
-                                        ),
-                                        &mut state.input_mapping,
+                                        },
+                                        &mut state.config.input_mapping,
                                     );
                                     return;
                                 }
@@ -287,7 +283,7 @@ pub fn run(
                             if let StealInputState::Stealing { callback, .. } = steal_input_state {
                                 callback(
                                     input::PhysicalInput::Button(button),
-                                    &mut state.input_mapping,
+                                    &mut state.config.input_mapping,
                                 );
                                 return;
                             }

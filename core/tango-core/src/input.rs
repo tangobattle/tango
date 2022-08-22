@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 pub struct StateTypes;
 impl input_helper::StateTypes for StateTypes {
     type Key = glutin::event::VirtualKeyCode;
@@ -6,14 +8,61 @@ impl input_helper::StateTypes for StateTypes {
 
 pub type State = input_helper::State<StateTypes>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PhysicalInput {
-    Key(glutin::event::VirtualKeyCode),
-    Button(sdl2::controller::Button),
-    Axis(sdl2::controller::Axis, AxisDirection),
+fn serialize_sdl2_button<S>(v: &sdl2::controller::Button, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&v.string())
 }
 
-#[derive(Clone, Debug, Copy, PartialEq, Eq)]
+fn deserialize_sdl2_button<'de, D>(deserializer: D) -> Result<sdl2::controller::Button, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let buf = String::deserialize(deserializer)?;
+    sdl2::controller::Button::from_string(&buf).ok_or_else(|| {
+        serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 button")
+    })
+}
+
+fn serialize_sdl2_axis<S>(v: &sdl2::controller::Axis, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&v.string())
+}
+
+fn deserialize_sdl2_axis<'de, D>(deserializer: D) -> Result<sdl2::controller::Axis, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let buf = String::deserialize(deserializer)?;
+    sdl2::controller::Axis::from_string(&buf).ok_or_else(|| {
+        serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 axis")
+    })
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum PhysicalInput {
+    Key(glutin::event::VirtualKeyCode),
+    Button(
+        #[serde(
+            serialize_with = "serialize_sdl2_button",
+            deserialize_with = "deserialize_sdl2_button"
+        )]
+        sdl2::controller::Button,
+    ),
+    Axis {
+        #[serde(
+            serialize_with = "serialize_sdl2_axis",
+            deserialize_with = "deserialize_sdl2_axis"
+        )]
+        axis: sdl2::controller::Axis,
+        direction: AxisDirection,
+    },
+}
+
+#[derive(Clone, Debug, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum AxisDirection {
     Positive,
     Negative,
@@ -28,9 +77,9 @@ impl PhysicalInput {
             PhysicalInput::Button(button) => input
                 .iter_controllers()
                 .any(|(_, c)| c.is_button_held(button)),
-            PhysicalInput::Axis(axis, dir) => input.iter_controllers().any(|(_, c)| {
+            PhysicalInput::Axis { axis, direction } => input.iter_controllers().any(|(_, c)| {
                 let v = c.axis(axis as usize);
-                match dir {
+                match direction {
                     AxisDirection::Positive => v > AXIS_THRESHOLD,
                     AxisDirection::Negative => v < -AXIS_THRESHOLD,
                 }
@@ -39,7 +88,7 @@ impl PhysicalInput {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Mapping {
     pub up: Vec<PhysicalInput>,
     pub down: Vec<PhysicalInput>,
@@ -52,6 +101,78 @@ pub struct Mapping {
     pub select: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
     pub speed_up: Vec<PhysicalInput>,
+}
+
+impl Default for Mapping {
+    fn default() -> Self {
+        Mapping {
+            up: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Up),
+                PhysicalInput::Button(sdl2::controller::Button::DPadUp),
+                PhysicalInput::Axis {
+                    axis: sdl2::controller::Axis::LeftY,
+                    direction: AxisDirection::Negative,
+                },
+            ],
+            down: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Down),
+                PhysicalInput::Button(sdl2::controller::Button::DPadDown),
+                PhysicalInput::Axis {
+                    axis: sdl2::controller::Axis::LeftY,
+                    direction: AxisDirection::Positive,
+                },
+            ],
+            left: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Left),
+                PhysicalInput::Button(sdl2::controller::Button::DPadLeft),
+                PhysicalInput::Axis {
+                    axis: sdl2::controller::Axis::LeftX,
+                    direction: AxisDirection::Negative,
+                },
+            ],
+            right: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Right),
+                PhysicalInput::Button(sdl2::controller::Button::DPadRight),
+                PhysicalInput::Axis {
+                    axis: sdl2::controller::Axis::LeftX,
+                    direction: AxisDirection::Positive,
+                },
+            ],
+            a: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Z),
+                PhysicalInput::Button(sdl2::controller::Button::A),
+            ],
+            b: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::X),
+                PhysicalInput::Button(sdl2::controller::Button::B),
+            ],
+            l: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::A),
+                PhysicalInput::Button(sdl2::controller::Button::LeftShoulder),
+                PhysicalInput::Axis {
+                    axis: sdl2::controller::Axis::TriggerLeft,
+                    direction: AxisDirection::Positive,
+                },
+            ],
+            r: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::S),
+                PhysicalInput::Button(sdl2::controller::Button::RightShoulder),
+                PhysicalInput::Axis {
+                    axis: sdl2::controller::Axis::TriggerRight,
+                    direction: AxisDirection::Positive,
+                },
+            ],
+            select: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Space),
+                PhysicalInput::Button(sdl2::controller::Button::Back),
+            ],
+            start: vec![
+                PhysicalInput::Key(glutin::event::VirtualKeyCode::Return),
+                PhysicalInput::Button(sdl2::controller::Button::Start),
+            ],
+            speed_up: vec![PhysicalInput::Key(glutin::event::VirtualKeyCode::LShift)],
+        }
+    }
 }
 
 impl Mapping {

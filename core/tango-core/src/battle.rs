@@ -4,11 +4,11 @@ use crate::game;
 use crate::hooks;
 use crate::ipc;
 use crate::lockstep;
+use crate::net;
 use crate::protocol;
 use crate::replay;
 use crate::replayer;
 use crate::shadow;
-use crate::transport;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum BattleResult {
@@ -86,7 +86,7 @@ pub struct Match {
     rom: Vec<u8>,
     hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
-    transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
+    transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     settings: Settings,
@@ -199,7 +199,7 @@ impl Match {
             rom,
             hooks,
             _peer_conn: peer_conn,
-            transport: std::sync::Arc::new(tokio::sync::Mutex::new(transport::Transport::new(
+            transport: std::sync::Arc::new(tokio::sync::Mutex::new(net::Transport::new(
                 dc_tx,
                 transport_rendezvous_rx,
             ))),
@@ -439,7 +439,7 @@ pub struct Round {
     replayer: replayer::Fastforwarder,
     replay_filename: std::path::PathBuf,
     primary_thread_handle: mgba::thread::Handle,
-    transport: std::sync::Arc<tokio::sync::Mutex<transport::Transport>>,
+    transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
 }
 

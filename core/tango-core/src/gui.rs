@@ -67,7 +67,7 @@ impl Gui {
                                                     &self.icons.keyboard
                                                 }
                                                 input::PhysicalInput::Button(_)
-                                                | input::PhysicalInput::Axis(_, _) => {
+                                                | input::PhysicalInput::Axis { .. } => {
                                                     &self.icons.sports_esports
                                                 }
                                             }
@@ -105,7 +105,7 @@ impl Gui {
                                                 )
                                                 .unwrap_or(raw)
                                         }
-                                        input::PhysicalInput::Axis(axis, direction) => {
+                                        input::PhysicalInput::Axis { axis, direction } => {
                                             let raw = format!(
                                                 "{}{}",
                                                 axis.string(),
@@ -141,7 +141,7 @@ impl Gui {
                                                 input::PhysicalInput::Button(button) => {
                                                     (1, *button as usize, 0)
                                                 }
-                                                input::PhysicalInput::Axis(axis, direction) => {
+                                                input::PhysicalInput::Axis { axis, direction } => {
                                                     (2, *axis as usize, *direction as usize)
                                                 }
                                             });
@@ -406,7 +406,7 @@ impl Gui {
                 handle.clone(),
                 window,
                 input_state,
-                &state.input_mapping,
+                &state.config.input_mapping,
                 session,
                 &state.title_prefix,
                 &state.video_filter,
@@ -419,8 +419,8 @@ impl Gui {
         self.draw_debug_window(ctx, handle.clone(), state);
         self.draw_input_mapping_window(
             ctx,
-            &state.lang,
-            &mut state.input_mapping,
+            &state.config.language,
+            &mut state.config.input_mapping,
             &mut state.steal_input,
         );
 
@@ -450,13 +450,13 @@ impl Gui {
                             egui::RichText::new(
                                 i18n::LOCALES
                                     .lookup_with_args(
-                                        &state.lang,
+                                        &state.config.language,
                                         "input-mapping.prompt",
                                         &std::collections::HashMap::from([(
                                             "key",
                                             i18n::LOCALES
                                                 .lookup(
-                                                    &state.lang,
+                                                    &state.config.language,
                                                     userdata.downcast_ref::<&str>().unwrap(),
                                                 )
                                                 .unwrap()
