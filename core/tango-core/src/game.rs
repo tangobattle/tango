@@ -230,7 +230,7 @@ pub fn run(
             glutin::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
                 for sdl_event in sdl_event_loop.poll_iter() {
-                    match sdl_event {
+                    (|| match sdl_event {
                         sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                             if game_controller.is_game_controller(which) {
                                 let controller = game_controller.open(which).unwrap();
@@ -291,7 +291,7 @@ pub fn run(
                             input_state.handle_controller_button_up(which, button);
                         }
                         _ => {}
-                    }
+                    })();
                 }
                 gl_window.window().request_redraw();
             }
