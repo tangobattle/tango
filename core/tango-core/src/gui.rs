@@ -68,6 +68,7 @@ impl Gui {
     fn draw_settings_window(
         &mut self,
         ctx: &egui::Context,
+        selected_tab: &mut game::SettingsTab,
         config: &mut config::Config,
         steal_input: &mut game::StealInputState,
     ) {
@@ -76,32 +77,59 @@ impl Gui {
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        ui.selectable_label(
-                            true,
+                        ui.selectable_value(
+                            selected_tab,
+                            game::SettingsTab::General,
                             i18n::LOCALES
-                                .lookup(&config.language, "input-mapping")
+                                .lookup(&config.language, "settings.general")
+                                .unwrap(),
+                        );
+                        ui.selectable_value(
+                            selected_tab,
+                            game::SettingsTab::InputMapping,
+                            i18n::LOCALES
+                                .lookup(&config.language, "settings.input-mapping")
                                 .unwrap(),
                         );
                     });
 
-                    self.draw_input_mapping_tab(
-                        ui,
-                        &config.language,
-                        &mut config.input_mapping,
-                        steal_input,
-                    );
+                    match selected_tab {
+                        game::SettingsTab::General => self.draw_settings_general_tab(ui, config),
+                        game::SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
+                            ui,
+                            &config.language,
+                            &mut config.input_mapping,
+                            steal_input,
+                        ),
+                    }
                 });
             });
     }
 
-    fn draw_input_mapping_tab(
+    fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+        egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
+            ui.label(egui::RichText::new("Theme").strong());
+            egui::ComboBox::from_id_source("settings-windoow-general-theme")
+                .selected_text(match config.theme {
+                    config::Theme::Light => "Light",
+                    config::Theme::Dark => "Dark",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut config.theme, config::Theme::Light, "Light");
+                    ui.selectable_value(&mut config.theme, config::Theme::Dark, "Dark");
+                });
+            ui.end_row();
+        });
+    }
+
+    fn draw_settings_input_mapping_tab(
         &mut self,
         ui: &mut egui::Ui,
         lang: &unic_langid::LanguageIdentifier,
         input_mapping: &mut input::Mapping,
         steal_input: &mut game::StealInputState,
     ) {
-        egui::Grid::new("input-mapping-window-grid").show(ui, |ui| {
+        egui::Grid::new("settings-window-input-mapping-grid").show(ui, |ui| {
             let mut add_row = |label_text_id,
                                get_mapping: fn(
                 &mut input::Mapping,
@@ -487,7 +515,12 @@ impl Gui {
             state.show_debug = !state.show_debug;
         }
         self.draw_debug_window(ctx, handle.clone(), state);
-        self.draw_settings_window(ctx, &mut state.config, &mut state.steal_input);
+        self.draw_settings_window(
+            ctx,
+            &mut state.selected_settings_tab,
+            &mut state.config,
+            &mut state.steal_input,
+        );
 
         let mut steal_input_open = match state.steal_input {
             game::StealInputState::Idle => false,
@@ -531,7 +564,7 @@ impl Gui {
                                     .unwrap(),
                             )
                             .size(32.0),
-                        )
+                        );
                     });
             })
         {

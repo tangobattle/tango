@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::{i18n, input};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum Theme {
     Light,
     Dark,
@@ -30,7 +30,7 @@ where
     buf.parse().map_err(serde::de::Error::custom)
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub struct Config {
     pub nickname: Option<String>,
     pub theme: Theme,

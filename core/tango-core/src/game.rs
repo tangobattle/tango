@@ -6,6 +6,12 @@ use std::sync::Arc;
 
 pub const EXPECTED_FPS: f32 = 60.0;
 
+#[derive(PartialEq, Eq)]
+pub enum SettingsTab {
+    General,
+    InputMapping,
+}
+
 pub enum StealInputState {
     Idle,
     Stealing {
@@ -15,6 +21,7 @@ pub enum StealInputState {
 }
 
 pub struct State {
+    pub selected_settings_tab: SettingsTab,
     pub config: config::Config,
     pub fps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
@@ -110,6 +117,7 @@ pub fn run(
     }
 
     let mut state = State {
+        selected_settings_tab: SettingsTab::General,
         config,
         fps_counter: fps_counter.clone(),
         emu_tps_counter: emu_tps_counter.clone(),
@@ -147,6 +155,8 @@ pub fn run(
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();
 
+        let old_config = state.config.clone();
+
         match event {
             glutin::event::Event::WindowEvent {
                 event: window_event,
@@ -177,11 +187,10 @@ pub fn run(
                                     input::PhysicalInput::Key(virutal_keycode),
                                     &mut state.config.input_mapping,
                                 );
-                                return;
-                            }
-
-                            if !handled_by_egui {
-                                input_state.handle_key_down(virutal_keycode);
+                            } else {
+                                if !handled_by_egui {
+                                    input_state.handle_key_down(virutal_keycode);
+                                }
                             }
                         }
                         glutin::event::ElementState::Released => {
@@ -221,12 +230,10 @@ pub fn run(
                         sdl2::event::Event::ControllerAxisMotion {
                             axis, value, which, ..
                         } => {
-                            if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
-                                let mut steal_input_state = StealInputState::Idle;
-                                std::mem::swap(&mut state.steal_input, &mut steal_input_state);
-                                if let StealInputState::Stealing { callback, .. } =
-                                    steal_input_state
-                                {
+                            let mut steal_input_state = StealInputState::Idle;
+                            std::mem::swap(&mut state.steal_input, &mut steal_input_state);
+                            if let StealInputState::Stealing { callback, .. } = steal_input_state {
+                                if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
                                     callback(
                                         input::PhysicalInput::Axis {
                                             axis,
@@ -238,10 +245,14 @@ pub fn run(
                                         },
                                         &mut state.config.input_mapping,
                                     );
-                                    return;
                                 }
+                            } else {
+                                input_state.handle_controller_axis_motion(
+                                    which,
+                                    axis as usize,
+                                    value,
+                                );
                             }
-                            input_state.handle_controller_axis_motion(which, axis as usize, value);
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                             let mut steal_input_state = StealInputState::Idle;
@@ -251,10 +262,9 @@ pub fn run(
                                     input::PhysicalInput::Button(button),
                                     &mut state.config.input_mapping,
                                 );
-                                return;
+                            } else {
+                                input_state.handle_controller_button_down(which, button);
                             }
-
-                            input_state.handle_controller_button_down(which, button);
                         }
                         sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
                             input_state.handle_controller_button_up(which, button);
@@ -303,6 +313,11 @@ pub fn run(
             }
 
             _ => {}
+        }
+
+        if state.config != old_config {
+            let r = state.config.save();
+            log::info!("config save: {:?}", r);
         }
     });
 }

@@ -88,7 +88,7 @@ impl PhysicalInput {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub struct Mapping {
     pub up: Vec<PhysicalInput>,
     pub down: Vec<PhysicalInput>,
