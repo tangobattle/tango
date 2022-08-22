@@ -7,6 +7,8 @@ use std::sync::Arc;
 pub const EXPECTED_FPS: f32 = 60.0;
 
 pub struct State {
+    pub fps_counter: std::sync::Arc<Mutex<stats::Counter>>,
+    pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
     pub video_filter: Box<dyn video::Filter>,
 }
@@ -99,6 +101,8 @@ pub fn run(
     }
 
     let mut state = State {
+        fps_counter: fps_counter.clone(),
+        emu_tps_counter: emu_tps_counter.clone(),
         session: None,
         video_filter,
     };

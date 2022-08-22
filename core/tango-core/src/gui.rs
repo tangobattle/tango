@@ -14,6 +14,28 @@ impl Gui {
         Self { vbuf: None }
     }
 
+    fn draw_debug(&mut self, ctx: &egui::Context, state: &game::State) {
+        egui::Window::new("Debug")
+            .id(egui::Id::new("debug"))
+            .show(ctx, |ui| {
+                egui::Grid::new("debug_grid").show(ui, |ui| {
+                    ui.label("FPS");
+                    ui.label(format!(
+                        "{:3.02}",
+                        1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
+                    ));
+                    ui.end_row();
+
+                    ui.label("Emu TPS");
+                    ui.label(format!(
+                        "{:3.02}",
+                        1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32()
+                    ));
+                    ui.end_row();
+                });
+            });
+    }
+
     fn draw_emulator(
         &mut self,
         ui: &mut egui::Ui,
@@ -76,6 +98,7 @@ impl Gui {
     }
 
     pub fn draw(&mut self, ctx: &egui::Context, state: &mut game::State) {
+        self.draw_debug(ctx, state);
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
