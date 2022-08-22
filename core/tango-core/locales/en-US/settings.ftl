@@ -5,3 +5,5 @@ settings = Settings
 settings-theme = Theme
     .light = Light
     .dark = Dark
+
+settings-language = Language

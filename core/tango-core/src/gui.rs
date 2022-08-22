@@ -9,6 +9,13 @@ struct VBuf {
     texture: egui::TextureHandle,
 }
 
+pub struct FontFamilies {
+    latn: egui::FontFamily,
+    jpan: egui::FontFamily,
+    hans: egui::FontFamily,
+    hant: egui::FontFamily,
+}
+
 pub struct Icons {
     pub sports_esports: egui_extras::RetainedImage,
     pub keyboard: egui_extras::RetainedImage,
@@ -18,6 +25,7 @@ pub struct Gui {
     vbuf: Option<VBuf>,
     icons: Icons,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
+    font_families: FontFamilies,
     current_language: Option<unic_langid::LanguageIdentifier>,
 }
 
@@ -63,6 +71,12 @@ impl Gui {
                     egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
                 ),
             ]),
+            font_families: FontFamilies {
+                latn: egui::FontFamily::Name("Latn".into()),
+                jpan: egui::FontFamily::Name("Jpan".into()),
+                hans: egui::FontFamily::Name("Hans".into()),
+                hant: egui::FontFamily::Name("Hant".into()),
+            },
             current_language: None,
         }
     }
@@ -110,32 +124,94 @@ impl Gui {
 
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
         egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
-            ui.label(
-                egui::RichText::new(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-theme")
-                        .unwrap(),
-                )
-                .strong(),
-            );
+            {
+                ui.label(
+                    egui::RichText::new(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-theme")
+                            .unwrap(),
+                    )
+                    .strong(),
+                );
 
-            let light_label = i18n::LOCALES
-                .lookup(&config.language, "settings-theme.light")
-                .unwrap();
-            let dark_label = i18n::LOCALES
-                .lookup(&config.language, "settings-theme.dark")
-                .unwrap();
+                let light_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-theme.light")
+                    .unwrap();
+                let dark_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-theme.dark")
+                    .unwrap();
 
-            egui::ComboBox::from_id_source("settings-windoow-general-theme")
-                .selected_text(match config.theme {
-                    config::Theme::Light => &light_label,
-                    config::Theme::Dark => &dark_label,
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut config.theme, config::Theme::Light, &light_label);
-                    ui.selectable_value(&mut config.theme, config::Theme::Dark, &dark_label);
-                });
-            ui.end_row();
+                egui::ComboBox::from_id_source("settings-window-general-theme")
+                    .selected_text(match config.theme {
+                        config::Theme::Light => &light_label,
+                        config::Theme::Dark => &dark_label,
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut config.theme, config::Theme::Light, &light_label);
+                        ui.selectable_value(&mut config.theme, config::Theme::Dark, &dark_label);
+                    });
+                ui.end_row();
+            }
+
+            {
+                ui.label(
+                    egui::RichText::new(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-language")
+                            .unwrap(),
+                    )
+                    .strong(),
+                );
+
+                let en_label =
+                    egui::RichText::new("English").family(self.font_families.latn.clone());
+                let ja_label =
+                    egui::RichText::new("日本語").family(self.font_families.jpan.clone());
+                let zh_hans_label =
+                    egui::RichText::new("简体中文").family(self.font_families.hans.clone());
+                let zh_hant_label =
+                    egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
+
+                egui::ComboBox::from_id_source("settings-window-general-language")
+                    .selected_text(match &config.language {
+                        lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
+                            en_label.clone()
+                        }
+                        lang if lang.matches(&unic_langid::langid!("ja"), false, true) => {
+                            ja_label.clone()
+                        }
+                        lang if lang.matches(&unic_langid::langid!("zh-Hans"), false, true) => {
+                            zh_hans_label.clone()
+                        }
+                        lang if lang.matches(&unic_langid::langid!("zh-Hant"), false, true) => {
+                            zh_hant_label.clone()
+                        }
+                        _ => egui::RichText::new(""),
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut config.language,
+                            unic_langid::langid!("en"),
+                            en_label.clone(),
+                        );
+                        ui.selectable_value(
+                            &mut config.language,
+                            unic_langid::langid!("ja"),
+                            ja_label.clone(),
+                        );
+                        ui.selectable_value(
+                            &mut config.language,
+                            unic_langid::langid!("zh-Hans"),
+                            zh_hans_label.clone(),
+                        );
+                        ui.selectable_value(
+                            &mut config.language,
+                            unic_langid::langid!("zh-Hant"),
+                            zh_hant_label.clone(),
+                        );
+                    });
+                ui.end_row();
+            }
         });
     }
 
@@ -522,19 +598,19 @@ impl Gui {
                         ],
                     ),
                     (
-                        egui::FontFamily::Name("Jpan".into()),
+                        self.font_families.jpan.clone(),
                         vec!["NotoSansJP-Regular".to_string()],
                     ),
                     (
-                        egui::FontFamily::Name("Hans".into()),
+                        self.font_families.hans.clone(),
                         vec!["NotoSansSC-Regular".to_string()],
                     ),
                     (
-                        egui::FontFamily::Name("Hant".into()),
+                        self.font_families.hant.clone(),
                         vec!["NotoSansTC-Regular".to_string()],
                     ),
                     (
-                        egui::FontFamily::Name("Latn".into()),
+                        self.font_families.latn.clone(),
                         vec!["NotoSans-Regular".to_string()],
                     ),
                 ]),
