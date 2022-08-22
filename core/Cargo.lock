@@ -2662,6 +2662,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_plain"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95455e7e29fada2052e72170af226fbe368a4ca33dee847875325d9fdb133858"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_repr"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2924,6 +2933,7 @@ dependencies = [
  "sdl2",
  "serde",
  "serde_json",
+ "serde_plain",
  "serde_repr",
  "sha3",
  "shell-words",
@@ -3773,6 +3783,7 @@ dependencies = [
  "raw-window-handle 0.4.3",
  "raw-window-handle 0.5.0",
  "sctk-adwaita",
+ "serde",
  "smithay-client-toolkit",
  "wasm-bindgen",
  "wayland-client",

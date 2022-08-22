@@ -106,10 +106,7 @@ impl Gui {
         state: &mut game::State,
     ) {
         ctx.set_pixels_per_point(window.scale_factor() as f32);
-        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave as usize) {
-            state.show_debug = !state.show_debug;
-        }
-        self.draw_debug(ctx, state);
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.with_layout(
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
@@ -120,5 +117,10 @@ impl Gui {
                 },
             );
         });
+
+        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave as usize) {
+            state.show_debug = !state.show_debug;
+        }
+        self.draw_debug(ctx, state);
     }
 }

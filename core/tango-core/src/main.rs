@@ -30,7 +30,7 @@ fn parse_physical_input(input: &PhysicalInput) -> Option<tango_core::input::Phys
     const THRESHOLD: i16 = 0x4000;
     match input {
         PhysicalInput::Key(key) => Some(tango_core::input::PhysicalInput::Key(
-            sdl2::keyboard::Scancode::from_name(key)?,
+            serde_plain::from_str(key).ok()?,
         )),
         PhysicalInput::Button(button) => Some(tango_core::input::PhysicalInput::Button(
             sdl2::controller::Button::from_string(button)?,

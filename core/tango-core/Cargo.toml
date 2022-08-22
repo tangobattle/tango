@@ -41,6 +41,7 @@ bytes = "1.1.0"
 sdl2 = { version = "0.35", features = ["static-link", "bundled"] }
 input-helper = { path = "../input-helper" }
 serde_repr = "0.1"
+serde_plain = "1.0"
 hex = "0.4"
 bitvec = "1.0"
 png = "0.17"
@@ -51,7 +52,7 @@ thiserror = "1.0"
 egui = "0.19"
 glow = "0.11"
 egui_glow = { version = "0.19", features = ["winit"] }
-glutin = "0.29"
+glutin = { version = "0.29", features = ["serde"] }
 cpal = "0.13"
 
 [build-dependencies]

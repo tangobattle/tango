@@ -1,6 +1,6 @@
 #[derive(Clone, Debug)]
 pub enum PhysicalInput {
-    Key(sdl2::keyboard::Scancode),
+    Key(glutin::event::VirtualKeyCode),
     Button(sdl2::controller::Button),
     Axis(sdl2::controller::Axis, i16),
 }
