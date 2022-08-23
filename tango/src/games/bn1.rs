@@ -14,6 +14,10 @@ impl games::Game for BN1 {
         None
     }
 
+    fn expected_crc32(&self) -> u32 {
+        0x1d347971
+    }
+
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
         Box::new(hooks::AREE_00.clone())
     }
@@ -27,6 +31,10 @@ impl games::Game for EXE1 {
 
     fn version_name(&self) -> Option<&str> {
         None
+    }
+
+    fn expected_crc32(&self) -> u32 {
+        0xd9516e50
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
