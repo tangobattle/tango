@@ -535,9 +535,9 @@ impl Gui {
                     .iter()
                     .any(|c| c.is_active(&input_state))
                 {
-                    game::EXPECTED_FPS * 3.0
+                    session::EXPECTED_FPS * 3.0
                 } else {
-                    game::EXPECTED_FPS
+                    session::EXPECTED_FPS
                 },
             );
         }

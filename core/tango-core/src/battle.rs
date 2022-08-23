@@ -1,12 +1,12 @@
 use rand::Rng;
 
-use crate::game;
 use crate::hooks;
 use crate::lockstep;
 use crate::net;
 use crate::protocol;
 use crate::replay;
 use crate::replayer;
+use crate::session;
 use crate::shadow;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -598,7 +598,7 @@ impl Round {
         core.gba_mut()
             .sync_mut()
             .expect("set fps target")
-            .set_fps_target(game::EXPECTED_FPS as f32 + self.tps_adjustment());
+            .set_fps_target(session::EXPECTED_FPS as f32 + self.tps_adjustment());
 
         let round_result = if let Some(round_result) = ff_result.round_result {
             round_result
@@ -661,7 +661,7 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        (self.dtick * game::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
+        (self.dtick * session::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
     }
 }
 
@@ -671,6 +671,6 @@ impl Drop for Round {
         self.primary_thread_handle
             .lock_audio()
             .sync_mut()
-            .set_fps_target(game::EXPECTED_FPS as f32);
+            .set_fps_target(session::EXPECTED_FPS as f32);
     }
 }

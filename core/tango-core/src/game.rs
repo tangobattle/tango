@@ -4,8 +4,6 @@ use glow::HasContext;
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-pub const EXPECTED_FPS: f32 = 60.0;
-
 #[derive(PartialEq, Eq)]
 pub enum SettingsTab {
     General,
