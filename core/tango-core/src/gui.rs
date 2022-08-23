@@ -90,8 +90,18 @@ impl Gui {
             ]),
             font_families,
             themes: Themes {
-                light: egui::style::Visuals::light(),
-                dark: egui::style::Visuals::dark(),
+                light: {
+                    let mut visuals = egui::style::Visuals::light();
+                    visuals.selection.bg_fill = egui::Color32::from_rgb(0x4c, 0xaf, 0x50);
+                    visuals.selection.stroke.color = egui::Color32::BLACK;
+                    visuals
+                },
+                dark: {
+                    let mut visuals = egui::style::Visuals::dark();
+                    visuals.selection.bg_fill = egui::Color32::from_rgb(0x4c, 0xaf, 0x50);
+                    visuals.selection.stroke.color = egui::Color32::WHITE;
+                    visuals
+                },
             },
             current_language: None,
         }
