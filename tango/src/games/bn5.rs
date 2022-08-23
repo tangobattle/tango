@@ -1,31 +1,32 @@
+use crate::{battle, games, lockstep, replayer, session, shadow};
+
 mod munger;
 mod offsets;
 
-use crate::{battle, hooks, lockstep, replayer, session, shadow};
-
 #[derive(Clone)]
-pub struct EXE45 {
+pub struct BN5 {
     offsets: offsets::Offsets,
     munger: munger::Munger,
 }
 
 lazy_static! {
-    pub static ref ROCKEXE45ROBR4J_00: Box<dyn hooks::Hooks + Send + Sync> =
-        EXE45::new(offsets::ROCKEXE45ROBR4J_00);
+    pub static ref MEGAMAN5_TP_BRBE_00: Box<dyn games::Hooks + Send + Sync> =
+        BN5::new(offsets::MEGAMAN5_TP_BRBE_00);
+    pub static ref MEGAMAN5_TC_BRKE_00: Box<dyn games::Hooks + Send + Sync> =
+        BN5::new(offsets::MEGAMAN5_TC_BRKE_00);
+    pub static ref ROCKEXE5_TOBBRBJ_00: Box<dyn games::Hooks + Send + Sync> =
+        BN5::new(offsets::ROCKEXE5_TOBBRBJ_00);
+    pub static ref ROCKEXE5_TOCBRKJ_00: Box<dyn games::Hooks + Send + Sync> =
+        BN5::new(offsets::ROCKEXE5_TOCBRKJ_00);
 }
 
-impl EXE45 {
-    pub fn new(offsets: offsets::Offsets) -> Box<dyn hooks::Hooks + Send + Sync> {
-        Box::new(EXE45 {
+impl BN5 {
+    pub fn new(offsets: offsets::Offsets) -> Box<dyn games::Hooks + Send + Sync> {
+        Box::new(BN5 {
             offsets,
             munger: munger::Munger { offsets },
         })
     }
-}
-
-fn step_rng(seed: u32) -> u32 {
-    let seed = std::num::Wrapping(seed);
-    ((seed << 1) + (seed >> 0x1f) + std::num::Wrapping(1)).0 ^ 0x873ca9e5
 }
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
@@ -44,17 +45,19 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
-fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
-    let battle_settings = match match_type {
-        0 => rng.gen_range(0..0x44u8),
-        1 => rng.gen_range(0..0x60u8),
-        _ => 0u8,
-    };
-
-    (battle_settings, rng.gen_range(0..0x18u8))
+fn random_battle_settings_and_background(extended: bool, rng: &mut impl rand::Rng) -> (u8, u8) {
+    (
+        rng.gen_range(0..if !extended { 0x44u8 } else { 0x60 }),
+        rng.gen_range(0..0x1bu8),
+    )
 }
 
-impl hooks::Hooks for EXE45 {
+fn step_rng(seed: u32) -> u32 {
+    let seed = std::num::Wrapping(seed);
+    ((seed << 1) + (seed >> 0x1f) + std::num::Wrapping(1)).0 ^ 0x873ca9e5
+}
+
+impl games::Hooks for BN5 {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
@@ -63,15 +66,6 @@ impl hooks::Hooks for EXE45 {
                     self.offsets.rom.start_screen_jump_table_entry,
                     Box::new(move |core| {
                         munger.skip_logo(core);
-                    }),
-                )
-            },
-            {
-                let munger = self.munger.clone();
-                (
-                    self.offsets.rom.intro_jump_table_entry,
-                    Box::new(move |core| {
-                        munger.skip_intro(core);
                     }),
                 )
             },
@@ -90,19 +84,6 @@ impl hooks::Hooks for EXE45 {
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
                         munger.open_comm_menu_from_overworld(core);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.comm_menu_handle_link_cable_input,
-                    Box::new(move |mut core| {
-                        //Skip call
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                        //return r0 = 0, r1 = 0
-                        core.gba_mut().cpu_mut().set_gpr(0, 0);
-                        core.gba_mut().cpu_mut().set_gpr(1, 0);
                     }),
                 )
             },
@@ -133,31 +114,7 @@ impl hooks::Hooks for EXE45 {
                                 }
                             };
 
-                            let mut rng = match_.lock_rng().await;
-
-                            let (battle_settings, background) =
-                                random_battle_settings_and_background(
-                                    &mut *rng,
-                                    match_.match_type().0,
-                                );
-
-                            munger.start_battle_from_comm_menu(
-                                core,
-                                match_.match_type().0,
-                                battle_settings,
-                                background,
-                            );
-                        });
-                    }),
-                )
-            },
-            {
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.match_end_ret,
-                    Box::new(move |_core| {
-                        handle.block_on(async {
-                            completion_token.complete();
+                            munger.start_battle_from_comm_menu(core, match_.match_type().0);
                         });
                     }),
                 )
@@ -381,6 +338,48 @@ impl hooks::Hooks for EXE45 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
+                    self.offsets.rom.comm_menu_init_battle_entry,
+                    Box::new(move |core| {
+                        handle.block_on(async {
+                            let match_ = match_.lock().await;
+                            let match_ = match &*match_ {
+                                Some(match_) => match_,
+                                _ => {
+                                    return;
+                                }
+                            };
+
+                            let mut rng = match_.lock_rng().await;
+                            let (battle_settings, background) =
+                                random_battle_settings_and_background(
+                                    match_.match_type().1 == 1,
+                                    &mut *rng,
+                                );
+                            munger.set_battle_settings_and_background(
+                                core,
+                                battle_settings,
+                                background,
+                            );
+                        });
+                    }),
+                )
+            },
+            {
+                let handle = handle.clone();
+                (
+                    self.offsets.rom.comm_menu_end_battle_entry,
+                    Box::new(move |_core| {
+                        handle.block_on(async {
+                            completion_token.complete();
+                        });
+                    }),
+                )
+            },
+            {
+                let match_ = match_.clone();
+                let munger = self.munger.clone();
+                let handle = handle.clone();
+                (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         handle.block_on(async {
@@ -440,6 +439,9 @@ impl hooks::Hooks for EXE45 {
                                 munger.set_rng2_state(core, rng2_state);
                                 munger.set_rng3_state(core, rng2_state);
 
+                                // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
+                                munger.set_current_tick(core, 0);
+
                                 round.set_first_committed_state(
                                     core.save_state().expect("save state"),
                                     match_
@@ -460,8 +462,17 @@ impl hooks::Hooks for EXE45 {
                                 );
                             }
 
+                            let game_current_tick = munger.current_tick(core);
+                            if game_current_tick != round.current_tick() {
+                                panic!(
+                                    "read joyflags: round tick = {} but game tick = {}",
+                                    round.current_tick(),
+                                    game_current_tick
+                                );
+                            }
+
                             'abort: loop {
-                                if let Err(e) = round
+                                    if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
@@ -480,10 +491,11 @@ impl hooks::Hooks for EXE45 {
             },
             {
                 let match_ = match_.clone();
+                let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |_core| {
+                    self.offsets.rom.round_post_increment_tick,
+                    Box::new(move |core| {
                         handle.block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
@@ -494,10 +506,12 @@ impl hooks::Hooks for EXE45 {
                             };
 
                             let mut round_state = match_.lock_round_state().await;
-                            let round = if let Some(round) = round_state.round.as_mut() {
-                                round
-                            } else {
-                                return;
+
+                            let round = match round_state.round.as_mut() {
+                                Some(round) => round,
+                                None => {
+                                    return;
+                                }
                             };
 
                             if !round.has_committed_state() {
@@ -505,6 +519,14 @@ impl hooks::Hooks for EXE45 {
                             }
 
                             round.increment_current_tick();
+                            let game_current_tick = munger.current_tick(core);
+                            if game_current_tick != round.current_tick() {
+                                panic!(
+                                    "post increment tick: round tick = {} but game tick = {}",
+                                    round.current_tick(),
+                                    game_current_tick
+                                );
+                            }
                         });
                     }),
                 )
@@ -523,19 +545,7 @@ impl hooks::Hooks for EXE45 {
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
-                        let mut rng = shadow_state.lock_rng();
-
-                        let (battle_settings, background) = random_battle_settings_and_background(
-                            &mut *rng,
-                            shadow_state.match_type().0,
-                        );
-
-                        munger.start_battle_from_comm_menu(
-                            core,
-                            shadow_state.match_type().0,
-                            battle_settings,
-                            background,
-                        );
+                        munger.start_battle_from_comm_menu(core, shadow_state.match_type().0);
                     }),
                 )
             },
@@ -652,6 +662,25 @@ impl hooks::Hooks for EXE45 {
                 )
             },
             {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger.clone();
+                (
+                    self.offsets.rom.comm_menu_init_battle_entry,
+                    Box::new(move |core| {
+                        let mut rng = shadow_state.lock_rng();
+                        let (battle_settings, background) = random_battle_settings_and_background(
+                            shadow_state.match_type().1 == 1,
+                            &mut *rng,
+                        );
+                        munger.set_battle_settings_and_background(
+                            core,
+                            battle_settings,
+                            background,
+                        );
+                    }),
+                )
+            },
+            {
                 let munger = self.munger.clone();
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
@@ -697,7 +726,9 @@ impl hooks::Hooks for EXE45 {
                             munger.set_rng2_state(core, rng2_state);
                             munger.set_rng3_state(core, rng2_state);
 
-                            // HACK: For some inexplicable reason, we don't always start on tick 0.
+                            // HACK: The battle jump table goes directly from deinit to init, so we actually end up initializing on tick 1 after round 1. We just override it here.
+                            munger.set_current_tick(core, 0);
+
                             round.set_first_committed_state(
                                 core.save_state().expect("save state"),
                                 &munger.tx_packet(core),
@@ -710,6 +741,15 @@ impl hooks::Hooks for EXE45 {
                             );
                             log::info!("shadow state committed on {}", round.current_tick());
                             return;
+                        }
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "read joyflags: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            ));
                         }
 
                         if let Some(ip) = round.peek_shadow_input().clone() {
@@ -754,6 +794,15 @@ impl hooks::Hooks for EXE45 {
                     Box::new(move |core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            ));
+                        }
 
                         let ip = if let Some(ip) = round.take_shadow_input() {
                             ip
@@ -813,10 +862,20 @@ impl hooks::Hooks for EXE45 {
                 let shadow_state = shadow_state.clone();
                 let munger = self.munger.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret1,
+                    self.offsets.rom.copy_input_data_ret,
                     Box::new(move |core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "copy input data: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            ));
+                        }
+
                         round.set_remote_packet(
                             round.current_tick() + 1,
                             munger.tx_packet(core).to_vec(),
@@ -829,49 +888,23 @@ impl hooks::Hooks for EXE45 {
                 let shadow_state = shadow_state.clone();
                 let munger = self.munger.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret2,
+                    self.offsets.rom.round_post_increment_tick,
                     Box::new(move |core| {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
-                        round.set_remote_packet(
-                            round.current_tick() + 1,
-                            munger.tx_packet(core).to_vec(),
-                        );
-                        round.set_input_injected();
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                let munger = self.munger.clone();
-                (
-                    self.offsets.rom.copy_input_data_ret3,
-                    Box::new(move |core| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_mut().expect("round");
-                        round.set_remote_packet(
-                            round.current_tick() + 1,
-                            munger.tx_packet(core).to_vec(),
-                        );
-                        round.set_input_injected();
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |_core| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let round = if let Some(round) = round_state.round.as_mut() {
-                            round
-                        } else {
-                            return;
-                        };
                         if !round.has_first_committed_state() {
                             return;
                         }
                         round.increment_current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "post increment tick: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            ));
+                        }
                     }),
                 )
             },
@@ -939,12 +972,21 @@ impl hooks::Hooks for EXE45 {
                 )
             },
             {
+                let munger = self.munger.clone();
                 let replayer_state = replayer_state.clone();
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
                         let mut replayer_state = replayer_state.lock_inner();
                         let current_tick = replayer_state.current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != current_tick {
+                            panic!(
+                                "round tick = {} but game tick = {}",
+                                current_tick, game_current_tick
+                            );
+                        }
 
                         if current_tick == replayer_state.commit_tick() {
                             replayer_state.set_committed_state(
@@ -1001,6 +1043,14 @@ impl hooks::Hooks for EXE45 {
                         }
 
                         let current_tick = replayer_state.current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != current_tick {
+                            panic!(
+                                "round tick = {} but game tick = {}",
+                                current_tick, game_current_tick
+                            );
+                        }
 
                         let ip = match replayer_state.pop_input_pair() {
                             Some(ip) => ip.clone(),
@@ -1062,57 +1112,46 @@ impl hooks::Hooks for EXE45 {
                 let munger = self.munger.clone();
                 let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret1,
+                    self.offsets.rom.copy_input_data_ret,
                     Box::new(move |core| {
                         let mut replayer_state = replayer_state.lock_inner();
                         if replayer_state.is_round_ending() {
                             return;
                         }
+
                         let current_tick = replayer_state.current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != current_tick {
+                            panic!(
+                                "round tick = {} but game tick = {}",
+                                current_tick, game_current_tick
+                            );
+                        }
+
                         replayer_state
                             .set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
                     }),
                 )
             },
             {
+                let replayer_state = replayer_state.clone();
                 let munger = self.munger.clone();
-                let replayer_state = replayer_state.clone();
                 (
-                    self.offsets.rom.copy_input_data_ret2,
+                    self.offsets.rom.round_post_increment_tick,
                     Box::new(move |core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
-                            return;
-                        }
-                        let current_tick = replayer_state.current_tick();
-                        replayer_state
-                            .set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
-                    }),
-                )
-            },
-            {
-                let munger = self.munger.clone();
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.copy_input_data_ret3,
-                    Box::new(move |core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
-                            return;
-                        }
-                        let current_tick = replayer_state.current_tick();
-                        replayer_state
-                            .set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |_core| {
                         let mut replayer_state = replayer_state.lock_inner();
                         replayer_state.increment_current_tick();
+                        let current_tick = replayer_state.current_tick();
+
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != current_tick {
+                            replayer_state.set_anyhow_error(anyhow::anyhow!(
+                                "post increment tick: round tick = {} but game tick = {}",
+                                current_tick,
+                                game_current_tick
+                            ));
+                        }
                     }),
                 )
             },

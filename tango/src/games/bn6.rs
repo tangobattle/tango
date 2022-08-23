@@ -1,28 +1,28 @@
-use crate::{battle, hooks, lockstep, replayer, session, shadow};
+use crate::{battle, games, lockstep, replayer, session, shadow};
 
 mod munger;
 mod offsets;
 
 #[derive(Clone)]
-pub struct BN5 {
+pub struct BN6 {
     offsets: offsets::Offsets,
     munger: munger::Munger,
 }
 
 lazy_static! {
-    pub static ref MEGAMAN5_TP_BRBE_00: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::MEGAMAN5_TP_BRBE_00);
-    pub static ref MEGAMAN5_TC_BRKE_00: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::MEGAMAN5_TC_BRKE_00);
-    pub static ref ROCKEXE5_TOBBRBJ_00: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::ROCKEXE5_TOBBRBJ_00);
-    pub static ref ROCKEXE5_TOCBRKJ_00: Box<dyn hooks::Hooks + Send + Sync> =
-        BN5::new(offsets::ROCKEXE5_TOCBRKJ_00);
+    pub static ref MEGAMAN6_FXXBR6E_00: Box<dyn games::Hooks + Send + Sync> =
+        BN6::new(offsets::MEGAMAN6_FXXBR6E_00);
+    pub static ref MEGAMAN6_GXXBR5E_00: Box<dyn games::Hooks + Send + Sync> =
+        BN6::new(offsets::MEGAMAN6_GXXBR5E_00);
+    pub static ref ROCKEXE6_RXXBR6J_00: Box<dyn games::Hooks + Send + Sync> =
+        BN6::new(offsets::ROCKEXE6_RXXBR6J_00);
+    pub static ref ROCKEXE6_GXXBR5J_00: Box<dyn games::Hooks + Send + Sync> =
+        BN6::new(offsets::ROCKEXE6_GXXBR5J_00);
 }
 
-impl BN5 {
-    pub fn new(offsets: offsets::Offsets) -> Box<dyn hooks::Hooks + Send + Sync> {
-        Box::new(BN5 {
+impl BN6 {
+    pub fn new(offsets: offsets::Offsets) -> Box<dyn games::Hooks + Send + Sync> {
+        Box::new(BN6 {
             offsets,
             munger: munger::Munger { offsets },
         })
@@ -45,11 +45,22 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
-fn random_battle_settings_and_background(extended: bool, rng: &mut impl rand::Rng) -> (u8, u8) {
-    (
-        rng.gen_range(0..if !extended { 0x44u8 } else { 0x60 }),
-        rng.gen_range(0..0x1bu8),
-    )
+fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> u16 {
+    const BATTLE_BACKGROUNDS: &[u16] = &[
+        0x00, 0x01, 0x01, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+        0x0f, 0x10, 0x11, 0x11, 0x13, 0x13,
+    ];
+
+    let lo = match match_type {
+        0 => rng.gen_range(0..0x44u16),
+        1 => rng.gen_range(0..0x60u16),
+        2 => rng.gen_range(0..0x44u16) + 0x60u16,
+        _ => 0u16,
+    };
+
+    let hi = BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())];
+
+    hi << 0x8 | lo
 }
 
 fn step_rng(seed: u32) -> u32 {
@@ -57,7 +68,7 @@ fn step_rng(seed: u32) -> u32 {
     ((seed << 1) + (seed >> 0x1f) + std::num::Wrapping(1)).0 ^ 0x873ca9e5
 }
 
-impl hooks::Hooks for BN5 {
+impl games::Hooks for BN6 {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
@@ -350,15 +361,12 @@ impl hooks::Hooks for BN5 {
                             };
 
                             let mut rng = match_.lock_rng().await;
-                            let (battle_settings, background) =
-                                random_battle_settings_and_background(
-                                    match_.match_type().1 == 1,
-                                    &mut *rng,
-                                );
-                            munger.set_battle_settings_and_background(
+                            munger.set_link_battle_settings_and_background(
                                 core,
-                                battle_settings,
-                                background,
+                                random_battle_settings_and_background(
+                                    &mut *rng,
+                                    match_.match_type().0,
+                                ),
                             );
                         });
                     }),
@@ -380,11 +388,13 @@ impl hooks::Hooks for BN5 {
                 let munger = self.munger.clone();
                 let handle = handle.clone();
                 (
-                    self.offsets.rom.in_battle_call_handle_link_cable_input,
+                    self.offsets
+                        .rom
+                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
                     Box::new(move |mut core| {
                         handle.block_on(async {
                             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
                             munger.set_copy_data_input_state(
                                 core,
                                 if match_.lock().await.is_some() { 2 } else { 4 },
@@ -450,6 +460,7 @@ impl hooks::Hooks for BN5 {
                                         .expect("shadow save state"),
                                     &munger.tx_packet(core),
                                 );
+
                                 log::info!(
                                     "primary rng1 state: {:08x}, rng2 state: {:08x}, rng3 state: {:08x}",
                                     munger.rng1_state(core),
@@ -472,7 +483,7 @@ impl hooks::Hooks for BN5 {
                             }
 
                             'abort: loop {
-                                    if let Err(e) = round
+                                if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
@@ -668,14 +679,12 @@ impl hooks::Hooks for BN5 {
                     self.offsets.rom.comm_menu_init_battle_entry,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
-                        let (battle_settings, background) = random_battle_settings_and_background(
-                            shadow_state.match_type().1 == 1,
-                            &mut *rng,
-                        );
-                        munger.set_battle_settings_and_background(
+                        munger.set_link_battle_settings_and_background(
                             core,
-                            battle_settings,
-                            background,
+                            random_battle_settings_and_background(
+                                &mut *rng,
+                                shadow_state.match_type().0,
+                            ),
                         );
                     }),
                 )
@@ -683,10 +692,12 @@ impl hooks::Hooks for BN5 {
             {
                 let munger = self.munger.clone();
                 (
-                    self.offsets.rom.in_battle_call_handle_link_cable_input,
+                    self.offsets
+                        .rom
+                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
                         munger.set_copy_data_input_state(core, 2);
                     }),
                 )
@@ -943,10 +954,12 @@ impl hooks::Hooks for BN5 {
             {
                 let munger = self.munger.clone();
                 (
-                    self.offsets.rom.in_battle_call_handle_link_cable_input,
+                    self.offsets
+                        .rom
+                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
                         munger.set_copy_data_input_state(core, 2);
                     }),
                 )

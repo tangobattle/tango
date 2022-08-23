@@ -1,7 +1,7 @@
 mod munger;
 mod offsets;
 
-use crate::{battle, hooks, lockstep, replayer, session, shadow};
+use crate::{battle, games, lockstep, replayer, session, shadow};
 
 #[derive(Clone)]
 pub struct BN4 {
@@ -10,22 +10,22 @@ pub struct BN4 {
 }
 
 lazy_static! {
-    pub static ref MEGAMANBN4BMB4BE_00: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref MEGAMANBN4BMB4BE_00: Box<dyn games::Hooks + Send + Sync> =
         BN4::new(offsets::MEGAMANBN4BMB4BE_00);
-    pub static ref MEGAMANBN4RSB4WE_00: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref MEGAMANBN4RSB4WE_00: Box<dyn games::Hooks + Send + Sync> =
         BN4::new(offsets::MEGAMANBN4RSB4WE_00);
-    pub static ref ROCK_EXE4_BMB4BJ_00: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCK_EXE4_BMB4BJ_00: Box<dyn games::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_BMB4BJ_00);
-    pub static ref ROCK_EXE4_BMB4BJ_01: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCK_EXE4_BMB4BJ_01: Box<dyn games::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_BMB4BJ_01);
-    pub static ref ROCK_EXE4_RSB4WJ_00: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCK_EXE4_RSB4WJ_00: Box<dyn games::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_RSB4WJ_00);
-    pub static ref ROCK_EXE4_RSB4WJ_01: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCK_EXE4_RSB4WJ_01: Box<dyn games::Hooks + Send + Sync> =
         BN4::new(offsets::ROCK_EXE4_RSB4WJ_01);
 }
 
 impl BN4 {
-    pub fn new(offsets: offsets::Offsets) -> Box<dyn hooks::Hooks + Send + Sync> {
+    pub fn new(offsets: offsets::Offsets) -> Box<dyn games::Hooks + Send + Sync> {
         Box::new(BN4 {
             offsets,
             munger: munger::Munger { offsets },
@@ -65,7 +65,7 @@ fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u
     (battle_settings, rng.gen_range(0..0x18u8))
 }
 
-impl hooks::Hooks for BN4 {
+impl games::Hooks for BN4 {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {

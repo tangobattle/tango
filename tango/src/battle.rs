@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::hooks;
+use crate::games;
 use crate::lockstep;
 use crate::net;
 use crate::protocol;
@@ -59,7 +59,7 @@ impl RoundState {
 pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
-    hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
+    hooks: &'static Box<dyn games::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
     transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
@@ -76,7 +76,7 @@ pub struct Match {
 impl Match {
     pub fn new(
         rom: Vec<u8>,
-        hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
+        hooks: &'static Box<dyn games::Hooks + Send + Sync>,
         peer_conn: datachannel_wrapper::PeerConnection,
         dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
@@ -330,7 +330,7 @@ impl Match {
 }
 
 pub struct Round {
-    hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
+    hooks: &'static Box<dyn games::Hooks + Send + Sync>,
     number: u8,
     local_player_index: u8,
     current_tick: u32,

@@ -1,4 +1,4 @@
-use crate::{audio, battle, hooks, replay, replayer, stats};
+use crate::{audio, battle, games, replay, replayer, stats};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -60,7 +60,7 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let hooks = hooks::get(core.as_mut()).unwrap();
+        let hooks = games::find_hook(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
 
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -182,7 +182,7 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let hooks = hooks::get(core.as_mut()).unwrap();
+        let hooks = games::find_hook(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
 
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -240,7 +240,7 @@ impl Session {
         core.as_mut()
             .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
-        let hooks = hooks::get(core.as_mut()).unwrap();
+        let hooks = games::find_hook(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
 
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));

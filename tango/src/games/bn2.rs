@@ -3,7 +3,7 @@ mod offsets;
 
 use byteorder::ByteOrder;
 
-use crate::{battle, hooks, lockstep, replayer, session, shadow};
+use crate::{battle, games, lockstep, replayer, session, shadow};
 
 #[derive(Clone)]
 pub struct BN2 {
@@ -12,14 +12,14 @@ pub struct BN2 {
 }
 
 lazy_static! {
-    pub static ref MEGAMAN_EXE2AE2E_00: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref MEGAMAN_EXE2AE2E_00: Box<dyn games::Hooks + Send + Sync> =
         BN2::new(offsets::MEGAMAN_EXE2AE2E_00);
-    pub static ref ROCKMAN_EXE2AE2J_01: Box<dyn hooks::Hooks + Send + Sync> =
+    pub static ref ROCKMAN_EXE2AE2J_01: Box<dyn games::Hooks + Send + Sync> =
         BN2::new(offsets::ROCKMAN_EXE2AE2J_01);
 }
 
 impl BN2 {
-    pub fn new(offsets: offsets::Offsets) -> Box<dyn hooks::Hooks + Send + Sync> {
+    pub fn new(offsets: offsets::Offsets) -> Box<dyn games::Hooks + Send + Sync> {
         Box::new(BN2 {
             offsets,
             munger: munger::Munger { offsets },
@@ -49,7 +49,7 @@ const INIT_RX: [u8; 16] = [
     0x00, 0x04, 0x00, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
 ];
 
-impl hooks::Hooks for BN2 {
+impl games::Hooks for BN2 {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {

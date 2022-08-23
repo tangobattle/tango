@@ -1,4 +1,4 @@
-use crate::{battle, hooks, lockstep};
+use crate::{battle, games, lockstep};
 
 pub struct Round {
     current_tick: u32,
@@ -103,7 +103,7 @@ struct InnerState {
 pub struct Shadow {
     core: mgba::core::Core,
     state: State,
-    hooks: &'static Box<dyn hooks::Hooks + Send + Sync>,
+    hooks: &'static Box<dyn games::Hooks + Send + Sync>,
 }
 
 #[derive(Clone)]
@@ -198,7 +198,7 @@ impl Shadow {
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 
-        let hooks = hooks::get(core.as_mut()).unwrap();
+        let hooks = games::find_hook(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
 
         let mut traps = hooks.common_traps();
