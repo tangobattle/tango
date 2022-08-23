@@ -2,7 +2,31 @@ use std::str::FromStr;
 
 use fluent_templates::Loader;
 
-use crate::{config, game, i18n, input, session, video};
+use crate::{config, i18n, input, session, video, stats};
+
+pub struct State {
+    pub selected_settings_tab: SettingsTab,
+    pub config: config::Config,
+    pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    pub session: Option<session::Session>,
+    pub steal_input: StealInputState,
+    pub show_debug: bool,
+}
+
+#[derive(PartialEq, Eq)]
+pub enum SettingsTab {
+    General,
+    InputMapping,
+}
+
+pub enum StealInputState {
+    Idle,
+    Stealing {
+        callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
+        userdata: Box<dyn std::any::Any>,
+    },
+}
 
 struct VBuf {
     buf: Vec<u8>,
@@ -110,9 +134,9 @@ impl Gui {
     fn draw_settings_window(
         &mut self,
         ctx: &egui::Context,
-        selected_tab: &mut game::SettingsTab,
+        selected_tab: &mut SettingsTab,
         config: &mut config::Config,
-        steal_input: &mut game::StealInputState,
+        steal_input: &mut StealInputState,
     ) {
         egui::Window::new(i18n::LOCALES.lookup(&config.language, "settings").unwrap())
             .id(egui::Id::new("settings-window"))
@@ -121,14 +145,14 @@ impl Gui {
                     ui.horizontal(|ui| {
                         ui.selectable_value(
                             selected_tab,
-                            game::SettingsTab::General,
+                            SettingsTab::General,
                             i18n::LOCALES
                                 .lookup(&config.language, "settings.general")
                                 .unwrap(),
                         );
                         ui.selectable_value(
                             selected_tab,
-                            game::SettingsTab::InputMapping,
+                            SettingsTab::InputMapping,
                             i18n::LOCALES
                                 .lookup(&config.language, "settings.input-mapping")
                                 .unwrap(),
@@ -136,8 +160,8 @@ impl Gui {
                     });
 
                     match selected_tab {
-                        game::SettingsTab::General => self.draw_settings_general_tab(ui, config),
-                        game::SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
+                        SettingsTab::General => self.draw_settings_general_tab(ui, config),
+                        SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
                             ui,
                             &config.language,
                             &mut config.input_mapping,
@@ -270,7 +294,7 @@ impl Gui {
         ui: &mut egui::Ui,
         lang: &unic_langid::LanguageIdentifier,
         input_mapping: &mut input::Mapping,
-        steal_input: &mut game::StealInputState,
+        steal_input: &mut StealInputState,
     ) {
         egui::Grid::new("settings-window-input-mapping-grid").show(ui, |ui| {
             let mut add_row = |label_text_id,
@@ -326,7 +350,7 @@ impl Gui {
                         });
                     }
                     if ui.add(egui::Button::new("➕")).clicked() {
-                        *steal_input = game::StealInputState::Stealing {
+                        *steal_input = StealInputState::Stealing {
                             callback: {
                                 let get_mapping = get_mapping.clone();
                                 Box::new(move |phy, input_mapping| {
@@ -374,7 +398,7 @@ impl Gui {
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
-        state: &mut game::State,
+        state: &mut State,
     ) {
         egui::Window::new("Debug")
             .id(egui::Id::new("debug-window"))
@@ -570,7 +594,7 @@ impl Gui {
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
         input_state: &input::State,
-        state: &mut game::State,
+        state: &mut State,
     ) {
         if self.current_language.as_ref() != Some(&state.config.language) {
             let mut language = state.config.language.clone();
@@ -681,8 +705,8 @@ impl Gui {
         );
 
         let mut steal_input_open = match state.steal_input {
-            game::StealInputState::Idle => false,
-            game::StealInputState::Stealing { .. } => true,
+            StealInputState::Idle => false,
+            StealInputState::Stealing { .. } => true,
         };
         if let Some(inner_response) = egui::Window::new("")
             .id(egui::Id::new("input-capture-window"))
@@ -698,7 +722,7 @@ impl Gui {
                             .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
                             .show(ui, |ui| {
                                 let userdata =
-                                    if let game::StealInputState::Stealing { userdata, .. } =
+                                    if let StealInputState::Stealing { userdata, .. } =
                                         &state.steal_input
                                     {
                                         userdata
@@ -737,7 +761,7 @@ impl Gui {
             ctx.move_to_top(inner_response.response.layer_id);
         }
         if !steal_input_open {
-            state.steal_input = game::StealInputState::Idle;
+            state.steal_input = StealInputState::Idle;
         }
     }
 }

@@ -4,7 +4,6 @@ extern crate lazy_static;
 pub mod audio;
 pub mod battle;
 pub mod config;
-pub mod game;
 pub mod gui;
 pub mod hooks;
 pub mod i18n;
