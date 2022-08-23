@@ -3653,6 +3653,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "time",
+ "tiny-skia",
  "tokio",
  "tokio-stream",
  "tokio-tungstenite 0.16.1",
