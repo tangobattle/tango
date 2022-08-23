@@ -14,6 +14,7 @@ pub struct State {
     pub steal_input: Option<StealInputState>,
     pub show_settings: Option<SettingsTab>,
     pub show_debug: bool,
+    pub show_menubar: bool,
     pub drpc: discord_rpc_client::Client,
 }
 
@@ -34,6 +35,7 @@ impl State {
             steal_input: None,
             show_settings: None,
             show_debug: false,
+            show_menubar: false,
             drpc,
         }
     }
@@ -682,6 +684,55 @@ impl Gui {
         }
     }
 
+    pub fn draw_menubar(&mut self, ctx: &egui::Context, state: &mut State) {
+        egui::Window::new("")
+            .id(egui::Id::new("menubar"))
+            .open(&mut state.show_menubar)
+            .frame(egui::Frame::window(&ctx.style()).rounding(egui::Rounding::none()))
+            .title_bar(false)
+            .resizable(false)
+            .min_width(ctx.available_rect().width())
+            .fixed_pos(egui::Pos2::ZERO)
+            .show(ctx, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    if ui
+                        .selectable_label(
+                            state.show_settings.is_some(),
+                            format!(
+                                "⚙️ {}",
+                                i18n::LOCALES
+                                    .lookup(&state.config.language, "settings")
+                                    .unwrap()
+                            ),
+                        )
+                        .clicked()
+                    {
+                        state.show_settings = if state.show_settings.is_some() {
+                            None
+                        } else {
+                            Some(SettingsTab::General)
+                        };
+                    }
+
+                    if ui
+                        .selectable_label(
+                            state.show_debug,
+                            format!(
+                                "🐛 {}",
+                                i18n::LOCALES
+                                    .lookup(&state.config.language, "debug")
+                                    .unwrap()
+                            ),
+                        )
+                        .clicked()
+                    {
+                        state.show_debug = !state.show_debug;
+                    }
+                })
+            });
+    }
+
     pub fn draw(
         &mut self,
         ctx: &egui::Context,
@@ -769,6 +820,10 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
+        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Escape) {
+            state.show_menubar = !state.show_menubar;
+        }
+
         if let Some(session) = &state.session {
             self.draw_session(
                 ctx,
@@ -778,45 +833,10 @@ impl Gui {
                 &state.config.video_filter,
             );
         } else {
-            egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(
-                            state.show_settings.is_some(),
-                            format!(
-                                "⚙️ {}",
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "settings")
-                                    .unwrap()
-                            ),
-                        )
-                        .clicked()
-                    {
-                        state.show_settings = if state.show_settings.is_some() {
-                            None
-                        } else {
-                            Some(SettingsTab::General)
-                        };
-                    }
-
-                    if ui
-                        .selectable_label(
-                            state.show_debug,
-                            format!(
-                                "🐛 {}",
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "debug")
-                                    .unwrap()
-                            ),
-                        )
-                        .clicked()
-                    {
-                        state.show_debug = !state.show_debug;
-                    }
-                })
-            });
+            state.show_menubar = true;
         }
 
+        self.draw_menubar(ctx, state);
         self.draw_debug_window(ctx, handle.clone(), state);
         self.draw_settings_window(
             ctx,
