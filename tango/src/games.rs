@@ -40,7 +40,7 @@ pub fn find(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + 
 }
 
 pub fn detect(rom: &[u8]) -> Option<&'static (dyn Game + Send + Sync)> {
-    let rom_code = rom.get(0xac..0xac + 4)?.try_into().unwrap();
+    let rom_code = rom.get(0xac..0xac + 4)?.try_into().ok()?;
     let rom_revision = rom.get(0xbc)?;
     find(rom_code, *rom_revision)
 }
