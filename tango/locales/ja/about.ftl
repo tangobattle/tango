@@ -1,0 +1,2 @@
+debug = デバッグ
+about = Tangoについて
