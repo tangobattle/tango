@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use fluent_templates::Loader;
 
-use crate::{config, i18n, input, session, video, stats};
+use crate::{config, i18n, input, session, stats, video};
 
 pub struct State {
     pub selected_settings_tab: SettingsTab,
@@ -12,6 +12,24 @@ pub struct State {
     pub session: Option<session::Session>,
     pub steal_input: StealInputState,
     pub show_debug: bool,
+}
+
+impl State {
+    pub fn new(
+        config: config::Config,
+        fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    ) -> Self {
+        Self {
+            selected_settings_tab: SettingsTab::General,
+            config,
+            fps_counter: fps_counter.clone(),
+            emu_tps_counter: emu_tps_counter.clone(),
+            session: None,
+            steal_input: StealInputState::Idle,
+            show_debug: false,
+        }
+    }
 }
 
 #[derive(PartialEq, Eq)]

@@ -125,15 +125,7 @@ fn main() -> Result<(), anyhow::Error> {
         controllers.insert(which, controller);
     }
 
-    let mut state = gui::State {
-        selected_settings_tab: gui::SettingsTab::General,
-        config,
-        fps_counter: fps_counter.clone(),
-        emu_tps_counter: emu_tps_counter.clone(),
-        session: None,
-        steal_input: gui::StealInputState::Idle,
-        show_debug: false,
-    };
+    let mut state = gui::State::new(config, fps_counter.clone(), emu_tps_counter.clone());
 
     // state.session = Some(session::Session::new(
     //     rt.handle().clone(),
