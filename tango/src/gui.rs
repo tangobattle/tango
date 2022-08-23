@@ -617,6 +617,68 @@ impl Gui {
             });
     }
 
+    pub fn draw_steal_input(
+        &mut self,
+        ctx: &egui::Context,
+        language: &unic_langid::LanguageIdentifier,
+        steal_input: &mut Option<StealInputState>,
+    ) {
+        let mut steal_input_open = steal_input.is_some();
+        if let Some(inner_response) = egui::Window::new("")
+            .id(egui::Id::new("input-capture-window"))
+            .open(&mut steal_input_open)
+            .title_bar(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Center),
+                    |ui| {
+                        egui::Frame::none()
+                            .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
+                            .show(ui, |ui| {
+                                let userdata =
+                                    if let Some(StealInputState { userdata, .. }) = &steal_input {
+                                        userdata
+                                    } else {
+                                        unreachable!();
+                                    };
+
+                                ui.label(
+                                    egui::RichText::new(
+                                        i18n::LOCALES
+                                            .lookup_with_args(
+                                                &language,
+                                                "input-mapping.prompt",
+                                                &std::collections::HashMap::from([(
+                                                    "key",
+                                                    i18n::LOCALES
+                                                        .lookup(
+                                                            &language,
+                                                            userdata
+                                                                .downcast_ref::<&str>()
+                                                                .unwrap(),
+                                                        )
+                                                        .unwrap()
+                                                        .into(),
+                                                )]),
+                                            )
+                                            .unwrap(),
+                                    )
+                                    .size(32.0),
+                                );
+                            });
+                    },
+                );
+            })
+        {
+            ctx.move_to_top(inner_response.response.layer_id);
+        }
+        if !steal_input_open {
+            *steal_input = None;
+        }
+    }
+
     pub fn draw(
         &mut self,
         ctx: &egui::Context,
@@ -731,61 +793,6 @@ impl Gui {
             &mut state.config,
             &mut state.steal_input,
         );
-
-        let mut steal_input_open = state.steal_input.is_some();
-        if let Some(inner_response) = egui::Window::new("")
-            .id(egui::Id::new("input-capture-window"))
-            .open(&mut steal_input_open)
-            .title_bar(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.with_layout(
-                    egui::Layout::top_down_justified(egui::Align::Center),
-                    |ui| {
-                        egui::Frame::none()
-                            .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
-                            .show(ui, |ui| {
-                                let userdata = if let Some(StealInputState { userdata, .. }) =
-                                    &state.steal_input
-                                {
-                                    userdata
-                                } else {
-                                    unreachable!();
-                                };
-
-                                ui.label(
-                                    egui::RichText::new(
-                                        i18n::LOCALES
-                                            .lookup_with_args(
-                                                &state.config.language,
-                                                "input-mapping.prompt",
-                                                &std::collections::HashMap::from([(
-                                                    "key",
-                                                    i18n::LOCALES
-                                                        .lookup(
-                                                            &state.config.language,
-                                                            userdata
-                                                                .downcast_ref::<&str>()
-                                                                .unwrap(),
-                                                        )
-                                                        .unwrap()
-                                                        .into(),
-                                                )]),
-                                            )
-                                            .unwrap(),
-                                    )
-                                    .size(32.0),
-                                );
-                            });
-                    },
-                );
-            })
-        {
-            ctx.move_to_top(inner_response.response.layer_id);
-        }
-        if !steal_input_open {
-            state.steal_input = None;
-        }
+        self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
     }
 }
