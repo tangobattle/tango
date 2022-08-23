@@ -133,14 +133,20 @@ impl Drop for Binding {
 
 #[derive(Clone)]
 pub struct LateBinder {
+    supported_config: cpal::SupportedStreamConfig,
     stream: std::sync::Arc<parking_lot::Mutex<Option<Box<dyn Stream + Send + 'static>>>>,
 }
 
 impl LateBinder {
-    pub fn new() -> Self {
+    pub fn new(supported_config: cpal::SupportedStreamConfig) -> Self {
         Self {
+            supported_config,
             stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
         }
+    }
+
+    pub fn supported_config(&self) -> &cpal::SupportedStreamConfig {
+        &self.supported_config
     }
 
     pub fn bind(

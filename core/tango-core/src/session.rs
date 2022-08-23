@@ -40,7 +40,6 @@ impl Session {
     pub fn new_pvp(
         handle: tokio::runtime::Handle,
         audio_binder: audio::LateBinder,
-        sample_rate: cpal::SampleRate,
         rom: &[u8],
         save: &[u8],
         shadow_rom: &[u8],
@@ -131,7 +130,7 @@ impl Session {
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            sample_rate,
+            audio_binder.supported_config().sample_rate(),
         ))))?;
 
         let vbuf = Arc::new(Mutex::new(vec![
@@ -163,7 +162,6 @@ impl Session {
 
     pub fn new_singleplayer(
         audio_binder: audio::LateBinder,
-        sample_rate: cpal::SampleRate,
         rom: &[u8],
         save_path: std::path::PathBuf,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -199,7 +197,7 @@ impl Session {
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            sample_rate,
+            audio_binder.supported_config().sample_rate(),
         ))))?;
 
         let vbuf = Arc::new(Mutex::new(vec![
@@ -231,7 +229,6 @@ impl Session {
 
     pub fn new_replayer(
         audio_binder: audio::LateBinder,
-        sample_rate: cpal::SampleRate,
         rom: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         replay: replay::Replay,
@@ -276,7 +273,7 @@ impl Session {
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            sample_rate,
+            audio_binder.supported_config().sample_rate(),
         ))))?;
 
         thread.handle().run_on_core(move |mut core| {

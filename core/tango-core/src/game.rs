@@ -94,7 +94,7 @@ pub fn run(rt: tokio::runtime::Runtime) -> Result<(), anyhow::Error> {
     let audio_supported_config = audio::get_supported_config(&audio_device)?;
     log::info!("selected audio config: {:?}", audio_supported_config);
 
-    let audio_binder = audio::LateBinder::new();
+    let audio_binder = audio::LateBinder::new(audio_supported_config.clone());
     let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
     stream.play()?;
 
