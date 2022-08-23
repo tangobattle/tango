@@ -188,8 +188,8 @@ impl<'a> CoreMutRef<'a> {
         self.raw_read_range(0x080000a0, -1)
     }
 
-    pub fn rom_code(&mut self) -> String {
-        String::from_utf8(self.raw_read_range::<4>(0x080000ac, -1).to_vec()).unwrap()
+    pub fn rom_code(&mut self) -> [u8; 4] {
+        self.raw_read_range::<4>(0x080000ac, -1)
     }
 
     pub fn rom_revision(&mut self) -> u8 {

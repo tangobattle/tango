@@ -9,37 +9,41 @@ mod bn6;
 mod exe45;
 
 lazy_static! {
-    static ref GAMES: std::collections::HashMap<(&'static str, u8), &'static (dyn Game + Send + Sync)> =
+    static ref GAMES: std::collections::HashMap<(&'static [u8; 4], u8), &'static (dyn Game + Send + Sync)> =
         std::collections::HashMap::from([
-            (("AREJ", 0x00), bn1::EXE1),
-            (("AREE", 0x00), bn1::BN1),
-            (("AE2J", 0x01), bn2::EXE2),
-            (("AE2E", 0x00), bn2::BN2),
-            (("A6BJ", 0x01), bn3::EXE3W),
-            (("A3XJ", 0x01), bn3::EXE3B),
-            (("A6BE", 0x00), bn3::BN3W),
-            (("A3XE", 0x00), bn3::BN3B),
-            (("B4WJ", 0x01), bn4::EXE4RS),
-            (("B4BJ", 0x00), bn4::EXE4BM),
-            (("B4WE", 0x00), bn4::BN4RS),
-            (("B4BE", 0x00), bn4::BN4BM),
-            (("BR4J", 0x00), exe45::EXE45),
-            (("BRBJ", 0x00), bn5::EXE5B),
-            (("BRKJ", 0x00), bn5::EXE5C),
-            (("BRBE", 0x00), bn5::BN5P),
-            (("BRKE", 0x00), bn5::BN5C),
-            (("BR5J", 0x00), bn6::EXE6G),
-            (("BR6J", 0x00), bn6::EXE6F),
-            (("BR5E", 0x00), bn6::BN6G),
-            (("BR6E", 0x00), bn6::BN6F),
+            ((b"AREJ", 0x00), bn1::EXE1),
+            ((b"AREE", 0x00), bn1::BN1),
+            ((b"AE2J", 0x01), bn2::EXE2),
+            ((b"AE2E", 0x00), bn2::BN2),
+            ((b"A6BJ", 0x01), bn3::EXE3W),
+            ((b"A3XJ", 0x01), bn3::EXE3B),
+            ((b"A6BE", 0x00), bn3::BN3W),
+            ((b"A3XE", 0x00), bn3::BN3B),
+            ((b"B4WJ", 0x01), bn4::EXE4RS),
+            ((b"B4BJ", 0x00), bn4::EXE4BM),
+            ((b"B4WE", 0x00), bn4::BN4RS),
+            ((b"B4BE", 0x00), bn4::BN4BM),
+            ((b"BR4J", 0x00), exe45::EXE45),
+            ((b"BRBJ", 0x00), bn5::EXE5B),
+            ((b"BRKJ", 0x00), bn5::EXE5C),
+            ((b"BRBE", 0x00), bn5::BN5P),
+            ((b"BRKE", 0x00), bn5::BN5C),
+            ((b"BR5J", 0x00), bn6::EXE6G),
+            ((b"BR6J", 0x00), bn6::EXE6F),
+            ((b"BR5E", 0x00), bn6::BN6G),
+            ((b"BR6E", 0x00), bn6::BN6F),
         ]);
 }
 
-pub fn find(code: &str, revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
+pub fn find(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
     GAMES.get(&(code, revision)).map(|game| *game)
 }
 
-// pub fn detect(rom: &[u8]) -> Option<&'static (dyn Game)> {}
+pub fn detect(rom: &[u8]) -> Option<&'static (dyn Game + Send + Sync)> {
+    let rom_code = rom.get(0xac..0xac + 4)?.try_into().unwrap();
+    let rom_revision = rom.get(0xbc)?;
+    find(rom_code, *rom_revision)
+}
 
 pub trait Save {}
 
