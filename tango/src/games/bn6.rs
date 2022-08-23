@@ -17,7 +17,7 @@ impl games::Game for EXE6G {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0x6285918a
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
@@ -40,7 +40,7 @@ impl games::Game for EXE6F {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0x2dfb603e
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
@@ -51,7 +51,7 @@ impl games::Game for EXE6F {
 pub struct BN6G;
 impl games::Game for BN6G {
     fn family(&self) -> &str {
-        "bn5"
+        "bn6"
     }
 
     fn variant(&self) -> u32 {
@@ -63,7 +63,7 @@ impl games::Game for BN6G {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0x79452182
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
@@ -74,7 +74,7 @@ impl games::Game for BN6G {
 pub struct BN6F;
 impl games::Game for BN6F {
     fn family(&self) -> &str {
-        "bn5"
+        "bn6"
     }
 
     fn variant(&self) -> u32 {
@@ -86,7 +86,7 @@ impl games::Game for BN6F {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0xdee6f2a9
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {

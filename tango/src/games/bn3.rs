@@ -17,7 +17,7 @@ impl games::Game for EXE3W {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0xe48e6bc9
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
@@ -40,7 +40,7 @@ impl games::Game for EXE3B {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0xfd57493b
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
@@ -63,7 +63,7 @@ impl games::Game for BN3W {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0x0be4410a
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
@@ -86,7 +86,7 @@ impl games::Game for BN3B {
     }
 
     fn expected_crc32(&self) -> u32 {
-        todo!()
+        0xc0c780f9
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {

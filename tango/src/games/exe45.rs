@@ -17,7 +17,7 @@ impl games::Game for EXE45 {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0xd9516e50
+        0xa646601b
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
