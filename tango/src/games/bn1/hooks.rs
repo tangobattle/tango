@@ -7,7 +7,7 @@ use super::{munger, offsets};
 
 #[derive(Clone)]
 pub struct Hooks {
-    offsets: &'static offsets::Offsets,
+    pub offsets: &'static offsets::Offsets,
 }
 
 impl Hooks {
@@ -17,14 +17,6 @@ impl Hooks {
         }
     }
 }
-
-pub static AREE_00: Hooks = Hooks {
-    offsets: &offsets::AREE_00,
-};
-
-pub static AREJ_00: Hooks = Hooks {
-    offsets: &offsets::AREJ_00,
-};
 
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);

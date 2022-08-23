@@ -19,7 +19,9 @@ impl games::Game for BN1 {
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::AREE_00.clone())
+        Box::new(hooks::Hooks {
+            offsets: &offsets::AREE_00,
+        })
     }
 }
 
@@ -38,6 +40,8 @@ impl games::Game for EXE1 {
     }
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::AREJ_00.clone())
+        Box::new(hooks::Hooks {
+            offsets: &offsets::AREJ_00,
+        })
     }
 }
