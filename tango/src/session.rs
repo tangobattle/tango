@@ -36,6 +36,7 @@ fn fix_vbuf_alpha(vbuf: &mut [u8]) {
     }
 }
 
+#[allow(dead_code)] // TODO
 impl Session {
     pub fn new_pvp(
         handle: tokio::runtime::Handle,

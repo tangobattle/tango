@@ -22,12 +22,6 @@ pub struct CommittedState {
     pub packet: Vec<u8>,
 }
 
-pub struct MatchInit {
-    pub dc: datachannel_wrapper::DataChannel,
-    pub peer_conn: datachannel_wrapper::PeerConnection,
-    pub settings: Settings,
-}
-
 pub struct Settings {
     pub replays_path: std::path::PathBuf,
     pub replay_metadata: Vec<u8>,
@@ -77,73 +71,6 @@ pub struct Match {
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
     transport_rendezvous_tx: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-}
-
-#[derive(Debug)]
-pub enum NegotiationError {
-    ExpectedHello,
-    ExpectedHola,
-    IdenticalCommitment,
-    ProtocolVersionMismatch,
-    MatchTypeMismatch,
-    IncompatibleGames,
-    InvalidCommitment,
-    Other(anyhow::Error),
-}
-
-impl From<anyhow::Error> for NegotiationError {
-    fn from(err: anyhow::Error) -> Self {
-        NegotiationError::Other(err)
-    }
-}
-
-impl From<datachannel_wrapper::Error> for NegotiationError {
-    fn from(err: datachannel_wrapper::Error) -> Self {
-        NegotiationError::Other(err.into())
-    }
-}
-
-impl From<std::io::Error> for NegotiationError {
-    fn from(err: std::io::Error) -> Self {
-        NegotiationError::Other(err.into())
-    }
-}
-
-impl std::fmt::Display for NegotiationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            NegotiationError::ExpectedHello => write!(f, "expected hello"),
-            NegotiationError::ExpectedHola => write!(f, "expected hola"),
-            NegotiationError::IdenticalCommitment => write!(f, "identical commitment"),
-            NegotiationError::ProtocolVersionMismatch => write!(f, "protocol version mismatch"),
-            NegotiationError::MatchTypeMismatch => write!(f, "match type mismatch"),
-            NegotiationError::IncompatibleGames => write!(f, "game mismatch"),
-            NegotiationError::InvalidCommitment => write!(f, "invalid commitment"),
-            NegotiationError::Other(e) => write!(f, "other error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for NegotiationError {}
-
-pub enum NegotiationFailure {
-    ProtocolVersionMismatch,
-    MatchTypeMismatch,
-    IncompatibleGames,
-    Unknown,
-}
-
-pub enum NegotiationStatus {
-    Ready,
-    NotReady(NegotiationProgress),
-    Failed(NegotiationFailure),
-}
-
-#[derive(Clone, Debug)]
-pub enum NegotiationProgress {
-    NotStarted,
-    Signalling,
-    Handshaking,
 }
 
 impl Match {
@@ -433,6 +360,7 @@ impl Round {
         self.local_player_index
     }
 
+    #[allow(dead_code)] // TODO
     pub fn remote_player_index(&self) -> u8 {
         1 - self.local_player_index
     }

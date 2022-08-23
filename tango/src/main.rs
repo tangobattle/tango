@@ -1,8 +1,28 @@
 #![windows_subsystem = "windows"]
 
+#[macro_use]
+extern crate lazy_static;
+
+mod audio;
+mod battle;
+mod config;
+mod gui;
+mod hooks;
+mod i18n;
+mod input;
+mod lockstep;
+mod net;
+mod protocol;
+mod replay;
+mod replayer;
+mod session;
+mod shadow;
+mod signaling;
+mod stats;
+mod video;
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use glow::HasContext;
-use tango::{audio, config, gui, input, stats};
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
