@@ -55,13 +55,15 @@ pub struct Config {
     pub patches_path: std::path::PathBuf,
 }
 
+pub fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
+    directories_next::ProjectDirs::from("com.tangobattle", "", "Tango")
+}
+
 fn get_config_path() -> Result<std::path::PathBuf, anyhow::Error> {
-    Ok(
-        directories_next::ProjectDirs::from("com.tangobattle", "", "Tango")
-            .ok_or_else(|| anyhow::anyhow!("could not get tango project directory"))?
-            .config_dir()
-            .join("config.json"),
-    )
+    Ok(get_project_dirs()
+        .ok_or_else(|| anyhow::anyhow!("could not get tango project directory"))?
+        .config_dir()
+        .join("config.json"))
 }
 
 impl Config {

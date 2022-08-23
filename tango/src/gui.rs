@@ -335,45 +335,59 @@ impl Gui {
                 &mut input::Mapping,
             ) -> &mut Vec<input::PhysicalInput>| {
                 ui.label(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let mapping = get_mapping(input_mapping);
                     for (i, c) in mapping.clone().iter().enumerate() {
                         ui.group(|ui| {
-                            ui.label(egui::RichText::new(match c {
-                                input::PhysicalInput::Key(_) => "⌨️",
-                                input::PhysicalInput::Button(_)
-                                | input::PhysicalInput::Axis { .. } => "🎮",
-                            }));
-                            ui.label(match c {
-                                input::PhysicalInput::Key(key) => {
-                                    let raw = serde_plain::to_string(key).unwrap();
-                                    i18n::LOCALES
-                                        .lookup(lang, &format!("physical-input-keys.{}", raw))
-                                        .unwrap_or(raw)
-                                }
-                                input::PhysicalInput::Button(button) => {
-                                    let raw = button.string();
-                                    i18n::LOCALES
-                                        .lookup(lang, &format!("physical-input-buttons.{}", raw))
-                                        .unwrap_or(raw)
-                                }
-                                input::PhysicalInput::Axis { axis, direction } => {
-                                    let raw = format!(
-                                        "{}{}",
-                                        axis.string(),
-                                        match direction {
-                                            input::AxisDirection::Positive => "plus",
-                                            input::AxisDirection::Negative => "minus",
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.label(egui::RichText::new(match c {
+                                        input::PhysicalInput::Key(_) => "⌨️",
+                                        input::PhysicalInput::Button(_)
+                                        | input::PhysicalInput::Axis { .. } => "🎮",
+                                    }));
+                                    ui.label(match c {
+                                        input::PhysicalInput::Key(key) => {
+                                            let raw = serde_plain::to_string(key).unwrap();
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    lang,
+                                                    &format!("physical-input-keys.{}", raw),
+                                                )
+                                                .unwrap_or(raw)
                                         }
-                                    );
-                                    i18n::LOCALES
-                                        .lookup(lang, &format!("physical-input-axes.{}", raw))
-                                        .unwrap_or(raw)
-                                }
-                            });
-                            if ui.add(egui::Button::new("×").small()).clicked() {
-                                mapping.remove(i);
-                            }
+                                        input::PhysicalInput::Button(button) => {
+                                            let raw = button.string();
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    lang,
+                                                    &format!("physical-input-buttons.{}", raw),
+                                                )
+                                                .unwrap_or(raw)
+                                        }
+                                        input::PhysicalInput::Axis { axis, direction } => {
+                                            let raw = format!(
+                                                "{}{}",
+                                                axis.string(),
+                                                match direction {
+                                                    input::AxisDirection::Positive => "plus",
+                                                    input::AxisDirection::Negative => "minus",
+                                                }
+                                            );
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    lang,
+                                                    &format!("physical-input-axes.{}", raw),
+                                                )
+                                                .unwrap_or(raw)
+                                        }
+                                    });
+                                    if ui.add(egui::Button::new("×").small()).clicked() {
+                                        mapping.remove(i);
+                                    }
+                                },
+                            );
                         });
                     }
                     if ui.add(egui::Button::new("➕")).clicked() {
