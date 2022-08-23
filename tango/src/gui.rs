@@ -8,8 +8,8 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 
 pub struct State {
     pub config: config::Config,
-    pub rom_list: games::ROMList,
-    pub saves_list: games::SavesList,
+    pub rom_list: std::collections::HashMap<games::GameKey, Vec<u8>>,
+    pub saves_list: std::collections::HashMap<games::GameKey, Vec<std::path::PathBuf>>,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
@@ -29,8 +29,8 @@ impl State {
         let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
         drpc.start();
 
-        let rom_list = games::ROMList::new(&config.roms_path);
-        let saves_list = games::SavesList::new(&config.saves_path);
+        let rom_list = games::scan_roms(&config.roms_path);
+        let saves_list = games::scan_saves(&config.saves_path);
         Self {
             config,
             rom_list,

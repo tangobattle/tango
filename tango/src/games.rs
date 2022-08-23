@@ -8,68 +8,7 @@ mod bn5;
 mod bn6;
 mod exe45;
 
-pub struct ROMList {
-    roms: std::collections::HashMap<
-        by_address::ByAddress<&'static (dyn Game + Send + Sync)>,
-        Vec<u8>,
-    >,
-}
-
-impl ROMList {
-    pub fn new(path: &std::path::Path) -> Self {
-        let mut roms = std::collections::HashMap::new();
-
-        for entry in walkdir::WalkDir::new(path) {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(e) => {
-                    log::error!("failed to read entry: {:?}", e);
-                    continue;
-                }
-            };
-
-            if !entry.file_type().is_file() {
-                continue;
-            }
-
-            let path = entry.path();
-
-            let rom = match std::fs::read(path) {
-                Ok(rom) => rom,
-                Err(e) => {
-                    log::warn!("{}: {}", path.display(), e);
-                    continue;
-                }
-            };
-
-            let game = match detect(&rom) {
-                Ok(game) => {
-                    log::info!(
-                        "{}: family = {}, variant = {}",
-                        path.display(),
-                        game.family(),
-                        game.variant()
-                    );
-                    game
-                }
-                Err(e) => {
-                    log::warn!("{}: {}", path.display(), e);
-                    continue;
-                }
-            };
-
-            roms.insert(by_address::ByAddress(game), rom);
-        }
-
-        Self { roms }
-    }
-
-    pub fn find_rom(&self, game: &'static (dyn Game + Send + Sync)) -> Option<&[u8]> {
-        self.roms
-            .get(&by_address::ByAddress(game))
-            .map(|rom| &rom[..])
-    }
-}
+pub type GameKey = by_address::ByAddress<&'static (dyn Game + Send + Sync)>;
 
 pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn1::EXE1,
@@ -95,79 +34,120 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
-pub struct SavesList {
-    paths: std::collections::HashMap<
-        by_address::ByAddress<&'static (dyn Game + Send + Sync)>,
-        Vec<std::path::PathBuf>,
-    >,
-}
+pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<GameKey, Vec<u8>> {
+    let mut roms = std::collections::HashMap::new();
 
-impl SavesList {
-    pub fn new(path: &std::path::Path) -> Self {
-        let mut paths = std::collections::HashMap::new();
-
-        'next: for entry in walkdir::WalkDir::new(path) {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(e) => {
-                    log::error!("failed to read entry: {:?}", e);
-                    continue;
-                }
-            };
-
-            if !entry.file_type().is_file() {
+    for entry in walkdir::WalkDir::new(path) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                log::error!("failed to read entry: {:?}", e);
                 continue;
             }
+        };
 
-            let path = entry.path();
-            let buf = match std::fs::read(path) {
-                Ok(buf) => buf,
-                Err(e) => {
-                    log::warn!("{}: {}", path.display(), e);
-                    continue;
-                }
-            };
-
-            let mut errors = vec![];
-            for game in GAMES.iter() {
-                match game.parse_save(buf.clone()) {
-                    Ok(_) => {
-                        log::info!(
-                            "{}: family = {}, variant = {}",
-                            path.display(),
-                            game.family(),
-                            game.variant()
-                        );
-                        let save_paths = paths
-                            .entry(by_address::ByAddress(*game))
-                            .or_insert_with(|| vec![]);
-                        save_paths.push(path.to_path_buf());
-                        continue 'next;
-                    }
-                    Err(e) => {
-                        errors.push((by_address::ByAddress(*game), e));
-                    }
-                }
-            }
-
-            log::warn!(
-                "{}:\n{}",
-                path.display(),
-                errors
-                    .iter()
-                    .map(|(k, v)| format!(
-                        "(family = {}, variant = {}): {}",
-                        k.family(),
-                        k.variant(),
-                        v
-                    ))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
+        if !entry.file_type().is_file() {
+            continue;
         }
 
-        Self { paths }
+        let path = entry.path();
+
+        let rom = match std::fs::read(path) {
+            Ok(rom) => rom,
+            Err(e) => {
+                log::warn!("{}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        let game = match detect(&rom) {
+            Ok(game) => {
+                log::info!(
+                    "{}: family = {}, variant = {}",
+                    path.display(),
+                    game.family(),
+                    game.variant()
+                );
+                game
+            }
+            Err(e) => {
+                log::warn!("{}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        roms.insert(by_address::ByAddress(game), rom);
     }
+
+    roms
+}
+
+pub fn scan_saves(
+    path: &std::path::Path,
+) -> std::collections::HashMap<GameKey, Vec<std::path::PathBuf>> {
+    let mut paths = std::collections::HashMap::new();
+
+    'next: for entry in walkdir::WalkDir::new(path) {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                log::error!("failed to read entry: {:?}", e);
+                continue;
+            }
+        };
+
+        if !entry.file_type().is_file() {
+            continue;
+        }
+
+        let path = entry.path();
+        let buf = match std::fs::read(path) {
+            Ok(buf) => buf,
+            Err(e) => {
+                log::warn!("{}: {}", path.display(), e);
+                continue;
+            }
+        };
+
+        let mut errors = vec![];
+        for game in GAMES.iter() {
+            match game.parse_save(buf.clone()) {
+                Ok(_) => {
+                    log::info!(
+                        "{}: family = {}, variant = {}",
+                        path.display(),
+                        game.family(),
+                        game.variant()
+                    );
+                    let save_paths = paths
+                        .entry(by_address::ByAddress(*game))
+                        .or_insert_with(|| vec![]);
+                    save_paths.push(path.to_path_buf());
+                    continue 'next;
+                }
+                Err(e) => {
+                    errors.push((by_address::ByAddress(*game), e));
+                }
+            }
+        }
+
+        log::warn!(
+            "{}:\n{}",
+            path.display(),
+            errors
+                .iter()
+                .map(|(k, v)| format!(
+                    "(family = {}, variant = {}): {}",
+                    k.family(),
+                    k.variant(),
+                    v
+                ))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    paths
 }
 
 pub fn sorted_games(
