@@ -48,8 +48,17 @@ pub fn run(
     let event_loop = glutin::event_loop::EventLoop::new();
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
+    let icon = image::load_from_memory(include_bytes!("icon.png"))?;
+    let icon_width = icon.width();
+    let icon_height = icon.height();
+
     let wb = glutin::window::WindowBuilder::new()
         .with_title("Tango")
+        .with_window_icon(Some(glutin::window::Icon::from_rgba(
+            icon.into_bytes(),
+            icon_width,
+            icon_height,
+        )?))
         .with_inner_size(glutin::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH * 3,
             mgba::gba::SCREEN_HEIGHT * 3,
