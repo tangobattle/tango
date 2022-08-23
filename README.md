@@ -30,17 +30,7 @@ Tango is rollback netplay for Mega Man Battle Network.
 | `MEGAMAN_BN@@AREE` | Megaman Battle Network (US)                           | 🤷 Works, with minor issues | 🤷 Folder                                   |
 | `ROCKMAN_EXE@AREJ` | Battle Network Rockman EXE (JP)                       | 🤷 Works, with minor issues | 🤷 Folder                                   |
 
-## Design
-
-Tango is composed of two parts: the launcher and the core. The launcher performs high-level control operations, such as starting matches and configuration, while the core performs emulation and netplay. There are additional supplementary tools (replayview, replaydump, keymaptool) that the launcher may also use for certain specialized operations.
-
-The core and launcher send IPC requests to each other over stdout/stdin pipes.
-
 ## Building
-
-### Core
-
-The core is written in Rust. Despite being for Windows, you must have a POSIX-y MinGW environment set up. The following instructions are for Ubuntu.
 
 1.  Install Rust.
 
@@ -72,42 +62,10 @@ The core is written in Rust. Despite being for Windows, you must have a POSIX-y 
     sudo update-alternatives --config x86_64-w64-mingw32-g++
     ```
 
-1.  Build the core.
+1.  Build it.
 
     ```sh
-    cd core &&
-    cargo build --target x86_64-pc-windows-gnu
-    ```
-
-### Launcher
-
-The launcher is written in Node + Electron.
-
-1.  Run `npm install` to get all Node dependencies.
-
-    ```sh
-    cd launcher &&
-    npm install
-    ```
-
-1.  Make a `dev-bin` directory in `launcher` and copy the core files into it. Note you will need to do this on every rebuild.
-
-    ```sh
-    mkdir launcher/dev-bin &&
-    cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll \
-        /usr/lib/gcc/x86_64-w64-mingw32/9.3-posix/*.dll \
-        core/target/x86_64-pc-windows-gnu/release/tango-core.exe \
-        core/target/x86_64-pc-windows-gnu/release/replayview.exe \
-        core/target/x86_64-pc-windows-gnu/release/replaydump.exe \
-        core/target/x86_64-pc-windows-gnu/release/keymaptool.exe \
-        launcher/dev-bin
-    ```
-
-1.  In the `launcher` directory, you can use the following commands:
-
-    ```sh
-    npm run start  # start webpack (keep this running in the background)
-    npm run start:main  # start electron (run this in a new terminal)
+    cargo build --target x86_64-pc-windows-gnu tango
     ```
 
 ### Server
@@ -137,14 +95,6 @@ The ICE configuration server must:
 
 -   Run over HTTP or HTTPS.
 -   Accept, via POST, `GetRequest` and return `GetResponse` as defined in `core/tango-protos/src/protos/iceconfig.proto`. Note that these must be in serialized Protobuf format.
-
-## Automatic Updates
-
-Whenever a new version of Tango is released, Tango will download the update for you automatically. When you see a **purple** dot on the Settings cog in Tango, the update is currently being downloaded. When you see a **blue** dot on the Settings cog, the download is complete, and will be installed once Tango is closed. When you next open Tango, it will be running the up-to-date version.
-
-**_A note for Linux users:_**
-
-The `.AppImage` release for Linux users also fully supports automatic updates! However, due to how the update process works, the original `.AppImage` you downloaded will be replaced with the latest `.AppImage` file, _effectively renaming it_. This renaming will break any scripts, shortcuts, or `.desktop` entries you may have created against the original filename. However, this can easily be avoided; simply rename your `.AppImage` to `Tango.AppImage` - the key is removing the version number. If you do this, you will still receive automatic updates, but the `.AppImage` won't be renamed after an update, meaning any scripts or shortcuts pointing to Tango will continue working after updates.
 
 ## Language support
 

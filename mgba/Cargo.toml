@@ -1,0 +1,18 @@
+[package]
+name = "mgba"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mgba-sys = { "path" = "mgba-sys" }
+parking_lot = "0.12.0"
+log = "0.4"
+lazy_static = "1.4.0"
+anyhow = "1.0"
+const-zero = "0.1.0"
+send_wrapper = "0.5.0"
+vsprintf = "2.0.0"
+
+[build-dependencies]
+bindgen = "0.57"
+cmake = "0.1"

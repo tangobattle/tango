@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "mgba",
+    "tango",
+    "tango-protos",
+    "tango-signaling-server",
+    "datachannel-wrapper",
+    "hqx",
+    "mmpx",
+    "input-helper",
+]
+
+[patch.crates-io]
+sdl2 = { git = "https://github.com/Rust-SDL2/rust-sdl2", rev = "bae03beaafc0040b8166d36a4bdbe570a05aa52a" }

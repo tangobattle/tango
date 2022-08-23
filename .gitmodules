@@ -1,3 +1,3 @@
-[submodule "core/mgba-sys/mgba"]
-	path = core/mgba-sys/mgba
-	url = https://github.com/mgba-emu/mgba
+[submodule "mgba/mgba-sys/mgba"]
+path = mgba/mgba-sys/mgba
+url = https://github.com/mgba-emu/mgba
