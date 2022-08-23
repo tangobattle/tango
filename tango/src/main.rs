@@ -13,6 +13,7 @@ mod input;
 mod lockstep;
 mod net;
 mod protocol;
+mod randomcode;
 mod replay;
 mod replayer;
 mod session;

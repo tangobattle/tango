@@ -64,6 +64,7 @@ dark-light = "0.2"
 arboard = "2.1"
 tiny-skia = "0.7"
 discord-rpc-client = "0.3"
+reservoir-sampling = "0.5"
 
 [build-dependencies]
 winres = "0.1"

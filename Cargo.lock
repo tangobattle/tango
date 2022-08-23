@@ -3390,6 +3390,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "reservoir-sampling"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a527dbc0169051c57190487c3acd22671ab84d165213abc44066297ce6a1de6e"
+dependencies = [
+ "getrandom",
+ "rand 0.8.5",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "ring"
 version = "0.16.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3968,6 +3979,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "rand_pcg 0.3.1",
+ "reservoir-sampling",
  "sdl2",
  "serde",
  "serde_json",
