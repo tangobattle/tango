@@ -1,6 +1,8 @@
+use super::offsets;
+
 #[derive(Clone)]
 pub(super) struct Munger {
-    pub(super) offsets: super::offsets::Offsets,
+    pub(super) offsets: &'static offsets::Offsets,
 }
 
 impl Munger {
@@ -19,28 +21,28 @@ impl Munger {
 
     pub(super) fn open_comm_menu_from_overworld(&self, mut core: mgba::core::CoreMutRef) {
         core.raw_write_8(self.offsets.ewram.subsystem_control, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x14);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x00);
     }
 
-    pub(super) fn start_battle_from_comm_menu(
-        &self,
-        mut core: mgba::core::CoreMutRef,
-        background: u8,
-    ) {
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x2c);
+    pub(super) fn start_battle_from_comm_menu(&self, mut core: mgba::core::CoreMutRef) {
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x14);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x5c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_range(
             self.offsets.ewram.tx_packet,
             -1,
             &[
-                0x00, 0x04, background, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
-                0x04, 0x04, 0x04,
+                0x40, 0xff, 0xff, 0xff, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40,
+                0x40, 0x40,
             ],
         );
+    }
+
+    pub(super) fn set_battle_stage(&self, mut core: mgba::core::CoreMutRef, v: u8) {
+        core.raw_write_8(self.offsets.ewram.battle_state + 0xd, -1, v);
     }
 
     pub(super) fn set_rng_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
@@ -62,10 +64,6 @@ impl Munger {
 
     pub(super) fn tx_packet(&self, mut core: mgba::core::CoreMutRef) -> [u8; 0x10] {
         core.raw_read_range(self.offsets.ewram.tx_packet, -1)
-    }
-
-    pub(super) fn is_linking(&self, mut core: mgba::core::CoreMutRef) -> bool {
-        core.raw_read_8(self.offsets.ewram.is_linking, -1) == 1
     }
 
     pub(super) fn packet_seqnum(&self, mut core: mgba::core::CoreMutRef) -> u32 {

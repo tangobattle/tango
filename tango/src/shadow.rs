@@ -103,7 +103,7 @@ struct InnerState {
 pub struct Shadow {
     core: mgba::core::Core,
     state: State,
-    hooks: &'static Box<dyn games::Hooks + Send + Sync>,
+    hooks: Box<dyn games::Hooks + Send + Sync>,
 }
 
 #[derive(Clone)]
@@ -198,7 +198,8 @@ impl Shadow {
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 
-        let hooks = games::find_hook(core.as_mut()).unwrap();
+        let game = games::find(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
+        let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
         let mut traps = hooks.common_traps();

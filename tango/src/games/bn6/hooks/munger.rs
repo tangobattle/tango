@@ -1,6 +1,6 @@
 #[derive(Clone)]
 pub(super) struct Munger {
-    pub(super) offsets: super::offsets::Offsets,
+    pub(super) offsets: &'static super::offsets::Offsets,
 }
 
 impl Munger {

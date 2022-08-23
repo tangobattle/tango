@@ -59,7 +59,7 @@ impl RoundState {
 pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
-    hooks: &'static Box<dyn games::Hooks + Send + Sync>,
+    hooks: Box<dyn games::Hooks + Send + Sync>,
     _peer_conn: datachannel_wrapper::PeerConnection,
     transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
@@ -76,7 +76,7 @@ pub struct Match {
 impl Match {
     pub fn new(
         rom: Vec<u8>,
-        hooks: &'static Box<dyn games::Hooks + Send + Sync>,
+        hooks: Box<dyn games::Hooks + Send + Sync>,
         peer_conn: datachannel_wrapper::PeerConnection,
         dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
@@ -297,7 +297,7 @@ impl Match {
         }
 
         round_state.round = Some(Round {
-            hooks: self.hooks,
+            hooks: self.hooks.clone(),
             number: round_state.number,
             local_player_index,
             current_tick: 0,
@@ -318,7 +318,11 @@ impl Match {
                 local_player_index,
                 self.hooks.packet_size() as u8,
             )?),
-            replayer: replayer::Fastforwarder::new(&self.rom, self.hooks, local_player_index)?,
+            replayer: replayer::Fastforwarder::new(
+                &self.rom,
+                self.hooks.clone(),
+                local_player_index,
+            )?,
             primary_thread_handle: self.primary_thread_handle.clone(),
             transport: self.transport.clone(),
             shadow: self.shadow.clone(),
@@ -330,7 +334,7 @@ impl Match {
 }
 
 pub struct Round {
-    hooks: &'static Box<dyn games::Hooks + Send + Sync>,
+    hooks: Box<dyn games::Hooks + Send + Sync>,
     number: u8,
     local_player_index: u8,
     current_tick: u32,
@@ -474,7 +478,7 @@ impl Round {
             &last_committed_state.packet,
             Box::new({
                 let shadow = self.shadow.clone();
-                let hooks = self.hooks;
+                let hooks = self.hooks.clone();
                 let mut last_commit = self.last_committed_remote_input.packet.clone();
                 move |ip| {
                     let local_tick = ip.local.local_tick;

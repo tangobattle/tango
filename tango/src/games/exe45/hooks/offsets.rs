@@ -147,7 +147,7 @@ pub struct Offsets {
 }
 
 #[rustfmt::skip]
-pub static ROCKEXE45ROBR4J_00: Offsets = Offsets {
+pub static BR4J_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:          0x080305EE,

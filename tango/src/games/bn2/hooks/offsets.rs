@@ -103,7 +103,7 @@ pub struct Offsets {
 }
 
 #[rustfmt::skip]
-pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
+pub static AE2E_00: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:              0x08024a54,
@@ -131,7 +131,7 @@ pub static MEGAMAN_EXE2AE2E_00: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static ROCKMAN_EXE2AE2J_01: Offsets = Offsets {
+pub static AE2J_01: Offsets = Offsets {
     ewram: EWRAM_OFFSETS,
     rom: ROMOffsets {
         start_screen_jump_table_entry:              0x08024a28,

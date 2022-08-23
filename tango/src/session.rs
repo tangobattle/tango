@@ -60,7 +60,8 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let hooks = games::find_hook(core.as_mut()).unwrap();
+        let game = games::find(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
+        let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -182,7 +183,8 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let hooks = games::find_hook(core.as_mut()).unwrap();
+        let game = games::find(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
+        let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -240,7 +242,8 @@ impl Session {
         core.as_mut()
             .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
-        let hooks = games::find_hook(core.as_mut()).unwrap();
+        let game = games::find(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
+        let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));

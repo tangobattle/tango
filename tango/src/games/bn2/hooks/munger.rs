@@ -1,6 +1,6 @@
 #[derive(Clone)]
 pub(super) struct Munger {
-    pub(super) offsets: super::offsets::Offsets,
+    pub(super) offsets: &'static super::offsets::Offsets,
 }
 
 impl Munger {
@@ -9,7 +9,7 @@ impl Munger {
     }
 
     pub(super) fn continue_from_title_menu(&self, mut core: mgba::core::CoreMutRef) {
-        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x00, -1, 0x08);
+        core.raw_write_8(self.offsets.ewram.title_menu_control + 0x00, -1, 0x01);
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x01, -1, 0x0c);
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x02, -1, 0x00);
         core.raw_write_8(self.offsets.ewram.title_menu_control + 0x03, -1, 0x00);
@@ -28,38 +28,27 @@ impl Munger {
     pub(super) fn start_battle_from_comm_menu(
         &self,
         mut core: mgba::core::CoreMutRef,
-        match_type: u8,
         background: u8,
     ) {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x0, -1, 0x18);
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x30);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1, -1, 0x2c);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x2, -1, 0x00);
         core.raw_write_range(
             self.offsets.ewram.tx_packet,
             -1,
             &[
-                0x01, 0x00, 0x00, 0xff, background, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
-                0x00, 0x00, 0x00,
+                0x00, 0x04, background, 0xff, 0xff, 0xff, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04,
+                0x04, 0x04, 0x04,
             ],
         );
-        // 0 = lightweight, 1 = midweight, 2 = heavyweight, 3 = tri-battle
-        core.raw_write_8(self.offsets.ewram.submenu_control + 0x1c, -1, match_type);
     }
 
-    pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
-        core.raw_write_32(self.offsets.ewram.rng1_state, -1, state);
+    pub(super) fn set_rng_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
+        core.raw_write_32(self.offsets.ewram.rng_state, -1, state);
     }
 
-    pub(super) fn set_rng2_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
-        core.raw_write_32(self.offsets.ewram.rng2_state, -1, state);
-    }
-
-    pub(super) fn rng1_state(&self, mut core: mgba::core::CoreMutRef) -> u32 {
-        core.raw_read_32(self.offsets.ewram.rng1_state, -1)
-    }
-
-    pub(super) fn rng2_state(&self, mut core: mgba::core::CoreMutRef) -> u32 {
-        core.raw_read_32(self.offsets.ewram.rng2_state, -1)
+    pub(super) fn rng_state(&self, mut core: mgba::core::CoreMutRef) -> u32 {
+        core.raw_read_32(self.offsets.ewram.rng_state, -1)
     }
 
     pub(super) fn set_rx_packet(
@@ -77,5 +66,9 @@ impl Munger {
 
     pub(super) fn is_linking(&self, mut core: mgba::core::CoreMutRef) -> bool {
         core.raw_read_8(self.offsets.ewram.is_linking, -1) == 1
+    }
+
+    pub(super) fn packet_seqnum(&self, mut core: mgba::core::CoreMutRef) -> u32 {
+        core.raw_read_32(self.offsets.ewram.packet_seqnum, -1)
     }
 }
