@@ -321,6 +321,64 @@ impl Gui {
             {
                 ui.label(
                     i18n::LOCALES
+                        .lookup(&config.language, "settings-video-filter")
+                        .unwrap(),
+                );
+
+                let null_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.null")
+                    .unwrap();
+                let hq2x_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.hq2x")
+                    .unwrap();
+                let hq3x_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.hq3x")
+                    .unwrap();
+                let hq4x_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.hq4x")
+                    .unwrap();
+                let mmpx_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.mmpx")
+                    .unwrap();
+
+                egui::ComboBox::from_id_source("settings-window-general-video-filter")
+                    .selected_text(match config.video_filter.as_str() {
+                        "" => &null_label,
+                        "hq2x" => &hq2x_label,
+                        "hq3x" => &hq3x_label,
+                        "hq4x" => &hq4x_label,
+                        "mmpx" => &mmpx_label,
+                        _ => "",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut config.video_filter, "".to_string(), &null_label);
+                        ui.selectable_value(
+                            &mut config.video_filter,
+                            "hq2x".to_string(),
+                            &hq2x_label,
+                        );
+                        ui.selectable_value(
+                            &mut config.video_filter,
+                            "hq3x".to_string(),
+                            &hq3x_label,
+                        );
+                        ui.selectable_value(
+                            &mut config.video_filter,
+                            "hq4x".to_string(),
+                            &hq4x_label,
+                        );
+                        ui.selectable_value(
+                            &mut config.video_filter,
+                            "mmpx".to_string(),
+                            &mmpx_label,
+                        );
+                    });
+                ui.end_row();
+            }
+
+            {
+                ui.label(
+                    i18n::LOCALES
                         .lookup(&config.language, "settings-debug-overlay")
                         .unwrap(),
                 );
