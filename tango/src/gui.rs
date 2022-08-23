@@ -448,6 +448,7 @@ impl Gui {
                 .unwrap()
         ))
         .id(egui::Id::new("debug-window"))
+        .resizable(false)
         .open(&mut state.show_debug)
         .show(ctx, |ui| {
             egui::Grid::new("debug-window-grid").show(ui, |ui| {
