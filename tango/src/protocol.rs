@@ -29,8 +29,9 @@ pub enum Packet {
     Commit(Commit),
     Uncommit(Uncommit),
     Chunk(Chunk),
+    StartMatch(StartMatch),
 
-    // In-game.
+    // In match.
     Input(Input),
 }
 
@@ -104,6 +105,9 @@ pub struct Input {
     pub tick_diff: i8,
     pub joyflags: u16,
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct StartMatch {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct NegotiatedState {
