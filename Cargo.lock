@@ -3952,6 +3952,7 @@ dependencies = [
  "bytes 1.1.0",
  "clap 3.1.8",
  "cpal",
+ "crc32fast",
  "dark-light",
  "datachannel-wrapper",
  "directories-next",
@@ -4000,6 +4001,7 @@ dependencies = [
  "tokio-util",
  "unic-langid",
  "url",
+ "walkdir",
  "winres",
  "zstd",
 ]

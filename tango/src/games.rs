@@ -39,10 +39,22 @@ pub fn find(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + 
     GAMES.get(&(code, revision)).map(|game| *game)
 }
 
-pub fn detect(rom: &[u8]) -> Option<&'static (dyn Game + Send + Sync)> {
-    let rom_code = rom.get(0xac..0xac + 4)?.try_into().ok()?;
-    let rom_revision = rom.get(0xbc)?;
-    find(rom_code, *rom_revision)
+pub fn detect(rom: &[u8]) -> Result<&'static (dyn Game + Send + Sync), anyhow::Error> {
+    let rom_code = rom
+        .get(0xac..0xac + 4)
+        .ok_or(anyhow::anyhow!("out of range"))?
+        .try_into()?;
+    let rom_revision = rom.get(0xbc).ok_or(anyhow::anyhow!("out of range"))?;
+    let game = find(rom_code, *rom_revision).ok_or(anyhow::anyhow!("unknown game"))?;
+    let crc32 = crc32fast::hash(rom);
+    if crc32 != game.expected_crc32() {
+        anyhow::bail!(
+            "mismatched crc32: expected {:08x}, got {:08x}",
+            game.expected_crc32(),
+            crc32
+        );
+    }
+    Ok(game)
 }
 
 pub trait Save {}
