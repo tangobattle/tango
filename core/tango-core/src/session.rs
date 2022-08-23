@@ -1,4 +1,4 @@
-use crate::{audio, battle, game, hooks, ipc, stats};
+use crate::{audio, battle, game, hooks, stats};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -36,7 +36,6 @@ pub enum PvP {
 impl Session {
     pub fn new(
         handle: tokio::runtime::Handle,
-        ipc_sender: Arc<Mutex<ipc::Sender>>,
         audio_binder: audio::LateBinder,
         sample_rate: cpal::SampleRate,
         rom_path: std::path::PathBuf,
@@ -109,7 +108,6 @@ impl Session {
                         rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                         is_offerer,
                         thread.handle(),
-                        ipc_sender.clone(),
                         match_init.settings,
                     )
                     .expect("new match");

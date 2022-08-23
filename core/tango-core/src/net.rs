@@ -1,4 +1,4 @@
-use crate::{ipc, protocol, signaling};
+use crate::{protocol, signaling};
 
 #[derive(Debug)]
 pub enum Error {
@@ -40,7 +40,6 @@ impl std::fmt::Display for Error {
 impl std::error::Error for Error {}
 
 pub async fn negotiate(
-    ipc_sender: &mut ipc::Sender,
     session_id: &str,
     signaling_connect_addr: &str,
     ice_servers: &[String],
@@ -85,16 +84,6 @@ pub async fn negotiate(
 
     log::info!("candidates gathered");
 
-    ipc_sender
-        .send(ipc::protos::FromCoreMessage {
-            which: Some(ipc::protos::from_core_message::Which::StateEv(
-                ipc::protos::from_core_message::StateEvent {
-                    state: ipc::protos::from_core_message::state_event::State::Waiting.into(),
-                },
-            )),
-        })
-        .await?;
-
     signaling::connect(signaling_connect_addr, &mut peer_conn, event_rx, session_id).await?;
 
     let (mut dc_tx, mut dc_rx) = dc.split();
@@ -109,16 +98,6 @@ pub async fn negotiate(
         peer_conn.remote_description().expect("remote sdp").sdp_type,
         peer_conn.remote_description().expect("remote sdp").sdp
     );
-
-    ipc_sender
-        .send(ipc::protos::FromCoreMessage {
-            which: Some(ipc::protos::from_core_message::Which::StateEv(
-                ipc::protos::from_core_message::StateEvent {
-                    state: ipc::protos::from_core_message::state_event::State::Connecting.into(),
-                },
-            )),
-        })
-        .await?;
 
     dc_tx
         .send(
@@ -155,16 +134,6 @@ pub async fn negotiate(
     if hello.protocol_version > protocol::VERSION {
         return Err(Error::ProtocolVersionTooNew);
     }
-
-    ipc_sender
-        .send(ipc::protos::FromCoreMessage {
-            which: Some(ipc::protos::from_core_message::Which::StateEv(
-                ipc::protos::from_core_message::StateEvent {
-                    state: ipc::protos::from_core_message::state_event::State::Starting.into(),
-                },
-            )),
-        })
-        .await?;
 
     Ok((dc_rx.unsplit(dc_tx), peer_conn))
 }

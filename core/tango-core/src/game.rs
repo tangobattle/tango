@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, gui, input, ipc, session, stats};
+use crate::{audio, config, gui, input, session, stats};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use glow::HasContext;
 use parking_lot::Mutex;
@@ -30,13 +30,7 @@ pub struct State {
     pub show_debug: bool,
 }
 
-pub fn run(
-    rt: tokio::runtime::Runtime,
-    ipc_sender: Arc<Mutex<ipc::Sender>>,
-    rom_path: std::path::PathBuf,
-    save_path: std::path::PathBuf,
-    match_init: Option<battle::MatchInit>,
-) -> Result<(), anyhow::Error> {
+pub fn run(rt: tokio::runtime::Runtime) -> Result<(), anyhow::Error> {
     let config = config::Config::load_or_create()?;
     config.ensure_dirs()?;
 
@@ -133,30 +127,15 @@ pub fn run(
         show_debug: false,
     };
 
-    state.session = Some(session::Session::new(
-        rt.handle().clone(),
-        ipc_sender.clone(),
-        audio_binder.clone(),
-        audio_supported_config.sample_rate(),
-        rom_path,
-        save_path,
-        emu_tps_counter.clone(),
-        match_init,
-    )?);
-
-    rt.block_on(async {
-        ipc_sender
-            .lock()
-            .send(ipc::protos::FromCoreMessage {
-                which: Some(ipc::protos::from_core_message::Which::StateEv(
-                    ipc::protos::from_core_message::StateEvent {
-                        state: ipc::protos::from_core_message::state_event::State::Running.into(),
-                    },
-                )),
-            })
-            .await?;
-        anyhow::Result::<()>::Ok(())
-    })?;
+    // state.session = Some(session::Session::new(
+    //     rt.handle().clone(),
+    //     audio_binder.clone(),
+    //     audio_supported_config.sample_rate(),
+    //     rom_path,
+    //     save_path,
+    //     emu_tps_counter.clone(),
+    //     match_init,
+    // )?);
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();
@@ -307,11 +286,6 @@ pub fn run(
                     .unwrap_or(false)
                 {
                     state.session = None;
-                }
-
-                if state.session.is_none() {
-                    *control_flow = glutin::event_loop::ControlFlow::Exit;
-                    return;
                 }
 
                 egui_glow.run(gl_window.window(), |ctx| {

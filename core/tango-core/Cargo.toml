@@ -65,4 +65,3 @@ arboard = "2.1"
 
 [build-dependencies]
 winres = "0.1"
-prost-build = "0.10"

@@ -3638,7 +3638,6 @@ dependencies = [
  "parking_lot 0.12.0",
  "png 0.17.5",
  "prost",
- "prost-build",
  "rand",
  "rand_pcg",
  "sdl2",

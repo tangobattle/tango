@@ -9,7 +9,6 @@ pub mod gui;
 pub mod hooks;
 pub mod i18n;
 pub mod input;
-pub mod ipc;
 pub mod lockstep;
 pub mod net;
 pub mod protocol;
