@@ -41,8 +41,27 @@ pub fn find_hook(
 
 pub fn find(code: &str) -> Option<Box<dyn Game>> {
     Some(match code {
-        "AREE" => Box::new(bn1::BN1 {}),
         "AREJ" => Box::new(bn1::EXE1 {}),
+        "AREE" => Box::new(bn1::BN1 {}),
+        // "AE2J" => Box::new(bn2::EXE2 {}),
+        // "AE2E" => Box::new(bn2::BN2 {}),
+        // "A6BE" => Box::new(bn3::BN3W{}),
+        // "A3XE" => Box::new(bn3::BN3B{}),
+        // "A6BJ" => Box::new(bn3::EXE3W{}),
+        // "A3XJ" => Box::new(bn3::EXE3B{}),
+        // "B4BJ" => Box::new(bn4::EXE4BM{}),
+        // "B4WJ" => Box::new(bn4::EXE4RS{}),
+        // "B4BE" => Box::new(bn4::BN4BM{}),
+        // "B4WE" => Box::new(bn4::BN4RS{}),
+        // "BR4J" => Box::new(exe45::EXE45{}),
+        // "BRBJ" => Box::new(bn5::EXE5B{}),
+        // "BRKJ" => Box::new(bn5::EXE5C{}),
+        // "BRBE" => Box::new(bn5::EXE5P{}),
+        // "BRKE" => Box::new(bn5::EXE5C{}),
+        // "BR5J" => Box::new(bn6::EXE6G{}),
+        // "BR6J" => Box::new(bn6::EXE6F{}),
+        // "BR5E" => Box::new(bn6::BN6G{}),
+        // "BR6E" => Box::new(bn6::BN6F{}),
         _ => {
             return None;
         }
