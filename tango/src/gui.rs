@@ -9,6 +9,7 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 pub struct State {
     pub config: config::Config,
     pub rom_list: games::ROMList,
+    pub saves_list: games::SavesList,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
@@ -29,9 +30,11 @@ impl State {
         drpc.start();
 
         let rom_list = games::ROMList::new(&config.roms_path);
+        let saves_list = games::SavesList::new(&config.saves_path);
         Self {
             config,
             rom_list,
+            saves_list,
             fps_counter: fps_counter.clone(),
             emu_tps_counter: emu_tps_counter.clone(),
             session: None,

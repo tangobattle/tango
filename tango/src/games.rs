@@ -93,6 +93,81 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
+pub struct SavesList {
+    paths: std::collections::HashMap<
+        by_address::ByAddress<&'static (dyn Game + Send + Sync)>,
+        Vec<std::path::PathBuf>,
+    >,
+}
+
+impl SavesList {
+    pub fn new(path: &std::path::Path) -> Self {
+        let mut paths = std::collections::HashMap::new();
+
+        'next: for entry in walkdir::WalkDir::new(path) {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(e) => {
+                    log::error!("failed to read entry: {:?}", e);
+                    continue;
+                }
+            };
+
+            if !entry.file_type().is_file() {
+                continue;
+            }
+
+            let path = entry.path();
+            let buf = match std::fs::read(path) {
+                Ok(buf) => buf,
+                Err(e) => {
+                    log::warn!("{}: {}", path.display(), e);
+                    continue;
+                }
+            };
+
+            let mut errors = vec![];
+            for game in GAMES.iter() {
+                match game.parse_save(buf.clone()) {
+                    Ok(_) => {
+                        log::info!(
+                            "{}: family = {}, variant = {}",
+                            path.display(),
+                            game.family(),
+                            game.variant()
+                        );
+                        let save_paths = paths
+                            .entry(by_address::ByAddress(*game))
+                            .or_insert_with(|| vec![]);
+                        save_paths.push(path.to_path_buf());
+                        continue 'next;
+                    }
+                    Err(e) => {
+                        errors.push((by_address::ByAddress(*game), e));
+                    }
+                }
+            }
+
+            log::warn!(
+                "{}:\n{}",
+                path.display(),
+                errors
+                    .iter()
+                    .map(|(k, v)| format!(
+                        "(family = {}, variant = {}): {}",
+                        k.family(),
+                        k.variant(),
+                        v
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+
+        Self { paths }
+    }
+}
+
 pub fn sorted_games(
     lang: &unic_langid::LanguageIdentifier,
 ) -> Vec<&'static (dyn Game + Send + Sync)> {
