@@ -63,6 +63,7 @@ directories-next = "2.0"
 dark-light = "0.2"
 arboard = "2.1"
 tiny-skia = "0.7"
+discord-rpc-client = "0.3"
 
 [build-dependencies]
 winres = "0.1"

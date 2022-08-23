@@ -4,6 +4,8 @@ use fluent_templates::Loader;
 
 use crate::{config, i18n, input, session, stats, video};
 
+const DISCORD_APP_ID: u64 = 974089681333534750;
+
 pub struct State {
     pub selected_settings_tab: SettingsTab,
     pub config: config::Config,
@@ -12,6 +14,7 @@ pub struct State {
     pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
     pub show_debug: bool,
+    pub drpc: discord_rpc_client::Client,
 }
 
 impl State {
@@ -20,6 +23,9 @@ impl State {
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) -> Self {
+        let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
+        drpc.start();
+
         Self {
             selected_settings_tab: SettingsTab::General,
             config,
@@ -28,6 +34,7 @@ impl State {
             session: None,
             steal_input: None,
             show_debug: false,
+            drpc,
         }
     }
 }
