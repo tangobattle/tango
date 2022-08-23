@@ -164,9 +164,7 @@ fn main() -> Result<(), anyhow::Error> {
                         ..
                     } => match element_state {
                         glutin::event::ElementState::Pressed => {
-                            let mut steal_input = None;
-                            std::mem::swap(&mut state.steal_input, &mut steal_input);
-                            if let Some(steal_input) = steal_input {
+                            if let Some(steal_input) = state.steal_input.take() {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Key(virutal_keycode),
                                     &mut state.config.input_mapping,
@@ -228,9 +226,7 @@ fn main() -> Result<(), anyhow::Error> {
                         sdl2::event::Event::ControllerAxisMotion {
                             axis, value, which, ..
                         } => {
-                            let mut steal_input = None;
-                            std::mem::swap(&mut state.steal_input, &mut steal_input);
-                            if let Some(steal_input) = steal_input {
+                            if let Some(steal_input) = state.steal_input.take() {
                                 if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
                                     steal_input.run_callback(
                                         input::PhysicalInput::Axis {
@@ -253,9 +249,7 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
-                            let mut steal_input = None;
-                            std::mem::swap(&mut state.steal_input, &mut steal_input);
-                            if let Some(steal_input) = steal_input {
+                            if let Some(steal_input) = state.steal_input.take() {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Button(button),
                                     &mut state.config.input_mapping,
