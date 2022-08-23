@@ -7,7 +7,7 @@ use crate::{config, i18n, input, session, stats, video};
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
 pub struct State {
-    pub selected_settings_tab: SettingsTab,
+    pub toplevel_tab: ToplevelTab,
     pub config: config::Config,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -27,7 +27,7 @@ impl State {
         drpc.start();
 
         Self {
-            selected_settings_tab: SettingsTab::General,
+            toplevel_tab: ToplevelTab::Play,
             config,
             fps_counter: fps_counter.clone(),
             emu_tps_counter: emu_tps_counter.clone(),
@@ -37,6 +37,13 @@ impl State {
             drpc,
         }
     }
+}
+
+#[derive(PartialEq, Eq)]
+pub enum ToplevelTab {
+    Play,
+    Replays,
+    Settings(SettingsTab),
 }
 
 #[derive(PartialEq, Eq)]
@@ -159,34 +166,36 @@ impl Gui {
         }
     }
 
-    fn draw_settings_window(
+    fn draw_settings(
         &mut self,
         ctx: &egui::Context,
         selected_tab: &mut SettingsTab,
         config: &mut config::Config,
         steal_input: &mut Option<StealInputState>,
     ) {
-        egui::Window::new(i18n::LOCALES.lookup(&config.language, "settings").unwrap())
-            .id(egui::Id::new("settings-window"))
-            .show(ctx, |ui| {
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.selectable_value(
-                            selected_tab,
-                            SettingsTab::General,
-                            i18n::LOCALES
-                                .lookup(&config.language, "settings.general")
-                                .unwrap(),
-                        );
-                        ui.selectable_value(
-                            selected_tab,
-                            SettingsTab::InputMapping,
-                            i18n::LOCALES
-                                .lookup(&config.language, "settings.input-mapping")
-                                .unwrap(),
-                        );
-                    });
+        egui::TopBottomPanel::top("settings-pane-top-panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.selectable_value(
+                    selected_tab,
+                    SettingsTab::General,
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings.general")
+                        .unwrap(),
+                );
+                ui.selectable_value(
+                    selected_tab,
+                    SettingsTab::InputMapping,
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings.input-mapping")
+                        .unwrap(),
+                );
+            });
+        });
 
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false; 2])
+                .show(ui, |ui| {
                     match selected_tab {
                         SettingsTab::General => self.draw_settings_general_tab(ui, config),
                         SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
@@ -195,9 +204,9 @@ impl Gui {
                             &mut config.input_mapping,
                             steal_input,
                         ),
-                    }
+                    };
                 });
-            });
+        });
     }
 
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
@@ -773,6 +782,81 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
+        egui::SidePanel::left("left")
+            .min_width(0.0)
+            .resizable(false)
+            .frame(
+                egui::Frame::none()
+                    .inner_margin(egui::style::Margin::same(2.0))
+                    .rounding(egui::Rounding::none())
+                    .fill(ctx.style().visuals.window_fill())
+                    .stroke(ctx.style().visuals.window_stroke()),
+            )
+            .show(ctx, |ui| {
+                if ui
+                    .selectable_label(
+                        if let ToplevelTab::Play { .. } = state.toplevel_tab {
+                            true
+                        } else {
+                            false
+                        },
+                        egui::RichText::new("\u{ea28}")
+                            .family(self.font_families.icons.clone())
+                            .size(24.0),
+                    )
+                    .on_hover_text(
+                        i18n::LOCALES
+                            .lookup(&state.config.language, "toplevel.play")
+                            .unwrap(),
+                    )
+                    .clicked()
+                {
+                    state.toplevel_tab = ToplevelTab::Play;
+                }
+
+                if ui
+                    .selectable_label(
+                        if let ToplevelTab::Replays { .. } = state.toplevel_tab {
+                            true
+                        } else {
+                            false
+                        },
+                        egui::RichText::new("\u{e068}")
+                            .family(self.font_families.icons.clone())
+                            .size(24.0),
+                    )
+                    .on_hover_text(
+                        i18n::LOCALES
+                            .lookup(&state.config.language, "toplevel.replays")
+                            .unwrap(),
+                    )
+                    .clicked()
+                {
+                    state.toplevel_tab = ToplevelTab::Replays;
+                }
+
+                if ui
+                    .selectable_label(
+                        if let ToplevelTab::Settings { .. } = state.toplevel_tab {
+                            true
+                        } else {
+                            false
+                        },
+                        egui::RichText::new("\u{e8b8}")
+                            .family(self.font_families.icons.clone())
+                            .size(24.0),
+                    )
+                    .on_hover_text(
+                        i18n::LOCALES
+                            .lookup(&state.config.language, "toplevel.settings")
+                            .unwrap(),
+                    )
+                    .clicked()
+                {
+                    state.toplevel_tab = ToplevelTab::Settings(SettingsTab::General);
+                }
+            });
+
         if let Some(session) = &state.session {
             self.draw_session(
                 ctx,
@@ -787,12 +871,12 @@ impl Gui {
             state.show_debug = !state.show_debug;
         }
         self.draw_debug_window(ctx, handle.clone(), state);
-        self.draw_settings_window(
-            ctx,
-            &mut state.selected_settings_tab,
-            &mut state.config,
-            &mut state.steal_input,
-        );
+        match &mut state.toplevel_tab {
+            ToplevelTab::Settings(settings_tab) => {
+                self.draw_settings(ctx, settings_tab, &mut state.config, &mut state.steal_input);
+            }
+            _ => {}
+        }
         self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
     }
 }
