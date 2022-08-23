@@ -210,7 +210,7 @@ impl Gui {
     }
 
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
+        egui::Grid::new("settings-pane-general-grid").show(ui, |ui| {
             {
                 let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
                 ui.label(
@@ -246,7 +246,7 @@ impl Gui {
                     .lookup(&config.language, "settings-theme.dark")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-theme")
+                egui::ComboBox::from_id_source("settings-pane-general-theme")
                     .selected_text(match config.theme {
                         config::Theme::System => &system_label,
                         config::Theme::Light => &light_label,
@@ -283,7 +283,7 @@ impl Gui {
                 let zh_hant_label =
                     egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
 
-                egui::ComboBox::from_id_source("settings-window-general-language")
+                egui::ComboBox::from_id_source("settings-pane-general-language")
                     .selected_text(match &config.language {
                         lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
                             en_label.clone()
@@ -333,7 +333,7 @@ impl Gui {
         input_mapping: &mut input::Mapping,
         steal_input: &mut Option<StealInputState>,
     ) {
-        egui::Grid::new("settings-window-input-mapping-grid").show(ui, |ui| {
+        egui::Grid::new("settings-pane-input-mapping-grid").show(ui, |ui| {
             let mut add_row = |label_text_id,
                                get_mapping: fn(
                 &mut input::Mapping,
