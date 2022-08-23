@@ -150,7 +150,7 @@ fn main() -> Result<(), anyhow::Error> {
                 match window_event {
                     glutin::event::WindowEvent::MouseInput { .. }
                     | glutin::event::WindowEvent::CursorMoved { .. } => {
-                        if let gui::StealInputState::Idle = state.steal_input {
+                        if state.steal_input.is_none() {
                             egui_glow.on_event(&window_event);
                         }
                     }
@@ -164,12 +164,10 @@ fn main() -> Result<(), anyhow::Error> {
                         ..
                     } => match element_state {
                         glutin::event::ElementState::Pressed => {
-                            let mut steal_input_state = gui::StealInputState::Idle;
-                            std::mem::swap(&mut state.steal_input, &mut steal_input_state);
-                            if let gui::StealInputState::Stealing { callback, .. } =
-                                steal_input_state
-                            {
-                                callback(
+                            let mut steal_input = None;
+                            std::mem::swap(&mut state.steal_input, &mut steal_input);
+                            if let Some(steal_input) = steal_input {
+                                steal_input.run_callback(
                                     input::PhysicalInput::Key(virutal_keycode),
                                     &mut state.config.input_mapping,
                                 );
@@ -230,13 +228,11 @@ fn main() -> Result<(), anyhow::Error> {
                         sdl2::event::Event::ControllerAxisMotion {
                             axis, value, which, ..
                         } => {
-                            let mut steal_input_state = gui::StealInputState::Idle;
-                            std::mem::swap(&mut state.steal_input, &mut steal_input_state);
-                            if let gui::StealInputState::Stealing { callback, .. } =
-                                steal_input_state
-                            {
+                            let mut steal_input = None;
+                            std::mem::swap(&mut state.steal_input, &mut steal_input);
+                            if let Some(steal_input) = steal_input {
                                 if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
-                                    callback(
+                                    steal_input.run_callback(
                                         input::PhysicalInput::Axis {
                                             axis,
                                             direction: if value > input::AXIS_THRESHOLD {
@@ -257,12 +253,10 @@ fn main() -> Result<(), anyhow::Error> {
                             }
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
-                            let mut steal_input_state = gui::StealInputState::Idle;
-                            std::mem::swap(&mut state.steal_input, &mut steal_input_state);
-                            if let gui::StealInputState::Stealing { callback, .. } =
-                                steal_input_state
-                            {
-                                callback(
+                            let mut steal_input = None;
+                            std::mem::swap(&mut state.steal_input, &mut steal_input);
+                            if let Some(steal_input) = steal_input {
+                                steal_input.run_callback(
                                     input::PhysicalInput::Button(button),
                                     &mut state.config.input_mapping,
                                 );

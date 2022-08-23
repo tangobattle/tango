@@ -10,7 +10,7 @@ pub struct State {
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
-    pub steal_input: StealInputState,
+    pub steal_input: Option<StealInputState>,
     pub show_debug: bool,
 }
 
@@ -26,7 +26,7 @@ impl State {
             fps_counter: fps_counter.clone(),
             emu_tps_counter: emu_tps_counter.clone(),
             session: None,
-            steal_input: StealInputState::Idle,
+            steal_input: None,
             show_debug: false,
         }
     }
@@ -38,12 +38,15 @@ pub enum SettingsTab {
     InputMapping,
 }
 
-pub enum StealInputState {
-    Idle,
-    Stealing {
-        callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
-        userdata: Box<dyn std::any::Any>,
-    },
+pub struct StealInputState {
+    callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
+    userdata: Box<dyn std::any::Any>,
+}
+
+impl StealInputState {
+    pub fn run_callback(&self, phy: input::PhysicalInput, mapping: &mut input::Mapping) {
+        (self.callback)(phy, mapping)
+    }
 }
 
 struct VBuf {
@@ -154,7 +157,7 @@ impl Gui {
         ctx: &egui::Context,
         selected_tab: &mut SettingsTab,
         config: &mut config::Config,
-        steal_input: &mut StealInputState,
+        steal_input: &mut Option<StealInputState>,
     ) {
         egui::Window::new(i18n::LOCALES.lookup(&config.language, "settings").unwrap())
             .id(egui::Id::new("settings-window"))
@@ -312,7 +315,7 @@ impl Gui {
         ui: &mut egui::Ui,
         lang: &unic_langid::LanguageIdentifier,
         input_mapping: &mut input::Mapping,
-        steal_input: &mut StealInputState,
+        steal_input: &mut Option<StealInputState>,
     ) {
         egui::Grid::new("settings-window-input-mapping-grid").show(ui, |ui| {
             let mut add_row = |label_text_id,
@@ -368,7 +371,7 @@ impl Gui {
                         });
                     }
                     if ui.add(egui::Button::new("➕")).clicked() {
-                        *steal_input = StealInputState::Stealing {
+                        *steal_input = Some(StealInputState {
                             callback: {
                                 let get_mapping = get_mapping.clone();
                                 Box::new(move |phy, input_mapping| {
@@ -387,7 +390,7 @@ impl Gui {
                                 })
                             },
                             userdata: Box::new(label_text_id),
-                        };
+                        });
                     }
                 });
                 ui.end_row();
@@ -722,10 +725,7 @@ impl Gui {
             &mut state.steal_input,
         );
 
-        let mut steal_input_open = match state.steal_input {
-            StealInputState::Idle => false,
-            StealInputState::Stealing { .. } => true,
-        };
+        let mut steal_input_open = state.steal_input.is_some();
         if let Some(inner_response) = egui::Window::new("")
             .id(egui::Id::new("input-capture-window"))
             .open(&mut steal_input_open)
@@ -739,14 +739,13 @@ impl Gui {
                         egui::Frame::none()
                             .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
                             .show(ui, |ui| {
-                                let userdata =
-                                    if let StealInputState::Stealing { userdata, .. } =
-                                        &state.steal_input
-                                    {
-                                        userdata
-                                    } else {
-                                        unreachable!();
-                                    };
+                                let userdata = if let Some(StealInputState { userdata, .. }) =
+                                    &state.steal_input
+                                {
+                                    userdata
+                                } else {
+                                    unreachable!();
+                                };
 
                                 ui.label(
                                     egui::RichText::new(
@@ -779,7 +778,7 @@ impl Gui {
             ctx.move_to_top(inner_response.response.layer_id);
         }
         if !steal_input_open {
-            state.steal_input = StealInputState::Idle;
+            state.steal_input = None;
         }
     }
 }
