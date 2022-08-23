@@ -32,7 +32,11 @@ fn main() -> Result<(), anyhow::Error> {
         .filter(Some("mgba"), log::LevelFilter::Info)
         .init();
 
-    log::info!("welcome to tango {}!", git_version::git_version!());
+    log::info!(
+        "welcome to tango v{}-{}!",
+        env!("CARGO_PKG_VERSION"),
+        git_version::git_version!()
+    );
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
