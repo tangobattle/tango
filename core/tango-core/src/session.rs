@@ -28,6 +28,11 @@ pub enum Mode {
     PvP(std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>),
 }
 
+pub enum PvP {
+    Negotiating,
+    InProgress(std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>),
+}
+
 impl Session {
     pub fn new(
         handle: tokio::runtime::Handle,
