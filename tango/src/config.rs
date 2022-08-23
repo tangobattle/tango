@@ -35,6 +35,7 @@ where
 pub struct Config {
     pub nickname: Option<String>,
     pub theme: Theme,
+    pub show_debug_overlay: bool,
     #[serde(
         serialize_with = "serialize_language_identifier",
         deserialize_with = "deserialize_language_identifier"
@@ -79,6 +80,7 @@ impl Config {
         Ok(Self {
             nickname: None,
             theme: Theme::System,
+            show_debug_overlay: false,
             language: sys_locale::get_locale()
                 .unwrap_or(i18n::FALLBACK_LANG.to_string())
                 .parse()?,

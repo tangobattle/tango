@@ -14,7 +14,6 @@ pub struct State {
     pub steal_input: Option<StealInputState>,
     pub show_menubar: bool,
     pub show_settings: Option<SettingsTab>,
-    pub show_debug: bool,
     pub show_about: bool,
     pub drpc: discord_rpc_client::Client,
 }
@@ -36,7 +35,6 @@ impl State {
             steal_input: None,
             show_menubar: false,
             show_settings: None,
-            show_debug: false,
             show_about: false,
             drpc,
         }
@@ -319,6 +317,16 @@ impl Gui {
                     });
                 ui.end_row();
             }
+
+            {
+                ui.label(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-debug-overlay")
+                        .unwrap(),
+                );
+                ui.checkbox(&mut config.show_debug_overlay, "");
+                ui.end_row();
+            }
         });
     }
 
@@ -435,95 +443,94 @@ impl Gui {
         });
     }
 
-    fn draw_debug_window(
+    fn draw_debug_overlay(
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
         state: &mut State,
     ) {
-        egui::Window::new(format!(
-            "🐛 {}",
-            i18n::LOCALES
-                .lookup(&state.config.language, "debug")
-                .unwrap()
-        ))
-        .id(egui::Id::new("debug-window"))
-        .resizable(false)
-        .open(&mut state.show_debug)
-        .show(ctx, |ui| {
-            egui::Grid::new("debug-window-grid").show(ui, |ui| {
-                ui.label("FPS");
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{:3.02}",
-                        1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
-                    ))
-                    .family(egui::FontFamily::Monospace),
-                );
-                ui.end_row();
-
-                if let Some(session) = &state.session {
-                    let tps_adjustment = if let session::Mode::PvP(match_) = session.mode() {
-                        handle.block_on(async {
-                            if let Some(match_) = &*match_.lock().await {
-                                ui.label("Match active");
-                                ui.end_row();
-
-                                let round_state = match_.lock_round_state().await;
-                                if let Some(round) = round_state.round.as_ref() {
-                                    ui.label("Current tick");
-                                    ui.label(
-                                        egui::RichText::new(format!("{:4}", round.current_tick()))
-                                            .family(egui::FontFamily::Monospace),
-                                    );
-                                    ui.end_row();
-
-                                    ui.label("Local player index");
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{:1}",
-                                            round.local_player_index()
-                                        ))
-                                        .family(egui::FontFamily::Monospace),
-                                    );
-                                    ui.end_row();
-
-                                    ui.label("Queue length");
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{:2} vs {:2} (delay = {:1})",
-                                            round.local_queue_length(),
-                                            round.remote_queue_length(),
-                                            round.local_delay(),
-                                        ))
-                                        .family(egui::FontFamily::Monospace),
-                                    );
-                                    ui.end_row();
-                                    round.tps_adjustment()
-                                } else {
-                                    0.0
-                                }
-                            } else {
-                                0.0
-                            }
-                        })
-                    } else {
-                        0.0
-                    };
-
-                    ui.label("Emu TPS");
+        egui::Window::new("")
+            .id(egui::Id::new("debug-window"))
+            .resizable(false)
+            .title_bar(false)
+            .open(&mut state.config.show_debug_overlay)
+            .show(ctx, |ui| {
+                egui::Grid::new("debug-window-grid").show(ui, |ui| {
+                    ui.label("FPS");
                     ui.label(
                         egui::RichText::new(format!(
-                            "{:3.02} ({:+1.02})",
-                            1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                            tps_adjustment
+                            "{:3.02}",
+                            1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
                         ))
                         .family(egui::FontFamily::Monospace),
                     );
                     ui.end_row();
-                }
+
+                    if let Some(session) = &state.session {
+                        let tps_adjustment = if let session::Mode::PvP(match_) = session.mode() {
+                            handle.block_on(async {
+                                if let Some(match_) = &*match_.lock().await {
+                                    ui.label("Match active");
+                                    ui.end_row();
+
+                                    let round_state = match_.lock_round_state().await;
+                                    if let Some(round) = round_state.round.as_ref() {
+                                        ui.label("Current tick");
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:4}",
+                                                round.current_tick()
+                                            ))
+                                            .family(egui::FontFamily::Monospace),
+                                        );
+                                        ui.end_row();
+
+                                        ui.label("Local player index");
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:1}",
+                                                round.local_player_index()
+                                            ))
+                                            .family(egui::FontFamily::Monospace),
+                                        );
+                                        ui.end_row();
+
+                                        ui.label("Queue length");
+                                        ui.label(
+                                            egui::RichText::new(format!(
+                                                "{:2} vs {:2} (delay = {:1})",
+                                                round.local_queue_length(),
+                                                round.remote_queue_length(),
+                                                round.local_delay(),
+                                            ))
+                                            .family(egui::FontFamily::Monospace),
+                                        );
+                                        ui.end_row();
+                                        round.tps_adjustment()
+                                    } else {
+                                        0.0
+                                    }
+                                } else {
+                                    0.0
+                                }
+                            })
+                        } else {
+                            0.0
+                        };
+
+                        ui.label("Emu TPS");
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{:3.02} ({:+1.02})",
+                                1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                                tps_adjustment
+                            ))
+                            .family(egui::FontFamily::Monospace),
+                        );
+                        ui.end_row();
+                    }
+                });
             });
-        });
     }
 
     fn draw_about_window(
@@ -1033,21 +1040,6 @@ impl Gui {
 
                     if ui
                         .selectable_label(
-                            state.show_debug,
-                            format!(
-                                "🐛 {}",
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "debug")
-                                    .unwrap()
-                            ),
-                        )
-                        .clicked()
-                    {
-                        state.show_debug = !state.show_debug;
-                    }
-
-                    if ui
-                        .selectable_label(
                             state.show_about,
                             format!(
                                 "❓ {}",
@@ -1168,7 +1160,7 @@ impl Gui {
         }
 
         self.draw_menubar(ctx, state);
-        self.draw_debug_window(ctx, handle.clone(), state);
+        self.draw_debug_overlay(ctx, handle.clone(), state);
         self.draw_settings_window(
             ctx,
             &mut state.show_settings,

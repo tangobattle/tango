@@ -9,3 +9,4 @@ settings-theme = テーマ
 
 settings-language = 言語
 settings-nickname = ニックネーム
+settings-debug-overlay = デバッグオーバーレイの表示
