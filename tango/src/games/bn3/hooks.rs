@@ -5,7 +5,6 @@ use byteorder::ByteOrder;
 
 use crate::{battle, games, lockstep, replayer, session, shadow};
 
-#[derive(Clone)]
 pub struct Hooks {
     offsets: &'static offsets::Offsets,
 }

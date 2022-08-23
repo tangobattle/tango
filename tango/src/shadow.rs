@@ -103,7 +103,7 @@ struct InnerState {
 pub struct Shadow {
     core: mgba::core::Core,
     state: State,
-    hooks: Box<dyn games::Hooks + Send + Sync>,
+    hooks: &'static (dyn games::Hooks + Send + Sync),
 }
 
 #[derive(Clone)]

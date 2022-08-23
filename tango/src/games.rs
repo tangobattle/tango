@@ -9,76 +9,52 @@ mod bn6;
 mod exe45;
 
 lazy_static! {
-    static ref GAMES: std::collections::HashMap<(&'static str, u8), Box<dyn Game + Send + Sync + 'static>> = {
-        let mut hm = std::collections::HashMap::<
-            (&'static str, u8),
-            Box<dyn Game + Send + Sync + 'static>,
-        >::new();
-        hm.insert(("AREJ", 0x00), Box::new(bn1::EXE1 {}));
-        hm.insert(("AREE", 0x00), Box::new(bn1::BN1 {}));
-        hm.insert(("AE2J", 0x01), Box::new(bn2::EXE2 {}));
-        hm.insert(("AE2E", 0x00), Box::new(bn2::BN2 {}));
-        hm.insert(("A6BJ", 0x01), Box::new(bn3::EXE3W {}));
-        hm.insert(("A3XJ", 0x01), Box::new(bn3::EXE3B {}));
-        hm.insert(("A6BE", 0x00), Box::new(bn3::BN3W {}));
-        hm.insert(("A3XE", 0x00), Box::new(bn3::BN3B {}));
-        hm.insert(("B4WJ", 0x01), Box::new(bn4::EXE4RS {}));
-        hm.insert(("B4BJ", 0x00), Box::new(bn4::EXE4BM {}));
-        hm.insert(("B4WE", 0x00), Box::new(bn4::BN4RS {}));
-        hm.insert(("B4BE", 0x00), Box::new(bn4::BN4BM {}));
-        hm.insert(("BR4J", 0x00), Box::new(exe45::EXE45 {}));
-        hm.insert(("BRBJ", 0x00), Box::new(bn5::EXE5B {}));
-        hm.insert(("BRKJ", 0x00), Box::new(bn5::EXE5C {}));
-        hm.insert(("BRBE", 0x00), Box::new(bn5::BN5P {}));
-        hm.insert(("BRKE", 0x00), Box::new(bn5::BN5C {}));
-        hm.insert(("BR5J", 0x00), Box::new(bn6::EXE6G {}));
-        hm.insert(("BR6J", 0x00), Box::new(bn6::EXE6F {}));
-        hm.insert(("BR5E", 0x00), Box::new(bn6::BN6G {}));
-        hm.insert(("BR6E", 0x00), Box::new(bn6::BN6F {}));
-        hm
-    };
+    static ref GAMES: std::collections::HashMap<(&'static str, u8), &'static (dyn Game + Send + Sync)> =
+        std::collections::HashMap::from([
+            (("AREJ", 0x00), bn1::EXE1),
+            (("AREE", 0x00), bn1::BN1),
+            (("AE2J", 0x01), bn2::EXE2),
+            (("AE2E", 0x00), bn2::BN2),
+            (("A6BJ", 0x01), bn3::EXE3W),
+            (("A3XJ", 0x01), bn3::EXE3B),
+            (("A6BE", 0x00), bn3::BN3W),
+            (("A3XE", 0x00), bn3::BN3B),
+            (("B4WJ", 0x01), bn4::EXE4RS),
+            (("B4BJ", 0x00), bn4::EXE4BM),
+            (("B4WE", 0x00), bn4::BN4RS),
+            (("B4BE", 0x00), bn4::BN4BM),
+            (("BR4J", 0x00), exe45::EXE45),
+            (("BRBJ", 0x00), bn5::EXE5B),
+            (("BRKJ", 0x00), bn5::EXE5C),
+            (("BRBE", 0x00), bn5::BN5P),
+            (("BRKE", 0x00), bn5::BN5C),
+            (("BR5J", 0x00), bn6::EXE6G),
+            (("BR6J", 0x00), bn6::EXE6F),
+            (("BR5E", 0x00), bn6::BN6G),
+            (("BR6E", 0x00), bn6::BN6F),
+        ]);
 }
 
-pub fn find(code: &str, revision: u8) -> Option<Box<dyn Game + Send + Sync + 'static>> {
-    GAMES.get(&(code, revision)).cloned()
+pub fn find(code: &str, revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
+    GAMES.get(&(code, revision)).map(|game| *game)
 }
+
+// pub fn detect(rom: &[u8]) -> Option<&'static (dyn Game)> {}
 
 pub trait Save {}
 
-pub trait Game
-where
-    Self: GameClone,
-{
+pub trait Game {
     fn family(&self) -> &str;
     fn variant(&self) -> u32;
     fn language(&self) -> unic_langid::LanguageIdentifier;
     fn expected_crc32(&self) -> u32;
-    fn hooks(&self) -> Box<dyn Hooks + Send + Sync + 'static>;
+    fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
     fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn Save>, anyhow::Error> {
         anyhow::bail!("not implemented");
     }
 }
 
-pub trait GameClone {
-    fn clone_box(&self) -> Box<dyn Game + Sync + Send + 'static>;
-}
-
-impl<T: Game + Sync + Send + Clone + 'static> GameClone for T {
-    fn clone_box(&self) -> Box<dyn Game + Sync + Send + 'static> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn Game + Sync + Send + 'static> {
-    fn clone(&self) -> Box<dyn Game + Sync + Send + 'static> {
-        self.clone_box()
-    }
-}
-
-pub trait Hooks
-where
-    Self: HooksClone,
-{
+pub trait Hooks {
     fn patch(&self, _core: mgba::core::CoreMutRef) {}
 
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
@@ -108,20 +84,4 @@ where
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
     fn predict_rx(&self, _rx: &mut Vec<u8>) {}
-}
-
-pub trait HooksClone {
-    fn clone_box(&self) -> Box<dyn Hooks + Sync + Send + 'static>;
-}
-
-impl<T: Hooks + Sync + Send + Clone + 'static> HooksClone for T {
-    fn clone_box(&self) -> Box<dyn Hooks + Sync + Send + 'static> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn Hooks + Sync + Send + 'static> {
-    fn clone(&self) -> Box<dyn Hooks + Sync + Send + 'static> {
-        self.clone_box()
-    }
 }

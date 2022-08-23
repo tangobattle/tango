@@ -2,9 +2,10 @@ mod hooks;
 
 use crate::games;
 
-#[derive(Clone)]
-pub struct EXE45;
-impl games::Game for EXE45 {
+struct EXE45Impl;
+pub const EXE45: &'static (dyn games::Game + Send + Sync) = &EXE45Impl {};
+
+impl games::Game for EXE45Impl {
     fn family(&self) -> &str {
         "exe45"
     }
@@ -21,7 +22,7 @@ impl games::Game for EXE45 {
         0xa646601b
     }
 
-    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::BR4J_00.clone())
+    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+        &hooks::BR4J_00
     }
 }

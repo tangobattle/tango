@@ -14,7 +14,6 @@ pub static AREJ_00: Hooks = Hooks {
     offsets: &offsets::AREJ_00,
 };
 
-#[derive(Clone)]
 pub struct Hooks {
     pub offsets: &'static offsets::Offsets,
 }

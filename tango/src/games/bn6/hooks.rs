@@ -3,7 +3,6 @@ use crate::{battle, games, lockstep, replayer, session, shadow};
 mod munger;
 mod offsets;
 
-#[derive(Clone)]
 pub struct Hooks {
     offsets: &'static offsets::Offsets,
 }

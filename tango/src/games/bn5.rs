@@ -2,9 +2,10 @@ mod hooks;
 
 use crate::games;
 
-#[derive(Clone)]
-pub struct EXE5B;
-impl games::Game for EXE5B {
+struct EXE5BImpl;
+pub const EXE5B: &'static (dyn games::Game + Send + Sync) = &EXE5BImpl {};
+
+impl games::Game for EXE5BImpl {
     fn family(&self) -> &str {
         "exe5"
     }
@@ -21,14 +22,15 @@ impl games::Game for EXE5B {
         0xc73f23c0
     }
 
-    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::BRBJ_00.clone())
+    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+        &hooks::BRBJ_00
     }
 }
 
-#[derive(Clone)]
-pub struct EXE5C;
-impl games::Game for EXE5C {
+struct EXE5CImpl;
+pub const EXE5C: &'static (dyn games::Game + Send + Sync) = &EXE5CImpl {};
+
+impl games::Game for EXE5CImpl {
     fn family(&self) -> &str {
         "exe5"
     }
@@ -45,14 +47,15 @@ impl games::Game for EXE5C {
         0x16842635
     }
 
-    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::BRKJ_00.clone())
+    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+        &hooks::BRKJ_00
     }
 }
 
-#[derive(Clone)]
-pub struct BN5P;
-impl games::Game for BN5P {
+struct BN5PImpl;
+pub const BN5P: &'static (dyn games::Game + Send + Sync) = &BN5PImpl {};
+
+impl games::Game for BN5PImpl {
     fn family(&self) -> &str {
         "bn5"
     }
@@ -69,14 +72,15 @@ impl games::Game for BN5P {
         0xa73e83a4
     }
 
-    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::BRBE_00.clone())
+    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+        &hooks::BRBE_00
     }
 }
 
-#[derive(Clone)]
-pub struct BN5C;
-impl games::Game for BN5C {
+struct BN5CImpl;
+pub const BN5C: &'static (dyn games::Game + Send + Sync) = &BN5CImpl {};
+
+impl games::Game for BN5CImpl {
     fn family(&self) -> &str {
         "bn5"
     }
@@ -93,7 +97,7 @@ impl games::Game for BN5C {
         0xa552f683
     }
 
-    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
-        Box::new(hooks::BRKE_00.clone())
+    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+        &hooks::BRKE_00
     }
 }
