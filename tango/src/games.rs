@@ -70,6 +70,7 @@ pub fn find(code: &str, revision: u8) -> Option<Box<dyn Game>> {
 
 pub trait Game {
     fn family_name(&self) -> &str;
+    fn language(&self) -> unic_langid::LanguageIdentifier;
     fn version_name(&self) -> Option<&str>;
     fn expected_crc32(&self) -> u32;
     fn hooks(&self) -> Box<dyn Hooks + Send + Sync + 'static>;

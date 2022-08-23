@@ -10,6 +10,10 @@ impl games::Game for BN1 {
         "bn1"
     }
 
+    fn language(&self) -> unic_langid::LanguageIdentifier {
+        unic_langid::langid!("en-US")
+    }
+
     fn version_name(&self) -> Option<&str> {
         None
     }
@@ -29,6 +33,10 @@ pub struct EXE1;
 impl games::Game for EXE1 {
     fn family_name(&self) -> &str {
         "exe1"
+    }
+
+    fn language(&self) -> unic_langid::LanguageIdentifier {
+        unic_langid::langid!("ja-JP")
     }
 
     fn version_name(&self) -> Option<&str> {
