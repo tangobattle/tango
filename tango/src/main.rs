@@ -6,12 +6,12 @@ use tango::{audio, config, gui, input, stats};
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
-        .filter(Some("tango_core"), log::LevelFilter::Info)
+        .filter(Some("tango"), log::LevelFilter::Info)
         .filter(Some("datachannel"), log::LevelFilter::Info)
         .filter(Some("mgba"), log::LevelFilter::Info)
         .init();
 
-    log::info!("welcome to tango-core {}!", git_version::git_version!());
+    log::info!("welcome to tango {}!", git_version::git_version!());
 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
