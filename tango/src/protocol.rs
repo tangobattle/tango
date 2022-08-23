@@ -84,7 +84,8 @@ pub struct PatchInfo {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct GameInfo {
-    pub rom: String,
+    pub family: String,
+    pub variant: u8,
     pub patch: Option<PatchInfo>,
 }
 

@@ -47,32 +47,6 @@ fn main() -> Result<(), anyhow::Error> {
     let config = config::Config::load_or_create()?;
     config.ensure_dirs()?;
 
-    for entry in walkdir::WalkDir::new(&config.roms_path) {
-        let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-
-        let path = entry.path();
-        let game = std::fs::read(path)
-            .map_err(|e| e.into())
-            .and_then(|buf| games::detect(&buf));
-
-        match game {
-            Ok(game) => {
-                log::info!(
-                    "{} -> {}, {}",
-                    path.display(),
-                    game.family(),
-                    game.variant()
-                );
-            }
-            Err(e) => {
-                log::warn!("{} -> {}", path.display(), e);
-            }
-        }
-    }
-
     let handle = rt.handle().clone();
 
     let sdl = sdl2::init().unwrap();
