@@ -510,12 +510,9 @@ impl Gui {
     pub fn draw_session(
         &mut self,
         ctx: &egui::Context,
-        handle: tokio::runtime::Handle,
-        window: &glutin::window::Window,
         input_state: &input::State,
         input_mapping: &input::Mapping,
         session: &session::Session,
-        title_prefix: &str,
         video_filter: &str,
     ) {
         session.set_joyflags(input_mapping.to_mgba_keys(input_state));
@@ -546,21 +543,6 @@ impl Gui {
             );
         }
 
-        // Update title to show P1/P2 state.
-        let mut title = title_prefix.to_string();
-        if let session::Mode::PvP(match_) = session.mode() {
-            handle.block_on(async {
-                if let Some(match_) = &*match_.lock().await {
-                    let round_state = match_.lock_round_state().await;
-                    if let Some(round) = round_state.round.as_ref() {
-                        title = format!("{} [P{}]", title, round.local_player_index() + 1);
-                    }
-                }
-            });
-        }
-
-        window.set_title(&title);
-
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(egui::Color32::BLACK))
             .show(ctx, |ui| {
@@ -577,7 +559,6 @@ impl Gui {
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
-        window: &glutin::window::Window,
         input_state: &input::State,
         state: &mut game::State,
     ) {
@@ -671,12 +652,9 @@ impl Gui {
         if let Some(session) = &state.session {
             self.draw_session(
                 ctx,
-                handle.clone(),
-                window,
                 input_state,
                 &state.config.input_mapping,
                 session,
-                &state.title_prefix,
                 &state.config.video_filter,
             );
         }

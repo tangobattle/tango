@@ -26,7 +26,6 @@ pub struct State {
     pub fps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
-    pub title_prefix: String,
     pub steal_input: StealInputState,
     pub show_debug: bool,
 }
@@ -34,13 +33,12 @@ pub struct State {
 pub fn run(
     rt: tokio::runtime::Runtime,
     ipc_sender: Arc<Mutex<ipc::Sender>>,
-    window_title: String,
     rom_path: std::path::PathBuf,
     save_path: std::path::PathBuf,
-    window_scale: u32,
     match_init: Option<battle::MatchInit>,
 ) -> Result<(), anyhow::Error> {
     let config = config::Config::load_or_create()?;
+    config.ensure_dirs()?;
 
     let handle = rt.handle().clone();
 
@@ -51,10 +49,10 @@ pub fn run(
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
     let wb = glutin::window::WindowBuilder::new()
-        .with_title(window_title.clone())
+        .with_title("Tango")
         .with_inner_size(glutin::dpi::LogicalSize::new(
-            mgba::gba::SCREEN_WIDTH * window_scale,
-            mgba::gba::SCREEN_HEIGHT * window_scale,
+            mgba::gba::SCREEN_WIDTH * 3,
+            mgba::gba::SCREEN_HEIGHT * 3,
         ))
         .with_min_inner_size(glutin::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH,
@@ -122,7 +120,6 @@ pub fn run(
         fps_counter: fps_counter.clone(),
         emu_tps_counter: emu_tps_counter.clone(),
         session: None,
-        title_prefix: format!("Tango: {}", window_title),
         steal_input: StealInputState::Idle,
         show_debug: false,
     };
@@ -297,14 +294,7 @@ pub fn run(
 
                 egui_glow.run(gl_window.window(), |ctx| {
                     ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
-
-                    gui.draw(
-                        ctx,
-                        handle.clone(),
-                        gl_window.window(),
-                        &input_state,
-                        &mut state,
-                    )
+                    gui.draw(ctx, handle.clone(), &input_state, &mut state)
                 });
                 egui_glow.paint(gl_window.window());
 
