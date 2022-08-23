@@ -7,18 +7,24 @@ use super::{munger, offsets};
 
 #[derive(Clone)]
 pub struct Hooks {
-    offsets: offsets::Offsets,
-    munger: munger::Munger,
+    offsets: &'static offsets::Offsets,
 }
 
 impl Hooks {
-    pub fn new(offsets: offsets::Offsets) -> Box<dyn games::Hooks + Send + Sync> {
-        Box::new(Hooks {
-            offsets,
-            munger: munger::Munger { offsets },
-        })
+    fn munger(&self) -> munger::Munger {
+        munger::Munger {
+            offsets: self.offsets,
+        }
     }
 }
+
+pub static AREE_00: Hooks = Hooks {
+    offsets: &offsets::AREE_00,
+};
+
+pub static AREJ_00: Hooks = Hooks {
+    offsets: &offsets::AREJ_00,
+};
 
 fn step_rng(seed: u32) -> u32 {
     let seed = std::num::Wrapping(seed);
@@ -41,7 +47,7 @@ impl games::Hooks for Hooks {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.start_screen_jump_table_entry,
                     Box::new(move |core| {
@@ -50,7 +56,7 @@ impl games::Hooks for Hooks {
                 )
             },
             {
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.start_screen_sram_unmask_ret,
                     Box::new(move |core| {
@@ -59,7 +65,7 @@ impl games::Hooks for Hooks {
                 )
             },
             {
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.game_load_ret,
                     Box::new(move |core| {
@@ -79,7 +85,7 @@ impl games::Hooks for Hooks {
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let match_ = match_.clone();
-            let munger = self.munger.clone();
+            let munger = self.munger();
             let handle = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 handle.block_on(async {
@@ -104,7 +110,7 @@ impl games::Hooks for Hooks {
         vec![
             {
                 let handle = handle.clone();
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
@@ -214,7 +220,7 @@ impl games::Hooks for Hooks {
             {
                 let match_ = match_.clone();
                 let handle = handle.clone();
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |core| {
@@ -265,7 +271,7 @@ impl games::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.main_read_joyflags,
@@ -341,7 +347,7 @@ impl games::Hooks for Hooks {
                 make_send_and_receive_call_hook(),
             ),
             {
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 let handle = handle.clone();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
@@ -406,7 +412,7 @@ impl games::Hooks for Hooks {
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let shadow_state = shadow_state.clone();
-            let munger = self.munger.clone();
+            let munger = self.munger();
 
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let pc = core.as_ref().gba().cpu().thumb_pc();
@@ -480,7 +486,7 @@ impl games::Hooks for Hooks {
 
         vec![
             {
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
@@ -490,7 +496,7 @@ impl games::Hooks for Hooks {
             },
             {
                 let shadow_state = shadow_state.clone();
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |core| {
@@ -551,7 +557,7 @@ impl games::Hooks for Hooks {
             },
             {
                 let shadow_state = shadow_state.clone();
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |mut core| {
@@ -628,7 +634,7 @@ impl games::Hooks for Hooks {
                 make_send_and_receive_call_hook(),
             ),
             {
-                let munger = self.munger.clone();
+                let munger = self.munger();
                 (
                     self.offsets.rom.comm_menu_send_and_receive_call,
                     Box::new(move |mut core| {
@@ -676,7 +682,7 @@ impl games::Hooks for Hooks {
         replayer_state: replayer::State,
     ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
-            let munger = self.munger.clone();
+            let munger = self.munger();
             let replayer_state = replayer_state.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
                 let mut replayer_state = replayer_state.lock_inner();

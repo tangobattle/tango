@@ -14,12 +14,8 @@ impl games::Game for BN1 {
         None
     }
 
-    fn hooks(&self, revision: u8) -> Option<Box<dyn games::Hooks + Send + Sync + 'static>> {
-        if revision == 0 {
-            Some(hooks::Hooks::new(offsets::AREE_00))
-        } else {
-            None
-        }
+    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
+        Box::new(hooks::AREE_00.clone())
     }
 }
 
@@ -33,11 +29,7 @@ impl games::Game for EXE1 {
         None
     }
 
-    fn hooks(&self, revision: u8) -> Option<Box<dyn games::Hooks + Send + Sync + 'static>> {
-        if revision == 0 {
-            Some(hooks::Hooks::new(offsets::AREJ_00))
-        } else {
-            None
-        }
+    fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
+        Box::new(hooks::AREJ_00.clone())
     }
 }
