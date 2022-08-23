@@ -139,10 +139,13 @@ impl Gui {
                     "NotoEmoji-Regular".to_string(),
                     egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
                 ),
-                (
-                    "MaterialIcons-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/MaterialIcons-Regular.ttf")),
-                ),
+                ("MaterialIcons-Regular".to_string(), {
+                    let mut fd = egui::FontData::from_static(include_bytes!(
+                        "fonts/MaterialIcons-Regular.ttf"
+                    ));
+                    fd.tweak.y_offset_factor = 0.0;
+                    fd
+                }),
             ]),
             font_families,
             themes: Themes {
