@@ -9,15 +9,15 @@ mod bn6;
 mod exe45;
 
 pub struct ROMList {
-    paths: std::collections::HashMap<
+    roms: std::collections::HashMap<
         by_address::ByAddress<&'static (dyn Game + Send + Sync)>,
-        std::path::PathBuf,
+        Vec<u8>,
     >,
 }
 
 impl ROMList {
     pub fn new(path: &std::path::Path) -> Self {
-        let mut paths = std::collections::HashMap::new();
+        let mut roms = std::collections::HashMap::new();
 
         for entry in walkdir::WalkDir::new(path) {
             let entry = match entry {
@@ -33,11 +33,16 @@ impl ROMList {
             }
 
             let path = entry.path();
-            let game = std::fs::read(path)
-                .map_err(|e| e.into())
-                .and_then(|buf| detect(&buf));
 
-            let game = match game {
+            let rom = match std::fs::read(path) {
+                Ok(rom) => rom,
+                Err(e) => {
+                    log::warn!("{}: {}", path.display(), e);
+                    continue;
+                }
+            };
+
+            let game = match detect(&rom) {
                 Ok(game) => {
                     log::info!(
                         "{}: family = {}, variant = {}",
@@ -53,19 +58,16 @@ impl ROMList {
                 }
             };
 
-            paths.insert(by_address::ByAddress(game), path.to_owned());
+            roms.insert(by_address::ByAddress(game), rom);
         }
 
-        Self { paths }
+        Self { roms }
     }
 
-    pub fn find_by_game(
-        &self,
-        game: &'static (dyn Game + Send + Sync),
-    ) -> Option<&std::path::Path> {
-        self.paths
+    pub fn find_rom(&self, game: &'static (dyn Game + Send + Sync)) -> Option<&[u8]> {
+        self.roms
             .get(&by_address::ByAddress(game))
-            .map(|p| p.as_path())
+            .map(|rom| &rom[..])
     }
 }
 
