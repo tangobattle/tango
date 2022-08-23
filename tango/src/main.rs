@@ -15,7 +15,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     mgba::log::init();
 
-    tango_core::game::run(
+    tango::game::run(
         rt,
         // std::sync::Arc::new(parking_lot::Mutex::new(ipc_sender)),
         // start_req.rom_path.into(),

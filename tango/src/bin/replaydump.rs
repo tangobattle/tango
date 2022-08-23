@@ -87,7 +87,7 @@ enum Action {
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
-        .filter(Some("tango_core"), log::LevelFilter::Info)
+        .filter(Some("tango"), log::LevelFilter::Info)
         .filter(Some("replaydump"), log::LevelFilter::Info)
         .init();
     mgba::log::init();
@@ -96,7 +96,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut f = std::fs::File::open(&args.path)?;
 
-    let mut replay = tango_core::replay::Replay::decode(&mut f)?;
+    let mut replay = tango::replay::Replay::decode(&mut f)?;
 
     if args.remote {
         replay = replay.into_remote();
@@ -112,8 +112,8 @@ fn main() -> Result<(), anyhow::Error> {
     }
 }
 
-fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
-    let mut core = mgba::core::Core::new_gba("tango_core")?;
+fn dump_video(args: VideoCli, replay: tango::replay::Replay) -> Result<(), anyhow::Error> {
+    let mut core = mgba::core::Core::new_gba("tango")?;
     core.enable_video_buffer();
 
     let rom = std::fs::read(&args.rom_path)?;
@@ -124,13 +124,9 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = tango_core::replayer::State::new(
-        replay.local_player_index,
-        input_pairs,
-        0,
-        Box::new(|| {}),
-    );
-    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    let replayer_state =
+        tango::replayer::State::new(replay.local_player_index, input_pairs, 0, Box::new(|| {}));
+    let hooks = tango::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
         let replayer_state = replayer_state.clone();
@@ -143,7 +139,7 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    let filter = tango_core::video::filter_by_name(&args.filter).expect("unknown filter");
+    let filter = tango::video::filter_by_name(&args.filter).expect("unknown filter");
     let (vbuf_width, vbuf_height) = filter.output_size((
         mgba::gba::SCREEN_WIDTH as usize,
         mgba::gba::SCREEN_HEIGHT as usize,
@@ -288,14 +284,14 @@ fn dump_video(args: VideoCli, replay: tango_core::replay::Replay) -> Result<(), 
     Ok(())
 }
 
-fn dump_wram(_args: WRAMCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_wram(_args: WRAMCli, replay: tango::replay::Replay) -> Result<(), anyhow::Error> {
     std::io::stdout().write_all(replay.local_state.unwrap().wram())?;
     std::io::stdout().flush()?;
     Ok(())
 }
 
-fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
-    let mut core = mgba::core::Core::new_gba("tango_core")?;
+fn dump_step(args: StepCli, replay: tango::replay::Replay) -> Result<(), anyhow::Error> {
+    let mut core = mgba::core::Core::new_gba("tango")?;
     let rom = std::fs::read(&args.rom_path)?;
     let vf = mgba::vfile::VFile::open_memory(&rom);
     core.as_mut().load_rom(vf)?;
@@ -303,14 +299,14 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = tango_core::replayer::State::new(
+    let replayer_state = tango::replayer::State::new(
         replay.local_player_index,
         input_pairs,
         args.steps,
         Box::new(|| {}),
     );
 
-    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    let hooks = tango::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
         let replayer_state = replayer_state.clone();
@@ -344,7 +340,7 @@ fn dump_step(args: StepCli, replay: tango_core::replay::Replay) -> Result<(), an
     Ok(())
 }
 
-fn dump_text(_args: TextCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
+fn dump_text(_args: TextCli, replay: tango::replay::Replay) -> Result<(), anyhow::Error> {
     for ip in &replay.input_pairs {
         println!(
             "tick = {:08x?}, l = {:02x} {:02x?}, r = {:02x} {:02x?}",
@@ -370,7 +366,7 @@ struct InputInfo {
 
 fn dump_input_info(
     _args: InputInfoCli,
-    replay: tango_core::replay::Replay,
+    replay: tango::replay::Replay,
 ) -> Result<(), anyhow::Error> {
     let mut local_input_histogram = [0; 16];
     let mut remote_input_histogram = [0; 16];
@@ -423,8 +419,8 @@ fn dump_input_info(
     Ok(())
 }
 
-fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), anyhow::Error> {
-    let mut core = mgba::core::Core::new_gba("tango_core")?;
+fn dump_eval(args: EvalCli, replay: tango::replay::Replay) -> Result<(), anyhow::Error> {
+    let mut core = mgba::core::Core::new_gba("tango")?;
     let rom = std::fs::read(&args.rom_path)?;
     let vf = mgba::vfile::VFile::open_memory(&rom);
     core.as_mut().load_rom(vf)?;
@@ -432,13 +428,9 @@ fn dump_eval(args: EvalCli, replay: tango_core::replay::Replay) -> Result<(), an
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = tango_core::replayer::State::new(
-        replay.local_player_index,
-        input_pairs,
-        0,
-        Box::new(|| {}),
-    );
-    let hooks = tango_core::hooks::get(core.as_mut()).unwrap();
+    let replayer_state =
+        tango::replayer::State::new(replay.local_player_index, input_pairs, 0, Box::new(|| {}));
+    let hooks = tango::hooks::get(core.as_mut()).unwrap();
     hooks.patch(core.as_mut());
     {
         let replayer_state = replayer_state.clone();
