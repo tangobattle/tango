@@ -33,8 +33,6 @@ pub fn find_hook(
         (b"ROCKMAN_EXE3A6BJ", 0x01) => &bn3::ROCKMAN_EXE3A6BJ_01,
         (b"MEGAMAN_EXE2AE2E", 0x00) => &bn2::MEGAMAN_EXE2AE2E_00,
         (b"ROCKMAN_EXE2AE2J", 0x01) => &bn2::ROCKMAN_EXE2AE2J_01,
-        (b"MEGAMAN_BN\0\0AREE", 0x00) => &bn1::AREE_00,
-        (b"ROCKMAN_EXE\0AREJ", 0x00) => &bn1::AREJ_00,
         _ => {
             return None;
         }
@@ -54,7 +52,7 @@ pub fn find(code: &str) -> Option<Box<dyn Game>> {
 pub trait Game {
     fn family_name(&self) -> &str;
     fn version_name(&self) -> Option<&str>;
-    fn hooks(&self, revision: u8) -> Option<&Box<dyn Hooks + Send + Sync + 'static>>;
+    fn hooks(&self, revision: u8) -> Option<Box<dyn Hooks + Send + Sync + 'static>>;
 }
 
 pub trait Hooks {
