@@ -2,6 +2,7 @@ mod hooks;
 
 use crate::games;
 
+#[derive(Clone)]
 pub struct EXE45;
 impl games::Game for EXE45 {
     fn family(&self) -> &str {

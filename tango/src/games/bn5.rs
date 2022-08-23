@@ -2,6 +2,7 @@ mod hooks;
 
 use crate::games;
 
+#[derive(Clone)]
 pub struct EXE5B;
 impl games::Game for EXE5B {
     fn family(&self) -> &str {
@@ -25,6 +26,7 @@ impl games::Game for EXE5B {
     }
 }
 
+#[derive(Clone)]
 pub struct EXE5C;
 impl games::Game for EXE5C {
     fn family(&self) -> &str {
@@ -48,6 +50,7 @@ impl games::Game for EXE5C {
     }
 }
 
+#[derive(Clone)]
 pub struct BN5P;
 impl games::Game for BN5P {
     fn family(&self) -> &str {
@@ -71,6 +74,7 @@ impl games::Game for BN5P {
     }
 }
 
+#[derive(Clone)]
 pub struct BN5C;
 impl games::Game for BN5C {
     fn family(&self) -> &str {

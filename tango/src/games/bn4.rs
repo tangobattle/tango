@@ -2,6 +2,8 @@ mod hooks;
 
 use crate::games;
 
+#[derive(Clone)]
+
 pub struct EXE4RS;
 impl games::Game for EXE4RS {
     fn family(&self) -> &str {
@@ -24,6 +26,8 @@ impl games::Game for EXE4RS {
         Box::new(hooks::B4WJ_01.clone())
     }
 }
+
+#[derive(Clone)]
 
 pub struct EXE4BM;
 impl games::Game for EXE4BM {
@@ -48,6 +52,8 @@ impl games::Game for EXE4BM {
     }
 }
 
+#[derive(Clone)]
+
 pub struct BN4RS;
 impl games::Game for BN4RS {
     fn family(&self) -> &str {
@@ -70,6 +76,8 @@ impl games::Game for BN4RS {
         Box::new(hooks::B4WE_00.clone())
     }
 }
+
+#[derive(Clone)]
 
 pub struct BN4BM;
 impl games::Game for BN4BM {
