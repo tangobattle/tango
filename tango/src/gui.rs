@@ -7,12 +7,12 @@ use crate::{config, i18n, input, session, stats, video};
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
 pub struct State {
-    pub toplevel_tab: ToplevelTab,
     pub config: config::Config,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
+    pub show_settings: Option<SettingsTab>,
     pub show_debug: bool,
     pub drpc: discord_rpc_client::Client,
 }
@@ -27,23 +27,16 @@ impl State {
         drpc.start();
 
         Self {
-            toplevel_tab: ToplevelTab::Play,
             config,
             fps_counter: fps_counter.clone(),
             emu_tps_counter: emu_tps_counter.clone(),
             session: None,
             steal_input: None,
+            show_settings: None,
             show_debug: false,
             drpc,
         }
     }
-}
-
-#[derive(PartialEq, Eq)]
-pub enum ToplevelTab {
-    Play,
-    Replays,
-    Settings(SettingsTab),
 }
 
 #[derive(PartialEq, Eq)]
@@ -78,7 +71,6 @@ struct FontFamilies {
     jpan: egui::FontFamily,
     hans: egui::FontFamily,
     hant: egui::FontFamily,
-    icons: egui::FontFamily,
 }
 
 pub struct Gui {
@@ -96,7 +88,6 @@ impl Gui {
             jpan: egui::FontFamily::Name("Jpan".into()),
             hans: egui::FontFamily::Name("Hans".into()),
             hant: egui::FontFamily::Name("Hant".into()),
-            icons: egui::FontFamily::Name("icons".into()),
         };
 
         ctx.set_fonts(egui::FontDefinitions {
@@ -108,7 +99,6 @@ impl Gui {
                 (font_families.jpan.clone(), vec![]),
                 (font_families.hans.clone(), vec![]),
                 (font_families.hant.clone(), vec![]),
-                (font_families.icons.clone(), vec![]),
             ]),
         });
 
@@ -139,13 +129,6 @@ impl Gui {
                     "NotoEmoji-Regular".to_string(),
                     egui::FontData::from_static(include_bytes!("fonts/NotoEmoji-Regular.ttf")),
                 ),
-                ("MaterialIcons-Regular".to_string(), {
-                    let mut fd = egui::FontData::from_static(include_bytes!(
-                        "fonts/MaterialIcons-Regular.ttf"
-                    ));
-                    fd.tweak.y_offset_factor = 0.0;
-                    fd
-                }),
             ]),
             font_families,
             themes: Themes {
@@ -166,51 +149,61 @@ impl Gui {
         }
     }
 
-    fn draw_settings(
+    fn draw_settings_window(
         &mut self,
         ctx: &egui::Context,
-        selected_tab: &mut SettingsTab,
+        show_settings: &mut Option<SettingsTab>,
         config: &mut config::Config,
         steal_input: &mut Option<StealInputState>,
     ) {
-        egui::TopBottomPanel::top("settings-pane-top-panel").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.selectable_value(
-                    selected_tab,
-                    SettingsTab::General,
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings.general")
-                        .unwrap(),
-                );
-                ui.selectable_value(
-                    selected_tab,
-                    SettingsTab::InputMapping,
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings.input-mapping")
-                        .unwrap(),
-                );
+        let mut show_settings_bool = show_settings.is_some();
+        egui::Window::new(format!(
+            "⚙️ {}",
+            i18n::LOCALES.lookup(&config.language, "settings").unwrap()
+        ))
+        .open(&mut show_settings_bool)
+        .id(egui::Id::new("settings-window"))
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        show_settings.as_mut().unwrap(),
+                        SettingsTab::General,
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings.general")
+                            .unwrap(),
+                    );
+                    ui.selectable_value(
+                        show_settings.as_mut().unwrap(),
+                        SettingsTab::InputMapping,
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings.input-mapping")
+                            .unwrap(),
+                    );
+                });
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false; 2])
+                    .show(ui, |ui| {
+                        match show_settings.as_ref().unwrap() {
+                            SettingsTab::General => self.draw_settings_general_tab(ui, config),
+                            SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
+                                ui,
+                                &config.language,
+                                &mut config.input_mapping,
+                                steal_input,
+                            ),
+                        };
+                    });
             });
         });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    match selected_tab {
-                        SettingsTab::General => self.draw_settings_general_tab(ui, config),
-                        SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
-                            ui,
-                            &config.language,
-                            &mut config.input_mapping,
-                            steal_input,
-                        ),
-                    };
-                });
-        });
+        if !show_settings_bool {
+            *show_settings = None;
+        }
     }
 
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-pane-general-grid").show(ui, |ui| {
+        egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
             {
                 let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
                 ui.label(
@@ -246,7 +239,7 @@ impl Gui {
                     .lookup(&config.language, "settings-theme.dark")
                     .unwrap();
 
-                egui::ComboBox::from_id_source("settings-pane-general-theme")
+                egui::ComboBox::from_id_source("settings-window-general-theme")
                     .selected_text(match config.theme {
                         config::Theme::System => &system_label,
                         config::Theme::Light => &light_label,
@@ -283,7 +276,7 @@ impl Gui {
                 let zh_hant_label =
                     egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
 
-                egui::ComboBox::from_id_source("settings-pane-general-language")
+                egui::ComboBox::from_id_source("settings-window-general-language")
                     .selected_text(match &config.language {
                         lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
                             en_label.clone()
@@ -333,7 +326,7 @@ impl Gui {
         input_mapping: &mut input::Mapping,
         steal_input: &mut Option<StealInputState>,
     ) {
-        egui::Grid::new("settings-pane-input-mapping-grid").show(ui, |ui| {
+        egui::Grid::new("settings-window-input-mapping-grid").show(ui, |ui| {
             let mut add_row = |label_text_id,
                                get_mapping: fn(
                 &mut input::Mapping,
@@ -346,14 +339,11 @@ impl Gui {
                     let mapping = get_mapping(input_mapping);
                     for (i, c) in mapping.clone().iter().enumerate() {
                         ui.group(|ui| {
-                            ui.label(
-                                egui::RichText::new(match c {
-                                    input::PhysicalInput::Key(_) => "\u{e312}",
-                                    input::PhysicalInput::Button(_)
-                                    | input::PhysicalInput::Axis { .. } => "\u{ea28}",
-                                })
-                                .family(self.font_families.icons.clone()),
-                            );
+                            ui.label(egui::RichText::new(match c {
+                                input::PhysicalInput::Key(_) => "⌨️",
+                                input::PhysicalInput::Button(_)
+                                | input::PhysicalInput::Axis { .. } => "🎮",
+                            }));
                             ui.label(match c {
                                 input::PhysicalInput::Key(key) => {
                                     let raw = serde_plain::to_string(key).unwrap();
@@ -437,86 +427,88 @@ impl Gui {
         handle: tokio::runtime::Handle,
         state: &mut State,
     ) {
-        egui::Window::new("Debug")
-            .id(egui::Id::new("debug-window"))
-            .open(&mut state.show_debug)
-            .show(ctx, |ui| {
-                egui::Grid::new("debug-window-grid").show(ui, |ui| {
-                    ui.label("FPS");
+        egui::Window::new(format!(
+            "🐛 {}",
+            i18n::LOCALES
+                .lookup(&state.config.language, "debug")
+                .unwrap()
+        ))
+        .id(egui::Id::new("debug-window"))
+        .open(&mut state.show_debug)
+        .show(ctx, |ui| {
+            egui::Grid::new("debug-window-grid").show(ui, |ui| {
+                ui.label("FPS");
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{:3.02}",
+                        1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
+                    ))
+                    .family(egui::FontFamily::Monospace),
+                );
+                ui.end_row();
+
+                if let Some(session) = &state.session {
+                    let tps_adjustment = if let session::Mode::PvP(match_) = session.mode() {
+                        handle.block_on(async {
+                            if let Some(match_) = &*match_.lock().await {
+                                ui.label("Match active");
+                                ui.end_row();
+
+                                let round_state = match_.lock_round_state().await;
+                                if let Some(round) = round_state.round.as_ref() {
+                                    ui.label("Current tick");
+                                    ui.label(
+                                        egui::RichText::new(format!("{:4}", round.current_tick()))
+                                            .family(egui::FontFamily::Monospace),
+                                    );
+                                    ui.end_row();
+
+                                    ui.label("Local player index");
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{:1}",
+                                            round.local_player_index()
+                                        ))
+                                        .family(egui::FontFamily::Monospace),
+                                    );
+                                    ui.end_row();
+
+                                    ui.label("Queue length");
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{:2} vs {:2} (delay = {:1})",
+                                            round.local_queue_length(),
+                                            round.remote_queue_length(),
+                                            round.local_delay(),
+                                        ))
+                                        .family(egui::FontFamily::Monospace),
+                                    );
+                                    ui.end_row();
+                                    round.tps_adjustment()
+                                } else {
+                                    0.0
+                                }
+                            } else {
+                                0.0
+                            }
+                        })
+                    } else {
+                        0.0
+                    };
+
+                    ui.label("Emu TPS");
                     ui.label(
                         egui::RichText::new(format!(
-                            "{:3.02}",
-                            1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
+                            "{:3.02} ({:+1.02})",
+                            1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                            tps_adjustment
                         ))
                         .family(egui::FontFamily::Monospace),
                     );
                     ui.end_row();
-
-                    if let Some(session) = &state.session {
-                        let tps_adjustment = if let session::Mode::PvP(match_) = session.mode() {
-                            handle.block_on(async {
-                                if let Some(match_) = &*match_.lock().await {
-                                    ui.label("Match active");
-                                    ui.end_row();
-
-                                    let round_state = match_.lock_round_state().await;
-                                    if let Some(round) = round_state.round.as_ref() {
-                                        ui.label("Current tick");
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{:4}",
-                                                round.current_tick()
-                                            ))
-                                            .family(egui::FontFamily::Monospace),
-                                        );
-                                        ui.end_row();
-
-                                        ui.label("Local player index");
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{:1}",
-                                                round.local_player_index()
-                                            ))
-                                            .family(egui::FontFamily::Monospace),
-                                        );
-                                        ui.end_row();
-
-                                        ui.label("Queue length");
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{:2} vs {:2} (delay = {:1})",
-                                                round.local_queue_length(),
-                                                round.remote_queue_length(),
-                                                round.local_delay(),
-                                            ))
-                                            .family(egui::FontFamily::Monospace),
-                                        );
-                                        ui.end_row();
-                                        round.tps_adjustment()
-                                    } else {
-                                        0.0
-                                    }
-                                } else {
-                                    0.0
-                                }
-                            })
-                        } else {
-                            0.0
-                        };
-
-                        ui.label("Emu TPS");
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{:3.02} ({:+1.02})",
-                                1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                                tps_adjustment
-                            ))
-                            .family(egui::FontFamily::Monospace),
-                        );
-                        ui.end_row();
-                    }
-                });
+                }
             });
+        });
     }
 
     fn draw_emulator(&mut self, ui: &mut egui::Ui, session: &session::Session, video_filter: &str) {
@@ -757,13 +749,6 @@ impl Gui {
                         self.font_families.latn.clone(),
                         vec!["NotoSans-Regular".to_string()],
                     ),
-                    (
-                        self.font_families.icons.clone(),
-                        vec![
-                            "MaterialIcons-Regular".to_string(),
-                            "NotoSans-Regular".to_string(),
-                        ],
-                    ),
                 ]),
             });
             self.current_language = Some(state.config.language.clone());
@@ -782,81 +767,6 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
-        egui::SidePanel::left("left")
-            .min_width(0.0)
-            .resizable(false)
-            .frame(
-                egui::Frame::none()
-                    .inner_margin(egui::style::Margin::same(2.0))
-                    .rounding(egui::Rounding::none())
-                    .fill(ctx.style().visuals.window_fill())
-                    .stroke(ctx.style().visuals.window_stroke()),
-            )
-            .show(ctx, |ui| {
-                if ui
-                    .selectable_label(
-                        if let ToplevelTab::Play { .. } = state.toplevel_tab {
-                            true
-                        } else {
-                            false
-                        },
-                        egui::RichText::new("\u{ea28}")
-                            .family(self.font_families.icons.clone())
-                            .size(24.0),
-                    )
-                    .on_hover_text(
-                        i18n::LOCALES
-                            .lookup(&state.config.language, "toplevel.play")
-                            .unwrap(),
-                    )
-                    .clicked()
-                {
-                    state.toplevel_tab = ToplevelTab::Play;
-                }
-
-                if ui
-                    .selectable_label(
-                        if let ToplevelTab::Replays { .. } = state.toplevel_tab {
-                            true
-                        } else {
-                            false
-                        },
-                        egui::RichText::new("\u{e068}")
-                            .family(self.font_families.icons.clone())
-                            .size(24.0),
-                    )
-                    .on_hover_text(
-                        i18n::LOCALES
-                            .lookup(&state.config.language, "toplevel.replays")
-                            .unwrap(),
-                    )
-                    .clicked()
-                {
-                    state.toplevel_tab = ToplevelTab::Replays;
-                }
-
-                if ui
-                    .selectable_label(
-                        if let ToplevelTab::Settings { .. } = state.toplevel_tab {
-                            true
-                        } else {
-                            false
-                        },
-                        egui::RichText::new("\u{e8b8}")
-                            .family(self.font_families.icons.clone())
-                            .size(24.0),
-                    )
-                    .on_hover_text(
-                        i18n::LOCALES
-                            .lookup(&state.config.language, "toplevel.settings")
-                            .unwrap(),
-                    )
-                    .clicked()
-                {
-                    state.toplevel_tab = ToplevelTab::Settings(SettingsTab::General);
-                }
-            });
-
         if let Some(session) = &state.session {
             self.draw_session(
                 ctx,
@@ -865,18 +775,53 @@ impl Gui {
                 session,
                 &state.config.video_filter,
             );
+        } else {
+            egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui
+                        .selectable_label(
+                            state.show_settings.is_some(),
+                            format!(
+                                "⚙️ {}",
+                                i18n::LOCALES
+                                    .lookup(&state.config.language, "settings")
+                                    .unwrap()
+                            ),
+                        )
+                        .clicked()
+                    {
+                        state.show_settings = if state.show_settings.is_some() {
+                            None
+                        } else {
+                            Some(SettingsTab::General)
+                        };
+                    }
+
+                    if ui
+                        .selectable_label(
+                            state.show_debug,
+                            format!(
+                                "🐛 {}",
+                                i18n::LOCALES
+                                    .lookup(&state.config.language, "debug")
+                                    .unwrap()
+                            ),
+                        )
+                        .clicked()
+                    {
+                        state.show_debug = !state.show_debug;
+                    }
+                })
+            });
         }
 
-        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Grave) {
-            state.show_debug = !state.show_debug;
-        }
         self.draw_debug_window(ctx, handle.clone(), state);
-        match &mut state.toplevel_tab {
-            ToplevelTab::Settings(settings_tab) => {
-                self.draw_settings(ctx, settings_tab, &mut state.config, &mut state.steal_input);
-            }
-            _ => {}
-        }
+        self.draw_settings_window(
+            ctx,
+            &mut state.show_settings,
+            &mut state.config,
+            &mut state.steal_input,
+        );
         self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
     }
 }
