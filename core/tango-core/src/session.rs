@@ -30,6 +30,12 @@ pub enum Mode {
     Replayer,
 }
 
+fn fix_vbuf_alpha(vbuf: &mut [u8]) {
+    for i in (0..vbuf.len()).step_by(4) {
+        vbuf[i + 3] = 0xff;
+    }
+}
+
 impl Session {
     pub fn new_pvp(
         handle: tokio::runtime::Handle,
@@ -37,6 +43,8 @@ impl Session {
         sample_rate: cpal::SampleRate,
         rom: &[u8],
         save: &[u8],
+        shadow_rom: &[u8],
+        shadow_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         dc: datachannel_wrapper::DataChannel,
         peer_conn: datachannel_wrapper::PeerConnection,
@@ -45,12 +53,10 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        let rom_vf = mgba::vfile::VFile::open_memory(&rom);
-        core.as_mut().load_rom(rom_vf)?;
-
-        let save_vf = mgba::vfile::VFile::open_memory(&save);
-
-        core.as_mut().load_save(save_vf)?;
+        core.as_mut()
+            .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
+        core.as_mut()
+            .load_save(mgba::vfile::VFile::open_memory(&save))?;
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
@@ -90,6 +96,8 @@ impl Session {
                     rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                     is_offerer,
                     thread.handle(),
+                    shadow_rom,
+                    shadow_save,
                     settings,
                 )
                 .expect("new match");
@@ -138,9 +146,7 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                for i in (0..vbuf.len()).step_by(4) {
-                    vbuf[i + 3] = 0xff;
-                }
+                fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
             });
@@ -165,8 +171,8 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        let rom_vf = mgba::vfile::VFile::open_memory(rom);
-        core.as_mut().load_rom(rom_vf)?;
+        core.as_mut()
+            .load_rom(mgba::vfile::VFile::open_memory(rom))?;
 
         let save_vf = mgba::vfile::VFile::open(
             &save_path,
@@ -208,9 +214,7 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                for i in (0..vbuf.len()).step_by(4) {
-                    vbuf[i + 3] = 0xff;
-                }
+                fix_vbuf_alpha(&mut vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
             });
@@ -228,16 +232,15 @@ impl Session {
     pub fn new_replayer(
         audio_binder: audio::LateBinder,
         sample_rate: cpal::SampleRate,
-        rom_path: std::path::PathBuf,
+        rom: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         replay: replay::Replay,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        let rom = std::fs::read(rom_path)?;
-        let rom_vf = mgba::vfile::VFile::open_memory(&rom);
-        core.as_mut().load_rom(rom_vf)?;
+        core.as_mut()
+            .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
         let hooks = hooks::get(core.as_mut()).unwrap();
         hooks.patch(core.as_mut());
@@ -293,9 +296,7 @@ impl Session {
             thread.set_frame_callback(move |_core, video_buffer| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                for i in (0..vbuf.len()).step_by(4) {
-                    vbuf[i + 3] = 0xff;
-                }
+                fix_vbuf_alpha(&mut vbuf);
                 emu_tps_counter.lock().mark();
             });
         }

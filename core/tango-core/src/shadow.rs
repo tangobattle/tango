@@ -183,24 +183,18 @@ impl State {
 impl Shadow {
     pub fn new(
         rom: &[u8],
-        save_path: &std::path::Path,
+        save: &[u8],
         match_type: (u8, u8),
         is_offerer: bool,
         battle_result: battle::BattleResult,
         rng: rand_pcg::Mcg128Xsl64,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
-        let rom_vf = mgba::vfile::VFile::open_memory(rom);
-        core.as_mut().load_rom(rom_vf)?;
 
-        log::info!(
-            "loaded shadow game: {} rev {}",
-            std::str::from_utf8(&core.as_mut().full_rom_name()).unwrap(),
-            core.as_mut().rom_revision(),
-        );
-
-        let save_vf = mgba::vfile::VFile::open_memory(&std::fs::read(save_path)?);
-        core.as_mut().load_save(save_vf)?;
+        core.as_mut()
+            .load_rom(mgba::vfile::VFile::open_memory(rom))?;
+        core.as_mut()
+            .load_save(mgba::vfile::VFile::open_memory(save))?;
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 

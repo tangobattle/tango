@@ -30,8 +30,6 @@ pub struct MatchInit {
 
 pub struct Settings {
     pub replays_path: std::path::PathBuf,
-    pub shadow_save_path: std::path::PathBuf,
-    pub shadow_rom_path: std::path::PathBuf,
     pub replay_metadata: Vec<u8>,
     pub match_type: (u8, u8),
     pub input_delay: u32,
@@ -157,10 +155,10 @@ impl Match {
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
+        shadow_rom: &[u8],
+        shadow_save: &[u8],
         settings: Settings,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
-        let shadow_rom = std::fs::read(&settings.shadow_rom_path)?;
-
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let (transport_rendezvous_tx, transport_rendezvous_rx) = tokio::sync::oneshot::channel();
         let did_polite_win_last_round = rng.gen::<bool>();
@@ -172,7 +170,7 @@ impl Match {
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(parking_lot::Mutex::new(shadow::Shadow::new(
                 &shadow_rom,
-                &settings.shadow_save_path,
+                &shadow_save,
                 settings.match_type,
                 is_offerer,
                 last_result,
