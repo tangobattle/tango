@@ -122,6 +122,10 @@ where
         self.controllers.remove(&id);
     }
 
+    pub fn clear_keys(&mut self) {
+        self.keys_held.clear();
+    }
+
     pub fn is_key_pressed(&self, key: ST::Key) -> bool {
         !self.last_keys_held.contains(&key) && self.keys_held.contains(&key)
     }

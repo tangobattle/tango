@@ -168,13 +168,12 @@ pub fn run(
                 event: window_event,
                 ..
             } => {
-                let handled_by_egui = egui_glow.on_event(&window_event);
                 match window_event {
-                    glutin::event::WindowEvent::Resized(size) => {
-                        gl_window.resize(size);
-                    }
-                    glutin::event::WindowEvent::CloseRequested => {
-                        control_flow.set_exit();
+                    glutin::event::WindowEvent::MouseInput { .. }
+                    | glutin::event::WindowEvent::CursorMoved { .. } => {
+                        if let StealInputState::Idle = state.steal_input {
+                            egui_glow.on_event(&window_event);
+                        }
                     }
                     glutin::event::WindowEvent::KeyboardInput {
                         input:
@@ -194,18 +193,32 @@ pub fn run(
                                     &mut state.config.input_mapping,
                                 );
                             } else {
-                                if !handled_by_egui {
+                                if !egui_glow.on_event(&window_event) {
                                     input_state.handle_key_down(virutal_keycode);
                                 }
                             }
                         }
                         glutin::event::ElementState::Released => {
-                            if !handled_by_egui {
+                            if !egui_glow.on_event(&window_event) {
                                 input_state.handle_key_up(virutal_keycode);
                             }
                         }
                     },
-                    _ => {}
+                    window_event => {
+                        egui_glow.on_event(&window_event);
+                        match window_event {
+                            glutin::event::WindowEvent::Focused(false) => {
+                                input_state.clear_keys();
+                            }
+                            glutin::event::WindowEvent::Resized(size) => {
+                                gl_window.resize(size);
+                            }
+                            glutin::event::WindowEvent::CloseRequested => {
+                                control_flow.set_exit();
+                            }
+                            _ => {}
+                        }
+                    }
                 };
             }
             glutin::event::Event::NewEvents(_) => {
