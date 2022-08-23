@@ -1221,6 +1221,21 @@ impl Gui {
             state.show_menubar = true;
         }
 
+        egui::Window::new("test").show(ctx, |ui| {
+            ui.vertical(|ui| {
+                for game in games::GAMES {
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(
+                                &state.config.language,
+                                &format!("games.{}-{}", game.family(), game.variant()),
+                            )
+                            .unwrap(),
+                    );
+                }
+            });
+        });
+
         self.draw_menubar(ctx, state);
         self.draw_debug_overlay(ctx, handle.clone(), state);
         self.draw_settings_window(
