@@ -79,6 +79,7 @@ struct FontFamilies {
 
 pub struct Gui {
     vbuf: Option<VBuf>,
+    emblem: egui_extras::RetainedImage,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -108,6 +109,11 @@ impl Gui {
 
         Self {
             vbuf: None,
+            emblem: egui_extras::RetainedImage::from_image_bytes(
+                "emblem",
+                include_bytes!("emblem.png"),
+            )
+            .unwrap(),
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
@@ -527,6 +533,12 @@ impl Gui {
                         env!("CARGO_PKG_VERSION"),
                         git_version::git_version!(),
                     ));
+
+                    ui.add_space(8.0);
+                    ui.vertical_centered(|ui| {
+                        self.emblem.show_scaled(ui, 0.5);
+                    });
+                    ui.add_space(8.0);
 
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
