@@ -1,4 +1,5 @@
 mod hooks;
+mod save;
 
 use crate::games;
 
@@ -24,6 +25,20 @@ impl games::Game for EXE6G {
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
         Box::new(hooks::BR5J_00.clone())
     }
+
+    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::JP,
+                variant: save::Variant::Gregar,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
+    }
 }
 
 #[derive(Clone)]
@@ -47,6 +62,20 @@ impl games::Game for EXE6F {
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
         Box::new(hooks::BR6J_00.clone())
+    }
+
+    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::JP,
+                variant: save::Variant::Falzar,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
 
@@ -72,6 +101,20 @@ impl games::Game for BN6G {
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
         Box::new(hooks::BR5E_00.clone())
     }
+
+    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::US,
+                variant: save::Variant::Gregar,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
+    }
 }
 
 #[derive(Clone)]
@@ -95,5 +138,19 @@ impl games::Game for BN6F {
 
     fn hooks(&self) -> Box<dyn games::Hooks + Send + Sync + 'static> {
         Box::new(hooks::BR6E_00.clone())
+    }
+
+    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::US,
+                variant: save::Variant::Falzar,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
