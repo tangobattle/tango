@@ -93,6 +93,24 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
+pub fn sorted_games(
+    lang: &unic_langid::LanguageIdentifier,
+) -> Vec<&'static (dyn Game + Send + Sync)> {
+    let mut games = GAMES.to_vec();
+    games.sort_by_key(|g| {
+        (
+            if g.language().matches(lang, true, true) {
+                0
+            } else {
+                1
+            },
+            g.family(),
+            g.variant(),
+        )
+    });
+    games
+}
+
 pub fn find_by_family_and_variant(
     family: &str,
     variant: u32,

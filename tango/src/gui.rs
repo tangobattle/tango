@@ -1222,7 +1222,7 @@ impl Gui {
 
         egui::Window::new("test").show(ctx, |ui| {
             ui.vertical(|ui| {
-                for game in games::GAMES {
+                for game in games::sorted_games(&state.config.language) {
                     ui.label(
                         i18n::LOCALES
                             .lookup(
