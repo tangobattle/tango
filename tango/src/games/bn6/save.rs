@@ -30,21 +30,13 @@ pub struct Save {
     buf: Vec<u8>,
 }
 
-fn mask(buf: &mut [u8]) {
-    let mask = byteorder::LittleEndian::read_u32(&buf[MASK_OFFSET..MASK_OFFSET + 4]);
-    for b in buf.iter_mut() {
-        *b = *b ^ (mask as u8);
-    }
-    byteorder::LittleEndian::write_u32(&mut buf[MASK_OFFSET..MASK_OFFSET + 4], mask);
-}
-
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let mut buf = buf
             .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
-        mask(&mut buf);
+        games::mask_save(&mut buf[..], MASK_OFFSET);
 
         let save = Self { buf };
         save.game_info()?;
@@ -90,18 +82,11 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        let mut checksum = match self.game_info().unwrap().variant {
-            Variant::Gregar => 0x72,
-            Variant::Falzar => 0x18,
-        };
-
-        for (i, b) in self.buf.iter().enumerate() {
-            if i >= CHECKSUM_OFFSET && i < CHECKSUM_OFFSET + 4 {
-                continue;
+        games::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET)
+            + match self.game_info().unwrap().variant {
+                Variant::Gregar => 0x72,
+                Variant::Falzar => 0x18,
             }
-            checksum += *b as u32;
-        }
-        checksum
     }
 }
 

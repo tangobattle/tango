@@ -8,14 +8,6 @@ const GAME_NAME_OFFSET: usize = 0x2208;
 const CHECKSUM_OFFSET: usize = 0x21e8;
 const SHIFT_OFFSET: usize = 0x1550;
 
-fn mask(buf: &mut [u8]) {
-    let mask = byteorder::LittleEndian::read_u32(&buf[MASK_OFFSET..MASK_OFFSET + 4]);
-    for b in buf.iter_mut() {
-        *b = *b ^ (mask as u8);
-    }
-    byteorder::LittleEndian::write_u32(&mut buf[MASK_OFFSET..MASK_OFFSET + 4], mask);
-}
-
 #[derive(PartialEq, Debug, Copy, Clone)]
 pub enum Variant {
     BlueMoon,
@@ -49,17 +41,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8], shift: usize) -> u32 {
-    let checksum_offset = shift + CHECKSUM_OFFSET;
-    buf.iter()
-        .enumerate()
-        .map(|(i, b)| {
-            if i < checksum_offset || i >= checksum_offset + 4 {
-                *b as u32
-            } else {
-                0
-            }
-        })
-        .sum::<u32>()
+    games::compute_save_raw_checksum(&buf, shift + CHECKSUM_OFFSET)
 }
 
 impl Save {
@@ -69,7 +51,7 @@ impl Save {
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        mask(&mut buf[..]);
+        games::mask_save(&mut buf[..], MASK_OFFSET);
 
         let shift =
             byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;

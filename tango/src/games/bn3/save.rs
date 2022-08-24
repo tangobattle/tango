@@ -30,16 +30,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8]) -> u32 {
-    buf.iter()
-        .enumerate()
-        .map(|(i, b)| {
-            if i < CHECKSUM_OFFSET || i >= CHECKSUM_OFFSET + 4 {
-                *b as u32
-            } else {
-                0
-            }
-        })
-        .sum::<u32>()
+    games::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
 }
 
 impl Save {

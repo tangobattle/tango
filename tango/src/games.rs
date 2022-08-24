@@ -1,3 +1,4 @@
+use byteorder::ByteOrder;
 use std::any::Any;
 
 use crate::{battle, replayer, session, shadow};
@@ -252,4 +253,25 @@ pub trait Hooks {
     fn prepare_for_fastforward(&self, core: mgba::core::CoreMutRef);
 
     fn predict_rx(&self, _rx: &mut Vec<u8>) {}
+}
+
+pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
+    let mask = byteorder::LittleEndian::read_u32(&buf[mask_offset..mask_offset + 4]);
+    for b in buf.iter_mut() {
+        *b = *b ^ (mask as u8);
+    }
+    byteorder::LittleEndian::write_u32(&mut buf[mask_offset..mask_offset + 4], mask);
+}
+
+pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
+    buf.iter()
+        .enumerate()
+        .map(|(i, b)| {
+            if i < checksum_offset || i >= checksum_offset + 4 {
+                *b as u32
+            } else {
+                0
+            }
+        })
+        .sum::<u32>()
 }
