@@ -1448,28 +1448,23 @@ impl Gui {
                 _ => "NotoSans-Regular",
             };
 
+            let proportional = vec![
+                primary_font.to_string(),
+                "NotoSans-Regular".to_string(),
+                "NotoSansJP-Regular".to_string(),
+                "NotoSansSC-Regular".to_string(),
+                "NotoSansTC-Regular".to_string(),
+                "NotoEmoji-Regular".to_string(),
+            ];
+
+            let mut monospace = vec!["NotoSansMono-Regular".to_string()];
+            monospace.extend(proportional.clone());
+
             ctx.set_fonts(egui::FontDefinitions {
                 font_data: self.font_data.clone(),
                 families: std::collections::BTreeMap::from([
-                    (
-                        egui::FontFamily::Proportional,
-                        vec![
-                            primary_font.to_string(),
-                            "NotoSans-Regular".to_string(),
-                            "NotoSansJP-Regular".to_string(),
-                            "NotoSansSC-Regular".to_string(),
-                            "NotoSansTC-Regular".to_string(),
-                            "NotoEmoji-Regular".to_string(),
-                        ],
-                    ),
-                    (
-                        egui::FontFamily::Monospace,
-                        vec![
-                            "NotoSansMono-Regular".to_string(),
-                            primary_font.to_string(),
-                            "NotoEmoji-Regular".to_string(),
-                        ],
-                    ),
+                    (egui::FontFamily::Proportional, proportional),
+                    (egui::FontFamily::Monospace, monospace),
                     (
                         self.font_families.jpan.clone(),
                         vec!["NotoSansJP-Regular".to_string()],
