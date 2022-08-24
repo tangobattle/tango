@@ -68,12 +68,12 @@ pub struct Chunk {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Ping {
-    pub ts: u64,
+    pub ts: std::time::SystemTime,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Pong {
-    pub ts: u64,
+    pub ts: std::time::SystemTime,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -84,8 +84,7 @@ pub struct PatchInfo {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct GameInfo {
-    pub family: String,
-    pub variant: u8,
+    pub family_and_variant: (String, u8),
     pub patch: Option<PatchInfo>,
 }
 
