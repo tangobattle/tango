@@ -156,11 +156,6 @@ impl Transport {
         .await
     }
 
-    pub async fn send_hola(&mut self) -> anyhow::Result<()> {
-        self.send_packet(&protocol::Packet::Hola(protocol::Hola {}))
-            .await
-    }
-
     pub async fn send_ping(&mut self, ts: std::time::SystemTime) -> anyhow::Result<()> {
         self.send_packet(&protocol::Packet::Ping(protocol::Ping { ts }))
             .await

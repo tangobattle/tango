@@ -18,7 +18,6 @@ lazy_static! {
 pub enum Packet {
     // Handshake.
     Hello(Hello),
-    Hola(Hola),
 
     // Ping.
     Ping(Ping),
@@ -49,9 +48,6 @@ impl Packet {
 pub struct Hello {
     pub protocol_version: u8,
 }
-
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct Hola {}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct Commit {
