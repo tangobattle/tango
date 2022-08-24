@@ -226,8 +226,8 @@ fn main() -> Result<(), anyhow::Error> {
                         sdl2::event::Event::ControllerAxisMotion {
                             axis, value, which, ..
                         } => {
-                            if let Some(steal_input) = state.steal_input.take() {
-                                if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
+                            if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
+                                if let Some(steal_input) = state.steal_input.take() {
                                     steal_input.run_callback(
                                         input::PhysicalInput::Axis {
                                             axis,
@@ -239,14 +239,15 @@ fn main() -> Result<(), anyhow::Error> {
                                         },
                                         &mut state.config.input_mapping,
                                     );
+                                } else {
+                                    input_state.handle_controller_axis_motion(
+                                        which,
+                                        axis as usize,
+                                        value,
+                                    );
                                 }
-                            } else {
-                                input_state.handle_controller_axis_motion(
-                                    which,
-                                    axis as usize,
-                                    value,
-                                );
                             }
+                            input_state.handle_controller_axis_motion(which, axis as usize, value);
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                             if let Some(steal_input) = state.steal_input.take() {
