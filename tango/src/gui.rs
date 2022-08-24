@@ -1118,7 +1118,7 @@ impl Gui {
                                     format!(
                                         "⬅️ {}",
                                         i18n::LOCALES
-                                            .lookup(language, "open.return-to-games-list")
+                                            .lookup(language, "play.return-to-games-list")
                                             .unwrap()
                                     ),
                                 )
