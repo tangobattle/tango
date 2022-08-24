@@ -18,6 +18,7 @@ pub struct State {
     pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
     pub show_menubar: bool,
+    pub show_open: bool,
     pub show_settings: Option<SettingsTab>,
     pub show_about: bool,
     pub drpc: discord_rpc_client::Client,
@@ -43,6 +44,7 @@ impl State {
             session: None,
             steal_input: None,
             show_menubar: false,
+            show_open: false,
             show_settings: None,
             show_about: false,
             drpc,
@@ -905,6 +907,58 @@ impl Gui {
         });
     }
 
+    fn draw_open_window(
+        &mut self,
+        ctx: &egui::Context,
+        show_open: &mut bool,
+        language: &unic_langid::LanguageIdentifier,
+        roms: &mut std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
+        saves: &mut std::collections::HashMap<
+            &'static (dyn games::Game + Send + Sync),
+            Vec<std::path::PathBuf>,
+        >,
+    ) {
+        egui::Window::new(format!(
+            "📂 {}",
+            i18n::LOCALES.lookup(language, "open").unwrap()
+        ))
+        .id(egui::Id::new("open-window"))
+        .open(show_open)
+        .show(ctx, |ui| {
+            let games = games::sorted_games(language);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                    for (available, game) in games
+                        .iter()
+                        .filter(|g| roms.contains_key(*g))
+                        .map(|g| (true, g))
+                        .chain(
+                            games
+                                .iter()
+                                .filter(|g| !roms.contains_key(*g))
+                                .map(|g| (false, g)),
+                        )
+                    {
+                        let text = i18n::LOCALES
+                            .lookup(
+                                language,
+                                &format!("games.{}-{}", game.family(), game.variant()),
+                            )
+                            .unwrap();
+
+                        if available {
+                            if ui.selectable_label(false, text).clicked() {
+                                // TODO
+                            }
+                        } else {
+                            ui.weak(text);
+                        }
+                    }
+                });
+            });
+        });
+    }
+
     fn draw_emulator(&mut self, ui: &mut egui::Ui, session: &session::Session, video_filter: &str) {
         let video_filter =
             video::filter_by_name(video_filter).unwrap_or(Box::new(video::NullFilter));
@@ -1080,6 +1134,21 @@ impl Gui {
             ui.horizontal(|ui| {
                 if ui
                     .selectable_label(
+                        state.show_open,
+                        format!(
+                            "📂 {}",
+                            i18n::LOCALES
+                                .lookup(&state.config.language, "open")
+                                .unwrap()
+                        ),
+                    )
+                    .clicked()
+                {
+                    state.show_open = !state.show_open;
+                }
+
+                if ui
+                    .selectable_label(
                         state.show_settings.is_some(),
                         format!(
                             "⚙️ {}",
@@ -1218,41 +1287,14 @@ impl Gui {
             state.show_menubar = true;
         }
 
-        egui::Window::new("test").show(ctx, |ui| {
-            let games = games::sorted_games(&state.config.language);
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    for (available, game) in games
-                        .iter()
-                        .filter(|g| state.roms.contains_key(*g))
-                        .map(|g| (true, g))
-                        .chain(
-                            games
-                                .iter()
-                                .filter(|g| !state.roms.contains_key(*g))
-                                .map(|g| (false, g)),
-                        )
-                    {
-                        let text = i18n::LOCALES
-                            .lookup(
-                                &state.config.language,
-                                &format!("games.{}-{}", game.family(), game.variant()),
-                            )
-                            .unwrap();
-
-                        if available {
-                            if ui.selectable_label(false, text).clicked() {
-                                // TODO
-                            }
-                        } else {
-                            ui.weak(text);
-                        }
-                    }
-                });
-            });
-        });
-
         self.draw_debug_overlay(ctx, handle.clone(), state);
+        self.draw_open_window(
+            ctx,
+            &mut state.show_open,
+            &state.config.language,
+            &mut state.roms,
+            &mut state.saves,
+        );
         self.draw_settings_window(
             ctx,
             &mut state.show_settings,
