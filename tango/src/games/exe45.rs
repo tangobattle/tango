@@ -1,4 +1,5 @@
 mod hooks;
+mod save;
 
 use crate::games;
 
@@ -27,6 +28,7 @@ impl games::Game for EXE45Impl {
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
-        anyhow::bail!("not implemented");
+        let save = save::Save::new(data)?;
+        Ok(Box::new(save))
     }
 }
