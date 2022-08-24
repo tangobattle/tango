@@ -49,7 +49,7 @@ impl Save {
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
         let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
-        if n != b"ROCKMANEXE3 20021002" {
+        if n != b"ROCKMANEXE3 20021002" && n != b"BBN3 v0.5.0 20021002" {
             anyhow::bail!("unknown game name: {:02x?}", n);
         }
 
