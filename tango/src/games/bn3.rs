@@ -7,6 +7,10 @@ struct EXE3WImpl;
 pub const EXE3W: &'static (dyn games::Game + Send + Sync) = &EXE3WImpl {};
 
 impl games::Game for EXE3WImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"A6BJ", 0x01)
+    }
+
     fn family(&self) -> &str {
         "exe3"
     }
@@ -45,6 +49,10 @@ struct EXE3BImpl;
 pub const EXE3B: &'static (dyn games::Game + Send + Sync) = &EXE3BImpl {};
 
 impl games::Game for EXE3BImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"A3XJ", 0x01)
+    }
+
     fn family(&self) -> &str {
         "exe3"
     }
@@ -83,6 +91,10 @@ struct BN3WImpl;
 pub const BN3W: &'static (dyn games::Game + Send + Sync) = &BN3WImpl {};
 
 impl games::Game for BN3WImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"A6BE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn3"
     }
@@ -121,6 +133,10 @@ struct BN3BImpl;
 pub const BN3B: &'static (dyn games::Game + Send + Sync) = &BN3BImpl {};
 
 impl games::Game for BN3BImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"A3XE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn3"
     }

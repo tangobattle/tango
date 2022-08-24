@@ -200,32 +200,10 @@ pub fn find_by_family_and_variant(
 }
 
 pub fn find_by_rom_info(code: &[u8; 4], revision: u8) -> Option<&'static (dyn Game + Send + Sync)> {
-    Some(match (code, revision) {
-        (b"AREJ", 0x00) => bn1::EXE1,
-        (b"AREE", 0x00) => bn1::BN1,
-        (b"AE2J", 0x01) => bn2::EXE2,
-        (b"AE2E", 0x00) => bn2::BN2,
-        (b"A6BJ", 0x01) => bn3::EXE3W,
-        (b"A3XJ", 0x01) => bn3::EXE3B,
-        (b"A6BE", 0x00) => bn3::BN3W,
-        (b"A3XE", 0x00) => bn3::BN3B,
-        (b"B4WJ", 0x01) => bn4::EXE4RS,
-        (b"B4BJ", 0x00) => bn4::EXE4BM,
-        (b"B4WE", 0x00) => bn4::BN4RS,
-        (b"B4BE", 0x00) => bn4::BN4BM,
-        (b"BR4J", 0x00) => exe45::EXE45,
-        (b"BRBJ", 0x00) => bn5::EXE5B,
-        (b"BRKJ", 0x00) => bn5::EXE5C,
-        (b"BRBE", 0x00) => bn5::BN5P,
-        (b"BRKE", 0x00) => bn5::BN5C,
-        (b"BR5J", 0x00) => bn6::EXE6G,
-        (b"BR6J", 0x00) => bn6::EXE6F,
-        (b"BR5E", 0x00) => bn6::BN6G,
-        (b"BR6E", 0x00) => bn6::BN6F,
-        _ => {
-            return None;
-        }
-    })
+    GAMES
+        .iter()
+        .find(|game| game.rom_code_and_revision() == (code, revision))
+        .map(|g| *g)
 }
 
 pub fn detect(rom: &[u8]) -> Result<&'static (dyn Game + Send + Sync), anyhow::Error> {
@@ -255,6 +233,7 @@ where
     fn family(&self) -> &str;
     fn variant(&self) -> u32;
     fn language(&self) -> unic_langid::LanguageIdentifier;
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8);
     fn expected_crc32(&self) -> u32;
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn Save>, anyhow::Error>;

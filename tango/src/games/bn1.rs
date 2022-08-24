@@ -7,6 +7,10 @@ struct EXE1Impl;
 pub const EXE1: &'static (dyn games::Game + Send + Sync) = &EXE1Impl {};
 
 impl games::Game for EXE1Impl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"AREJ", 0x00)
+    }
+
     fn family(&self) -> &str {
         "exe1"
     }
@@ -45,6 +49,10 @@ struct BN1Impl;
 pub const BN1: &'static (dyn games::Game + Send + Sync) = &BN1Impl {};
 
 impl games::Game for BN1Impl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"AREE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn1"
     }

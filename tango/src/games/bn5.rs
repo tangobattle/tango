@@ -6,6 +6,10 @@ struct EXE5BImpl;
 pub const EXE5B: &'static (dyn games::Game + Send + Sync) = &EXE5BImpl {};
 
 impl games::Game for EXE5BImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"BRBJ", 0x00)
+    }
+
     fn family(&self) -> &str {
         "exe5"
     }
@@ -35,6 +39,10 @@ struct EXE5CImpl;
 pub const EXE5C: &'static (dyn games::Game + Send + Sync) = &EXE5CImpl {};
 
 impl games::Game for EXE5CImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"BRKJ", 0x00)
+    }
+
     fn family(&self) -> &str {
         "exe5"
     }
@@ -64,6 +72,10 @@ struct BN5PImpl;
 pub const BN5P: &'static (dyn games::Game + Send + Sync) = &BN5PImpl {};
 
 impl games::Game for BN5PImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"BRBE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn5"
     }
@@ -93,6 +105,10 @@ struct BN5CImpl;
 pub const BN5C: &'static (dyn games::Game + Send + Sync) = &BN5CImpl {};
 
 impl games::Game for BN5CImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"BRKE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn5"
     }

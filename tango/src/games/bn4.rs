@@ -7,6 +7,10 @@ struct EXE4RSImpl;
 pub const EXE4RS: &'static (dyn games::Game + Send + Sync) = &EXE4RSImpl {};
 
 impl games::Game for EXE4RSImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"B4WJ", 0x01)
+    }
+
     fn family(&self) -> &str {
         "exe4"
     }
@@ -43,6 +47,10 @@ struct EXE4BMImpl;
 pub const EXE4BM: &'static (dyn games::Game + Send + Sync) = &EXE4BMImpl {};
 
 impl games::Game for EXE4BMImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"B4BJ", 0x00)
+    }
+
     fn family(&self) -> &str {
         "exe4"
     }
@@ -79,6 +87,10 @@ struct BN4RSImpl;
 pub const BN4RS: &'static (dyn games::Game + Send + Sync) = &BN4RSImpl {};
 
 impl games::Game for BN4RSImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"B4WE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn4"
     }
@@ -115,6 +127,10 @@ struct BN4BMImpl;
 pub const BN4BM: &'static (dyn games::Game + Send + Sync) = &BN4BMImpl {};
 
 impl games::Game for BN4BMImpl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"B4BE", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn4"
     }

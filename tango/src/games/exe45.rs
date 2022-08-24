@@ -6,6 +6,10 @@ struct EXE45Impl;
 pub const EXE45: &'static (dyn games::Game + Send + Sync) = &EXE45Impl {};
 
 impl games::Game for EXE45Impl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"BR4J", 0x00)
+    }
+
     fn family(&self) -> &str {
         "exe45"
     }

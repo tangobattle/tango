@@ -7,6 +7,10 @@ struct EXE2Impl;
 pub const EXE2: &'static (dyn games::Game + Send + Sync) = &EXE2Impl {};
 
 impl games::Game for EXE2Impl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"AE2J", 0x01)
+    }
+
     fn family(&self) -> &str {
         "exe2"
     }
@@ -37,6 +41,10 @@ pub struct BN2Impl;
 pub const BN2: &'static (dyn games::Game + Send + Sync) = &BN2Impl {};
 
 impl games::Game for BN2Impl {
+    fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
+        (b"AE2E", 0x00)
+    }
+
     fn family(&self) -> &str {
         "bn2"
     }
