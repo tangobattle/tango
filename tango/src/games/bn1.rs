@@ -1,4 +1,5 @@
 mod hooks;
+mod save;
 
 use crate::games;
 
@@ -25,6 +26,19 @@ impl games::Game for EXE1Impl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::AREJ_00
     }
+
+    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::JP,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
+    }
 }
 
 struct BN1Impl;
@@ -49,5 +63,18 @@ impl games::Game for BN1Impl {
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::AREE_00
+    }
+
+    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::US,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
