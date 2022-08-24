@@ -125,6 +125,7 @@ pub fn scan_saves(
             }
         };
 
+        let mut ok = false;
         let mut errors = vec![];
         for game in GAMES.iter() {
             match game.parse_save(&buf) {
@@ -137,7 +138,7 @@ pub fn scan_saves(
                     );
                     let save_paths = paths.entry(*game).or_insert_with(|| vec![]);
                     save_paths.push(path.to_path_buf());
-                    continue;
+                    ok = true;
                 }
                 Err(e) => {
                     errors.push((*game, e));
@@ -145,20 +146,22 @@ pub fn scan_saves(
             }
         }
 
-        log::warn!(
-            "{}:\n{}",
-            path.display(),
-            errors
-                .iter()
-                .map(|(k, v)| format!(
-                    "(family = {}, variant = {}): {}",
-                    k.family(),
-                    k.variant(),
-                    v
-                ))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
+        if !ok {
+            log::warn!(
+                "{}:\n{}",
+                path.display(),
+                errors
+                    .iter()
+                    .map(|(k, v)| format!(
+                        "(family = {}, variant = {}): {}",
+                        k.family(),
+                        k.variant(),
+                        v
+                    ))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
     }
 
     for (_, saves) in paths.iter_mut() {

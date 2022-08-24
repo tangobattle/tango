@@ -1,4 +1,5 @@
 mod hooks;
+mod save;
 
 use crate::games;
 
@@ -25,6 +26,17 @@ impl games::Game for EXE4RSImpl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::B4WJ_01
     }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info();
+        if game_info.variant != save::Variant::RedSun
+            || (game_info.region != save::Region::JP && game_info.region != save::Region::Any)
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
+    }
 }
 
 struct EXE4BMImpl;
@@ -49,6 +61,17 @@ impl games::Game for EXE4BMImpl {
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::B4BJ_01
+    }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info();
+        if game_info.variant != save::Variant::BlueMoon
+            || (game_info.region != save::Region::JP && game_info.region != save::Region::Any)
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
 
@@ -75,6 +98,17 @@ impl games::Game for BN4RSImpl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::B4WE_00
     }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info();
+        if game_info.variant != save::Variant::RedSun
+            || (game_info.region != save::Region::US && game_info.region != save::Region::Any)
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
+    }
 }
 
 struct BN4BMImpl;
@@ -99,5 +133,16 @@ impl games::Game for BN4BMImpl {
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::B4BE_00
+    }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info();
+        if game_info.variant != save::Variant::BlueMoon
+            || (game_info.region != save::Region::US && game_info.region != save::Region::Any)
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }

@@ -53,20 +53,22 @@ impl Save {
             anyhow::bail!("unknown game name: {:02x?}", n);
         }
 
-        let game_info = GameInfo {
-            variant: {
-                const WHITE: u32 = checksum_start_for_variant(Variant::White);
-                const BLUE: u32 = checksum_start_for_variant(Variant::Blue);
-                match byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
-                    - compute_raw_checksum(&buf)
+        let game_info = {
+            const WHITE: u32 = checksum_start_for_variant(Variant::White);
+            const BLUE: u32 = checksum_start_for_variant(Variant::Blue);
+            GameInfo {
+                variant: match byteorder::LittleEndian::read_u32(
+                    &buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4],
+                )
+                .checked_sub(compute_raw_checksum(&buf))
                 {
-                    WHITE => Variant::White,
-                    BLUE => Variant::Blue,
+                    Some(WHITE) => Variant::White,
+                    Some(BLUE) => Variant::Blue,
                     n => {
-                        anyhow::bail!("unknown checksum start: {:02x}", n)
+                        anyhow::bail!("unknown checksum start: {:02x?}", n)
                     }
-                }
-            },
+                },
+            }
         };
 
         let save = Self { buf, game_info };
