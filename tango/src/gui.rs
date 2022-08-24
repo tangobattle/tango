@@ -983,6 +983,7 @@ impl Gui {
                                     {
                                         *show_open = None;
                                         *show_menubar = false;
+                                        *session = None;
                                         *session = Some(
                                             session::Session::new_singleplayer(
                                                 audio_binder.clone(),
