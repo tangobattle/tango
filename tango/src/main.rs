@@ -25,6 +25,8 @@ mod video;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use glow::HasContext;
 
+const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
+
 fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
         .filter(Some("tango"), log::LevelFilter::Info)
@@ -38,6 +40,47 @@ fn main() -> Result<(), anyhow::Error> {
         git_version::git_version!()
     );
 
+    let project_dirs = config::get_project_dirs().unwrap();
+
+    if std::env::var(TANGO_CHILD_ENV_VAR).unwrap_or_default() == "1" {
+        return child_main();
+    }
+
+    let log_filename = format!(
+        "{}.log",
+        time::OffsetDateTime::from(std::time::SystemTime::now())
+            .format(time::macros::format_description!(
+                "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
+            ))
+            .expect("format time"),
+    );
+
+    let logs_dir = project_dirs.data_dir().join("logs");
+    let _ = std::fs::create_dir(&logs_dir);
+    let log_path = logs_dir.join(log_filename);
+    log::info!("logging to: {}", log_path.display());
+
+    let log_file = std::fs::File::create(log_path)?;
+
+    let status = std::process::Command::new(std::env::current_exe()?)
+        .args(
+            std::env::args_os()
+                .skip(1)
+                .collect::<Vec<std::ffi::OsString>>(),
+        )
+        .env(TANGO_CHILD_ENV_VAR, "1")
+        .stderr(log_file)
+        .spawn()?
+        .wait()?;
+
+    if let Some(code) = status.code() {
+        std::process::exit(code);
+    }
+
+    Ok(())
+}
+
+fn child_main() -> Result<(), anyhow::Error> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
