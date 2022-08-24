@@ -11,6 +11,12 @@ pub enum State {
     Netplay,
 }
 
+impl State {
+    pub fn new() -> Self {
+        Self::General
+    }
+}
+
 pub struct Settings {
     font_families: gui::FontFamilies,
 }

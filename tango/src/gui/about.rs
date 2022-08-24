@@ -21,7 +21,7 @@ impl About {
         &self,
         ctx: &egui::Context,
         lang: &unic_langid::LanguageIdentifier,
-        open: &mut bool,
+        show_about: &mut bool,
     ) {
         egui::Window::new(format!(
             "❓ {}",
@@ -29,7 +29,7 @@ impl About {
         ))
         .id(egui::Id::new("about-window"))
         .default_width(320.0)
-        .open(open)
+        .open(show_about)
         .show(ctx, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
