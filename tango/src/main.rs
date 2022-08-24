@@ -132,15 +132,12 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut state = gui::State::new(config, fps_counter.clone(), emu_tps_counter.clone());
 
-    // state.session = Some(session::Session::new(
-    //     rt.handle().clone(),
-    //     audio_binder.clone(),
-    //     audio_supported_config.sample_rate(),
-    //     rom_path,
-    //     save_path,
-    //     emu_tps_counter.clone(),
-    //     match_init,
-    // )?);
+    state.session = Some(session::Session::new_singleplayer(
+        audio_binder.clone(),
+        state.roms.get(&games::GAMES[8]).unwrap(),
+        "test.sav".into(),
+        emu_tps_counter.clone(),
+    )?);
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();

@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::{battle, replayer, session, shadow};
 
 mod bn1;
@@ -8,7 +10,19 @@ mod bn5;
 mod bn6;
 mod exe45;
 
-pub type GameKey = by_address::ByAddress<&'static (dyn Game + Send + Sync)>;
+impl PartialEq for &'static (dyn Game + Send + Sync) {
+    fn eq(&self, other: &Self) -> bool {
+        (*self).type_id() == (*other).type_id()
+    }
+}
+
+impl Eq for &'static (dyn Game + Send + Sync) {}
+
+impl std::hash::Hash for &'static (dyn Game + Send + Sync) {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (*self).type_id().hash(state)
+    }
+}
 
 pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn1::EXE1,
@@ -34,7 +48,9 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
-pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<GameKey, Vec<u8>> {
+pub fn scan_roms(
+    path: &std::path::Path,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
     for entry in walkdir::WalkDir::new(path) {
@@ -76,7 +92,7 @@ pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<GameKey, V
             }
         };
 
-        roms.insert(by_address::ByAddress(game), rom);
+        roms.insert(game, rom);
     }
 
     roms
@@ -84,7 +100,7 @@ pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<GameKey, V
 
 pub fn scan_saves(
     path: &std::path::Path,
-) -> std::collections::HashMap<GameKey, Vec<std::path::PathBuf>> {
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<std::path::PathBuf>> {
     let mut paths = std::collections::HashMap::new();
 
     'next: for entry in walkdir::WalkDir::new(path) {
@@ -119,14 +135,12 @@ pub fn scan_saves(
                         game.family(),
                         game.variant()
                     );
-                    let save_paths = paths
-                        .entry(by_address::ByAddress(*game))
-                        .or_insert_with(|| vec![]);
+                    let save_paths = paths.entry(*game).or_insert_with(|| vec![]);
                     save_paths.push(path.to_path_buf());
                     continue 'next;
                 }
                 Err(e) => {
-                    errors.push((by_address::ByAddress(*game), e));
+                    errors.push((*game, e));
                 }
             }
         }
@@ -227,7 +241,10 @@ pub fn detect(rom: &[u8]) -> Result<&'static (dyn Game + Send + Sync), anyhow::E
 
 pub trait Save {}
 
-pub trait Game {
+pub trait Game
+where
+    Self: Any,
+{
     fn family(&self) -> &str;
     fn variant(&self) -> u32;
     fn language(&self) -> unic_langid::LanguageIdentifier;

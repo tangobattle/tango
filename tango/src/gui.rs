@@ -8,8 +8,11 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 
 pub struct State {
     pub config: config::Config,
-    pub rom_list: std::collections::HashMap<games::GameKey, Vec<u8>>,
-    pub saves_list: std::collections::HashMap<games::GameKey, Vec<std::path::PathBuf>>,
+    pub roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
+    pub saves: std::collections::HashMap<
+        &'static (dyn games::Game + Send + Sync),
+        Vec<std::path::PathBuf>,
+    >,
     pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     pub session: Option<session::Session>,
@@ -29,12 +32,12 @@ impl State {
         let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
         drpc.start();
 
-        let rom_list = games::scan_roms(&config.roms_path);
-        let saves_list = games::scan_saves(&config.saves_path);
+        let roms = games::scan_roms(&config.roms_path);
+        let saves = games::scan_saves(&config.saves_path);
         Self {
             config,
-            rom_list,
-            saves_list,
+            roms,
+            saves,
             fps_counter: fps_counter.clone(),
             emu_tps_counter: emu_tps_counter.clone(),
             session: None,
@@ -1072,52 +1075,44 @@ impl Gui {
     }
 
     pub fn draw_menubar(&mut self, ctx: &egui::Context, state: &mut State) {
-        egui::Window::new("")
-            .id(egui::Id::new("menubar"))
-            .open(&mut state.show_menubar)
-            .frame(egui::Frame::window(&ctx.style()).rounding(egui::Rounding::none()))
-            .title_bar(false)
-            .resizable(false)
-            .min_width(ctx.available_rect().width())
-            .fixed_pos(egui::Pos2::ZERO)
-            .show(ctx, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    if ui
-                        .selectable_label(
-                            state.show_settings.is_some(),
-                            format!(
-                                "⚙️ {}",
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "settings")
-                                    .unwrap()
-                            ),
-                        )
-                        .clicked()
-                    {
-                        state.show_settings = if state.show_settings.is_some() {
-                            None
-                        } else {
-                            Some(SettingsTab::General)
-                        };
-                    }
+        egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(
+                        state.show_settings.is_some(),
+                        format!(
+                            "⚙️ {}",
+                            i18n::LOCALES
+                                .lookup(&state.config.language, "settings")
+                                .unwrap()
+                        ),
+                    )
+                    .clicked()
+                {
+                    state.show_settings = if state.show_settings.is_some() {
+                        None
+                    } else {
+                        Some(SettingsTab::General)
+                    };
+                }
 
-                    if ui
-                        .selectable_label(
-                            state.show_about,
-                            format!(
-                                "❓ {}",
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "about")
-                                    .unwrap()
-                            ),
-                        )
-                        .clicked()
-                    {
-                        state.show_about = !state.show_about;
-                    }
-                })
-            });
+                if ui
+                    .selectable_label(
+                        state.show_about,
+                        format!(
+                            "❓ {}",
+                            i18n::LOCALES
+                                .lookup(&state.config.language, "about")
+                                .unwrap()
+                        ),
+                    )
+                    .clicked()
+                {
+                    state.show_about = !state.show_about;
+                }
+            })
+        });
     }
 
     pub fn draw(
@@ -1224,21 +1219,39 @@ impl Gui {
         }
 
         egui::Window::new("test").show(ctx, |ui| {
-            ui.vertical(|ui| {
-                for game in games::sorted_games(&state.config.language) {
-                    ui.label(
-                        i18n::LOCALES
+            let games = games::sorted_games(&state.config.language);
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                    for (available, game) in games
+                        .iter()
+                        .filter(|g| state.roms.contains_key(*g))
+                        .map(|g| (true, g))
+                        .chain(
+                            games
+                                .iter()
+                                .filter(|g| !state.roms.contains_key(*g))
+                                .map(|g| (false, g)),
+                        )
+                    {
+                        let text = i18n::LOCALES
                             .lookup(
                                 &state.config.language,
                                 &format!("games.{}-{}", game.family(), game.variant()),
                             )
-                            .unwrap(),
-                    );
-                }
+                            .unwrap();
+
+                        if available {
+                            if ui.selectable_label(false, text).clicked() {
+                                // TODO
+                            }
+                        } else {
+                            ui.weak(text);
+                        }
+                    }
+                });
             });
         });
 
-        self.draw_menubar(ctx, state);
         self.draw_debug_overlay(ctx, handle.clone(), state);
         self.draw_settings_window(
             ctx,
@@ -1248,5 +1261,9 @@ impl Gui {
         );
         self.draw_about_window(ctx, &state.config.language, &mut state.show_about);
         self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
+
+        if state.show_menubar {
+            self.draw_menubar(ctx, state);
+        }
     }
 }
