@@ -25,6 +25,10 @@ impl games::Game for EXE5BImpl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::BRBJ_00
     }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        anyhow::bail!("not implemented");
+    }
 }
 
 struct EXE5CImpl;
@@ -49,6 +53,10 @@ impl games::Game for EXE5CImpl {
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::BRKJ_00
+    }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        anyhow::bail!("not implemented");
     }
 }
 
@@ -75,6 +83,10 @@ impl games::Game for BN5PImpl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::BRBE_00
     }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        anyhow::bail!("not implemented");
+    }
 }
 
 struct BN5CImpl;
@@ -99,5 +111,9 @@ impl games::Game for BN5CImpl {
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::BRKE_00
+    }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        anyhow::bail!("not implemented");
     }
 }

@@ -25,4 +25,8 @@ impl games::Game for EXE45Impl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::BR4J_00
     }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        anyhow::bail!("not implemented");
+    }
 }

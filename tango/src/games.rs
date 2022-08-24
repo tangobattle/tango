@@ -257,9 +257,7 @@ where
     fn language(&self) -> unic_langid::LanguageIdentifier;
     fn expected_crc32(&self) -> u32;
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn Save>, anyhow::Error> {
-        anyhow::bail!("not implemented");
-    }
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn Save>, anyhow::Error>;
 }
 
 pub trait Hooks {
