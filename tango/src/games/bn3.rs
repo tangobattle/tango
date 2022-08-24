@@ -11,12 +11,8 @@ impl games::Game for EXE3WImpl {
         (b"A6BJ", 0x01)
     }
 
-    fn family(&self) -> &str {
-        "exe3"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe3", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -53,12 +49,8 @@ impl games::Game for EXE3BImpl {
         (b"A3XJ", 0x01)
     }
 
-    fn family(&self) -> &str {
-        "exe3"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe3", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -95,12 +87,8 @@ impl games::Game for BN3WImpl {
         (b"A6BE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn3"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn3", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -137,12 +125,8 @@ impl games::Game for BN3BImpl {
         (b"A3XE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn3"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn3", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {

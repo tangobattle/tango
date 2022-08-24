@@ -10,12 +10,8 @@ impl games::Game for EXE5BImpl {
         (b"BRBJ", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe5"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe5", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -43,12 +39,8 @@ impl games::Game for EXE5CImpl {
         (b"BRKJ", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe5"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe5", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -76,12 +68,8 @@ impl games::Game for BN5PImpl {
         (b"BRBE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn5"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn5", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -109,12 +97,8 @@ impl games::Game for BN5CImpl {
         (b"BRKE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn5"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn5", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {

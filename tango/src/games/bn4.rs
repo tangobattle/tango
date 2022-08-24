@@ -11,12 +11,8 @@ impl games::Game for EXE4RSImpl {
         (b"B4WJ", 0x01)
     }
 
-    fn family(&self) -> &str {
-        "exe4"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe4", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -51,12 +47,8 @@ impl games::Game for EXE4BMImpl {
         (b"B4BJ", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe4"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe4", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -91,12 +83,8 @@ impl games::Game for BN4RSImpl {
         (b"B4WE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn4"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn4", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -131,12 +119,8 @@ impl games::Game for BN4BMImpl {
         (b"B4BE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn4"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn4", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {

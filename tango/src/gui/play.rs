@@ -47,12 +47,10 @@ impl Play {
         .show(ctx, |ui| {
             let games = games::sorted_games(language);
             if let Some(game) = show_play.as_ref().unwrap().selected_game {
+                let (family, variant) = game.family_and_variant();
                 ui.heading(
                     i18n::LOCALES
-                        .lookup(
-                            language,
-                            &format!("games.{}-{}", game.family(), game.variant()),
-                        )
+                        .lookup(language, &format!("games.{}-{}", family, variant))
                         .unwrap(),
                 );
             }
@@ -117,11 +115,9 @@ impl Play {
                                         .map(|g| (false, g)),
                                 )
                             {
+                                let (family, variant) = game.family_and_variant();
                                 let text = i18n::LOCALES
-                                    .lookup(
-                                        language,
-                                        &format!("games.{}-{}", game.family(), game.variant()),
-                                    )
+                                    .lookup(language, &format!("games.{}-{}", family, variant))
                                     .unwrap();
 
                                 if available {

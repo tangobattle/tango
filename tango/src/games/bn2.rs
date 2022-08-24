@@ -11,12 +11,8 @@ impl games::Game for EXE2Impl {
         (b"AE2J", 0x01)
     }
 
-    fn family(&self) -> &str {
-        "exe2"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe2", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -45,12 +41,8 @@ impl games::Game for BN2Impl {
         (b"AE2E", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn2"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn2", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {

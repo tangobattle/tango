@@ -10,16 +10,12 @@ impl games::Game for EXE45Impl {
         (b"BR4J", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe45"
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe45", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
         unic_langid::langid!("ja-JP")
-    }
-
-    fn variant(&self) -> u32 {
-        0
     }
 
     fn expected_crc32(&self) -> u32 {

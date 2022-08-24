@@ -78,12 +78,7 @@ pub fn scan_roms(
 
         let game = match detect(&rom) {
             Ok(game) => {
-                log::info!(
-                    "{}: family = {}, variant = {}",
-                    path.display(),
-                    game.family(),
-                    game.variant()
-                );
+                log::info!("{}: {:?}", path.display(), game.family_and_variant());
                 game
             }
             Err(e) => {
@@ -130,12 +125,7 @@ pub fn scan_saves(
         for game in GAMES.iter() {
             match game.parse_save(&buf) {
                 Ok(_) => {
-                    log::info!(
-                        "{}: family = {}, variant = {}",
-                        path.display(),
-                        game.family(),
-                        game.variant()
-                    );
+                    log::info!("{}: {:?}", path.display(), game.family_and_variant());
                     let save_paths = paths.entry(*game).or_insert_with(|| vec![]);
                     save_paths.push(path.to_path_buf());
                     ok = true;
@@ -152,12 +142,7 @@ pub fn scan_saves(
                 path.display(),
                 errors
                     .iter()
-                    .map(|(k, v)| format!(
-                        "(family = {}, variant = {}): {}",
-                        k.family(),
-                        k.variant(),
-                        v
-                    ))
+                    .map(|(k, v)| format!("{:?}: {}", k.family_and_variant(), v))
                     .collect::<Vec<_>>()
                     .join("\n")
             );
@@ -182,8 +167,7 @@ pub fn sorted_games(
             } else {
                 1
             },
-            g.family(),
-            g.variant(),
+            g.family_and_variant(),
         )
     });
     games
@@ -195,7 +179,7 @@ pub fn find_by_family_and_variant(
 ) -> Option<&'static (dyn Game + Send + Sync)> {
     GAMES
         .iter()
-        .find(|game| game.family() == family && game.variant() == variant)
+        .find(|game| game.family_and_variant() == (family, variant))
         .map(|g| *g)
 }
 
@@ -230,8 +214,7 @@ pub trait Game
 where
     Self: Any,
 {
-    fn family(&self) -> &str;
-    fn variant(&self) -> u32;
+    fn family_and_variant(&self) -> (&str, u32);
     fn language(&self) -> unic_langid::LanguageIdentifier;
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8);
     fn expected_crc32(&self) -> u32;

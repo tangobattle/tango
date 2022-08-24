@@ -11,16 +11,12 @@ impl games::Game for EXE1Impl {
         (b"AREJ", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe1"
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe1", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
         unic_langid::langid!("ja-JP")
-    }
-
-    fn variant(&self) -> u32 {
-        0
     }
 
     fn expected_crc32(&self) -> u32 {
@@ -53,16 +49,12 @@ impl games::Game for BN1Impl {
         (b"AREE", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn1"
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn1", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
         unic_langid::langid!("en-US")
-    }
-
-    fn variant(&self) -> u32 {
-        0
     }
 
     fn expected_crc32(&self) -> u32 {

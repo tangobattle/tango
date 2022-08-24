@@ -11,12 +11,8 @@ impl games::Game for EXE6GImpl {
         (b"BR5J", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe6"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe6", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -54,12 +50,8 @@ impl games::Game for EXE6FImpl {
         (b"BR6J", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "exe6"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("exe6", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -97,12 +89,8 @@ impl games::Game for BN6GImpl {
         (b"BR5E", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn6"
-    }
-
-    fn variant(&self) -> u32 {
-        0
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn6", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -140,12 +128,8 @@ impl games::Game for BN6FImpl {
         (b"BR6E", 0x00)
     }
 
-    fn family(&self) -> &str {
-        "bn6"
-    }
-
-    fn variant(&self) -> u32 {
-        1
+    fn family_and_variant(&self) -> (&str, u32) {
+        ("bn6", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
