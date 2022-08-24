@@ -6,7 +6,10 @@ use crate::{audio, config, games, i18n, input, session, stats, video};
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
-struct OpenState {
+mod about;
+mod settings;
+
+struct PlayState {
     selected_game: Option<&'static (dyn games::Game + Send + Sync)>,
 }
 
@@ -23,8 +26,8 @@ pub struct State {
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     show_menubar: bool,
-    show_open: Option<OpenState>,
-    show_settings: Option<SettingsState>,
+    show_play: Option<PlayState>,
+    show_settings: Option<settings::State>,
     show_about: bool,
     drpc: discord_rpc_client::Client,
 }
@@ -51,21 +54,12 @@ impl State {
             session: None,
             steal_input: None,
             show_menubar: false,
-            show_open: None,
+            show_play: None,
             show_settings: None,
             show_about: false,
             drpc,
         }
     }
-}
-
-#[derive(PartialEq, Eq)]
-pub enum SettingsState {
-    General,
-    Input,
-    Graphics,
-    Audio,
-    Netplay,
 }
 
 pub struct StealInputState {
@@ -89,7 +83,8 @@ struct Themes {
     dark: egui::style::Visuals,
 }
 
-struct FontFamilies {
+#[derive(Clone)]
+pub struct FontFamilies {
     latn: egui::FontFamily,
     jpan: egui::FontFamily,
     hans: egui::FontFamily,
@@ -98,7 +93,8 @@ struct FontFamilies {
 
 pub struct Gui {
     vbuf: Option<VBuf>,
-    emblem: egui_extras::RetainedImage,
+    about: about::About,
+    settings: settings::Settings,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -128,11 +124,8 @@ impl Gui {
 
         Self {
             vbuf: None,
-            emblem: egui_extras::RetainedImage::from_image_bytes(
-                "emblem",
-                include_bytes!("emblem.png"),
-            )
-            .unwrap(),
+            settings: settings::Settings::new(font_families.clone()),
+            about: about::About::new(),
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
@@ -176,498 +169,6 @@ impl Gui {
             },
             current_language: None,
         }
-    }
-
-    fn draw_settings_window(
-        &mut self,
-        ctx: &egui::Context,
-        show_settings: &mut Option<SettingsState>,
-        config: &mut config::Config,
-        steal_input: &mut Option<StealInputState>,
-    ) {
-        let mut show_settings_bool = show_settings.is_some();
-        egui::Window::new(format!(
-            "⚙️ {}",
-            i18n::LOCALES.lookup(&config.language, "settings").unwrap()
-        ))
-        .open(&mut show_settings_bool)
-        .id(egui::Id::new("settings-window"))
-        .show(ctx, |ui| {
-            ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(
-                        show_settings.as_mut().unwrap(),
-                        SettingsState::General,
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings.general")
-                            .unwrap(),
-                    );
-                    ui.selectable_value(
-                        show_settings.as_mut().unwrap(),
-                        SettingsState::Input,
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings.input")
-                            .unwrap(),
-                    );
-                    ui.selectable_value(
-                        show_settings.as_mut().unwrap(),
-                        SettingsState::Graphics,
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings.graphics")
-                            .unwrap(),
-                    );
-                    ui.selectable_value(
-                        show_settings.as_mut().unwrap(),
-                        SettingsState::Audio,
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings.audio")
-                            .unwrap(),
-                    );
-                    ui.selectable_value(
-                        show_settings.as_mut().unwrap(),
-                        SettingsState::Netplay,
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings.netplay")
-                            .unwrap(),
-                    );
-                });
-
-                ui.separator();
-
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false; 2])
-                    .show(ui, |ui| {
-                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                            match show_settings.as_ref().unwrap() {
-                                SettingsState::General => {
-                                    self.draw_settings_general_tab(ui, config)
-                                }
-                                SettingsState::Input => self.draw_settings_input_tab(
-                                    ui,
-                                    &config.language,
-                                    &mut config.input_mapping,
-                                    steal_input,
-                                ),
-                                SettingsState::Graphics => {
-                                    self.draw_settings_graphics_tab(ui, config)
-                                }
-                                SettingsState::Audio => self.draw_settings_audio_tab(ui, config),
-                                SettingsState::Netplay => {
-                                    self.draw_settings_netplay_tab(ui, config)
-                                }
-                            };
-                        });
-                    });
-            });
-        });
-        if !show_settings_bool {
-            *show_settings = None;
-        }
-    }
-
-    fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-window-general-grid")
-            .num_columns(2)
-            .show(ui, |ui| {
-                {
-                    let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
-                    ui.label(
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings-nickname")
-                            .unwrap(),
-                    );
-                    ui.add(egui::TextEdit::singleline(&mut nickname).desired_width(100.0));
-                    config.nickname = Some(nickname);
-                    ui.end_row();
-                }
-
-                {
-                    ui.label(
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings-theme")
-                            .unwrap(),
-                    );
-
-                    let system_label = i18n::LOCALES
-                        .lookup(&config.language, "settings-theme.system")
-                        .unwrap();
-                    let light_label = i18n::LOCALES
-                        .lookup(&config.language, "settings-theme.light")
-                        .unwrap();
-                    let dark_label = i18n::LOCALES
-                        .lookup(&config.language, "settings-theme.dark")
-                        .unwrap();
-
-                    egui::ComboBox::from_id_source("settings-window-general-theme")
-                        .selected_text(match config.theme {
-                            config::Theme::System => &system_label,
-                            config::Theme::Light => &light_label,
-                            config::Theme::Dark => &dark_label,
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut config.theme,
-                                config::Theme::System,
-                                &system_label,
-                            );
-                            ui.selectable_value(
-                                &mut config.theme,
-                                config::Theme::Light,
-                                &light_label,
-                            );
-                            ui.selectable_value(
-                                &mut config.theme,
-                                config::Theme::Dark,
-                                &dark_label,
-                            );
-                        });
-                    ui.end_row();
-                }
-
-                {
-                    ui.label(
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings-language")
-                            .unwrap(),
-                    );
-
-                    let en_label =
-                        egui::RichText::new("English").family(self.font_families.latn.clone());
-                    let ja_label =
-                        egui::RichText::new("日本語").family(self.font_families.jpan.clone());
-                    let zh_hans_label =
-                        egui::RichText::new("简体中文").family(self.font_families.hans.clone());
-                    let zh_hant_label =
-                        egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
-
-                    egui::ComboBox::from_id_source("settings-window-general-language")
-                        .selected_text(match &config.language {
-                            lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
-                                en_label.clone()
-                            }
-                            lang if lang.matches(&unic_langid::langid!("ja"), false, true) => {
-                                ja_label.clone()
-                            }
-                            lang if lang.matches(&unic_langid::langid!("zh-Hans"), false, true) => {
-                                zh_hans_label.clone()
-                            }
-                            lang if lang.matches(&unic_langid::langid!("zh-Hant"), false, true) => {
-                                zh_hant_label.clone()
-                            }
-                            _ => egui::RichText::new(""),
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut config.language,
-                                unic_langid::langid!("en"),
-                                en_label.clone(),
-                            );
-                            ui.selectable_value(
-                                &mut config.language,
-                                unic_langid::langid!("ja"),
-                                ja_label.clone(),
-                            );
-                            ui.selectable_value(
-                                &mut config.language,
-                                unic_langid::langid!("zh-Hans"),
-                                zh_hans_label.clone(),
-                            );
-                            ui.selectable_value(
-                                &mut config.language,
-                                unic_langid::langid!("zh-Hant"),
-                                zh_hant_label.clone(),
-                            );
-                        });
-                    ui.end_row();
-                }
-
-                {
-                    ui.label(
-                        i18n::LOCALES
-                            .lookup(&config.language, "settings-debug-overlay")
-                            .unwrap(),
-                    );
-                    ui.checkbox(&mut config.show_debug_overlay, "");
-                    ui.end_row();
-                }
-            });
-    }
-
-    fn draw_settings_input_tab(
-        &mut self,
-        ui: &mut egui::Ui,
-        lang: &unic_langid::LanguageIdentifier,
-        input_mapping: &mut input::Mapping,
-        steal_input: &mut Option<StealInputState>,
-    ) {
-        egui::Grid::new("settings-window-input-mapping-grid")
-            .num_columns(2)
-            .show(ui, |ui| {
-                let mut add_row = |label_text_id,
-                                   get_mapping: fn(
-                    &mut input::Mapping,
-                )
-                    -> &mut Vec<input::PhysicalInput>| {
-                    ui.label(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
-                    ui.horizontal_wrapped(|ui| {
-                        let mapping = get_mapping(input_mapping);
-                        for (i, c) in mapping.clone().iter().enumerate() {
-                            ui.group(|ui| {
-                                ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        ui.label(egui::RichText::new(match c {
-                                            input::PhysicalInput::Key(_) => "⌨️",
-                                            input::PhysicalInput::Button(_)
-                                            | input::PhysicalInput::Axis { .. } => "🎮",
-                                        }));
-                                        ui.label(match c {
-                                            input::PhysicalInput::Key(key) => {
-                                                let raw = serde_plain::to_string(key).unwrap();
-                                                i18n::LOCALES
-                                                    .lookup(
-                                                        lang,
-                                                        &format!("physical-input-keys.{}", raw),
-                                                    )
-                                                    .unwrap_or(raw)
-                                            }
-                                            input::PhysicalInput::Button(button) => {
-                                                let raw = button.string();
-                                                i18n::LOCALES
-                                                    .lookup(
-                                                        lang,
-                                                        &format!("physical-input-buttons.{}", raw),
-                                                    )
-                                                    .unwrap_or(raw)
-                                            }
-                                            input::PhysicalInput::Axis { axis, direction } => {
-                                                let raw = format!(
-                                                    "{}{}",
-                                                    axis.string(),
-                                                    match direction {
-                                                        input::AxisDirection::Positive => "plus",
-                                                        input::AxisDirection::Negative => "minus",
-                                                    }
-                                                );
-                                                i18n::LOCALES
-                                                    .lookup(
-                                                        lang,
-                                                        &format!("physical-input-axes.{}", raw),
-                                                    )
-                                                    .unwrap_or(raw)
-                                            }
-                                        });
-                                        if ui.add(egui::Button::new("×").small()).clicked() {
-                                            mapping.remove(i);
-                                        }
-                                    },
-                                );
-                            });
-                        }
-                        if ui.add(egui::Button::new("➕")).clicked() {
-                            *steal_input = Some(StealInputState {
-                                callback: {
-                                    let get_mapping = get_mapping.clone();
-                                    Box::new(move |phy, input_mapping| {
-                                        let mapping = get_mapping(input_mapping);
-                                        mapping.push(phy);
-                                        mapping.sort_by_key(|c| match c {
-                                            input::PhysicalInput::Key(key) => (0, *key as usize, 0),
-                                            input::PhysicalInput::Button(button) => {
-                                                (1, *button as usize, 0)
-                                            }
-                                            input::PhysicalInput::Axis { axis, direction } => {
-                                                (2, *axis as usize, *direction as usize)
-                                            }
-                                        });
-                                        mapping.dedup();
-                                    })
-                                },
-                                userdata: Box::new(label_text_id),
-                            });
-                        }
-                    });
-                    ui.end_row();
-                };
-
-                add_row("input-button.left", |input_mapping| &mut input_mapping.left);
-                add_row("input-button.right", |input_mapping| {
-                    &mut input_mapping.right
-                });
-                add_row("input-button.up", |input_mapping| &mut input_mapping.up);
-                add_row("input-button.down", |input_mapping| &mut input_mapping.down);
-                add_row("input-button.a", |input_mapping| &mut input_mapping.a);
-                add_row("input-button.b", |input_mapping| &mut input_mapping.b);
-                add_row("input-button.l", |input_mapping| &mut input_mapping.l);
-                add_row("input-button.r", |input_mapping| &mut input_mapping.r);
-                add_row("input-button.start", |input_mapping| {
-                    &mut input_mapping.start
-                });
-                add_row("input-button.select", |input_mapping| {
-                    &mut input_mapping.select
-                });
-            });
-    }
-
-    fn draw_settings_graphics_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-window-graphics-grid")
-            .num_columns(2)
-            .show(ui, |ui| {
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-max-scale")
-                        .unwrap(),
-                );
-                ui.add(
-                    egui::DragValue::new(&mut config.max_scale)
-                        .custom_formatter(|n, _| {
-                            if n > 0.0 {
-                                format!("{}", n)
-                            } else {
-                                i18n::LOCALES
-                                    .lookup(&config.language, "settings-max-scale.unset")
-                                    .unwrap()
-                            }
-                        })
-                        .speed(1)
-                        .clamp_range(0..=10),
-                );
-                ui.end_row();
-
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-ui-scale")
-                        .unwrap(),
-                );
-                ui.add(
-                    egui::DragValue::new(&mut config.ui_scale_percent)
-                        .speed(10)
-                        .suffix("%")
-                        .clamp_range(50..=400),
-                );
-                ui.end_row();
-
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-video-filter")
-                        .unwrap(),
-                );
-
-                let null_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-video-filter.null")
-                    .unwrap();
-                let hq2x_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-video-filter.hq2x")
-                    .unwrap();
-                let hq3x_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-video-filter.hq3x")
-                    .unwrap();
-                let hq4x_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-video-filter.hq4x")
-                    .unwrap();
-                let mmpx_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-video-filter.mmpx")
-                    .unwrap();
-
-                egui::ComboBox::from_id_source("settings-window-general-video-filter")
-                    .selected_text(match config.video_filter.as_str() {
-                        "" => &null_label,
-                        "hq2x" => &hq2x_label,
-                        "hq3x" => &hq3x_label,
-                        "hq4x" => &hq4x_label,
-                        "mmpx" => &mmpx_label,
-                        _ => "",
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut config.video_filter, "".to_string(), &null_label);
-                        ui.selectable_value(
-                            &mut config.video_filter,
-                            "hq2x".to_string(),
-                            &hq2x_label,
-                        );
-                        ui.selectable_value(
-                            &mut config.video_filter,
-                            "hq3x".to_string(),
-                            &hq3x_label,
-                        );
-                        ui.selectable_value(
-                            &mut config.video_filter,
-                            "hq4x".to_string(),
-                            &hq4x_label,
-                        );
-                        ui.selectable_value(
-                            &mut config.video_filter,
-                            "mmpx".to_string(),
-                            &mmpx_label,
-                        );
-                    });
-                ui.end_row();
-            });
-    }
-
-    fn draw_settings_audio_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-window-audio-grid")
-            .num_columns(2)
-            .show(ui, |ui| {});
-    }
-
-    fn draw_settings_netplay_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-window-netplay-grid")
-            .num_columns(2)
-            .show(ui, |ui| {
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-max-queue-length")
-                        .unwrap(),
-                );
-                ui.add(egui::DragValue::new(&mut config.max_queue_length).speed(1));
-                ui.end_row();
-
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-signaling-endpoint")
-                        .unwrap(),
-                );
-                let signaling_endpoint_is_empty = config.signaling_endpoint.is_empty();
-                ui.add(
-                    egui::TextEdit::singleline(&mut config.signaling_endpoint)
-                        .desired_width(200.0)
-                        .hint_text(if signaling_endpoint_is_empty {
-                            config::DEFAULT_SIGNALING_ENDPOINT
-                        } else {
-                            ""
-                        }),
-                );
-                ui.end_row();
-
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-iceconfig-endpoint")
-                        .unwrap(),
-                );
-                let iceconfig_endpoint_is_empty = config.iceconfig_endpoint.is_empty();
-                ui.add(
-                    egui::TextEdit::singleline(&mut config.iceconfig_endpoint)
-                        .desired_width(200.0)
-                        .hint_text(if iceconfig_endpoint_is_empty {
-                            config::DEFAULT_ICECONFIG_ENDPOINT
-                        } else {
-                            ""
-                        }),
-                );
-                ui.end_row();
-
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-replaycollector-endpoint")
-                        .unwrap(),
-                );
-                ui.add(
-                    egui::TextEdit::singleline(&mut config.replaycollector_endpoint)
-                        .desired_width(200.0),
-                );
-                ui.end_row();
-            });
     }
 
     fn draw_debug_overlay(
@@ -767,315 +268,10 @@ impl Gui {
             });
     }
 
-    fn draw_about_window(
-        &mut self,
-        ctx: &egui::Context,
-        lang: &unic_langid::LanguageIdentifier,
-        show_about: &mut bool,
-    ) {
-        egui::Window::new(format!(
-            "❓ {}",
-            i18n::LOCALES.lookup(lang, "about").unwrap()
-        ))
-        .id(egui::Id::new("about-window"))
-        .default_width(320.0)
-        .open(show_about)
-        .show(ctx, |ui| {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false; 2])
-                .show(ui, |ui| {
-                    ui.heading(format!(
-                        "Tango v{}-{}",
-                        env!("CARGO_PKG_VERSION"),
-                        git_version::git_version!(),
-                    ));
-
-                    ui.add_space(8.0);
-                    ui.vertical_centered(|ui| {
-                        self.emblem.show_scaled(ui, 0.5);
-                    });
-                    ui.add_space(8.0);
-
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.hyperlink_to("Tango", "https://tangobattle.com");
-                        ui.label(" would not be a reality without the work of the many people who have helped make this possible.",);
-                    });
-
-                    ui.heading("Development");
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label(" • ");
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label("Emulation: ");
-                                ui.hyperlink_to("endrift", "https://twitter.com/endrift");
-                                ui.label(" (mGBA)");
-                            });
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label(" • ");
-                            ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                ui.label("Reverse engineering: ");
-
-                                ui.hyperlink_to("pnw_ssbmars", "https://twitter.com/pnw_ssbmars");
-                                ui.label(" (BN3)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("XKirby", "https://github.com/XKirby");
-                                ui.label(" (BN3)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("luckytyphlosion", "https://github.com/luckytyphlosion");
-                                ui.label(" (BN6)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("LanHikari22", "https://github.com/LanHikari22");
-                                ui.label(" (BN6)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("GreigaMaster", "https://twitter.com/GreigaMaster");
-                                ui.label(" (BN)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("Prof. 9", "https://twitter.com/Prof9");
-                                ui.label(" (BN)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("National Security Agency", "https://www.nsa.gov");
-                                ui.label(" (Ghidra)");
-
-                                ui.label(", ");
-
-
-                                ui.hyperlink_to("aldelaro5", "https://twitter.com/aldelaro5");
-                                ui.label(" (Ghidra)");
-                            });
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label(" • ");
-                            ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                ui.label("Porting: ");
-
-                                ui.hyperlink_to("ubergeek77", "https://github.com/ubergeek77");
-                                ui.label(" (Linux)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("Akatsuki", "https://github.com/Akatsuki");
-                                ui.label(" (macOS)");
-                            });
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label(" • ");
-                            ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                ui.label("Game support: ");
-
-                                ui.hyperlink_to("weenie", "https://github.com/bigfarts");
-                                ui.label(" (BN)");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("GreigaMaster", "https://twitter.com/GreigaMaster");
-                                ui.label(" (EXE4.5)");
-                            });
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label(" • ");
-                            ui.horizontal_wrapped(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-                                ui.label("Odds and ends: ");
-
-                                ui.hyperlink_to("sailormoon", "https://github.com/sailormoon");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("Shiz", "https://twitter.com/dev_console");
-
-                                ui.label(", ");
-
-                                ui.hyperlink_to("Karate_Bugman", "https://twitter.com/Karate_Bugman");
-                            });
-                        });
-                    });
-
-                    ui.heading("Translation");
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Japanese: ");
-
-                            ui.hyperlink_to("weenie", "https://github.com/bigfarts");
-
-                            ui.label(", ");
-
-                            ui.hyperlink_to("Nonstopmop", "https://twitter.com/seventhfonist42");
-
-                            ui.label(", ");
-
-                            ui.hyperlink_to("dhenva", "https://twitch.tv/dhenva");
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Simplified Chinese: ");
-
-                            ui.hyperlink_to("weenie", "https://github.com/bigfarts");
-
-                            ui.label(", ");
-
-                            ui.hyperlink_to("Hikari Calyx", "https://twitter.com/Hikari_Calyx");
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Traditional Chinese: ");
-
-                            ui.hyperlink_to("weenie", "https://github.com/bigfarts");
-
-                            ui.label(", ");
-
-                            ui.hyperlink_to("Hikari Calyx", "https://twitter.com/Hikari_Calyx");
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Spanish: ");
-
-                            ui.hyperlink_to("Karate_Bugman", "https://twitter.com/Karate_Bugman");
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Brazilian Portuguese: ");
-
-                            ui.hyperlink_to("Darkgaia", "https://discord.gg/hPrFVaaRrU");
-
-                            ui.label(", ");
-
-                            ui.hyperlink_to("mushiguchi", "https://twitter.com/mushiguchi");
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("French: ");
-
-                            ui.hyperlink_to("Sheriel Phoenix", "https://twitter.com/Sheriel_Phoenix");
-
-                            ui.label(", ");
-
-                            ui.hyperlink_to("Justplay", "https://twitter.com/justplayfly");
-                        });
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("German: ");
-
-                            ui.hyperlink_to("KenDeep", "https://twitch.tv/kendeep_fgc");
-                        });
-                    });
-
-                    ui.heading("Art");
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Logo: ");
-
-                            ui.hyperlink_to("saladdammit", "https://twitter.com/saladdammit");
-                        });
-                    });
-
-
-                    ui.heading("Special thanks");
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("Playtesting: ");
-
-                            ui.hyperlink_to("N1GP", "https://n1gp.net");
-                        });
-                    });
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(" • ");
-                        ui.horizontal_wrapped(|ui| {
-                            ui.spacing_mut().item_spacing.x = 0.0;
-                            ui.label("#1 fan: ");
-
-                            ui.hyperlink_to("playerzero", "https://twitter.com/Playerzero_exe");
-                        });
-                    });
-
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label("And, of course, a huge thank you to ");
-                        ui.hyperlink_to("CAPCOM", "https://www.capcom.com");
-                        ui.label(" for making Mega Man Battle Network!");
-                    });
-
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label("Tango is licensed under the terms of the ");
-                        ui.hyperlink_to("GNU Affero General Public License v3", "https://tldrlegal.com/license/gnu-affero-general-public-license-v3-(agpl-3.0)");
-                        ui.label(". That means you’re free to modify the ");
-                        ui.hyperlink_to("source code", "https://github.com/tangobattle");
-                        ui.label(", as long as you contribute your changes back!");
-                    });
-                });
-        });
-    }
-
     fn draw_play_window(
         &mut self,
         ctx: &egui::Context,
-        show_open: &mut Option<OpenState>,
+        show_play: &mut Option<PlayState>,
         show_menubar: &mut bool,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
@@ -1088,16 +284,16 @@ impl Gui {
         audio_binder: audio::LateBinder,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) {
-        let mut show_open_bool = show_open.is_some();
+        let mut show_play_bool = show_play.is_some();
         egui::Window::new(format!(
             "🎮 {}",
             i18n::LOCALES.lookup(language, "play").unwrap()
         ))
         .id(egui::Id::new("play-window"))
-        .open(&mut show_open_bool)
+        .open(&mut show_play_bool)
         .show(ctx, |ui| {
             let games = games::sorted_games(language);
-            if let Some(game) = show_open.as_ref().unwrap().selected_game {
+            if let Some(game) = show_play.as_ref().unwrap().selected_game {
                 ui.heading(
                     i18n::LOCALES
                         .lookup(
@@ -1111,7 +307,7 @@ impl Gui {
             ui.group(|ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                        if let Some(selected_game) = show_open.as_ref().unwrap().selected_game {
+                        if let Some(selected_game) = show_play.as_ref().unwrap().selected_game {
                             if ui
                                 .selectable_label(
                                     false,
@@ -1124,7 +320,7 @@ impl Gui {
                                 )
                                 .clicked()
                             {
-                                show_open.as_mut().unwrap().selected_game = None;
+                                show_play.as_mut().unwrap().selected_game = None;
                             }
 
                             if let Some(saves) = saves.get(&selected_game) {
@@ -1139,7 +335,7 @@ impl Gui {
                                         )
                                         .clicked()
                                     {
-                                        *show_open = None;
+                                        *show_play = None;
                                         *show_menubar = false;
 
                                         // HACK: audio::Binding has to be dropped first.
@@ -1177,7 +373,7 @@ impl Gui {
 
                                 if available {
                                     if ui.selectable_label(false, text).clicked() {
-                                        show_open.as_mut().unwrap().selected_game = Some(*game);
+                                        show_play.as_mut().unwrap().selected_game = Some(*game);
                                     }
                                 } else {
                                     ui.weak(text);
@@ -1189,8 +385,8 @@ impl Gui {
             });
         });
 
-        if !show_open_bool {
-            *show_open = None;
+        if !show_play_bool {
+            *show_play = None;
         }
     }
 
@@ -1381,7 +577,7 @@ impl Gui {
             ui.horizontal(|ui| {
                 if ui
                     .selectable_label(
-                        state.show_open.is_some(),
+                        state.show_play.is_some(),
                         format!(
                             "🎮 {}",
                             i18n::LOCALES
@@ -1391,10 +587,10 @@ impl Gui {
                     )
                     .clicked()
                 {
-                    state.show_open = if state.show_open.is_some() {
+                    state.show_play = if state.show_play.is_some() {
                         None
                     } else {
-                        Some(OpenState {
+                        Some(PlayState {
                             selected_game: None,
                         })
                     };
@@ -1415,7 +611,7 @@ impl Gui {
                     state.show_settings = if state.show_settings.is_some() {
                         None
                     } else {
-                        Some(SettingsState::General)
+                        Some(settings::State::General)
                     };
                 }
 
@@ -1522,7 +718,7 @@ impl Gui {
         self.draw_debug_overlay(ctx, handle.clone(), state);
         self.draw_play_window(
             ctx,
-            &mut state.show_open,
+            &mut state.show_play,
             &mut state.show_menubar,
             &state.config.language,
             &state.config.saves_path,
@@ -1532,13 +728,14 @@ impl Gui {
             state.audio_binder.clone(),
             state.emu_tps_counter.clone(),
         );
-        self.draw_settings_window(
+        self.settings.show(
             ctx,
             &mut state.show_settings,
             &mut state.config,
             &mut state.steal_input,
         );
-        self.draw_about_window(ctx, &state.config.language, &mut state.show_about);
+        self.about
+            .show(ctx, &state.config.language, &mut state.show_about);
         self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
 
         if let Some(session) = &state.session {
