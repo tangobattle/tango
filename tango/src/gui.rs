@@ -520,6 +520,15 @@ impl Gui {
                 );
                 ui.add(
                     egui::DragValue::new(&mut config.max_scale)
+                        .custom_formatter(|n, _| {
+                            if n > 0.0 {
+                                format!("{}", n)
+                            } else {
+                                i18n::LOCALES
+                                    .lookup(&config.language, "settings-max-scale.unset")
+                                    .unwrap()
+                            }
+                        })
                         .speed(1)
                         .clamp_range(0..=10),
                 );
@@ -1426,34 +1435,26 @@ impl Gui {
             let mut language = state.config.language.clone();
             language.maximize();
 
+            let primary_font = match language.script {
+                Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
+                    "NotoSansJP-Regular"
+                }
+                Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
+                    "NotoSansSC-Regular"
+                }
+                Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
+                    "NotoSansTC-Regular"
+                }
+                _ => "NotoSans-Regular",
+            };
+
             ctx.set_fonts(egui::FontDefinitions {
                 font_data: self.font_data.clone(),
                 families: std::collections::BTreeMap::from([
                     (
                         egui::FontFamily::Proportional,
                         vec![
-                            match language.script {
-                                Some(s)
-                                    if s == unic_langid::subtags::Script::from_str("Jpan")
-                                        .unwrap() =>
-                                {
-                                    "NotoSansJP-Regular"
-                                }
-                                Some(s)
-                                    if s == unic_langid::subtags::Script::from_str("Hans")
-                                        .unwrap() =>
-                                {
-                                    "NotoSansSC-Regular"
-                                }
-                                Some(s)
-                                    if s == unic_langid::subtags::Script::from_str("Hant")
-                                        .unwrap() =>
-                                {
-                                    "NotoSansTC-Regular"
-                                }
-                                _ => "NotoSans-Regular",
-                            }
-                            .to_string(),
+                            primary_font.to_string(),
                             "NotoSans-Regular".to_string(),
                             "NotoSansJP-Regular".to_string(),
                             "NotoSansSC-Regular".to_string(),
@@ -1465,6 +1466,7 @@ impl Gui {
                         egui::FontFamily::Monospace,
                         vec![
                             "NotoSansMono-Regular".to_string(),
+                            primary_font.to_string(),
                             "NotoEmoji-Regular".to_string(),
                         ],
                     ),

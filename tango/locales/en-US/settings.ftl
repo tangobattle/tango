@@ -17,6 +17,7 @@ settings-video-filter = Video filter
     .hq4x = hq4x
     .mmpx = MMPX
 settings-max-scale = Max scale
+    .unset = Unset
 
 settings-language = Language
 settings-nickname = Nickname
