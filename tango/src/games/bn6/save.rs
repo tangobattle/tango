@@ -39,7 +39,7 @@ fn mask(buf: &mut [u8]) {
 }
 
 impl Save {
-    pub fn new(buf: Vec<u8>) -> Result<Self, anyhow::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let mut buf = buf
             .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
             .map(|buf| buf.to_vec())

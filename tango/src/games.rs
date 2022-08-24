@@ -127,7 +127,7 @@ pub fn scan_saves(
 
         let mut errors = vec![];
         for game in GAMES.iter() {
-            match game.parse_save(buf.clone()) {
+            match game.parse_save(&buf) {
                 Ok(_) => {
                     log::info!(
                         "{}: family = {}, variant = {}",
@@ -254,7 +254,7 @@ where
     fn language(&self) -> unic_langid::LanguageIdentifier;
     fn expected_crc32(&self) -> u32;
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
-    fn parse_save(&self, data: Vec<u8>) -> Result<Box<dyn Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn Save>, anyhow::Error> {
         anyhow::bail!("not implemented");
     }
 }

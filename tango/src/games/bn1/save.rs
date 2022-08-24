@@ -22,7 +22,7 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn new(buf: Vec<u8>) -> Result<Self, anyhow::Error> {
+    pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let buf = buf
             .get(..SRAM_SIZE)
             .map(|buf| buf.to_vec())
