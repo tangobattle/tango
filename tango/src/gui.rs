@@ -536,6 +536,19 @@ impl Gui {
 
                 ui.label(
                     i18n::LOCALES
+                        .lookup(&config.language, "settings-ui-scale")
+                        .unwrap(),
+                );
+                ui.add(
+                    egui::DragValue::new(&mut config.ui_scale_percent)
+                        .speed(10)
+                        .suffix("%")
+                        .clamp_range(50..=400),
+                );
+                ui.end_row();
+
+                ui.label(
+                    i18n::LOCALES
                         .lookup(&config.language, "settings-video-filter")
                         .unwrap(),
                 );

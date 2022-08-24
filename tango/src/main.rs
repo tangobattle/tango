@@ -327,7 +327,11 @@ fn child_main() -> Result<(), anyhow::Error> {
                 }
 
                 egui_glow.run(gl_window.window(), |ctx| {
-                    ctx.set_pixels_per_point(gl_window.window().scale_factor() as f32);
+                    ctx.set_pixels_per_point(
+                        gl_window.window().scale_factor() as f32
+                            * state.config.ui_scale_percent as f32
+                            / 100.0,
+                    );
                     gui.draw(ctx, handle.clone(), &input_state, &mut state)
                 });
                 egui_glow.paint(gl_window.window());
