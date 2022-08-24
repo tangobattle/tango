@@ -51,15 +51,18 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        let mut checksum = 0x38;
-
-        for (i, b) in self.buf.iter().enumerate() {
-            if i >= CHECKSUM_OFFSET && i < CHECKSUM_OFFSET + 4 {
-                continue;
-            }
-            checksum += *b as u32;
-        }
-        checksum
+        self.buf
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                if i < CHECKSUM_OFFSET || i >= CHECKSUM_OFFSET + 4 {
+                    *b as u32
+                } else {
+                    0
+                }
+            })
+            .sum::<u32>()
+            + 0x38
     }
 }
 

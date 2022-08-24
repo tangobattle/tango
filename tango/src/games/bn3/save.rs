@@ -30,15 +30,16 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8]) -> u32 {
-    let mut checksum = 0;
-
-    for (i, b) in buf.iter().enumerate() {
-        if i >= CHECKSUM_OFFSET && i < CHECKSUM_OFFSET + 4 {
-            continue;
-        }
-        checksum += *b as u32;
-    }
-    checksum
+    buf.iter()
+        .enumerate()
+        .map(|(i, b)| {
+            if i < CHECKSUM_OFFSET || i >= CHECKSUM_OFFSET + 4 {
+                *b as u32
+            } else {
+                0
+            }
+        })
+        .sum::<u32>()
 }
 
 impl Save {
