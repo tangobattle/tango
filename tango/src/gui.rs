@@ -2,31 +2,37 @@ use std::str::FromStr;
 
 use fluent_templates::Loader;
 
-use crate::{config, games, i18n, input, session, stats, video};
+use crate::{audio, config, games, i18n, input, session, stats, video};
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
+struct OpenState {
+    selected_game: Option<&'static (dyn games::Game + Send + Sync)>,
+}
+
 pub struct State {
     pub config: config::Config,
-    pub roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
-    pub saves: std::collections::HashMap<
+    pub session: Option<session::Session>,
+    pub steal_input: Option<StealInputState>,
+    roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
+    saves: std::collections::HashMap<
         &'static (dyn games::Game + Send + Sync),
         Vec<std::path::PathBuf>,
     >,
-    pub fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    pub emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    pub session: Option<session::Session>,
-    pub steal_input: Option<StealInputState>,
-    pub show_menubar: bool,
-    pub show_open: bool,
-    pub show_settings: Option<SettingsTab>,
-    pub show_about: bool,
-    pub drpc: discord_rpc_client::Client,
+    audio_binder: audio::LateBinder,
+    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    show_menubar: bool,
+    show_open: Option<OpenState>,
+    show_settings: Option<SettingsState>,
+    show_about: bool,
+    drpc: discord_rpc_client::Client,
 }
 
 impl State {
     pub fn new(
         config: config::Config,
+        audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) -> Self {
@@ -39,12 +45,13 @@ impl State {
             config,
             roms,
             saves,
-            fps_counter: fps_counter.clone(),
-            emu_tps_counter: emu_tps_counter.clone(),
+            audio_binder,
+            fps_counter,
+            emu_tps_counter,
             session: None,
             steal_input: None,
             show_menubar: false,
-            show_open: false,
+            show_open: None,
             show_settings: None,
             show_about: false,
             drpc,
@@ -53,7 +60,7 @@ impl State {
 }
 
 #[derive(PartialEq, Eq)]
-pub enum SettingsTab {
+pub enum SettingsState {
     General,
     InputMapping,
 }
@@ -171,7 +178,7 @@ impl Gui {
     fn draw_settings_window(
         &mut self,
         ctx: &egui::Context,
-        show_settings: &mut Option<SettingsTab>,
+        show_settings: &mut Option<SettingsState>,
         config: &mut config::Config,
         steal_input: &mut Option<StealInputState>,
     ) {
@@ -187,14 +194,14 @@ impl Gui {
                 ui.horizontal(|ui| {
                     ui.selectable_value(
                         show_settings.as_mut().unwrap(),
-                        SettingsTab::General,
+                        SettingsState::General,
                         i18n::LOCALES
                             .lookup(&config.language, "settings.general")
                             .unwrap(),
                     );
                     ui.selectable_value(
                         show_settings.as_mut().unwrap(),
-                        SettingsTab::InputMapping,
+                        SettingsState::InputMapping,
                         i18n::LOCALES
                             .lookup(&config.language, "settings.input-mapping")
                             .unwrap(),
@@ -207,8 +214,8 @@ impl Gui {
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
                         match show_settings.as_ref().unwrap() {
-                            SettingsTab::General => self.draw_settings_general_tab(ui, config),
-                            SettingsTab::InputMapping => self.draw_settings_input_mapping_tab(
+                            SettingsState::General => self.draw_settings_general_tab(ui, config),
+                            SettingsState::InputMapping => self.draw_settings_input_mapping_tab(
                                 ui,
                                 &config.language,
                                 &mut config.input_mapping,
@@ -910,53 +917,120 @@ impl Gui {
     fn draw_open_window(
         &mut self,
         ctx: &egui::Context,
-        show_open: &mut bool,
+        show_open: &mut Option<OpenState>,
+        show_menubar: &mut bool,
         language: &unic_langid::LanguageIdentifier,
+        saves_path: &std::path::Path,
+        session: &mut Option<session::Session>,
         roms: &mut std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
         saves: &mut std::collections::HashMap<
             &'static (dyn games::Game + Send + Sync),
             Vec<std::path::PathBuf>,
         >,
+        audio_binder: audio::LateBinder,
+        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) {
+        let mut show_open_bool = show_open.is_some();
         egui::Window::new(format!(
             "📂 {}",
             i18n::LOCALES.lookup(language, "open").unwrap()
         ))
         .id(egui::Id::new("open-window"))
-        .open(show_open)
+        .open(&mut show_open_bool)
         .show(ctx, |ui| {
             let games = games::sorted_games(language);
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    for (available, game) in games
-                        .iter()
-                        .filter(|g| roms.contains_key(*g))
-                        .map(|g| (true, g))
-                        .chain(
-                            games
-                                .iter()
-                                .filter(|g| !roms.contains_key(*g))
-                                .map(|g| (false, g)),
+            if let Some(game) = show_open.as_ref().unwrap().selected_game {
+                ui.heading(
+                    i18n::LOCALES
+                        .lookup(
+                            language,
+                            &format!("games.{}-{}", game.family(), game.variant()),
                         )
-                    {
-                        let text = i18n::LOCALES
-                            .lookup(
-                                language,
-                                &format!("games.{}-{}", game.family(), game.variant()),
-                            )
-                            .unwrap();
+                        .unwrap(),
+                );
+            }
 
-                        if available {
-                            if ui.selectable_label(false, text).clicked() {
-                                // TODO
+            ui.group(|ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                        if let Some(selected_game) = show_open.as_ref().unwrap().selected_game {
+                            if ui
+                                .selectable_label(
+                                    false,
+                                    format!(
+                                        "⬅️ {}",
+                                        i18n::LOCALES
+                                            .lookup(language, "open.return-to-games-list")
+                                            .unwrap()
+                                    ),
+                                )
+                                .clicked()
+                            {
+                                show_open.as_mut().unwrap().selected_game = None;
+                            }
+
+                            if let Some(saves) = saves.get(&selected_game) {
+                                for save in saves {
+                                    if ui
+                                        .selectable_label(
+                                            false,
+                                            save.as_path()
+                                                .strip_prefix(saves_path)
+                                                .unwrap_or(save.as_path())
+                                                .to_string_lossy(),
+                                        )
+                                        .clicked()
+                                    {
+                                        *show_open = None;
+                                        *show_menubar = false;
+                                        *session = Some(
+                                            session::Session::new_singleplayer(
+                                                audio_binder.clone(),
+                                                roms.get(&selected_game).unwrap(),
+                                                save.as_path(),
+                                                emu_tps_counter.clone(),
+                                            )
+                                            .unwrap(),
+                                        );
+                                    }
+                                }
                             }
                         } else {
-                            ui.weak(text);
+                            for (available, game) in games
+                                .iter()
+                                .filter(|g| roms.contains_key(*g))
+                                .map(|g| (true, g))
+                                .chain(
+                                    games
+                                        .iter()
+                                        .filter(|g| !roms.contains_key(*g))
+                                        .map(|g| (false, g)),
+                                )
+                            {
+                                let text = i18n::LOCALES
+                                    .lookup(
+                                        language,
+                                        &format!("games.{}-{}", game.family(), game.variant()),
+                                    )
+                                    .unwrap();
+
+                                if available {
+                                    if ui.selectable_label(false, text).clicked() {
+                                        show_open.as_mut().unwrap().selected_game = Some(*game);
+                                    }
+                                } else {
+                                    ui.weak(text);
+                                }
+                            }
                         }
-                    }
+                    });
                 });
             });
         });
+
+        if !show_open_bool {
+            *show_open = None;
+        }
     }
 
     fn draw_emulator(&mut self, ui: &mut egui::Ui, session: &session::Session, video_filter: &str) {
@@ -1134,7 +1208,7 @@ impl Gui {
             ui.horizontal(|ui| {
                 if ui
                     .selectable_label(
-                        state.show_open,
+                        state.show_open.is_some(),
                         format!(
                             "📂 {}",
                             i18n::LOCALES
@@ -1144,7 +1218,13 @@ impl Gui {
                     )
                     .clicked()
                 {
-                    state.show_open = !state.show_open;
+                    state.show_open = if state.show_open.is_some() {
+                        None
+                    } else {
+                        Some(OpenState {
+                            selected_game: None,
+                        })
+                    };
                 }
 
                 if ui
@@ -1162,7 +1242,7 @@ impl Gui {
                     state.show_settings = if state.show_settings.is_some() {
                         None
                     } else {
-                        Some(SettingsTab::General)
+                        Some(SettingsState::General)
                     };
                 }
 
@@ -1291,9 +1371,14 @@ impl Gui {
         self.draw_open_window(
             ctx,
             &mut state.show_open,
+            &mut state.show_menubar,
             &state.config.language,
+            &state.config.saves_path,
+            &mut state.session,
             &mut state.roms,
             &mut state.saves,
+            state.audio_binder.clone(),
+            state.emu_tps_counter.clone(),
         );
         self.draw_settings_window(
             ctx,

@@ -130,7 +130,12 @@ fn main() -> Result<(), anyhow::Error> {
         controllers.insert(which, controller);
     }
 
-    let mut state = gui::State::new(config, fps_counter.clone(), emu_tps_counter.clone());
+    let mut state = gui::State::new(
+        config,
+        audio_binder.clone(),
+        fps_counter.clone(),
+        emu_tps_counter.clone(),
+    );
 
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();

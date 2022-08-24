@@ -161,6 +161,10 @@ pub fn scan_saves(
         );
     }
 
+    for (_, saves) in paths.iter_mut() {
+        saves.sort();
+    }
+
     paths
 }
 

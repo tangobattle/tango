@@ -166,7 +166,7 @@ impl Session {
     pub fn new_singleplayer(
         audio_binder: audio::LateBinder,
         rom: &[u8],
-        save_path: std::path::PathBuf,
+        save_path: &std::path::Path,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
@@ -176,7 +176,7 @@ impl Session {
             .load_rom(mgba::vfile::VFile::open_memory(rom))?;
 
         let save_vf = mgba::vfile::VFile::open(
-            &save_path,
+            save_path,
             mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
         )?;
 
