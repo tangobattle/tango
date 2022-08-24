@@ -1,6 +1,9 @@
 settings = Settings
     .general = General
-    .input-mapping = Input mapping
+    .input = Input
+    .graphics = Graphics
+    .audio = Audio
+    .netplay = Netplay
 
 settings-theme = Theme
     .light = Light
@@ -13,7 +16,12 @@ settings-video-filter = Video filter
     .hq3x = hq3x
     .hq4x = hq4x
     .mmpx = MMPX
+settings-max-scale = Max scale
 
 settings-language = Language
 settings-nickname = Nickname
 settings-debug-overlay = Show debug overlay
+settings-max-queue-length = Max queue length
+settings-signaling-endpoint = Signaling endpoint
+settings-iceconfig-endpoint = ICE configuration endpoint
+settings-replaycollector-endpoint = Replay collector endpoint

@@ -1,6 +1,6 @@
 settings = 設定
     .general = 一般設定
-    .input-mapping = 入力設定
+    .input = 入力
 
 settings-theme = テーマ
     .light = ライト

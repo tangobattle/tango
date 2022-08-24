@@ -62,7 +62,10 @@ impl State {
 #[derive(PartialEq, Eq)]
 pub enum SettingsState {
     General,
-    InputMapping,
+    Input,
+    Graphics,
+    Audio,
+    Netplay,
 }
 
 pub struct StealInputState {
@@ -201,9 +204,30 @@ impl Gui {
                     );
                     ui.selectable_value(
                         show_settings.as_mut().unwrap(),
-                        SettingsState::InputMapping,
+                        SettingsState::Input,
                         i18n::LOCALES
-                            .lookup(&config.language, "settings.input-mapping")
+                            .lookup(&config.language, "settings.input")
+                            .unwrap(),
+                    );
+                    ui.selectable_value(
+                        show_settings.as_mut().unwrap(),
+                        SettingsState::Graphics,
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings.graphics")
+                            .unwrap(),
+                    );
+                    ui.selectable_value(
+                        show_settings.as_mut().unwrap(),
+                        SettingsState::Audio,
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings.audio")
+                            .unwrap(),
+                    );
+                    ui.selectable_value(
+                        show_settings.as_mut().unwrap(),
+                        SettingsState::Netplay,
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings.netplay")
                             .unwrap(),
                     );
                 });
@@ -213,15 +237,26 @@ impl Gui {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false; 2])
                     .show(ui, |ui| {
-                        match show_settings.as_ref().unwrap() {
-                            SettingsState::General => self.draw_settings_general_tab(ui, config),
-                            SettingsState::InputMapping => self.draw_settings_input_mapping_tab(
-                                ui,
-                                &config.language,
-                                &mut config.input_mapping,
-                                steal_input,
-                            ),
-                        };
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            match show_settings.as_ref().unwrap() {
+                                SettingsState::General => {
+                                    self.draw_settings_general_tab(ui, config)
+                                }
+                                SettingsState::Input => self.draw_settings_input_tab(
+                                    ui,
+                                    &config.language,
+                                    &mut config.input_mapping,
+                                    steal_input,
+                                ),
+                                SettingsState::Graphics => {
+                                    self.draw_settings_graphics_tab(ui, config)
+                                }
+                                SettingsState::Audio => self.draw_settings_audio_tab(ui, config),
+                                SettingsState::Netplay => {
+                                    self.draw_settings_netplay_tab(ui, config)
+                                }
+                            };
+                        });
                     });
             });
         });
@@ -231,112 +266,265 @@ impl Gui {
     }
 
     fn draw_settings_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
-        egui::Grid::new("settings-window-general-grid").show(ui, |ui| {
-            {
-                let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-nickname")
-                        .unwrap(),
-                );
-                ui.text_edit_singleline(&mut nickname);
-                config.nickname = Some(nickname);
-                ui.end_row();
-            }
+        egui::Grid::new("settings-window-general-grid")
+            .num_columns(2)
+            .show(ui, |ui| {
+                {
+                    let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-nickname")
+                            .unwrap(),
+                    );
+                    ui.add(egui::TextEdit::singleline(&mut nickname).desired_width(100.0));
+                    config.nickname = Some(nickname);
+                    ui.end_row();
+                }
 
-            {
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-theme")
-                        .unwrap(),
-                );
+                {
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-theme")
+                            .unwrap(),
+                    );
 
-                let system_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-theme.system")
-                    .unwrap();
-                let light_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-theme.light")
-                    .unwrap();
-                let dark_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-theme.dark")
-                    .unwrap();
+                    let system_label = i18n::LOCALES
+                        .lookup(&config.language, "settings-theme.system")
+                        .unwrap();
+                    let light_label = i18n::LOCALES
+                        .lookup(&config.language, "settings-theme.light")
+                        .unwrap();
+                    let dark_label = i18n::LOCALES
+                        .lookup(&config.language, "settings-theme.dark")
+                        .unwrap();
 
-                egui::ComboBox::from_id_source("settings-window-general-theme")
-                    .selected_text(match config.theme {
-                        config::Theme::System => &system_label,
-                        config::Theme::Light => &light_label,
-                        config::Theme::Dark => &dark_label,
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut config.theme,
-                            config::Theme::System,
-                            &system_label,
-                        );
-                        ui.selectable_value(&mut config.theme, config::Theme::Light, &light_label);
-                        ui.selectable_value(&mut config.theme, config::Theme::Dark, &dark_label);
+                    egui::ComboBox::from_id_source("settings-window-general-theme")
+                        .selected_text(match config.theme {
+                            config::Theme::System => &system_label,
+                            config::Theme::Light => &light_label,
+                            config::Theme::Dark => &dark_label,
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut config.theme,
+                                config::Theme::System,
+                                &system_label,
+                            );
+                            ui.selectable_value(
+                                &mut config.theme,
+                                config::Theme::Light,
+                                &light_label,
+                            );
+                            ui.selectable_value(
+                                &mut config.theme,
+                                config::Theme::Dark,
+                                &dark_label,
+                            );
+                        });
+                    ui.end_row();
+                }
+
+                {
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-language")
+                            .unwrap(),
+                    );
+
+                    let en_label =
+                        egui::RichText::new("English").family(self.font_families.latn.clone());
+                    let ja_label =
+                        egui::RichText::new("日本語").family(self.font_families.jpan.clone());
+                    let zh_hans_label =
+                        egui::RichText::new("简体中文").family(self.font_families.hans.clone());
+                    let zh_hant_label =
+                        egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
+
+                    egui::ComboBox::from_id_source("settings-window-general-language")
+                        .selected_text(match &config.language {
+                            lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
+                                en_label.clone()
+                            }
+                            lang if lang.matches(&unic_langid::langid!("ja"), false, true) => {
+                                ja_label.clone()
+                            }
+                            lang if lang.matches(&unic_langid::langid!("zh-Hans"), false, true) => {
+                                zh_hans_label.clone()
+                            }
+                            lang if lang.matches(&unic_langid::langid!("zh-Hant"), false, true) => {
+                                zh_hant_label.clone()
+                            }
+                            _ => egui::RichText::new(""),
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut config.language,
+                                unic_langid::langid!("en"),
+                                en_label.clone(),
+                            );
+                            ui.selectable_value(
+                                &mut config.language,
+                                unic_langid::langid!("ja"),
+                                ja_label.clone(),
+                            );
+                            ui.selectable_value(
+                                &mut config.language,
+                                unic_langid::langid!("zh-Hans"),
+                                zh_hans_label.clone(),
+                            );
+                            ui.selectable_value(
+                                &mut config.language,
+                                unic_langid::langid!("zh-Hant"),
+                                zh_hant_label.clone(),
+                            );
+                        });
+                    ui.end_row();
+                }
+
+                {
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-debug-overlay")
+                            .unwrap(),
+                    );
+                    ui.checkbox(&mut config.show_debug_overlay, "");
+                    ui.end_row();
+                }
+            });
+    }
+
+    fn draw_settings_input_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        lang: &unic_langid::LanguageIdentifier,
+        input_mapping: &mut input::Mapping,
+        steal_input: &mut Option<StealInputState>,
+    ) {
+        egui::Grid::new("settings-window-input-mapping-grid")
+            .num_columns(2)
+            .show(ui, |ui| {
+                let mut add_row = |label_text_id,
+                                   get_mapping: fn(
+                    &mut input::Mapping,
+                )
+                    -> &mut Vec<input::PhysicalInput>| {
+                    ui.label(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
+                    ui.horizontal_wrapped(|ui| {
+                        let mapping = get_mapping(input_mapping);
+                        for (i, c) in mapping.clone().iter().enumerate() {
+                            ui.group(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::left_to_right(egui::Align::Center),
+                                    |ui| {
+                                        ui.label(egui::RichText::new(match c {
+                                            input::PhysicalInput::Key(_) => "⌨️",
+                                            input::PhysicalInput::Button(_)
+                                            | input::PhysicalInput::Axis { .. } => "🎮",
+                                        }));
+                                        ui.label(match c {
+                                            input::PhysicalInput::Key(key) => {
+                                                let raw = serde_plain::to_string(key).unwrap();
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        lang,
+                                                        &format!("physical-input-keys.{}", raw),
+                                                    )
+                                                    .unwrap_or(raw)
+                                            }
+                                            input::PhysicalInput::Button(button) => {
+                                                let raw = button.string();
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        lang,
+                                                        &format!("physical-input-buttons.{}", raw),
+                                                    )
+                                                    .unwrap_or(raw)
+                                            }
+                                            input::PhysicalInput::Axis { axis, direction } => {
+                                                let raw = format!(
+                                                    "{}{}",
+                                                    axis.string(),
+                                                    match direction {
+                                                        input::AxisDirection::Positive => "plus",
+                                                        input::AxisDirection::Negative => "minus",
+                                                    }
+                                                );
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        lang,
+                                                        &format!("physical-input-axes.{}", raw),
+                                                    )
+                                                    .unwrap_or(raw)
+                                            }
+                                        });
+                                        if ui.add(egui::Button::new("×").small()).clicked() {
+                                            mapping.remove(i);
+                                        }
+                                    },
+                                );
+                            });
+                        }
+                        if ui.add(egui::Button::new("➕")).clicked() {
+                            *steal_input = Some(StealInputState {
+                                callback: {
+                                    let get_mapping = get_mapping.clone();
+                                    Box::new(move |phy, input_mapping| {
+                                        let mapping = get_mapping(input_mapping);
+                                        mapping.push(phy);
+                                        mapping.sort_by_key(|c| match c {
+                                            input::PhysicalInput::Key(key) => (0, *key as usize, 0),
+                                            input::PhysicalInput::Button(button) => {
+                                                (1, *button as usize, 0)
+                                            }
+                                            input::PhysicalInput::Axis { axis, direction } => {
+                                                (2, *axis as usize, *direction as usize)
+                                            }
+                                        });
+                                        mapping.dedup();
+                                    })
+                                },
+                                userdata: Box::new(label_text_id),
+                            });
+                        }
                     });
-                ui.end_row();
-            }
+                    ui.end_row();
+                };
 
-            {
+                add_row("input-button.left", |input_mapping| &mut input_mapping.left);
+                add_row("input-button.right", |input_mapping| {
+                    &mut input_mapping.right
+                });
+                add_row("input-button.up", |input_mapping| &mut input_mapping.up);
+                add_row("input-button.down", |input_mapping| &mut input_mapping.down);
+                add_row("input-button.a", |input_mapping| &mut input_mapping.a);
+                add_row("input-button.b", |input_mapping| &mut input_mapping.b);
+                add_row("input-button.l", |input_mapping| &mut input_mapping.l);
+                add_row("input-button.r", |input_mapping| &mut input_mapping.r);
+                add_row("input-button.start", |input_mapping| {
+                    &mut input_mapping.start
+                });
+                add_row("input-button.select", |input_mapping| {
+                    &mut input_mapping.select
+                });
+            });
+    }
+
+    fn draw_settings_graphics_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+        egui::Grid::new("settings-window-graphics-grid")
+            .num_columns(2)
+            .show(ui, |ui| {
                 ui.label(
                     i18n::LOCALES
-                        .lookup(&config.language, "settings-language")
+                        .lookup(&config.language, "settings-max-scale")
                         .unwrap(),
                 );
-
-                let en_label =
-                    egui::RichText::new("English").family(self.font_families.latn.clone());
-                let ja_label =
-                    egui::RichText::new("日本語").family(self.font_families.jpan.clone());
-                let zh_hans_label =
-                    egui::RichText::new("简体中文").family(self.font_families.hans.clone());
-                let zh_hant_label =
-                    egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
-
-                egui::ComboBox::from_id_source("settings-window-general-language")
-                    .selected_text(match &config.language {
-                        lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
-                            en_label.clone()
-                        }
-                        lang if lang.matches(&unic_langid::langid!("ja"), false, true) => {
-                            ja_label.clone()
-                        }
-                        lang if lang.matches(&unic_langid::langid!("zh-Hans"), false, true) => {
-                            zh_hans_label.clone()
-                        }
-                        lang if lang.matches(&unic_langid::langid!("zh-Hant"), false, true) => {
-                            zh_hant_label.clone()
-                        }
-                        _ => egui::RichText::new(""),
-                    })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut config.language,
-                            unic_langid::langid!("en"),
-                            en_label.clone(),
-                        );
-                        ui.selectable_value(
-                            &mut config.language,
-                            unic_langid::langid!("ja"),
-                            ja_label.clone(),
-                        );
-                        ui.selectable_value(
-                            &mut config.language,
-                            unic_langid::langid!("zh-Hans"),
-                            zh_hans_label.clone(),
-                        );
-                        ui.selectable_value(
-                            &mut config.language,
-                            unic_langid::langid!("zh-Hant"),
-                            zh_hant_label.clone(),
-                        );
-                    });
+                ui.add(
+                    egui::DragValue::new(&mut config.max_scale)
+                        .speed(1)
+                        .clamp_range(0..=10),
+                );
                 ui.end_row();
-            }
 
-            {
                 ui.label(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-video-filter")
@@ -392,131 +580,72 @@ impl Gui {
                         );
                     });
                 ui.end_row();
-            }
-
-            {
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-debug-overlay")
-                        .unwrap(),
-                );
-                ui.checkbox(&mut config.show_debug_overlay, "");
-                ui.end_row();
-            }
-        });
+            });
     }
 
-    fn draw_settings_input_mapping_tab(
-        &mut self,
-        ui: &mut egui::Ui,
-        lang: &unic_langid::LanguageIdentifier,
-        input_mapping: &mut input::Mapping,
-        steal_input: &mut Option<StealInputState>,
-    ) {
-        egui::Grid::new("settings-window-input-mapping-grid").show(ui, |ui| {
-            let mut add_row = |label_text_id,
-                               get_mapping: fn(
-                &mut input::Mapping,
-            ) -> &mut Vec<input::PhysicalInput>| {
-                ui.label(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
-                ui.horizontal_wrapped(|ui| {
-                    let mapping = get_mapping(input_mapping);
-                    for (i, c) in mapping.clone().iter().enumerate() {
-                        ui.group(|ui| {
-                            ui.with_layout(
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.label(egui::RichText::new(match c {
-                                        input::PhysicalInput::Key(_) => "⌨️",
-                                        input::PhysicalInput::Button(_)
-                                        | input::PhysicalInput::Axis { .. } => "🎮",
-                                    }));
-                                    ui.label(match c {
-                                        input::PhysicalInput::Key(key) => {
-                                            let raw = serde_plain::to_string(key).unwrap();
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-keys.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                        input::PhysicalInput::Button(button) => {
-                                            let raw = button.string();
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-buttons.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                        input::PhysicalInput::Axis { axis, direction } => {
-                                            let raw = format!(
-                                                "{}{}",
-                                                axis.string(),
-                                                match direction {
-                                                    input::AxisDirection::Positive => "plus",
-                                                    input::AxisDirection::Negative => "minus",
-                                                }
-                                            );
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    lang,
-                                                    &format!("physical-input-axes.{}", raw),
-                                                )
-                                                .unwrap_or(raw)
-                                        }
-                                    });
-                                    if ui.add(egui::Button::new("×").small()).clicked() {
-                                        mapping.remove(i);
-                                    }
-                                },
-                            );
-                        });
-                    }
-                    if ui.add(egui::Button::new("➕")).clicked() {
-                        *steal_input = Some(StealInputState {
-                            callback: {
-                                let get_mapping = get_mapping.clone();
-                                Box::new(move |phy, input_mapping| {
-                                    let mapping = get_mapping(input_mapping);
-                                    mapping.push(phy);
-                                    mapping.sort_by_key(|c| match c {
-                                        input::PhysicalInput::Key(key) => (0, *key as usize, 0),
-                                        input::PhysicalInput::Button(button) => {
-                                            (1, *button as usize, 0)
-                                        }
-                                        input::PhysicalInput::Axis { axis, direction } => {
-                                            (2, *axis as usize, *direction as usize)
-                                        }
-                                    });
-                                    mapping.dedup();
-                                })
-                            },
-                            userdata: Box::new(label_text_id),
-                        });
-                    }
-                });
-                ui.end_row();
-            };
+    fn draw_settings_audio_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+        egui::Grid::new("settings-window-audio-grid")
+            .num_columns(2)
+            .show(ui, |ui| {});
+    }
 
-            add_row("input-button.left", |input_mapping| &mut input_mapping.left);
-            add_row("input-button.right", |input_mapping| {
-                &mut input_mapping.right
+    fn draw_settings_netplay_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+        egui::Grid::new("settings-window-netplay-grid")
+            .num_columns(2)
+            .show(ui, |ui| {
+                ui.label(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-max-queue-length")
+                        .unwrap(),
+                );
+                ui.add(egui::DragValue::new(&mut config.max_queue_length).speed(1));
+                ui.end_row();
+
+                ui.label(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-signaling-endpoint")
+                        .unwrap(),
+                );
+                let signaling_endpoint_is_empty = config.signaling_endpoint.is_empty();
+                ui.add(
+                    egui::TextEdit::singleline(&mut config.signaling_endpoint)
+                        .desired_width(200.0)
+                        .hint_text(if signaling_endpoint_is_empty {
+                            config::DEFAULT_SIGNALING_ENDPOINT
+                        } else {
+                            ""
+                        }),
+                );
+                ui.end_row();
+
+                ui.label(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-iceconfig-endpoint")
+                        .unwrap(),
+                );
+                let iceconfig_endpoint_is_empty = config.iceconfig_endpoint.is_empty();
+                ui.add(
+                    egui::TextEdit::singleline(&mut config.iceconfig_endpoint)
+                        .desired_width(200.0)
+                        .hint_text(if iceconfig_endpoint_is_empty {
+                            config::DEFAULT_ICECONFIG_ENDPOINT
+                        } else {
+                            ""
+                        }),
+                );
+                ui.end_row();
+
+                ui.label(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-replaycollector-endpoint")
+                        .unwrap(),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut config.replaycollector_endpoint)
+                        .desired_width(200.0),
+                );
+                ui.end_row();
             });
-            add_row("input-button.up", |input_mapping| &mut input_mapping.up);
-            add_row("input-button.down", |input_mapping| &mut input_mapping.down);
-            add_row("input-button.a", |input_mapping| &mut input_mapping.a);
-            add_row("input-button.b", |input_mapping| &mut input_mapping.b);
-            add_row("input-button.l", |input_mapping| &mut input_mapping.l);
-            add_row("input-button.r", |input_mapping| &mut input_mapping.r);
-            add_row("input-button.start", |input_mapping| {
-                &mut input_mapping.start
-            });
-            add_row("input-button.select", |input_mapping| {
-                &mut input_mapping.select
-            });
-        });
     }
 
     fn draw_debug_overlay(
@@ -531,81 +660,88 @@ impl Gui {
             .title_bar(false)
             .open(&mut state.config.show_debug_overlay)
             .show(ctx, |ui| {
-                egui::Grid::new("debug-window-grid").show(ui, |ui| {
-                    ui.label("FPS");
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{:3.02}",
-                            1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
-                        ))
-                        .family(egui::FontFamily::Monospace),
-                    );
-                    ui.end_row();
-
-                    if let Some(session) = &state.session {
-                        let tps_adjustment = if let session::Mode::PvP(match_) = session.mode() {
-                            handle.block_on(async {
-                                if let Some(match_) = &*match_.lock().await {
-                                    ui.label("Match active");
-                                    ui.end_row();
-
-                                    let round_state = match_.lock_round_state().await;
-                                    if let Some(round) = round_state.round.as_ref() {
-                                        ui.label("Current tick");
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{:4}",
-                                                round.current_tick()
-                                            ))
-                                            .family(egui::FontFamily::Monospace),
-                                        );
-                                        ui.end_row();
-
-                                        ui.label("Local player index");
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{:1}",
-                                                round.local_player_index()
-                                            ))
-                                            .family(egui::FontFamily::Monospace),
-                                        );
-                                        ui.end_row();
-
-                                        ui.label("Queue length");
-                                        ui.label(
-                                            egui::RichText::new(format!(
-                                                "{:2} vs {:2} (delay = {:1})",
-                                                round.local_queue_length(),
-                                                round.remote_queue_length(),
-                                                round.local_delay(),
-                                            ))
-                                            .family(egui::FontFamily::Monospace),
-                                        );
-                                        ui.end_row();
-                                        round.tps_adjustment()
-                                    } else {
-                                        0.0
-                                    }
-                                } else {
-                                    0.0
-                                }
-                            })
-                        } else {
-                            0.0
-                        };
-
-                        ui.label("Emu TPS");
+                egui::Grid::new("debug-window-grid")
+                    .num_columns(2)
+                    .show(ui, |ui| {
+                        ui.label("FPS");
                         ui.label(
                             egui::RichText::new(format!(
-                                "{:3.02} ({:+1.02})",
-                                1.0 / state.emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                                tps_adjustment
+                                "{:3.02}",
+                                1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
                             ))
                             .family(egui::FontFamily::Monospace),
                         );
                         ui.end_row();
-                    }
-                });
+
+                        if let Some(session) = &state.session {
+                            let tps_adjustment = if let session::Mode::PvP(match_) = session.mode()
+                            {
+                                handle.block_on(async {
+                                    if let Some(match_) = &*match_.lock().await {
+                                        ui.label("Match active");
+                                        ui.end_row();
+
+                                        let round_state = match_.lock_round_state().await;
+                                        if let Some(round) = round_state.round.as_ref() {
+                                            ui.label("Current tick");
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "{:4}",
+                                                    round.current_tick()
+                                                ))
+                                                .family(egui::FontFamily::Monospace),
+                                            );
+                                            ui.end_row();
+
+                                            ui.label("Local player index");
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "{:1}",
+                                                    round.local_player_index()
+                                                ))
+                                                .family(egui::FontFamily::Monospace),
+                                            );
+                                            ui.end_row();
+
+                                            ui.label("Queue length");
+                                            ui.label(
+                                                egui::RichText::new(format!(
+                                                    "{:2} vs {:2} (delay = {:1})",
+                                                    round.local_queue_length(),
+                                                    round.remote_queue_length(),
+                                                    round.local_delay(),
+                                                ))
+                                                .family(egui::FontFamily::Monospace),
+                                            );
+                                            ui.end_row();
+                                            round.tps_adjustment()
+                                        } else {
+                                            0.0
+                                        }
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                            } else {
+                                0.0
+                            };
+
+                            ui.label("Emu TPS");
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{:3.02} ({:+1.02})",
+                                    1.0 / state
+                                        .emu_tps_counter
+                                        .lock()
+                                        .mean_duration()
+                                        .as_secs_f32(),
+                                    tps_adjustment
+                                ))
+                                .family(egui::FontFamily::Monospace),
+                            );
+                            ui.end_row();
+                        }
+                    });
             });
     }
 
@@ -914,7 +1050,7 @@ impl Gui {
         });
     }
 
-    fn draw_open_window(
+    fn draw_play_window(
         &mut self,
         ctx: &egui::Context,
         show_open: &mut Option<OpenState>,
@@ -932,10 +1068,10 @@ impl Gui {
     ) {
         let mut show_open_bool = show_open.is_some();
         egui::Window::new(format!(
-            "📂 {}",
-            i18n::LOCALES.lookup(language, "open").unwrap()
+            "🎮 {}",
+            i18n::LOCALES.lookup(language, "play").unwrap()
         ))
-        .id(egui::Id::new("open-window"))
+        .id(egui::Id::new("play-window"))
         .open(&mut show_open_bool)
         .show(ctx, |ui| {
             let games = games::sorted_games(language);
@@ -1036,7 +1172,13 @@ impl Gui {
         }
     }
 
-    fn draw_emulator(&mut self, ui: &mut egui::Ui, session: &session::Session, video_filter: &str) {
+    fn draw_emulator(
+        &mut self,
+        ui: &mut egui::Ui,
+        session: &session::Session,
+        video_filter: &str,
+        max_scale: u32,
+    ) {
         let video_filter =
             video::filter_by_name(video_filter).unwrap_or(Box::new(video::NullFilter));
 
@@ -1076,7 +1218,7 @@ impl Gui {
             egui::TextureFilter::Nearest,
         );
 
-        let scaling_factor = std::cmp::max_by(
+        let mut scaling_factor = std::cmp::max_by(
             std::cmp::min_by(
                 ui.available_width() / mgba::gba::SCREEN_WIDTH as f32,
                 ui.available_height() / mgba::gba::SCREEN_HEIGHT as f32,
@@ -1086,6 +1228,11 @@ impl Gui {
             1.0,
             |a, b| a.partial_cmp(b).unwrap(),
         );
+        if max_scale > 0 {
+            scaling_factor = std::cmp::min_by(scaling_factor, max_scale as f32, |a, b| {
+                a.partial_cmp(b).unwrap()
+            });
+        }
         ui.image(
             &vbuf.texture,
             egui::Vec2::new(
@@ -1102,6 +1249,7 @@ impl Gui {
         input_mapping: &input::Mapping,
         session: &session::Session,
         video_filter: &str,
+        max_scale: u32,
     ) {
         session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
@@ -1137,7 +1285,7 @@ impl Gui {
                 ui.with_layout(
                     egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                     |ui| {
-                        self.draw_emulator(ui, session, video_filter);
+                        self.draw_emulator(ui, session, video_filter, max_scale);
                     },
                 );
             });
@@ -1213,9 +1361,9 @@ impl Gui {
                     .selectable_label(
                         state.show_open.is_some(),
                         format!(
-                            "📂 {}",
+                            "🎮 {}",
                             i18n::LOCALES
-                                .lookup(&state.config.language, "open")
+                                .lookup(&state.config.language, "play")
                                 .unwrap()
                         ),
                     )
@@ -1362,7 +1510,7 @@ impl Gui {
         }
 
         self.draw_debug_overlay(ctx, handle.clone(), state);
-        self.draw_open_window(
+        self.draw_play_window(
             ctx,
             &mut state.show_open,
             &mut state.show_menubar,
@@ -1390,6 +1538,7 @@ impl Gui {
                 &state.config.input_mapping,
                 session,
                 &state.config.video_filter,
+                state.config.max_scale,
             );
         }
 
