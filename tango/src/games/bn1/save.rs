@@ -23,7 +23,7 @@ pub struct Save {
 
 impl Save {
     pub fn new(buf: Vec<u8>) -> Result<Self, anyhow::Error> {
-        let mut buf = buf
+        let buf = buf
             .get(..SRAM_SIZE)
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
