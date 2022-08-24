@@ -3,7 +3,6 @@ use rand::Rng;
 use crate::games;
 use crate::lockstep;
 use crate::net;
-use crate::protocol;
 use crate::replay;
 use crate::replayer;
 use crate::session;
@@ -151,7 +150,7 @@ impl Match {
     ) -> anyhow::Result<()> {
         let mut last_round_number = 0;
         loop {
-            match protocol::Packet::deserialize(
+            match net::protocol::Packet::deserialize(
                 match dc_rx.receive().await {
                     None => {
                         log::info!("data channel closed");
@@ -161,7 +160,7 @@ impl Match {
                 }
                 .as_slice(),
             )? {
-                protocol::Packet::Input(input) => {
+                net::protocol::Packet::Input(input) => {
                     // We need to sync on the first input so we don't end up wildly out of sync.
                     if let Some(transport_rendezvous_tx) =
                         self.transport_rendezvous_tx.lock().await.take()

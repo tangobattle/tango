@@ -12,13 +12,11 @@ mod i18n;
 mod input;
 mod lockstep;
 mod net;
-mod protocol;
 mod randomcode;
 mod replay;
 mod replayer;
 mod session;
 mod shadow;
-mod signaling;
 mod stats;
 mod video;
 
