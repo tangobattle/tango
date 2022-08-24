@@ -8,13 +8,13 @@ const MASK_OFFSET: usize = 0x1064;
 const GAME_NAME_OFFSET: usize = 0x1c70;
 const CHECKSUM_OFFSET: usize = 0x1c6c;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Region {
     US,
     JP,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Variant {
     Gregar,
     Falzar,

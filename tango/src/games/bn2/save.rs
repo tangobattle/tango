@@ -17,11 +17,12 @@ impl Save {
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        let save = Self { buf };
-        let n = &save.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
+        let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE2 20011016" {
             anyhow::bail!("unknown game name: {:02x?}", n);
         }
+
+        let save = Self { buf };
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
