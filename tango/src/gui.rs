@@ -1357,16 +1357,7 @@ impl Gui {
         if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Escape) {
             state.show_menubar = !state.show_menubar;
         }
-
-        if let Some(session) = &state.session {
-            self.draw_session(
-                ctx,
-                input_state,
-                &state.config.input_mapping,
-                session,
-                &state.config.video_filter,
-            );
-        } else {
+        if state.session.is_none() {
             state.show_menubar = true;
         }
 
@@ -1391,6 +1382,16 @@ impl Gui {
         );
         self.draw_about_window(ctx, &state.config.language, &mut state.show_about);
         self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
+
+        if let Some(session) = &state.session {
+            self.draw_session(
+                ctx,
+                input_state,
+                &state.config.input_mapping,
+                session,
+                &state.config.video_filter,
+            );
+        }
 
         if state.show_menubar {
             self.draw_menubar(ctx, state);
