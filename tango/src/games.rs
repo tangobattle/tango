@@ -103,7 +103,7 @@ pub fn scan_saves(
 ) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<std::path::PathBuf>> {
     let mut paths = std::collections::HashMap::new();
 
-    'next: for entry in walkdir::WalkDir::new(path) {
+    for entry in walkdir::WalkDir::new(path) {
         let entry = match entry {
             Ok(entry) => entry,
             Err(e) => {
@@ -137,7 +137,7 @@ pub fn scan_saves(
                     );
                     let save_paths = paths.entry(*game).or_insert_with(|| vec![]);
                     save_paths.push(path.to_path_buf());
-                    continue 'next;
+                    continue;
                 }
                 Err(e) => {
                     errors.push((*game, e));

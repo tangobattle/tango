@@ -1,4 +1,5 @@
 mod hooks;
+mod save;
 
 use crate::games;
 
@@ -25,6 +26,11 @@ impl games::Game for EXE2Impl {
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::AE2J_01
     }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        Ok(Box::new(save))
+    }
 }
 
 pub struct BN2Impl;
@@ -49,5 +55,10 @@ impl games::Game for BN2Impl {
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::AE2E_00
+    }
+
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+        let save = save::Save::new(data)?;
+        Ok(Box::new(save))
     }
 }
