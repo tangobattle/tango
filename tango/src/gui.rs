@@ -7,6 +7,7 @@ use crate::{audio, config, games, i18n, input, session, stats, video};
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
 mod about;
+mod menubar;
 mod play;
 mod settings;
 
@@ -90,6 +91,7 @@ pub struct FontFamilies {
 
 pub struct Gui {
     vbuf: Option<VBuf>,
+    menubar: menubar::Menubar,
     play: play::Play,
     about: about::About,
     settings: settings::Settings,
@@ -122,6 +124,7 @@ impl Gui {
 
         Self {
             vbuf: None,
+            menubar: menubar::Menubar::new(),
             play: play::Play::new(),
             settings: settings::Settings::new(font_families.clone()),
             about: about::About::new(),
@@ -337,7 +340,7 @@ impl Gui {
         );
     }
 
-    pub fn draw_session(
+    pub fn show_session(
         &mut self,
         ctx: &egui::Context,
         input_state: &input::State,
@@ -386,7 +389,7 @@ impl Gui {
             });
     }
 
-    pub fn draw_steal_input(
+    pub fn show_steal_input_dialog(
         &mut self,
         ctx: &egui::Context,
         language: &unic_langid::LanguageIdentifier,
@@ -448,70 +451,11 @@ impl Gui {
         }
     }
 
-    pub fn draw_menubar(&mut self, ctx: &egui::Context, state: &mut State) {
-        egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
-            ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
-                if ui
-                    .selectable_label(
-                        state.show_play.is_some(),
-                        format!(
-                            "🎮 {}",
-                            i18n::LOCALES
-                                .lookup(&state.config.language, "play")
-                                .unwrap()
-                        ),
-                    )
-                    .clicked()
-                {
-                    state.show_play = if state.show_play.is_some() {
-                        None
-                    } else {
-                        Some(play::State::new())
-                    };
-                }
-
-                if ui
-                    .selectable_label(
-                        state.show_settings.is_some(),
-                        format!(
-                            "⚙️ {}",
-                            i18n::LOCALES
-                                .lookup(&state.config.language, "settings")
-                                .unwrap()
-                        ),
-                    )
-                    .clicked()
-                {
-                    state.show_settings = if state.show_settings.is_some() {
-                        None
-                    } else {
-                        Some(settings::State::new())
-                    };
-                }
-
-                if ui
-                    .selectable_label(
-                        state.show_about,
-                        format!(
-                            "❓ {}",
-                            i18n::LOCALES
-                                .lookup(&state.config.language, "about")
-                                .unwrap()
-                        ),
-                    )
-                    .clicked()
-                {
-                    state.show_about = !state.show_about;
-                }
-            })
-        });
-    }
-
-    pub fn draw(
+    pub fn show(
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
+        _window: &glutin::window::Window,
         input_state: &input::State,
         state: &mut State,
     ) {
@@ -611,10 +555,10 @@ impl Gui {
         );
         self.about
             .show(ctx, &state.config.language, &mut state.show_about);
-        self.draw_steal_input(ctx, &state.config.language, &mut state.steal_input);
+        self.show_steal_input_dialog(ctx, &state.config.language, &mut state.steal_input);
 
         if let Some(session) = &state.session {
-            self.draw_session(
+            self.show_session(
                 ctx,
                 input_state,
                 &state.config.input_mapping,
@@ -625,7 +569,13 @@ impl Gui {
         }
 
         if state.show_menubar {
-            self.draw_menubar(ctx, state);
+            self.menubar.show(
+                ctx,
+                &state.config.language,
+                &mut state.show_play,
+                &mut state.show_settings,
+                &mut state.show_about,
+            );
         }
     }
 }

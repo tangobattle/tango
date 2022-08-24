@@ -154,6 +154,12 @@ impl Match {
                 }
                 .as_slice(),
             )? {
+                net::protocol::Packet::Ping(ping) => {
+                    self.transport.lock().await.send_pong(ping.ts).await?;
+                }
+                net::protocol::Packet::Pong(_pong) => {
+                    // TODO
+                }
                 net::protocol::Packet::Input(input) => {
                     // We need to wait for the next round to start to avoid dropping inputs on the floor.
                     if input.round_number != last_round_number {

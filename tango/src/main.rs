@@ -330,7 +330,13 @@ fn child_main() -> Result<(), anyhow::Error> {
                             * state.config.ui_scale_percent as f32
                             / 100.0,
                     );
-                    gui.draw(ctx, handle.clone(), &input_state, &mut state)
+                    gui.show(
+                        ctx,
+                        handle.clone(),
+                        gl_window.window(),
+                        &input_state,
+                        &mut state,
+                    )
                 });
                 egui_glow.paint(gl_window.window());
 
