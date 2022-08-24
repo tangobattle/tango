@@ -72,6 +72,8 @@ impl Save {
                 &buf[shift + CHECKSUM_OFFSET..shift + CHECKSUM_OFFSET + 4],
             )
             .checked_sub(compute_raw_checksum(&buf, shift));
+
+            // I'm pretty sure the developers did not intend to exclude the first byte, but this is how the JP version detects saves, I guess.
             let jp_checksum_remaining =
                 us_checksum_remaining.and_then(|v| v.checked_sub(buf[0] as u32));
 
