@@ -1,61 +1,30 @@
 use crate::{protocol, signaling};
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("expected hello")]
     ExpectedHello,
+
+    #[error("protocol version too old")]
     ProtocolVersionTooOld,
+
+    #[error("protocol version too new")]
     ProtocolVersionTooNew,
-    Other(anyhow::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
-impl From<anyhow::Error> for Error {
-    fn from(err: anyhow::Error) -> Self {
-        Error::Other(err)
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Self {
-        Error::Other(err.into())
-    }
-}
-
-impl From<datachannel_wrapper::Error> for Error {
-    fn from(err: datachannel_wrapper::Error) -> Self {
-        Error::Other(err.into())
-    }
-}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::ExpectedHello => write!(f, "expected hello"),
-            Error::ProtocolVersionTooOld => write!(f, "protocol version too old"),
-            Error::ProtocolVersionTooNew => write!(f, "protocol version too new"),
-            Error::Other(e) => write!(f, "other error: {}", e),
-        }
-    }
-}
-
-impl std::error::Error for Error {}
-
-pub async fn negotiate(
-    session_id: &str,
-    signaling_connect_addr: &str,
+async fn create_data_channel(
     ice_servers: &[String],
 ) -> Result<
     (
         datachannel_wrapper::DataChannel,
+        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
         datachannel_wrapper::PeerConnection,
     ),
-    Error,
+    anyhow::Error,
 > {
-    log::info!(
-        "negotiating match, session_id = {}, ice_servers = {:?}",
-        session_id,
-        ice_servers
-    );
-
     let (mut peer_conn, mut event_rx) =
         datachannel_wrapper::PeerConnection::new(datachannel_wrapper::RtcConfig::new(ice_servers))?;
 
@@ -82,9 +51,35 @@ pub async fn negotiate(
         }
     }
 
-    log::info!("candidates gathered");
+    Ok((dc, event_rx, peer_conn))
+}
 
-    signaling::connect(signaling_connect_addr, &mut peer_conn, event_rx, session_id).await?;
+pub async fn negotiate(
+    session_id: &str,
+    signaling_connect_addr: &str,
+    ice_servers: &[String],
+) -> Result<
+    (
+        datachannel_wrapper::DataChannel,
+        datachannel_wrapper::PeerConnection,
+    ),
+    Error,
+> {
+    let (dc, event_rx, mut peer_conn) = create_data_channel(ice_servers).await?;
+
+    log::info!(
+        "negotiating match, session_id = {}, ice_servers = {:?}",
+        session_id,
+        ice_servers
+    );
+
+    let signaling_stream = signaling::open(
+        signaling_connect_addr,
+        session_id,
+        &peer_conn.local_description().unwrap(),
+    )
+    .await?;
+    signaling::connect(&mut peer_conn, signaling_stream, event_rx).await?;
 
     let (mut dc_tx, mut dc_rx) = dc.split();
 
@@ -108,7 +103,8 @@ pub async fn negotiate(
             .expect("serialize")
             .as_slice(),
         )
-        .await?;
+        .await
+        .map_err(|e| Error::Other(e.into()))?;
 
     let hello = match protocol::Packet::deserialize(
         match dc_rx.receive().await {

@@ -3,12 +3,14 @@ use futures_util::TryStreamExt;
 use prost::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-pub async fn connect(
+pub async fn open(
     addr: &str,
-    peer_conn: &mut datachannel_wrapper::PeerConnection,
-    mut event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
     session_id: &str,
-) -> Result<(), anyhow::Error> {
+    local_description: &datachannel_wrapper::SessionDescription,
+) -> Result<
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
+    anyhow::Error,
+> {
     let mut url = url::Url::parse(addr)?;
     url.set_query(Some(
         &url::form_urlencoded::Serializer::new(String::new())
@@ -20,7 +22,8 @@ pub async fn connect(
     req.headers_mut().append(
         "User-Agent",
         tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!(
-            "tango-core/{}",
+            "tango/{}-{}",
+            env!("CARGO_PKG_VERSION"),
             git_version::git_version!()
         ))?,
     );
@@ -28,7 +31,6 @@ pub async fn connect(
 
     log::info!("negotiation started");
 
-    let local_description = peer_conn.local_description().unwrap();
     stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
             tango_protos::signaling::Packet {
@@ -41,8 +43,17 @@ pub async fn connect(
             .encode_to_vec(),
         ))
         .await?;
-    log::info!("negotiation start sent");
 
+    Ok(stream)
+}
+
+pub async fn connect(
+    peer_conn: &mut datachannel_wrapper::PeerConnection,
+    mut stream: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    mut event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
+) -> Result<(), anyhow::Error> {
     loop {
         tokio::select! {
             signal_msg = event_rx.recv() => {
