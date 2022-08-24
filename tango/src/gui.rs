@@ -983,6 +983,8 @@ impl Gui {
                                     {
                                         *show_open = None;
                                         *show_menubar = false;
+
+                                        // HACK: audio::Binding has to be dropped first.
                                         *session = None;
                                         *session = Some(
                                             session::Session::new_singleplayer(
