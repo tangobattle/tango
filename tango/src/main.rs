@@ -315,15 +315,6 @@ fn child_main() -> Result<(), anyhow::Error> {
                     gl.clear(glow::COLOR_BUFFER_BIT);
                 }
 
-                if state
-                    .session
-                    .as_ref()
-                    .map(|s| s.completed())
-                    .unwrap_or(false)
-                {
-                    state.session = None;
-                }
-
                 egui_glow.run(gl_window.window(), |ctx| {
                     ctx.set_pixels_per_point(
                         gl_window.window().scale_factor() as f32

@@ -7,15 +7,33 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 mod save_select_window;
 mod settings_window;
 
+enum MainScreen {
+    Session(session::Session),
+    Start(Start),
+}
+
+struct Start {
+    link_code: String,
+    show_save_select: Option<save_select_window::State>,
+}
+
+impl Start {
+    fn new() -> Self {
+        Self {
+            link_code: String::new(),
+            show_save_select: None,
+        }
+    }
+}
+
 pub struct State {
     pub config: config::Config,
-    pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
     saves_list: SavesListState,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    show_save_select: Option<save_select_window::State>,
+    main_screen: MainScreen,
     show_settings: Option<settings_window::State>,
     drpc: discord_rpc_client::Client,
 }
@@ -85,12 +103,11 @@ impl State {
         Self {
             config,
             saves_list,
+            main_screen: MainScreen::Start(Start::new()),
             audio_binder,
             fps_counter,
             emu_tps_counter,
-            session: None,
             steal_input: None,
-            show_save_select: None,
             show_settings: None,
             drpc,
         }
@@ -231,7 +248,7 @@ impl Gui {
                         );
                         ui.end_row();
 
-                        if let Some(session) = &state.session {
+                        if let MainScreen::Session(session) = &state.main_screen {
                             let tps_adjustment = if let session::Mode::PvP(match_) = session.mode()
                             {
                                 handle.block_on(async {
@@ -492,6 +509,12 @@ impl Gui {
         input_state: &input::State,
         state: &mut State,
     ) {
+        if let MainScreen::Session(session) = &state.main_screen {
+            if session.completed() {
+                state.main_screen = MainScreen::Start(Start::new());
+            }
+        }
+
         if self.current_language.as_ref() != Some(&state.config.language) {
             let mut language = state.config.language.clone();
             language.maximize();
@@ -561,16 +584,6 @@ impl Gui {
         });
 
         self.draw_debug_overlay(ctx, handle.clone(), state);
-        self.save_select_window.show(
-            ctx,
-            &mut state.show_save_select,
-            &state.config.language,
-            &state.config.saves_path,
-            &mut state.session,
-            state.saves_list.clone(),
-            state.audio_binder.clone(),
-            state.emu_tps_counter.clone(),
-        );
         self.settings_window.show(
             ctx,
             &mut state.show_settings,
@@ -579,74 +592,112 @@ impl Gui {
         );
         self.show_steal_input_dialog(ctx, &state.config.language, &mut state.steal_input);
 
-        if let Some(session) = &state.session {
-            self.show_session(
-                ctx,
-                input_state,
-                &state.config.input_mapping,
-                session,
-                &state.config.video_filter,
-                state.config.max_scale,
-            );
-        } else {
-            egui::TopBottomPanel::top("start-top-panel")
-                .frame(egui::Frame {
-                    inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
-                    rounding: egui::Rounding::none(),
-                    fill: ctx.style().visuals.window_fill(),
-                    ..Default::default()
-                })
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui
-                                .selectable_label(state.show_settings.is_some(), "⚙️")
-                                .on_hover_text_at_pointer(
-                                    i18n::LOCALES
-                                        .lookup(&state.config.language, "settings")
-                                        .unwrap(),
-                                )
-                                .clicked()
-                            {
-                                state.show_settings = if state.show_settings.is_none() {
-                                    Some(settings_window::State::new())
-                                } else {
-                                    None
-                                };
-                            }
-                        });
-                    });
-                });
-            egui::TopBottomPanel::bottom("start-bottom-panel")
-                .frame(egui::Frame {
-                    inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
-                    rounding: egui::Rounding::none(),
-                    fill: ctx.style().visuals.window_fill(),
-                    ..Default::default()
-                })
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.button(format!(
-                                "▶️ {}",
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "start.play")
-                                    .unwrap()
-                            ));
+        match &mut state.main_screen {
+            MainScreen::Session(session) => {
+                self.show_session(
+                    ctx,
+                    input_state,
+                    &state.config.input_mapping,
+                    session,
+                    &state.config.video_filter,
+                    state.config.max_scale,
+                );
+            }
+            MainScreen::Start(start) => {
+                self.save_select_window.show(
+                    ctx,
+                    &mut start.show_save_select,
+                    &state.config.language,
+                    &state.config.saves_path,
+                    state.saves_list.clone(),
+                    state.audio_binder.clone(),
+                    state.emu_tps_counter.clone(),
+                );
 
-                            ui.add(
-                                egui::TextEdit::singleline(&mut String::new())
-                                    .hint_text(
-                                        i18n::LOCALES
-                                            .lookup(&state.config.language, "start.link-code")
-                                            .unwrap(),
-                                    )
-                                    .desired_width(f32::INFINITY),
+                egui::TopBottomPanel::top("start-top-panel")
+                    .frame(egui::Frame {
+                        inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
+                        rounding: egui::Rounding::none(),
+                        fill: ctx.style().visuals.window_fill(),
+                        ..Default::default()
+                    })
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .selectable_label(state.show_settings.is_some(), "⚙️")
+                                        .on_hover_text_at_pointer(
+                                            i18n::LOCALES
+                                                .lookup(&state.config.language, "settings")
+                                                .unwrap(),
+                                        )
+                                        .clicked()
+                                    {
+                                        state.show_settings = if state.show_settings.is_none() {
+                                            Some(settings_window::State::new())
+                                        } else {
+                                            None
+                                        };
+                                    }
+                                },
                             );
                         });
                     });
-                });
-            egui::CentralPanel::default().show(ctx, |ui| {});
+                egui::TopBottomPanel::bottom("start-bottom-panel")
+                    .frame(egui::Frame {
+                        inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
+                        rounding: egui::Rounding::none(),
+                        fill: ctx.style().visuals.window_fill(),
+                        ..Default::default()
+                    })
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.button(format!(
+                                        "▶️ {}",
+                                        i18n::LOCALES
+                                            .lookup(&state.config.language, "start.play")
+                                            .unwrap()
+                                    ));
+
+                                    let input_resp = ui.add(
+                                        egui::TextEdit::singleline(&mut start.link_code)
+                                            .hint_text(
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &state.config.language,
+                                                        "start.link-code",
+                                                    )
+                                                    .unwrap(),
+                                            )
+                                            .desired_width(f32::INFINITY),
+                                    );
+                                    start.link_code = start
+                                        .link_code
+                                        .to_lowercase()
+                                        .chars()
+                                        .filter(|c| {
+                                            "abcdefghijklmnopqrstuvwxyz0123456789-".contains([*c])
+                                        })
+                                        .take(40)
+                                        .collect::<String>()
+                                        .trim_start_matches("-")
+                                        .to_string();
+                                    if input_resp.lost_focus()
+                                        && ctx.input().key_pressed(egui::Key::Enter)
+                                    {
+                                        log::info!("hello");
+                                    }
+                                },
+                            );
+                        });
+                    });
+                egui::CentralPanel::default().show(ctx, |ui| {});
+            }
         }
     }
 }

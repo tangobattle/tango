@@ -27,7 +27,6 @@ impl SaveSelectWindow {
         show: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
-        session: &mut Option<session::Session>,
         saves_list: gui::SavesListState,
         audio_binder: audio::LateBinder,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -85,16 +84,16 @@ impl SaveSelectWindow {
                                         *show = None;
 
                                         // HACK: audio::Binding has to be dropped first.
-                                        *session = None;
-                                        *session = Some(
-                                            session::Session::new_singleplayer(
-                                                audio_binder.clone(),
-                                                saves_list.roms.get(&selected_game).unwrap(),
-                                                save.as_path(),
-                                                emu_tps_counter.clone(),
-                                            )
-                                            .unwrap(),
-                                        );
+                                        // *session = None;
+                                        // *session = Some(
+                                        //     session::Session::new_singleplayer(
+                                        //         audio_binder.clone(),
+                                        //         saves_list.roms.get(&selected_game).unwrap(),
+                                        //         save.as_path(),
+                                        //         emu_tps_counter.clone(),
+                                        //     )
+                                        //     .unwrap(),
+                                        // );
                                     }
                                 }
                             }
