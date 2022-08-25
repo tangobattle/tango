@@ -1,4 +1,5 @@
 mod hooks;
+mod save;
 
 use crate::games;
 
@@ -27,7 +28,17 @@ impl games::Game for EXE5BImpl {
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
-        anyhow::bail!("not implemented");
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::JP,
+                variant: save::Variant::Protoman,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
 
@@ -56,7 +67,17 @@ impl games::Game for EXE5CImpl {
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
-        anyhow::bail!("not implemented");
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::JP,
+                variant: save::Variant::Colonel,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
 
@@ -85,7 +106,17 @@ impl games::Game for BN5PImpl {
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
-        anyhow::bail!("not implemented");
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::US,
+                variant: save::Variant::Protoman,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
 
@@ -114,6 +145,16 @@ impl games::Game for BN5CImpl {
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
-        anyhow::bail!("not implemented");
+        let save = save::Save::new(data)?;
+        let game_info = save.game_info().unwrap();
+        if game_info
+            != (save::GameInfo {
+                region: save::Region::US,
+                variant: save::Variant::Colonel,
+            })
+        {
+            anyhow::bail!("save is not compatible: got {:?}", game_info);
+        }
+        Ok(Box::new(save))
     }
 }
