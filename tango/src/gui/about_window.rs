@@ -2,13 +2,13 @@ use fluent_templates::Loader;
 
 use crate::i18n;
 
-pub struct About {
+pub struct AboutWindow {
     emblem: egui_extras::RetainedImage,
 }
 
-impl About {
+impl AboutWindow {
     pub fn new() -> Self {
-        About {
+        Self {
             emblem: egui_extras::RetainedImage::from_image_bytes(
                 "emblem",
                 include_bytes!("../emblem.png"),

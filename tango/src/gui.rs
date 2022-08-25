@@ -6,10 +6,10 @@ use crate::{audio, config, games, i18n, input, session, stats, video};
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
-mod about;
+mod about_window;
 mod menubar;
-mod play;
-mod settings;
+mod play_window;
+mod settings_window;
 
 pub struct State {
     pub config: config::Config,
@@ -24,8 +24,8 @@ pub struct State {
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     show_menubar: bool,
-    show_play: Option<play::State>,
-    show_settings: Option<settings::State>,
+    show_play: Option<play_window::State>,
+    show_settings: Option<settings_window::State>,
     show_about: bool,
     drpc: discord_rpc_client::Client,
 }
@@ -92,9 +92,9 @@ pub struct FontFamilies {
 pub struct Gui {
     vbuf: Option<VBuf>,
     menubar: menubar::Menubar,
-    play: play::Play,
-    about: about::About,
-    settings: settings::Settings,
+    play: play_window::PlayWindow,
+    about: about_window::AboutWindow,
+    settings: settings_window::SettingsWindow,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -125,9 +125,9 @@ impl Gui {
         Self {
             vbuf: None,
             menubar: menubar::Menubar::new(),
-            play: play::Play::new(),
-            settings: settings::Settings::new(font_families.clone()),
-            about: about::About::new(),
+            play: play_window::PlayWindow::new(),
+            settings: settings_window::SettingsWindow::new(font_families.clone()),
+            about: about_window::AboutWindow::new(),
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),

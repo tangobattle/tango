@@ -17,11 +17,11 @@ impl State {
     }
 }
 
-pub struct Settings {
+pub struct SettingsWindow {
     font_families: gui::FontFamilies,
 }
 
-impl Settings {
+impl SettingsWindow {
     pub fn new(font_families: gui::FontFamilies) -> Self {
         Self { font_families }
     }

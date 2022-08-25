@@ -14,9 +14,9 @@ impl State {
     }
 }
 
-pub struct Play;
+pub struct PlayWindow;
 
-impl Play {
+impl PlayWindow {
     pub fn new() -> Self {
         Self {}
     }

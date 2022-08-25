@@ -2,7 +2,7 @@ use fluent_templates::Loader;
 
 use crate::i18n;
 
-use super::{play, settings};
+use super::{play_window, settings_window};
 
 pub struct Menubar {}
 
@@ -15,8 +15,8 @@ impl Menubar {
         &self,
         ctx: &egui::Context,
         lang: &unic_langid::LanguageIdentifier,
-        show_play: &mut Option<play::State>,
-        show_settings: &mut Option<settings::State>,
+        show_play: &mut Option<play_window::State>,
+        show_settings: &mut Option<settings_window::State>,
         show_about: &mut bool,
     ) {
         egui::TopBottomPanel::top("menubar").show(ctx, |ui| {
@@ -32,7 +32,7 @@ impl Menubar {
                     *show_play = if show_play.is_some() {
                         None
                     } else {
-                        Some(play::State::new())
+                        Some(play_window::State::new())
                     };
                 }
 
@@ -46,7 +46,7 @@ impl Menubar {
                     *show_settings = if show_settings.is_some() {
                         None
                     } else {
-                        Some(settings::State::new())
+                        Some(settings_window::State::new())
                     };
                 }
 
