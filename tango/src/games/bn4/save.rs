@@ -68,32 +68,29 @@ impl Save {
             const RED_SUN: u32 = checksum_start_for_variant(Variant::RedSun);
             const BLUE_MOON: u32 = checksum_start_for_variant(Variant::BlueMoon);
 
-            let us_checksum_remaining = byteorder::LittleEndian::read_u32(
+            let (variant, region) = match byteorder::LittleEndian::read_u32(
                 &buf[shift + CHECKSUM_OFFSET..shift + CHECKSUM_OFFSET + 4],
             )
-            .checked_sub(compute_raw_checksum(&buf, shift));
-
-            // I'm pretty sure the developers did not intend to exclude the first byte, but this is how the JP version detects saves, I guess.
-            let jp_checksum_remaining =
-                us_checksum_remaining.and_then(|v| v.checked_sub(buf[0] as u32));
-
-            let (variant, mut region) = match jp_checksum_remaining {
-                Some(RED_SUN) => (Variant::RedSun, Region::JP),
-                Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
-                _ => match us_checksum_remaining {
-                    Some(RED_SUN) => (Variant::RedSun, Region::US),
-                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
+            .checked_sub(compute_raw_checksum(&buf, shift))
+            {
+                Some(RED_SUN) => (Variant::RedSun, Region::US),
+                Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
+                Some(c) => match c.checked_sub(buf[0] as u32) {
+                    Some(RED_SUN) => (Variant::RedSun, Region::JP),
+                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
                     _ => {
-                        anyhow::bail!("unknown game, remaining checksum was either {:02x?} (jp) or {:02x?} (us)", jp_checksum_remaining, us_checksum_remaining);
+                        anyhow::bail!("unknown game, bad checksum");
                     }
                 },
+                None => {
+                    anyhow::bail!("unknown game, bad checksum");
+                }
             };
 
-            if us_checksum_remaining == jp_checksum_remaining {
-                region = Region::Any;
+            GameInfo {
+                variant,
+                region: if buf[0] == 0 { Region::Any } else { region },
             }
-
-            GameInfo { variant, region }
         };
 
         let save = Self {
