@@ -4070,7 +4070,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tango-signaling-server"
+name = "tango-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
