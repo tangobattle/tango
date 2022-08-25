@@ -15,7 +15,6 @@ impl Menubar {
         &self,
         ctx: &egui::Context,
         lang: &unic_langid::LanguageIdentifier,
-        last_cursor_activity_time: &Option<std::time::Instant>,
         show_play: &mut Option<play_window::State>,
         show_settings: &mut Option<settings_window::State>,
         show_about: &mut bool,
