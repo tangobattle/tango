@@ -90,7 +90,7 @@ pub struct SetSettings {
     pub match_type: u8,
     pub match_subtype: u8,
     pub game_info: GameInfo,
-    pub avaiable_games: Vec<GameInfo>,
+    pub available_games: Vec<GameInfo>,
     pub reveal_setup: bool,
 }
 
