@@ -690,12 +690,30 @@ impl Gui {
                                         .to_lowercase()
                                         .chars()
                                         .filter(|c| {
-                                            "abcdefghijklmnopqrstuvwxyz0123456789-".contains([*c])
+                                            "abcdefghijklmnopqrstuvwxyz0123456789-"
+                                                .chars()
+                                                .any(|c2| c2 == *c)
                                         })
                                         .take(40)
                                         .collect::<String>()
                                         .trim_start_matches("-")
                                         .to_string();
+
+                                    if let Some(last) = start.link_code.chars().last() {
+                                        if last == '-' {
+                                            start.link_code = start
+                                                .link_code
+                                                .chars()
+                                                .rev()
+                                                .skip_while(|c| *c == '-')
+                                                .collect::<Vec<_>>()
+                                                .into_iter()
+                                                .rev()
+                                                .collect::<String>()
+                                                + "-";
+                                        }
+                                    }
+
                                     if input_resp.lost_focus()
                                         && ctx.input().key_pressed(egui::Key::Enter)
                                     {
