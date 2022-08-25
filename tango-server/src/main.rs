@@ -113,7 +113,6 @@ fn router(
     routerify::Router::builder()
         .data(State {
             real_ip_getter,
-            // TODO: Implement iceconfig.
             matchmaking_server: std::sync::Arc::new(matchmaking::Server::new(iceconfig_backend)),
         })
         .get("/", handle_matchmaking_request)
