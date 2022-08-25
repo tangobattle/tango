@@ -20,3 +20,13 @@ routerify = "3.0"
 tungstenite = "0.17"
 async-trait = "0.1"
 url = "2.2"
+urlencoding = "2.1"
+opentok-server = "0.1"
+jwt = "0.16"
+hmac = "0.12"
+sha2 = "0.10"
+openssl-sys = { version = "0.9", features = ["vendored"] }
+rand = "0.8"
+reqwest = { version = "0.11", features = ["json"] }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }

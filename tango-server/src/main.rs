@@ -12,6 +12,21 @@ struct Config {
     // Don't use this unless you know what you're doing!
     #[envconfig(from = "USE_X_REAL_IP", default = "false")]
     use_x_real_ip: bool,
+
+    #[envconfig(from = "TWILIO_ACCOUNT_SID", default = "")]
+    twilio_account_sid: String,
+
+    #[envconfig(from = "TWILIO_API_SID", default = "")]
+    twilio_api_sid: String,
+
+    #[envconfig(from = "TWILIO_API_SECRET", default = "")]
+    twilio_api_secret: String,
+
+    #[envconfig(from = "OPENTOK_API_KEY", default = "")]
+    opentok_api_key: String,
+
+    #[envconfig(from = "OPENTOK_API_SECRET", default = "")]
+    opentok_api_secret: String,
 }
 
 struct State {
@@ -91,12 +106,15 @@ async fn handle_matchmaking_request(
     Ok(response)
 }
 
-fn router(real_ip_getter: httputil::RealIPGetter) -> routerify::Router<hyper::Body, anyhow::Error> {
+fn router(
+    real_ip_getter: httputil::RealIPGetter,
+    iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
+) -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
             real_ip_getter,
             // TODO: Implement iceconfig.
-            matchmaking_server: std::sync::Arc::new(matchmaking::Server::new(None)),
+            matchmaking_server: std::sync::Arc::new(matchmaking::Server::new(iceconfig_backend)),
         })
         .get("/", handle_matchmaking_request)
         .build()
@@ -112,7 +130,31 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::init_from_env().unwrap();
     let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
     let addr = config.listen_addr.parse()?;
-    let router = router(real_ip_getter);
+
+    let iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>> =
+        if !config.twilio_account_sid.is_empty()
+            && !config.twilio_api_sid.is_empty()
+            && !config.twilio_api_secret.is_empty()
+        {
+            log::info!("using twilio iceconfig backend");
+            Some(Box::new(iceconfig::twilio::Backend::new(
+                config.twilio_account_sid.clone(),
+                config.twilio_api_sid.clone(),
+                config.twilio_api_secret.clone(),
+            )))
+        } else if !config.opentok_api_key.is_empty() && !config.opentok_api_secret.is_empty() {
+            log::info!("using opentok iceconfig backend");
+            Some(Box::new(iceconfig::opentok::Backend::new(
+                config.opentok_api_key.clone(),
+                config.opentok_api_secret.clone(),
+            )))
+        } else {
+            log::warn!("no iceconfig backend, will not service iceconfig requests");
+            None
+        };
+
+    let router = router(real_ip_getter, iceconfig_backend);
+
     let service = routerify::RouterService::new(router).unwrap();
     hyper::Server::bind(&addr).serve(service).await?;
     Ok(())

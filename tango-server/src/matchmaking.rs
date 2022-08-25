@@ -3,6 +3,8 @@ use prost::Message;
 
 use crate::iceconfig;
 
+const ICECONFIG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
 struct Session {
     offer_sdp: String,
     sinks: Vec<
@@ -42,14 +44,56 @@ impl Server {
     ) -> anyhow::Result<()> {
         let (mut tx, mut rx) = ws.split();
 
+        let ice_servers = if let Some(backend) = self.iceconfig_backend.as_ref() {
+            match tokio::time::timeout(ICECONFIG_TIMEOUT, backend.get(&remote_ip)).await {
+                Ok(Ok(ice_servers)) => Some(ice_servers),
+                Err(_) => {
+                    log::error!("requesting ICE servers timed out");
+                    None
+                }
+                Ok(Err(e)) => {
+                    log::error!("failed to request ICE servers: {:?}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         tx.send(tungstenite::Message::Binary(
             tango_protos::matchmaking::Packet {
                 which: Some(tango_protos::matchmaking::packet::Which::Hello(
                     tango_protos::matchmaking::packet::Hello {
-                        ice_servers: if let Some(backend) = self.iceconfig_backend.as_ref() {
-                            backend.get(&remote_ip).await?
+                        ice_servers: if let Some(ice_servers) = ice_servers {
+                            ice_servers
                         } else {
-                            vec![]
+                            vec![
+                                tango_protos::matchmaking::packet::hello::IceServer {
+                                    username: None,
+                                    credential: None,
+                                    urls: vec!["stun:stun.l.google.com:19302".to_string()],
+                                },
+                                tango_protos::matchmaking::packet::hello::IceServer {
+                                    username: None,
+                                    credential: None,
+                                    urls: vec!["stun:stun1.l.google.com:19302".to_string()],
+                                },
+                                tango_protos::matchmaking::packet::hello::IceServer {
+                                    username: None,
+                                    credential: None,
+                                    urls: vec!["stun:stun2.l.google.com:19302".to_string()],
+                                },
+                                tango_protos::matchmaking::packet::hello::IceServer {
+                                    username: None,
+                                    credential: None,
+                                    urls: vec!["stun:stun3.l.google.com:19302".to_string()],
+                                },
+                                tango_protos::matchmaking::packet::hello::IceServer {
+                                    username: None,
+                                    credential: None,
+                                    urls: vec!["stun:stun4.l.google.com:19302".to_string()],
+                                },
+                            ]
                         },
                     },
                 )),
