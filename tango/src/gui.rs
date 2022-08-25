@@ -589,7 +589,53 @@ impl Gui {
                 state.config.max_scale,
             );
         } else {
-            // TODO
+            egui::TopBottomPanel::top("start-top-panel")
+                .frame(egui::Frame {
+                    inner_margin: egui::style::Margin::same(8.0),
+                    rounding: egui::Rounding::none(),
+                    fill: ctx.style().visuals.window_fill(),
+                    ..Default::default()
+                })
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .selectable_label(state.show_settings.is_some(), "⚙️")
+                                .on_hover_text_at_pointer(
+                                    i18n::LOCALES
+                                        .lookup(&state.config.language, "settings")
+                                        .unwrap(),
+                                )
+                                .clicked()
+                            {
+                                state.show_settings = if state.show_settings.is_none() {
+                                    Some(settings_window::State::new())
+                                } else {
+                                    None
+                                };
+                            }
+                        });
+                    });
+                });
+            egui::TopBottomPanel::bottom("start-bottom-panel")
+                .frame(egui::Frame {
+                    inner_margin: egui::style::Margin::same(8.0),
+                    rounding: egui::Rounding::none(),
+                    fill: ctx.style().visuals.window_fill(),
+                    ..Default::default()
+                })
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.button("Play");
+                            ui.add(
+                                egui::TextEdit::singleline(&mut String::new())
+                                    .desired_width(f32::INFINITY),
+                            );
+                        });
+                    });
+                });
+            egui::CentralPanel::default().show(ctx, |ui| {});
         }
     }
 }
