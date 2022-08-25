@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, games, gui, i18n, session, stats};
+use crate::{audio, games, gui, i18n, stats};
 
 pub struct State {
     selected_game: Option<&'static (dyn games::Game + Send + Sync)>,

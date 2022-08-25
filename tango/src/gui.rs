@@ -1,4 +1,4 @@
-use crate::{audio, config, games, i18n, input, session, stats, video};
+use crate::{audio, config, games, i18n, input, net, session, stats, video};
 use fluent_templates::Loader;
 use std::str::FromStr;
 
@@ -7,13 +7,27 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 mod save_select_window;
 mod settings_window;
 
-enum MainScreen {
+enum MainScreenState {
     Session(session::Session),
     Start(Start),
 }
 
+enum ConnectionState {
+    Starting,
+    Signaling,
+    Waiting,
+    Ready(
+        (
+            datachannel_wrapper::DataChannel,
+            datachannel_wrapper::PeerConnection,
+        ),
+    ),
+    Failed(anyhow::Error), // TODO: Not this
+}
+
 struct Start {
     link_code: String,
+    connection_state: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionState>>>,
     show_save_select: Option<save_select_window::State>,
 }
 
@@ -21,6 +35,7 @@ impl Start {
     fn new() -> Self {
         Self {
             link_code: String::new(),
+            connection_state: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
         }
     }
@@ -33,7 +48,7 @@ pub struct State {
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    main_screen: MainScreen,
+    main_screen: MainScreenState,
     show_settings: Option<settings_window::State>,
     drpc: discord_rpc_client::Client,
 }
@@ -103,7 +118,7 @@ impl State {
         Self {
             config,
             saves_list,
-            main_screen: MainScreen::Start(Start::new()),
+            main_screen: MainScreenState::Start(Start::new()),
             audio_binder,
             fps_counter,
             emu_tps_counter,
@@ -248,7 +263,7 @@ impl Gui {
                         );
                         ui.end_row();
 
-                        if let MainScreen::Session(session) = &state.main_screen {
+                        if let MainScreenState::Session(session) = &state.main_screen {
                             let tps_adjustment = if let session::Mode::PvP(match_) = session.mode()
                             {
                                 handle.block_on(async {
@@ -509,9 +524,9 @@ impl Gui {
         input_state: &input::State,
         state: &mut State,
     ) {
-        if let MainScreen::Session(session) = &state.main_screen {
+        if let MainScreenState::Session(session) = &state.main_screen {
             if session.completed() {
-                state.main_screen = MainScreen::Start(Start::new());
+                state.main_screen = MainScreenState::Start(Start::new());
             }
         }
 
@@ -593,7 +608,7 @@ impl Gui {
         self.show_steal_input_dialog(ctx, &state.config.language, &mut state.steal_input);
 
         match &mut state.main_screen {
-            MainScreen::Session(session) => {
+            MainScreenState::Session(session) => {
                 self.show_session(
                     ctx,
                     input_state,
@@ -603,7 +618,7 @@ impl Gui {
                     state.config.max_scale,
                 );
             }
-            MainScreen::Start(start) => {
+            MainScreenState::Start(start) => {
                 self.save_select_window.show(
                     ctx,
                     &mut start.show_save_select,
@@ -657,21 +672,79 @@ impl Gui {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.button(if start.link_code.is_empty() {
-                                        format!(
-                                            "▶️ {}",
-                                            i18n::LOCALES
-                                                .lookup(&state.config.language, "start.play")
-                                                .unwrap()
-                                        )
-                                    } else {
-                                        format!(
-                                            "🥊 {}",
-                                            i18n::LOCALES
-                                                .lookup(&state.config.language, "start.fight")
-                                                .unwrap()
-                                        )
-                                    });
+                                    let submit = |start: &Start| {
+                                        if !start.link_code.is_empty() {
+                                            log::info!("{}", start.link_code);
+                                            handle.block_on(async {
+                                                *start.connection_state.lock().await =
+                                                    Some(ConnectionState::Starting);
+                                            });
+
+                                            let connection_state = start.connection_state.clone();
+                                            let matchmaking_addr =
+                                                state.config.matchmaking_endpoint.clone();
+                                            let link_code = start.link_code.clone();
+
+                                            handle.spawn(async move {
+                                                if let Err(e) = {
+                                                    let connection_state = connection_state.clone();
+                                                    move || async move {
+                                                        log::info!("signaling...");
+                                                        *connection_state.lock().await =
+                                                            Some(ConnectionState::Signaling);
+                                                        // TODO: Add a timeout.
+                                                        let pending_conn = net::signaling::open(
+                                                            &matchmaking_addr,
+                                                            &link_code,
+                                                        )
+                                                        .await?;
+
+                                                        log::info!("waiting...");
+                                                        *connection_state.lock().await =
+                                                            Some(ConnectionState::Waiting);
+
+                                                        let (mut dc, peer_conn) =
+                                                            pending_conn.connect().await?;
+                                                        net::negotiate(&mut dc).await?;
+
+                                                        log::info!("hello...");
+                                                        *connection_state.lock().await = Some(
+                                                            ConnectionState::Ready((dc, peer_conn)),
+                                                        );
+
+                                                        Ok(())
+                                                    }
+                                                }(
+                                                )
+                                                .await
+                                                {
+                                                    *connection_state.lock().await =
+                                                        Some(ConnectionState::Failed(e))
+                                                }
+                                            });
+                                        }
+                                    };
+
+                                    if ui
+                                        .button(if start.link_code.is_empty() {
+                                            format!(
+                                                "▶️ {}",
+                                                i18n::LOCALES
+                                                    .lookup(&state.config.language, "start.play")
+                                                    .unwrap()
+                                            )
+                                        } else {
+                                            format!(
+                                                "🥊 {}",
+                                                i18n::LOCALES
+                                                    .lookup(&state.config.language, "start.fight")
+                                                    .unwrap()
+                                            )
+                                        })
+                                        .clicked()
+                                    {
+                                        submit(start);
+                                    }
 
                                     let input_resp = ui.add(
                                         egui::TextEdit::singleline(&mut start.link_code)
@@ -717,7 +790,7 @@ impl Gui {
                                     if input_resp.lost_focus()
                                         && ctx.input().key_pressed(egui::Key::Enter)
                                     {
-                                        log::info!("hello");
+                                        submit(start);
                                     }
                                 },
                             );
