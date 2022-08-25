@@ -109,8 +109,8 @@ impl Session {
                     let inner_match = inner_match.clone();
                     handle.spawn(async move {
                         tokio::select! {
-                            Err(e) = inner_match.run(dc_rx) => {
-                                log::info!("match thread ending: {:?}", e);
+                            r = inner_match.run(dc_rx) => {
+                                log::info!("match thread ending: {:?}", r);
                             }
                             _ = inner_match.cancelled() => {
                             }

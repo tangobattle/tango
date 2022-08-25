@@ -12,22 +12,26 @@ enum MainScreenState {
     Start(Start),
 }
 
+enum ConnectionFailure {}
+
+enum ConnectionTask {
+    InProgress {
+        state: ConnectionState,
+        cancellation_token: tokio_util::sync::CancellationToken,
+    },
+    Failed(anyhow::Error),
+}
+
 enum ConnectionState {
     Starting,
     Signaling,
     Waiting,
-    Ready(
-        (
-            datachannel_wrapper::DataChannel,
-            datachannel_wrapper::PeerConnection,
-        ),
-    ),
-    Failed(anyhow::Error), // TODO: Not this
+    Ready,
 }
 
 struct Start {
     link_code: String,
-    connection_state: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionState>>>,
+    connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<save_select_window::State>,
 }
 
@@ -35,7 +39,7 @@ impl Start {
     fn new() -> Self {
         Self {
             link_code: String::new(),
-            connection_state: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
         }
     }
@@ -674,52 +678,74 @@ impl Gui {
                                 |ui| {
                                     let submit = |start: &Start| {
                                         if !start.link_code.is_empty() {
-                                            log::info!("{}", start.link_code);
+                                            let cancellation_token =
+                                                tokio_util::sync::CancellationToken::new();
+
                                             handle.block_on(async {
-                                                *start.connection_state.lock().await =
-                                                    Some(ConnectionState::Starting);
+                                                *start.connection_task.lock().await =
+                                                    Some(ConnectionTask::InProgress {
+                                                        state: ConnectionState::Starting,
+                                                        cancellation_token: cancellation_token
+                                                            .clone(),
+                                                    });
                                             });
 
-                                            let connection_state = start.connection_state.clone();
+                                            let connection_task = start.connection_task.clone();
                                             let matchmaking_addr =
                                                 state.config.matchmaking_endpoint.clone();
                                             let link_code = start.link_code.clone();
 
                                             handle.spawn(async move {
                                                 if let Err(e) = {
-                                                    let connection_state = connection_state.clone();
-                                                    move || async move {
-                                                        log::info!("signaling...");
-                                                        *connection_state.lock().await =
-                                                            Some(ConnectionState::Signaling);
-                                                        // TODO: Add a timeout.
-                                                        let pending_conn = net::signaling::open(
-                                                            &matchmaking_addr,
-                                                            &link_code,
-                                                        )
-                                                        .await?;
+                                                    let connection_task = connection_task.clone();
 
-                                                        log::info!("waiting...");
-                                                        *connection_state.lock().await =
-                                                            Some(ConnectionState::Waiting);
+                                                    tokio::select!{
+                                                        r = {
+                                                            let connection_task = connection_task.clone();
+                                                            let cancellation_token = cancellation_token.clone();
+                                                            (move || async move {
+                                                                *connection_task.lock().await =
+                                                                    Some(ConnectionTask::InProgress {
+                                                                        state: ConnectionState::Signaling,
+                                                                        cancellation_token:
+                                                                            cancellation_token.clone(),
+                                                                    });
+                                                                const OPEN_TIMEOUT: std::time::Duration =
+                                                                    std::time::Duration::from_secs(30);
+                                                                let pending_conn = tokio::time::timeout(
+                                                                    OPEN_TIMEOUT,
+                                                                    net::signaling::open(
+                                                                        &matchmaking_addr,
+                                                                        &link_code,
+                                                                    ),
+                                                                )
+                                                                .await??;
 
-                                                        let (mut dc, peer_conn) =
-                                                            pending_conn.connect().await?;
-                                                        net::negotiate(&mut dc).await?;
+                                                                *connection_task.lock().await =
+                                                                    Some(ConnectionTask::InProgress {
+                                                                        state: ConnectionState::Waiting,
+                                                                        cancellation_token:
+                                                                            cancellation_token.clone(),
+                                                                    });
 
-                                                        log::info!("hello...");
-                                                        *connection_state.lock().await = Some(
-                                                            ConnectionState::Ready((dc, peer_conn)),
-                                                        );
+                                                                let (mut dc, peer_conn) = pending_conn.connect().await?;
+                                                                net::negotiate(&mut dc).await?;
 
-                                                        Ok(())
+                                                                log::info!("hello...");
+
+                                                                Ok(())
+                                                            })(
+                                                            )
+                                                        }
+                                                        => { r }
+                                                        _ = cancellation_token.cancelled() => {
+                                                            *connection_task.lock().await = None;
+                                                            return;
+                                                        }
                                                     }
-                                                }(
-                                                )
-                                                .await
-                                                {
-                                                    *connection_state.lock().await =
-                                                        Some(ConnectionState::Failed(e))
+                                                } {
+                                                    *connection_task.lock().await =
+                                                        Some(ConnectionTask::Failed(e));
                                                 }
                                             });
                                         }
