@@ -467,32 +467,15 @@ impl Settings {
 
                 ui.label(
                     i18n::LOCALES
-                        .lookup(&config.language, "settings-signaling-endpoint")
+                        .lookup(&config.language, "settings-matchmaking-endpoint")
                         .unwrap(),
                 );
-                let signaling_endpoint_is_empty = config.signaling_endpoint.is_empty();
+                let matchmaking_endpoint_is_empty = config.matchmaking_endpoint.is_empty();
                 ui.add(
-                    egui::TextEdit::singleline(&mut config.signaling_endpoint)
+                    egui::TextEdit::singleline(&mut config.matchmaking_endpoint)
                         .desired_width(200.0)
-                        .hint_text(if signaling_endpoint_is_empty {
-                            config::DEFAULT_SIGNALING_ENDPOINT
-                        } else {
-                            ""
-                        }),
-                );
-                ui.end_row();
-
-                ui.label(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-iceconfig-endpoint")
-                        .unwrap(),
-                );
-                let iceconfig_endpoint_is_empty = config.iceconfig_endpoint.is_empty();
-                ui.add(
-                    egui::TextEdit::singleline(&mut config.iceconfig_endpoint)
-                        .desired_width(200.0)
-                        .hint_text(if iceconfig_endpoint_is_empty {
-                            config::DEFAULT_ICECONFIG_ENDPOINT
+                        .hint_text(if matchmaking_endpoint_is_empty {
+                            config::DEFAULT_MATCHMAKING_ENDPOINT
                         } else {
                             ""
                         }),

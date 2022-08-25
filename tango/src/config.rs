@@ -46,8 +46,7 @@ pub struct Config {
     pub max_scale: u32,
     pub ui_scale_percent: u32,
     pub input_mapping: input::Mapping,
-    pub signaling_endpoint: String,
-    pub iceconfig_endpoint: String,
+    pub matchmaking_endpoint: String,
     pub replaycollector_endpoint: String,
     pub patch_repo: String,
     pub default_input_delay: u32,
@@ -91,8 +90,7 @@ impl Config {
             max_scale: 0,
             ui_scale_percent: 100,
             input_mapping: input::Mapping::default(),
-            signaling_endpoint: "".to_string(),
-            iceconfig_endpoint: "".to_string(),
+            matchmaking_endpoint: "".to_string(),
             replaycollector_endpoint: "https://replaycollector.tangobattle.com".to_string(),
             patch_repo: "".to_string(),
             default_input_delay: 2,
@@ -147,6 +145,5 @@ impl Config {
     }
 }
 
-pub const DEFAULT_SIGNALING_ENDPOINT: &str = "wss://signaling.tangobattle.com";
-pub const DEFAULT_ICECONFIG_ENDPOINT: &str = "https://iceconfig.tangobattle.com";
+pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://lets.tangobattle.com";
 pub const DEFAULT_PATCH_REPO: &str = "https://github.com/tangobattle/patches";

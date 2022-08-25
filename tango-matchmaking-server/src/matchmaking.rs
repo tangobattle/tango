@@ -33,7 +33,20 @@ impl Server {
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
         session_id: &str,
     ) -> anyhow::Result<()> {
-        let (tx, mut rx) = ws.split();
+        let (mut tx, mut rx) = ws.split();
+
+        tx.send(tungstenite::Message::Binary(
+            tango_protos::matchmaking::Packet {
+                which: Some(tango_protos::matchmaking::packet::Which::Hello(
+                    tango_protos::matchmaking::packet::Hello {
+                        ice_servers: vec![],
+                    },
+                )),
+            }
+            .encode_to_vec(),
+        ))
+        .await?;
+
         let session_id_for_cleanup = std::sync::Arc::new(tokio::sync::Mutex::new(None));
 
         let r = {
@@ -47,7 +60,7 @@ impl Server {
                 loop {
                     let msg = match rx.try_next().await? {
                         Some(tungstenite::Message::Binary(d)) => {
-                            tango_protos::signaling::Packet::decode(bytes::Bytes::from(d))?
+                            tango_protos::matchmaking::Packet::decode(bytes::Bytes::from(d))?
                         }
                         Some(tungstenite::Message::Close(_)) | None => {
                             break;
@@ -58,7 +71,7 @@ impl Server {
                     };
                     log::debug!("received message: {:?}", msg);
                     match msg.which {
-                        Some(tango_protos::signaling::packet::Which::Start(start)) => {
+                        Some(tango_protos::matchmaking::packet::Which::Start(start)) => {
                             let mut sessions = sessions.lock().await;
                             session = Some(if let Some(session) = sessions.remove(session_id) {
                                 session
@@ -94,10 +107,10 @@ impl Server {
                             if me == 1 {
                                 session.sinks[me]
                                     .send(tungstenite::Message::Binary(
-                                        tango_protos::signaling::Packet {
+                                        tango_protos::matchmaking::Packet {
                                             which: Some(
-                                                tango_protos::signaling::packet::Which::Offer(
-                                                    tango_protos::signaling::packet::Offer {
+                                                tango_protos::matchmaking::packet::Which::Offer(
+                                                    tango_protos::matchmaking::packet::Offer {
                                                         sdp: offer_sdp,
                                                     },
                                                 ),
@@ -108,12 +121,12 @@ impl Server {
                                     .await?;
                             }
                         }
-                        Some(tango_protos::signaling::packet::Which::Offer(_)) => {
+                        Some(tango_protos::matchmaking::packet::Which::Offer(_)) => {
                             anyhow::bail!(
                                 "received offer from client: only the server may send offers"
                             );
                         }
-                        Some(tango_protos::signaling::packet::Which::Answer(answer)) => {
+                        Some(tango_protos::matchmaking::packet::Which::Answer(answer)) => {
                             let session = match session.as_ref() {
                                 Some(session) => session,
                                 None => {
@@ -123,10 +136,10 @@ impl Server {
                             let mut session = session.lock().await;
                             session.sinks[0]
                                 .send(tungstenite::Message::Binary(
-                                    tango_protos::signaling::Packet {
+                                    tango_protos::matchmaking::Packet {
                                         which: Some(
-                                            tango_protos::signaling::packet::Which::Answer(
-                                                tango_protos::signaling::packet::Answer {
+                                            tango_protos::matchmaking::packet::Which::Answer(
+                                                tango_protos::matchmaking::packet::Answer {
                                                     sdp: answer.sdp,
                                                 },
                                             ),
@@ -136,7 +149,7 @@ impl Server {
                                 ))
                                 .await?;
                         }
-                        Some(tango_protos::signaling::packet::Which::IceCandidate(
+                        Some(tango_protos::matchmaking::packet::Which::IceCandidate(
                             ice_candidate,
                         )) => {
                             let session = match session.as_ref() {
@@ -148,10 +161,10 @@ impl Server {
                             let mut session = session.lock().await;
                             session.sinks[1 - me]
                                 .send(tungstenite::Message::Binary(
-                                    tango_protos::signaling::Packet {
+                                    tango_protos::matchmaking::Packet {
                                         which: Some(
-                                            tango_protos::signaling::packet::Which::IceCandidate(
-                                                tango_protos::signaling::packet::IceCandidate {
+                                            tango_protos::matchmaking::packet::Which::IceCandidate(
+                                                tango_protos::matchmaking::packet::IceCandidate {
                                                     candidate: ice_candidate.candidate,
                                                     mid: ice_candidate.mid,
                                                 },

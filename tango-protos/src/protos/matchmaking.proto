@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package tango.matchmaking;
+
+message Packet {
+  message Hello {
+    message ICEServer {
+      optional string credential = 1;
+      optional string username = 2;
+      repeated string urls = 3;
+    }
+    repeated ICEServer ice_servers = 1;
+  }
+
+  message Start { string offer_sdp = 1; }
+
+  message Offer { string sdp = 1; }
+
+  message Answer { string sdp = 1; }
+
+  message ICECandidate {
+    string candidate = 1;
+    string mid = 2;
+  }
+
+  oneof which {
+    Hello hello = 1;
+    Start start = 2;
+    Offer offer = 3;
+    Answer answer = 4;
+    ICECandidate ice_candidate = 5;
+  }
+}

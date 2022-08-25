@@ -16,49 +16,9 @@ pub enum Error {
     Other(#[from] anyhow::Error),
 }
 
-async fn create_data_channel(
-    ice_servers: &[String],
-) -> Result<
-    (
-        datachannel_wrapper::DataChannel,
-        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
-        datachannel_wrapper::PeerConnection,
-    ),
-    anyhow::Error,
-> {
-    let (mut peer_conn, mut event_rx) =
-        datachannel_wrapper::PeerConnection::new(datachannel_wrapper::RtcConfig::new(ice_servers))?;
-
-    let dc = peer_conn.create_data_channel(
-        "tango",
-        datachannel_wrapper::DataChannelInit::default()
-            .reliability(datachannel_wrapper::Reliability {
-                unordered: false,
-                unreliable: false,
-                max_packet_life_time: 0,
-                max_retransmits: 0,
-            })
-            .negotiated()
-            .manual_stream()
-            .stream(0),
-    )?;
-
-    loop {
-        if let Some(datachannel_wrapper::PeerConnectionEvent::GatheringStateChange(
-            datachannel_wrapper::GatheringState::Complete,
-        )) = event_rx.recv().await
-        {
-            break;
-        }
-    }
-
-    Ok((dc, event_rx, peer_conn))
-}
-
 pub async fn negotiate(
     session_id: &str,
     signaling_connect_addr: &str,
-    ice_servers: &[String],
 ) -> Result<
     (
         datachannel_wrapper::DataChannel,
@@ -66,20 +26,9 @@ pub async fn negotiate(
     ),
     Error,
 > {
-    let (dc, event_rx, mut peer_conn) = create_data_channel(ice_servers).await?;
+    let (signaling_stream, dc, event_rx, mut peer_conn) =
+        signaling::open(signaling_connect_addr, session_id).await?;
 
-    log::info!(
-        "negotiating match, session_id = {}, ice_servers = {:?}",
-        session_id,
-        ice_servers
-    );
-
-    let signaling_stream = signaling::open(
-        signaling_connect_addr,
-        session_id,
-        &peer_conn.local_description().unwrap(),
-    )
-    .await?;
     signaling::connect(&mut peer_conn, signaling_stream, event_rx).await?;
 
     let (mut dc_tx, mut dc_rx) = dc.split();

@@ -1,9 +1,5 @@
-pub mod signaling {
-    include!(concat!(env!("OUT_DIR"), "/tango.signaling.rs"));
-}
-
-pub mod iceconfig {
-    include!(concat!(env!("OUT_DIR"), "/tango.iceconfig.rs"));
+pub mod matchmaking {
+    include!(concat!(env!("OUT_DIR"), "/tango.matchmaking.rs"));
 }
 
 pub mod replay {

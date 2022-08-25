@@ -1,4 +1,4 @@
-mod signaling;
+mod matchmaking;
 use envconfig::Envconfig;
 use routerify::ext::RequestExt;
 
@@ -9,7 +9,7 @@ struct Config {
 }
 
 struct State {
-    signaling_server: std::sync::Arc<signaling::Server>,
+    matchmaking_server: std::sync::Arc<matchmaking::Server>,
 }
 
 async fn handle_signaling_request(
@@ -49,7 +49,7 @@ async fn handle_signaling_request(
         }),
     )?;
 
-    let signaling_server = request.data::<State>().unwrap().signaling_server.clone();
+    let matchmaking_server = request.data::<State>().unwrap().matchmaking_server.clone();
     tokio::spawn(async move {
         let websocket = match websocket.await {
             Ok(websocket) => websocket,
@@ -58,7 +58,10 @@ async fn handle_signaling_request(
                 return;
             }
         };
-        if let Err(e) = signaling_server.handle_stream(websocket, &session_id).await {
+        if let Err(e) = matchmaking_server
+            .handle_stream(websocket, &session_id)
+            .await
+        {
             log::error!("error in websocket connection: {}", e);
         }
     });
@@ -69,10 +72,10 @@ async fn handle_signaling_request(
 fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
-            signaling_server: std::sync::Arc::new(signaling::Server::new()),
+            matchmaking_server: std::sync::Arc::new(matchmaking::Server::new()),
         })
         .get("/", handle_signaling_request)
-        .get("/signaling", handle_signaling_request)
+        .get("/matchmaking", handle_signaling_request)
         .build()
         .unwrap()
 }
