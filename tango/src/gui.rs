@@ -627,9 +627,20 @@ impl Gui {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.button("Play");
+                            ui.button(format!(
+                                "▶️ {}",
+                                i18n::LOCALES
+                                    .lookup(&state.config.language, "start.play")
+                                    .unwrap()
+                            ));
+
                             ui.add(
                                 egui::TextEdit::singleline(&mut String::new())
+                                    .hint_text(
+                                        i18n::LOCALES
+                                            .lookup(&state.config.language, "start.link-code")
+                                            .unwrap(),
+                                    )
                                     .desired_width(f32::INFINITY),
                             );
                         });
