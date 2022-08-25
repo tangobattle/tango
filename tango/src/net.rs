@@ -26,10 +26,8 @@ pub async fn negotiate(
     ),
     Error,
 > {
-    let (signaling_stream, dc, event_rx, mut peer_conn) =
-        signaling::open(signaling_connect_addr, session_id).await?;
-
-    signaling::connect(&mut peer_conn, signaling_stream, event_rx).await?;
+    let pending = signaling::open(signaling_connect_addr, session_id).await?;
+    let (dc, peer_conn) = pending.connect().await?;
 
     let (mut dc_tx, mut dc_rx) = dc.split();
 

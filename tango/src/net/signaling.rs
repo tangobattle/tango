@@ -42,20 +42,16 @@ async fn create_data_channel(
     Ok((dc, event_rx, peer_conn))
 }
 
-pub async fn open(
-    addr: &str,
-    session_id: &str,
-) -> Result<
-    (
-        tokio_tungstenite::WebSocketStream<
-            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-        >,
-        datachannel_wrapper::DataChannel,
-        tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
-        datachannel_wrapper::PeerConnection,
-    ),
-    anyhow::Error,
-> {
+pub struct PendingConnection {
+    signaling_stream: tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    dc: datachannel_wrapper::DataChannel,
+    event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
+    peer_conn: datachannel_wrapper::PeerConnection,
+}
+
+pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, anyhow::Error> {
     let mut url = url::Url::parse(addr)?;
     url.set_query(Some(
         &url::form_urlencoded::Serializer::new(String::new())
@@ -72,9 +68,9 @@ pub async fn open(
             git_version::git_version!()
         ))?,
     );
-    let (mut stream, _) = tokio_tungstenite::connect_async(req).await?;
+    let (mut signaling_stream, _) = tokio_tungstenite::connect_async(req).await?;
 
-    let raw = if let Some(raw) = stream.try_next().await? {
+    let raw = if let Some(raw) = signaling_stream.try_next().await? {
         raw
     } else {
         anyhow::bail!("stream ended early");
@@ -138,7 +134,7 @@ pub async fn open(
     )
     .await?;
 
-    stream
+    signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(
             tango_protos::matchmaking::Packet {
                 which: Some(tango_protos::matchmaking::packet::Which::Start(
@@ -151,98 +147,115 @@ pub async fn open(
         ))
         .await?;
 
-    Ok((stream, dc, event_rx, peer_conn))
+    Ok(PendingConnection {
+        signaling_stream,
+        dc,
+        event_rx,
+        peer_conn,
+    })
 }
 
-pub async fn connect(
-    peer_conn: &mut datachannel_wrapper::PeerConnection,
-    mut stream: tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
-    mut event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
-) -> Result<(), anyhow::Error> {
-    loop {
-        let raw = if let Some(raw) = stream.try_next().await? {
-            raw
-        } else {
-            anyhow::bail!("stream ended early");
-        };
+impl PendingConnection {
+    pub async fn connect(
+        mut self,
+    ) -> Result<
+        (
+            datachannel_wrapper::DataChannel,
+            datachannel_wrapper::PeerConnection,
+        ),
+        anyhow::Error,
+    > {
+        loop {
+            let raw = if let Some(raw) = self.signaling_stream.try_next().await? {
+                raw
+            } else {
+                anyhow::bail!("stream ended early");
+            };
 
-        let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
-            tango_protos::matchmaking::Packet::decode(bytes::Bytes::from(d))?
-        } else {
-            anyhow::bail!("invalid packet");
-        };
+            let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
+                tango_protos::matchmaking::Packet::decode(bytes::Bytes::from(d))?
+            } else {
+                anyhow::bail!("invalid packet");
+            };
 
-        match packet.which {
-            Some(tango_protos::matchmaking::packet::Which::Start(_)) => {
-                anyhow::bail!("unexpected start");
-            }
-            Some(tango_protos::matchmaking::packet::Which::Offer(offer)) => {
-                log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
+            match packet.which {
+                Some(tango_protos::matchmaking::packet::Which::Start(_)) => {
+                    anyhow::bail!("unexpected start");
+                }
+                Some(tango_protos::matchmaking::packet::Which::Offer(offer)) => {
+                    log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
 
-                peer_conn.set_local_description(datachannel_wrapper::SdpType::Rollback)?;
-                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                    sdp_type: datachannel_wrapper::SdpType::Offer,
-                    sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
-                })?;
+                    self.peer_conn
+                        .set_local_description(datachannel_wrapper::SdpType::Rollback)?;
+                    self.peer_conn.set_remote_description(
+                        datachannel_wrapper::SessionDescription {
+                            sdp_type: datachannel_wrapper::SdpType::Offer,
+                            sdp: datachannel_wrapper::sdp::parse_sdp(
+                                &offer.sdp.to_string(),
+                                false,
+                            )?,
+                        },
+                    )?;
 
-                let local_description = peer_conn.local_description().unwrap();
-                stream
-                    .send(tokio_tungstenite::tungstenite::Message::Binary(
-                        tango_protos::matchmaking::Packet {
-                            which: Some(tango_protos::matchmaking::packet::Which::Answer(
-                                tango_protos::matchmaking::packet::Answer {
-                                    sdp: local_description.sdp.to_string(),
-                                },
-                            )),
-                        }
-                        .encode_to_vec(),
-                    ))
-                    .await?;
-                log::info!("sent answer to impolite side");
-                break;
-            }
-            Some(tango_protos::matchmaking::packet::Which::Answer(answer)) => {
-                log::info!("received an answer, this is the impolite side");
+                    let local_description = self.peer_conn.local_description().unwrap();
+                    self.signaling_stream
+                        .send(tokio_tungstenite::tungstenite::Message::Binary(
+                            tango_protos::matchmaking::Packet {
+                                which: Some(tango_protos::matchmaking::packet::Which::Answer(
+                                    tango_protos::matchmaking::packet::Answer {
+                                        sdp: local_description.sdp.to_string(),
+                                    },
+                                )),
+                            }
+                            .encode_to_vec(),
+                        ))
+                        .await?;
+                    log::info!("sent answer to impolite side");
+                    break;
+                }
+                Some(tango_protos::matchmaking::packet::Which::Answer(answer)) => {
+                    log::info!("received an answer, this is the impolite side");
 
-                peer_conn.set_remote_description(datachannel_wrapper::SessionDescription {
-                    sdp_type: datachannel_wrapper::SdpType::Answer,
-                    sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
-                })?;
-                break;
-            }
-            p => {
-                anyhow::bail!("unexpected packet: {:?}", p);
+                    self.peer_conn.set_remote_description(
+                        datachannel_wrapper::SessionDescription {
+                            sdp_type: datachannel_wrapper::SdpType::Answer,
+                            sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
+                        },
+                    )?;
+                    break;
+                }
+                p => {
+                    anyhow::bail!("unexpected packet: {:?}", p);
+                }
             }
         }
-    }
 
-    stream.close(None).await?;
+        self.signaling_stream.close(None).await?;
 
-    loop {
-        match event_rx.recv().await {
-            Some(signal) => match signal {
-                datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) => match c {
-                    datachannel_wrapper::ConnectionState::Connected => {
-                        break;
-                    }
-                    datachannel_wrapper::ConnectionState::Disconnected => {
-                        anyhow::bail!("peer connection unexpectedly disconnected");
-                    }
-                    datachannel_wrapper::ConnectionState::Failed => {
-                        anyhow::bail!("peer connection failed");
-                    }
-                    datachannel_wrapper::ConnectionState::Closed => {
-                        anyhow::bail!("peer connection unexpectedly closed");
-                    }
+        loop {
+            match self.event_rx.recv().await {
+                Some(signal) => match signal {
+                    datachannel_wrapper::PeerConnectionEvent::ConnectionStateChange(c) => match c {
+                        datachannel_wrapper::ConnectionState::Connected => {
+                            break;
+                        }
+                        datachannel_wrapper::ConnectionState::Disconnected => {
+                            anyhow::bail!("peer connection unexpectedly disconnected");
+                        }
+                        datachannel_wrapper::ConnectionState::Failed => {
+                            anyhow::bail!("peer connection failed");
+                        }
+                        datachannel_wrapper::ConnectionState::Closed => {
+                            anyhow::bail!("peer connection unexpectedly closed");
+                        }
+                        _ => {}
+                    },
                     _ => {}
                 },
-                _ => {}
-            },
-            None => unreachable!(),
+                None => unreachable!(),
+            }
         }
-    }
 
-    Ok(())
+        Ok((self.dc, self.peer_conn))
+    }
 }
