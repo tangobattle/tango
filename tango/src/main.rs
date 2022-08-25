@@ -54,7 +54,7 @@ fn main() -> Result<(), anyhow::Error> {
     );
 
     let logs_dir = project_dirs.data_dir().join("logs");
-    std::fs::create_dir_all(&logs_dir);
+    std::fs::create_dir_all(&logs_dir)?;
     let log_path = logs_dir.join(log_filename);
     log::info!("logging to: {}", log_path.display());
 
