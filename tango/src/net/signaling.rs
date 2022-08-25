@@ -232,6 +232,23 @@ impl PendingConnection {
 
         self.signaling_stream.close(None).await?;
 
+        log::debug!(
+            "local sdp (type = {:?}): {}",
+            self.peer_conn
+                .local_description()
+                .expect("local sdp")
+                .sdp_type,
+            self.peer_conn.local_description().expect("local sdp").sdp
+        );
+        log::debug!(
+            "remote sdp (type = {:?}): {}",
+            self.peer_conn
+                .remote_description()
+                .expect("remote sdp")
+                .sdp_type,
+            self.peer_conn.remote_description().expect("remote sdp").sdp
+        );
+
         loop {
             match self.event_rx.recv().await {
                 Some(signal) => match signal {

@@ -16,46 +16,20 @@ pub enum Error {
     Other(#[from] anyhow::Error),
 }
 
-pub async fn negotiate(
-    session_id: &str,
-    signaling_connect_addr: &str,
-) -> Result<
-    (
-        datachannel_wrapper::DataChannel,
-        datachannel_wrapper::PeerConnection,
-    ),
-    Error,
-> {
-    let pending = signaling::open(signaling_connect_addr, session_id).await?;
-    let (dc, peer_conn) = pending.connect().await?;
-
-    let (mut dc_tx, mut dc_rx) = dc.split();
-
-    log::debug!(
-        "local sdp (type = {:?}): {}",
-        peer_conn.local_description().expect("local sdp").sdp_type,
-        peer_conn.local_description().expect("local sdp").sdp
-    );
-    log::debug!(
-        "remote sdp (type = {:?}): {}",
-        peer_conn.remote_description().expect("remote sdp").sdp_type,
-        peer_conn.remote_description().expect("remote sdp").sdp
-    );
-
-    dc_tx
-        .send(
-            protocol::Packet::Hello(protocol::Hello {
-                protocol_version: protocol::VERSION,
-            })
-            .serialize()
-            .expect("serialize")
-            .as_slice(),
-        )
-        .await
-        .map_err(|e| Error::Other(e.into()))?;
+pub async fn negotiate(dc: &mut datachannel_wrapper::DataChannel) -> Result<(), Error> {
+    dc.send(
+        protocol::Packet::Hello(protocol::Hello {
+            protocol_version: protocol::VERSION,
+        })
+        .serialize()
+        .expect("serialize")
+        .as_slice(),
+    )
+    .await
+    .map_err(|e| Error::Other(e.into()))?;
 
     let hello = match protocol::Packet::deserialize(
-        match dc_rx.receive().await {
+        match dc.receive().await {
             Some(d) => d,
             None => {
                 return Err(Error::ExpectedHello);
@@ -79,7 +53,7 @@ pub async fn negotiate(
         return Err(Error::ProtocolVersionTooNew);
     }
 
-    Ok((dc_rx.unsplit(dc_tx), peer_conn))
+    Ok(())
 }
 
 pub struct Transport {
