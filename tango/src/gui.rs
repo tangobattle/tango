@@ -657,12 +657,21 @@ impl Gui {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    ui.button(format!(
-                                        "▶️ {}",
-                                        i18n::LOCALES
-                                            .lookup(&state.config.language, "start.play")
-                                            .unwrap()
-                                    ));
+                                    ui.button(if start.link_code.is_empty() {
+                                        format!(
+                                            "▶️ {}",
+                                            i18n::LOCALES
+                                                .lookup(&state.config.language, "start.play")
+                                                .unwrap()
+                                        )
+                                    } else {
+                                        format!(
+                                            "🥊 {}",
+                                            i18n::LOCALES
+                                                .lookup(&state.config.language, "start.fight")
+                                                .unwrap()
+                                        )
+                                    });
 
                                     let input_resp = ui.add(
                                         egui::TextEdit::singleline(&mut start.link_code)

@@ -1,4 +1,4 @@
 start =
     .play = Play
-    .fight = Fight
+    .fight = Fight!
     .link-code = Link code
