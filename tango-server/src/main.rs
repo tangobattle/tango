@@ -1,3 +1,5 @@
+mod httputil;
+mod iceconfig;
 mod matchmaking;
 use envconfig::Envconfig;
 use routerify::ext::RequestExt;
@@ -6,15 +8,34 @@ use routerify::ext::RequestExt;
 struct Config {
     #[envconfig(from = "LISTEN_ADDR", default = "[::]:1984")]
     listen_addr: String,
+
+    // Don't use this unless you know what you're doing!
+    #[envconfig(from = "USE_X_REAL_IP", default = "false")]
+    use_x_real_ip: bool,
 }
 
 struct State {
+    real_ip_getter: httputil::RealIPGetter,
     matchmaking_server: std::sync::Arc<matchmaking::Server>,
 }
 
-async fn handle_signaling_request(
+async fn handle_matchmaking_request(
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    let remote_ip = if let Some(remote_ip) = request
+        .data::<State>()
+        .unwrap()
+        .real_ip_getter
+        .get_remote_real_ip(&request)
+    {
+        remote_ip
+    } else {
+        return Ok(hyper::Response::builder()
+            .status(hyper::StatusCode::INTERNAL_SERVER_ERROR)
+            .body(hyper::Body::from("internal error"))
+            .unwrap());
+    };
+
     let session_id = if let Some(session_id) = request.uri().query().and_then(|query| {
         url::form_urlencoded::parse(query.as_bytes())
             .into_owned()
@@ -58,8 +79,9 @@ async fn handle_signaling_request(
                 return;
             }
         };
+
         if let Err(e) = matchmaking_server
-            .handle_stream(websocket, &session_id)
+            .handle_stream(websocket, remote_ip, &session_id)
             .await
         {
             log::error!("error in websocket connection: {}", e);
@@ -69,13 +91,14 @@ async fn handle_signaling_request(
     Ok(response)
 }
 
-fn router() -> routerify::Router<hyper::Body, anyhow::Error> {
+fn router(real_ip_getter: httputil::RealIPGetter) -> routerify::Router<hyper::Body, anyhow::Error> {
     routerify::Router::builder()
         .data(State {
-            matchmaking_server: std::sync::Arc::new(matchmaking::Server::new()),
+            real_ip_getter,
+            // TODO: Implement iceconfig.
+            matchmaking_server: std::sync::Arc::new(matchmaking::Server::new(None)),
         })
-        .get("/", handle_signaling_request)
-        .get("/matchmaking", handle_signaling_request)
+        .get("/", handle_matchmaking_request)
         .build()
         .unwrap()
 }
@@ -87,8 +110,9 @@ async fn main() -> anyhow::Result<()> {
         .init();
     log::info!("welcome to tango-server {}!", git_version::git_version!());
     let config = Config::init_from_env().unwrap();
+    let real_ip_getter = httputil::RealIPGetter::new(config.use_x_real_ip);
     let addr = config.listen_addr.parse()?;
-    let router = router();
+    let router = router(real_ip_getter);
     let service = routerify::RouterService::new(router).unwrap();
     hyper::Server::bind(&addr).serve(service).await?;
     Ok(())

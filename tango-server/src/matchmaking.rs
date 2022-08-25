@@ -1,6 +1,8 @@
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
 use prost::Message;
 
+use crate::iceconfig;
+
 struct Session {
     offer_sdp: String,
     sinks: Vec<
@@ -17,20 +19,25 @@ pub struct Server {
             std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<Session>>>,
         >,
     >,
+    iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
 }
 
 impl Server {
-    pub fn new() -> Server {
+    pub fn new(
+        iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
+    ) -> Server {
         Server {
             sessions: std::sync::Arc::new(
                 tokio::sync::Mutex::new(std::collections::HashMap::new()),
             ),
+            iceconfig_backend,
         }
     }
 
     pub async fn handle_stream(
         &self,
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
+        remote_ip: std::net::IpAddr,
         session_id: &str,
     ) -> anyhow::Result<()> {
         let (mut tx, mut rx) = ws.split();
@@ -39,7 +46,11 @@ impl Server {
             tango_protos::matchmaking::Packet {
                 which: Some(tango_protos::matchmaking::packet::Which::Hello(
                     tango_protos::matchmaking::packet::Hello {
-                        ice_servers: vec![],
+                        ice_servers: if let Some(backend) = self.iceconfig_backend.as_ref() {
+                            backend.get(&remote_ip).await?
+                        } else {
+                            vec![]
+                        },
                     },
                 )),
             }
