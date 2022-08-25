@@ -591,7 +591,7 @@ impl Gui {
         } else {
             egui::TopBottomPanel::top("start-top-panel")
                 .frame(egui::Frame {
-                    inner_margin: egui::style::Margin::same(8.0),
+                    inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
                     rounding: egui::Rounding::none(),
                     fill: ctx.style().visuals.window_fill(),
                     ..Default::default()
@@ -619,7 +619,7 @@ impl Gui {
                 });
             egui::TopBottomPanel::bottom("start-bottom-panel")
                 .frame(egui::Frame {
-                    inner_margin: egui::style::Margin::same(8.0),
+                    inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
                     rounding: egui::Rounding::none(),
                     fill: ctx.style().visuals.window_fill(),
                     ..Default::default()
