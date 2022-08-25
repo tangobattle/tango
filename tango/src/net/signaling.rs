@@ -212,9 +212,6 @@ pub async fn connect(
                 })?;
                 break;
             }
-            Some(tango_protos::matchmaking::packet::Which::IceCandidate(_ice_candidate)) => {
-                anyhow::bail!("ice candidates not supported");
-            }
             p => {
                 anyhow::bail!("unexpected packet: {:?}", p);
             }
