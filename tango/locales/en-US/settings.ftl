@@ -25,6 +25,5 @@ settings-language = Language
 settings-nickname = Nickname
 settings-debug-overlay = Show debug overlay
 settings-max-queue-length = Max queue length
-settings-signaling-endpoint = Signaling endpoint
-settings-iceconfig-endpoint = ICE configuration endpoint
+settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint
