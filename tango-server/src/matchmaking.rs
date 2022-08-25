@@ -204,32 +204,6 @@ impl Server {
                                 ))
                                 .await?;
                         }
-                        Some(tango_protos::matchmaking::packet::Which::IceCandidate(
-                            ice_candidate,
-                        )) => {
-                            let session = match session.as_ref() {
-                                Some(session) => session,
-                                None => {
-                                    anyhow::bail!("no session active");
-                                }
-                            };
-                            let mut session = session.lock().await;
-                            session.sinks[1 - me]
-                                .send(tungstenite::Message::Binary(
-                                    tango_protos::matchmaking::Packet {
-                                        which: Some(
-                                            tango_protos::matchmaking::packet::Which::IceCandidate(
-                                                tango_protos::matchmaking::packet::IceCandidate {
-                                                    candidate: ice_candidate.candidate,
-                                                    mid: ice_candidate.mid,
-                                                },
-                                            ),
-                                        ),
-                                    }
-                                    .encode_to_vec(),
-                                ))
-                                .await?;
-                        }
                         p => anyhow::bail!("unknown packet: {:?}", p),
                     }
                 }
