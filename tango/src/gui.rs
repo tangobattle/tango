@@ -5,6 +5,7 @@ use fluent_templates::Loader;
 use crate::{audio, config, games, i18n, input, session, stats, video};
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
+const CURSOR_INACTIVITY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 mod about_window;
 mod menubar;
@@ -455,7 +456,7 @@ impl Gui {
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
-        _window: &glutin::window::Window,
+        window: &glutin::window::Window,
         input_state: &input::State,
         state: &mut State,
     ) {
@@ -561,14 +562,24 @@ impl Gui {
             );
         }
 
-        self.menubar.show(
-            ctx,
-            &state.config.language,
-            &state.last_cursor_activity_time,
-            state.session.is_none() || state.steal_input.is_some(),
-            &mut state.show_play,
-            &mut state.show_settings,
-            &mut state.show_about,
-        );
+        let show_menubar = state.session.is_none()
+            || state.steal_input.is_some()
+            || state
+                .last_cursor_activity_time
+                .map(|v| std::time::Instant::now() - v <= CURSOR_INACTIVITY_TIMEOUT)
+                .unwrap_or(false);
+
+        window.set_cursor_visible(show_menubar);
+
+        if show_menubar {
+            self.menubar.show(
+                ctx,
+                &state.config.language,
+                &state.last_cursor_activity_time,
+                &mut state.show_play,
+                &mut state.show_settings,
+                &mut state.show_about,
+            );
+        }
     }
 }
