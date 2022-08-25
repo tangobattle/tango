@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, games, i18n, session, stats};
+use crate::{audio, games, gui, i18n, session, stats};
 
 pub struct State {
     selected_game: Option<&'static (dyn games::Game + Send + Sync)>,
@@ -14,9 +14,9 @@ impl State {
     }
 }
 
-pub struct PlayWindow;
+pub struct SaveSelectWindow;
 
-impl PlayWindow {
+impl SaveSelectWindow {
     pub fn new() -> Self {
         Self {}
     }
@@ -24,29 +24,25 @@ impl PlayWindow {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        show_play: &mut Option<State>,
-        last_cursor_activity_time: &mut Option<std::time::Instant>,
+        show: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
         session: &mut Option<session::Session>,
-        roms: &mut std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
-        saves: &mut std::collections::HashMap<
-            &'static (dyn games::Game + Send + Sync),
-            Vec<std::path::PathBuf>,
-        >,
+        saves_list: std::sync::Arc<parking_lot::Mutex<gui::SavesListState>>,
         audio_binder: audio::LateBinder,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) {
-        let mut show_play_bool = show_play.is_some();
+        let mut show_play_bool = show.is_some();
         egui::Window::new(format!(
-            "🎮 {}",
-            i18n::LOCALES.lookup(language, "play").unwrap()
+            "{}",
+            i18n::LOCALES.lookup(language, "select-save").unwrap()
         ))
-        .id(egui::Id::new("play-window"))
+        .id(egui::Id::new("select-save-window"))
         .open(&mut show_play_bool)
         .show(ctx, |ui| {
+            let saves_list = saves_list.lock();
             let games = games::sorted_games(language);
-            if let Some(game) = show_play.as_ref().unwrap().selected_game {
+            if let Some(game) = show.as_ref().unwrap().selected_game {
                 let (family, variant) = game.family_and_variant();
                 ui.heading(
                     i18n::LOCALES
@@ -58,23 +54,23 @@ impl PlayWindow {
             ui.group(|ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                        if let Some(selected_game) = show_play.as_ref().unwrap().selected_game {
+                        if let Some(selected_game) = show.as_ref().unwrap().selected_game {
                             if ui
                                 .selectable_label(
                                     false,
                                     format!(
                                         "⬅️ {}",
                                         i18n::LOCALES
-                                            .lookup(language, "play.return-to-games-list")
+                                            .lookup(language, "select-save.return-to-games-list")
                                             .unwrap()
                                     ),
                                 )
                                 .clicked()
                             {
-                                show_play.as_mut().unwrap().selected_game = None;
+                                show.as_mut().unwrap().selected_game = None;
                             }
 
-                            if let Some(saves) = saves.get(&selected_game) {
+                            if let Some(saves) = saves_list.saves.get(&selected_game) {
                                 for save in saves {
                                     if ui
                                         .selectable_label(
@@ -86,15 +82,14 @@ impl PlayWindow {
                                         )
                                         .clicked()
                                     {
-                                        *show_play = None;
-                                        *last_cursor_activity_time = None;
+                                        *show = None;
 
                                         // HACK: audio::Binding has to be dropped first.
                                         *session = None;
                                         *session = Some(
                                             session::Session::new_singleplayer(
                                                 audio_binder.clone(),
-                                                roms.get(&selected_game).unwrap(),
+                                                saves_list.roms.get(&selected_game).unwrap(),
                                                 save.as_path(),
                                                 emu_tps_counter.clone(),
                                             )
@@ -106,12 +101,12 @@ impl PlayWindow {
                         } else {
                             for (available, game) in games
                                 .iter()
-                                .filter(|g| roms.contains_key(*g))
+                                .filter(|g| saves_list.roms.contains_key(*g))
                                 .map(|g| (true, g))
                                 .chain(
                                     games
                                         .iter()
-                                        .filter(|g| !roms.contains_key(*g))
+                                        .filter(|g| !saves_list.roms.contains_key(*g))
                                         .map(|g| (false, g)),
                                 )
                             {
@@ -122,7 +117,7 @@ impl PlayWindow {
 
                                 if available {
                                     if ui.selectable_label(false, text).clicked() {
-                                        show_play.as_mut().unwrap().selected_game = Some(*game);
+                                        show.as_mut().unwrap().selected_game = Some(*game);
                                     }
                                 } else {
                                     ui.weak(text);
@@ -135,7 +130,7 @@ impl PlayWindow {
         });
 
         if !show_play_bool {
-            *show_play = None;
+            *show = None;
         }
     }
 }

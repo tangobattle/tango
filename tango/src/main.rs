@@ -194,10 +194,6 @@ fn child_main() -> Result<(), anyhow::Error> {
                         if state.steal_input.is_none() {
                             egui_glow.on_event(&window_event);
                         }
-                        state.last_cursor_activity_time = Some(std::time::Instant::now());
-                    }
-                    glutin::event::WindowEvent::CursorLeft { .. } => {
-                        state.last_cursor_activity_time = None;
                     }
                     glutin::event::WindowEvent::KeyboardInput {
                         input:

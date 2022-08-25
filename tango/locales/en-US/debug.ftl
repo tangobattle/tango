@@ -1,2 +1,1 @@
 debug = Debug
-about = About

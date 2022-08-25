@@ -1,34 +1,45 @@
+use crate::{audio, config, games, i18n, input, session, stats, video};
+use fluent_templates::Loader;
 use std::str::FromStr;
 
-use fluent_templates::Loader;
-
-use crate::{audio, config, games, i18n, input, session, stats, video};
-
 const DISCORD_APP_ID: u64 = 974089681333534750;
-const CURSOR_INACTIVITY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-mod about_window;
-mod menubar;
-mod play_window;
+mod save_select_window;
 mod settings_window;
 
 pub struct State {
     pub config: config::Config,
     pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
-    pub last_cursor_activity_time: Option<std::time::Instant>,
+    saves_list: std::sync::Arc<parking_lot::Mutex<SavesListState>>,
+    audio_binder: audio::LateBinder,
+    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    show_save_select: Option<save_select_window::State>,
+    show_settings: Option<settings_window::State>,
+    drpc: discord_rpc_client::Client,
+}
+
+pub struct SavesListState {
     roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
     saves: std::collections::HashMap<
         &'static (dyn games::Game + Send + Sync),
         Vec<std::path::PathBuf>,
     >,
-    audio_binder: audio::LateBinder,
-    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    show_play: Option<play_window::State>,
-    show_settings: Option<settings_window::State>,
-    show_about: bool,
-    drpc: discord_rpc_client::Client,
+}
+
+impl SavesListState {
+    pub fn new() -> Self {
+        Self {
+            roms: std::collections::HashMap::new(),
+            saves: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn rescan(&mut self, roms_path: &std::path::Path, saves_path: &std::path::Path) {
+        self.roms = games::scan_roms(&roms_path);
+        self.saves = games::scan_saves(&saves_path);
+    }
 }
 
 impl State {
@@ -41,21 +52,19 @@ impl State {
         let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
         drpc.start();
 
-        let roms = games::scan_roms(&config.roms_path);
-        let saves = games::scan_saves(&config.saves_path);
+        let mut saves_list = SavesListState::new();
+        saves_list.rescan(&config.roms_path, &config.saves_path);
+
         Self {
             config,
-            roms,
-            saves,
-            last_cursor_activity_time: None,
+            saves_list: std::sync::Arc::new(parking_lot::Mutex::new(saves_list)),
             audio_binder,
             fps_counter,
             emu_tps_counter,
             session: None,
             steal_input: None,
-            show_play: None,
+            show_save_select: None,
             show_settings: None,
-            show_about: false,
             drpc,
         }
     }
@@ -92,10 +101,8 @@ pub struct FontFamilies {
 
 pub struct Gui {
     vbuf: Option<VBuf>,
-    menubar: menubar::Menubar,
-    play: play_window::PlayWindow,
-    about: about_window::AboutWindow,
-    settings: settings_window::SettingsWindow,
+    save_select_window: save_select_window::SaveSelectWindow,
+    settings_window: settings_window::SettingsWindow,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -125,10 +132,8 @@ impl Gui {
 
         Self {
             vbuf: None,
-            menubar: menubar::Menubar::new(),
-            play: play_window::PlayWindow::new(),
-            settings: settings_window::SettingsWindow::new(font_families.clone()),
-            about: about_window::AboutWindow::new(),
+            save_select_window: save_select_window::SaveSelectWindow::new(),
+            settings_window: settings_window::SettingsWindow::new(font_families.clone()),
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
@@ -529,26 +534,22 @@ impl Gui {
         });
 
         self.draw_debug_overlay(ctx, handle.clone(), state);
-        self.play.show(
+        self.save_select_window.show(
             ctx,
-            &mut state.show_play,
-            &mut state.last_cursor_activity_time,
+            &mut state.show_save_select,
             &state.config.language,
             &state.config.saves_path,
             &mut state.session,
-            &mut state.roms,
-            &mut state.saves,
+            state.saves_list.clone(),
             state.audio_binder.clone(),
             state.emu_tps_counter.clone(),
         );
-        self.settings.show(
+        self.settings_window.show(
             ctx,
             &mut state.show_settings,
             &mut state.config,
             &mut state.steal_input,
         );
-        self.about
-            .show(ctx, &state.config.language, &mut state.show_about);
         self.show_steal_input_dialog(ctx, &state.config.language, &mut state.steal_input);
 
         if let Some(session) = &state.session {
@@ -560,25 +561,8 @@ impl Gui {
                 &state.config.video_filter,
                 state.config.max_scale,
             );
-        }
-
-        let show_menubar = state.session.is_none()
-            || state.steal_input.is_some()
-            || state
-                .last_cursor_activity_time
-                .map(|v| std::time::Instant::now() - v <= CURSOR_INACTIVITY_TIMEOUT)
-                .unwrap_or(false);
-
-        window.set_cursor_visible(show_menubar);
-
-        if show_menubar {
-            self.menubar.show(
-                ctx,
-                &state.config.language,
-                &mut state.show_play,
-                &mut state.show_settings,
-                &mut state.show_about,
-            );
+        } else {
+            // TODO
         }
     }
 }

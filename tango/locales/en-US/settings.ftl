@@ -4,6 +4,7 @@ settings = Settings
     .graphics = Graphics
     .audio = Audio
     .netplay = Netplay
+    .about = About
 
 settings-theme = Theme
     .light = Light
