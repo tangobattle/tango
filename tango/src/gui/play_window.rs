@@ -25,7 +25,7 @@ impl PlayWindow {
         &mut self,
         ctx: &egui::Context,
         show_play: &mut Option<State>,
-        show_menubar: &mut bool,
+        last_cursor_activity_time: &mut Option<std::time::Instant>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
         session: &mut Option<session::Session>,
@@ -87,7 +87,7 @@ impl PlayWindow {
                                         .clicked()
                                     {
                                         *show_play = None;
-                                        *show_menubar = false;
+                                        *last_cursor_activity_time = None;
 
                                         // HACK: audio::Binding has to be dropped first.
                                         *session = None;

@@ -15,6 +15,7 @@ pub struct State {
     pub config: config::Config,
     pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
+    pub last_cursor_activity_time: Option<std::time::Instant>,
     roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
     saves: std::collections::HashMap<
         &'static (dyn games::Game + Send + Sync),
@@ -23,7 +24,6 @@ pub struct State {
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    show_menubar: bool,
     show_play: Option<play_window::State>,
     show_settings: Option<settings_window::State>,
     show_about: bool,
@@ -46,12 +46,12 @@ impl State {
             config,
             roms,
             saves,
+            last_cursor_activity_time: None,
             audio_binder,
             fps_counter,
             emu_tps_counter,
             session: None,
             steal_input: None,
-            show_menubar: false,
             show_play: None,
             show_settings: None,
             show_about: false,
@@ -527,18 +527,11 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
-        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Escape) {
-            state.show_menubar = !state.show_menubar;
-        }
-        if state.session.is_none() {
-            state.show_menubar = true;
-        }
-
         self.draw_debug_overlay(ctx, handle.clone(), state);
         self.play.show(
             ctx,
             &mut state.show_play,
-            &mut state.show_menubar,
+            &mut state.last_cursor_activity_time,
             &state.config.language,
             &state.config.saves_path,
             &mut state.session,
@@ -568,14 +561,14 @@ impl Gui {
             );
         }
 
-        if state.show_menubar {
-            self.menubar.show(
-                ctx,
-                &state.config.language,
-                &mut state.show_play,
-                &mut state.show_settings,
-                &mut state.show_about,
-            );
-        }
+        self.menubar.show(
+            ctx,
+            &state.config.language,
+            &state.last_cursor_activity_time,
+            state.session.is_none() || state.steal_input.is_some(),
+            &mut state.show_play,
+            &mut state.show_settings,
+            &mut state.show_about,
+        );
     }
 }
