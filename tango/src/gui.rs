@@ -575,7 +575,6 @@ impl Gui {
             self.menubar.show(
                 ctx,
                 &state.config.language,
-                &state.last_cursor_activity_time,
                 &mut state.show_play,
                 &mut state.show_settings,
                 &mut state.show_about,
