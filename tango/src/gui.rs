@@ -11,7 +11,7 @@ pub struct State {
     pub config: config::Config,
     pub session: Option<session::Session>,
     pub steal_input: Option<StealInputState>,
-    saves_list: std::sync::Arc<parking_lot::Mutex<SavesListState>>,
+    saves_list: SavesListState,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -20,25 +20,52 @@ pub struct State {
     drpc: discord_rpc_client::Client,
 }
 
+#[derive(Clone)]
 pub struct SavesListState {
+    inner: std::sync::Arc<parking_lot::RwLock<SavesListStateInner>>,
+}
+
+pub struct SavesListStateInner {
     roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
     saves: std::collections::HashMap<
         &'static (dyn games::Game + Send + Sync),
         Vec<std::path::PathBuf>,
     >,
+    last_rescan_time: std::time::Instant,
 }
 
 impl SavesListState {
     pub fn new() -> Self {
         Self {
-            roms: std::collections::HashMap::new(),
-            saves: std::collections::HashMap::new(),
+            inner: std::sync::Arc::new(parking_lot::RwLock::new(SavesListStateInner {
+                roms: std::collections::HashMap::new(),
+                saves: std::collections::HashMap::new(),
+                last_rescan_time: std::time::Instant::now(),
+            })),
         }
     }
 
-    pub fn rescan(&mut self, roms_path: &std::path::Path, saves_path: &std::path::Path) {
-        self.roms = games::scan_roms(&roms_path);
-        self.saves = games::scan_saves(&saves_path);
+    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, SavesListStateInner> {
+        self.inner.read()
+    }
+
+    pub fn rescan(&self, roms_path: &std::path::Path, saves_path: &std::path::Path) {
+        if self.inner.is_locked_exclusive() {
+            return;
+        }
+
+        let roms = games::scan_roms(&roms_path);
+        let saves = games::scan_saves(&saves_path);
+        let last_rescan_time = std::time::Instant::now();
+
+        let mut inner = self.inner.write();
+        if inner.last_rescan_time > last_rescan_time {
+            return;
+        }
+
+        inner.roms = roms;
+        inner.saves = saves;
+        inner.last_rescan_time = last_rescan_time;
     }
 }
 
@@ -57,7 +84,7 @@ impl State {
 
         Self {
             config,
-            saves_list: std::sync::Arc::new(parking_lot::Mutex::new(saves_list)),
+            saves_list,
             audio_binder,
             fps_counter,
             emu_tps_counter,

@@ -28,7 +28,7 @@ impl SaveSelectWindow {
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
         session: &mut Option<session::Session>,
-        saves_list: std::sync::Arc<parking_lot::Mutex<gui::SavesListState>>,
+        saves_list: gui::SavesListState,
         audio_binder: audio::LateBinder,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) {
@@ -40,7 +40,7 @@ impl SaveSelectWindow {
         .id(egui::Id::new("select-save-window"))
         .open(&mut show_play_bool)
         .show(ctx, |ui| {
-            let saves_list = saves_list.lock();
+            let saves_list = saves_list.read();
             let games = games::sorted_games(language);
             if let Some(game) = show.as_ref().unwrap().selected_game {
                 let (family, variant) = game.family_and_variant();
