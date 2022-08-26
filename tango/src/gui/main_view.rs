@@ -2,7 +2,7 @@ use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 
-use crate::{audio, battle, games, gui, i18n, input, net, session, stats};
+use crate::{audio, games, gui, i18n, input, net, session, stats};
 
 pub enum State {
     Session(session::Session),
