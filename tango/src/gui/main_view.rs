@@ -84,7 +84,7 @@ impl Lobby {
 
     fn make_local_settings(&self) -> net::protocol::Settings {
         net::protocol::Settings {
-            nickname: todo!(),
+            nickname: self.nickname.clone(),
             match_type: self.match_type,
             game_info: self.local_game.as_ref().map(|(game, _)| {
                 let (family, variant) = game.family_and_variant();
@@ -94,7 +94,7 @@ impl Lobby {
                 }
             }),
             available_games: vec![], // TODO
-            reveal_setup: false,
+            reveal_setup: self.reveal_setup,
         }
     }
 
