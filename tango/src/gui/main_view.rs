@@ -27,6 +27,7 @@ enum ConnectionState {
 }
 
 struct Lobby {
+    attention_requested: bool,
     sender: Option<net::Sender>,
     is_offerer: bool,
     input_delay: usize,
@@ -182,6 +183,7 @@ async fn run_connection_task(
                     net::negotiate(&mut sender, &mut receiver).await?;
 
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
+                        attention_requested: false,
                         sender: Some(sender),
                         input_delay: 2, // TODO
                         nonce: [0u8; 16],
@@ -463,6 +465,23 @@ impl MainView {
                         ..Default::default()
                     })
                     .show(ctx, |ui| {
+                        {
+                            let connection_task = start.connection_task.blocking_lock();
+                            if let Some(ConnectionTask::InProgress {
+                                state: ConnectionState::InLobby(lobby),
+                                ..
+                            }) = &*connection_task
+                            {
+                                let mut lobby = lobby.blocking_lock();
+                                if !lobby.attention_requested {
+                                    window.request_user_attention(Some(
+                                        glutin::window::UserAttentionType::Critical,
+                                    ));
+                                    lobby.attention_requested = true;
+                                }
+                            }
+                        }
+
                         ui.horizontal(|ui| {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
@@ -471,9 +490,7 @@ impl MainView {
                                         if !start.link_code.is_empty() {
                                             let cancellation_token =
                                                 tokio_util::sync::CancellationToken::new();
-                                            let connection_task = start.connection_task.clone();
-
-                                            *connection_task.blocking_lock() =
+                                            *start.connection_task.blocking_lock() =
                                                 Some(ConnectionTask::InProgress {
                                                     state: ConnectionState::Starting,
                                                     cancellation_token: cancellation_token.clone(),
@@ -494,7 +511,7 @@ impl MainView {
                                                     .clone()
                                                     .unwrap_or_else(|| "".to_string()),
                                                 state.config.replays_path.clone(),
-                                                connection_task,
+                                                start.connection_task.clone(),
                                                 cancellation_token,
                                             ));
                                         }
