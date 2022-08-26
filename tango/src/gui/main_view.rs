@@ -36,6 +36,23 @@ struct Lobby {
     local_committed: bool,
     latencies: stats::DeltaCounter,
     raw_remote_negotiated_state: Vec<u8>,
+    raw_local_negotiated_state: Option<Vec<u8>>,
+}
+
+impl Lobby {
+    fn commit(&mut self, save_data: &[u8]) -> Result<[u8; 16], anyhow::Error> {
+        rand::thread_rng().fill_bytes(&mut self.nonce);
+        self.raw_local_negotiated_state = Some(zstd::stream::encode_all(
+            &net::protocol::NegotiatedState::serialize(&net::protocol::NegotiatedState {
+                nonce: self.nonce.clone(),
+                save_data: save_data.to_vec(),
+            })
+            .unwrap()[..],
+            0,
+        )?);
+        // TODO: Make the commitment.
+        todo!()
+    }
 }
 
 pub struct Start {
@@ -94,19 +111,18 @@ async fn run_connection_task(
                     let mut receiver = net::Receiver::new(dc_rx);
                     net::negotiate(&mut sender, &mut receiver).await?;
 
-                    let mut nonce = [0u8; 16];
-                    rand::thread_rng().fill_bytes(&mut nonce);
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         sender,
                         input_delay: 2, // TODO
                         match_type: (0, 0), // TODO
-                        nonce,
+                        nonce: [0u8; 16],
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commit: None,
                         local_committed: false,
                         latencies: stats::DeltaCounter::new(10),
                         raw_remote_negotiated_state: vec![],
+                        raw_local_negotiated_state: None,
                     }));
 
                     *connection_task.lock().await =
@@ -191,7 +207,7 @@ async fn run_connection_task(
                         todo!(),
                         lobby.match_type,
                         lobby.input_delay as u32,
-                        std::iter::zip(nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
+                        std::iter::zip(lobby.nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
                         max_queue_length,
                     )?);
                     return Ok(());
