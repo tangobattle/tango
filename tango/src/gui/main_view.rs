@@ -113,6 +113,7 @@ async fn run_connection_task(
     link_code: String,
     max_queue_length: usize,
     nickname: String,
+    replays_path: std::path::PathBuf,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) {
@@ -281,7 +282,7 @@ async fn run_connection_task(
                         sender,
                         receiver,
                         lobby.is_offerer,
-                        todo!(),
+                        replays_path,
                         lobby.match_type,
                         lobby.input_delay as u32,
                         std::iter::zip(lobby.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
@@ -424,6 +425,7 @@ impl MainView {
                                                     .nickname
                                                     .clone()
                                                     .unwrap_or_else(|| "".to_string()),
+                                                state.config.replays_path.clone(),
                                                 connection_task,
                                                 cancellation_token,
                                             ));
