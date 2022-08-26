@@ -110,7 +110,7 @@ impl Server {
             (move || async move {
                 let mut session = None;
                 let mut tx = Some(tx);
-                let mut me: usize = 0;
+                let mut me: usize;
 
                 loop {
                     let msg = match rx.try_next().await? {
