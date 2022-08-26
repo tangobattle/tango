@@ -88,6 +88,8 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
         anyhow::bail!("invalid packet");
     };
 
+    log::info!("hello received from signaling stream: {:?}", hello);
+
     let (dc, event_rx, peer_conn) = create_data_channel(
         &hello
             .ice_servers
