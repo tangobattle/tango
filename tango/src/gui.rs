@@ -4,8 +4,10 @@ use std::str::FromStr;
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
+mod debug_window;
 mod save_select_window;
 mod settings_window;
+mod steal_input_window;
 
 enum MainScreenState {
     Session(session::Session),
@@ -171,6 +173,8 @@ pub struct Gui {
     vbuf: Option<VBuf>,
     save_select_window: save_select_window::SaveSelectWindow,
     settings_window: settings_window::SettingsWindow,
+    debug_window: debug_window::DebugWindow,
+    steal_input_window: steal_input_window::StealInputWindow,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -200,6 +204,8 @@ impl Gui {
 
         Self {
             vbuf: None,
+            steal_input_window: steal_input_window::StealInputWindow::new(),
+            debug_window: debug_window::DebugWindow::new(),
             save_select_window: save_select_window::SaveSelectWindow::new(),
             settings_window: settings_window::SettingsWindow::new(font_families.clone()),
             font_data: std::collections::BTreeMap::from([
@@ -245,103 +251,6 @@ impl Gui {
             },
             current_language: None,
         }
-    }
-
-    fn draw_debug_overlay(
-        &mut self,
-        ctx: &egui::Context,
-        handle: tokio::runtime::Handle,
-        state: &mut State,
-    ) {
-        egui::Window::new("")
-            .id(egui::Id::new("debug-window"))
-            .resizable(false)
-            .title_bar(false)
-            .open(&mut state.config.show_debug_overlay)
-            .show(ctx, |ui| {
-                egui::Grid::new("debug-window-grid")
-                    .num_columns(2)
-                    .show(ui, |ui| {
-                        ui.label("FPS");
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{:3.02}",
-                                1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
-                            ))
-                            .family(egui::FontFamily::Monospace),
-                        );
-                        ui.end_row();
-
-                        if let MainScreenState::Session(session) = &state.main_screen {
-                            let tps_adjustment = if let session::Mode::PvP(match_) = session.mode()
-                            {
-                                handle.block_on(async {
-                                    if let Some(match_) = &*match_.lock().await {
-                                        ui.label("Match active");
-                                        ui.end_row();
-
-                                        let round_state = match_.lock_round_state().await;
-                                        if let Some(round) = round_state.round.as_ref() {
-                                            ui.label("Current tick");
-                                            ui.label(
-                                                egui::RichText::new(format!(
-                                                    "{:4}",
-                                                    round.current_tick()
-                                                ))
-                                                .family(egui::FontFamily::Monospace),
-                                            );
-                                            ui.end_row();
-
-                                            ui.label("Local player index");
-                                            ui.label(
-                                                egui::RichText::new(format!(
-                                                    "{:1}",
-                                                    round.local_player_index()
-                                                ))
-                                                .family(egui::FontFamily::Monospace),
-                                            );
-                                            ui.end_row();
-
-                                            ui.label("Queue length");
-                                            ui.label(
-                                                egui::RichText::new(format!(
-                                                    "{:2} vs {:2} (delay = {:1})",
-                                                    round.local_queue_length(),
-                                                    round.remote_queue_length(),
-                                                    round.local_delay(),
-                                                ))
-                                                .family(egui::FontFamily::Monospace),
-                                            );
-                                            ui.end_row();
-                                            round.tps_adjustment()
-                                        } else {
-                                            0.0
-                                        }
-                                    } else {
-                                        0.0
-                                    }
-                                })
-                            } else {
-                                0.0
-                            };
-
-                            ui.label("Emu TPS");
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{:3.02} ({:+1.02})",
-                                    1.0 / state
-                                        .emu_tps_counter
-                                        .lock()
-                                        .mean_duration()
-                                        .as_secs_f32(),
-                                    tps_adjustment
-                                ))
-                                .family(egui::FontFamily::Monospace),
-                            );
-                            ui.end_row();
-                        }
-                    });
-            });
     }
 
     fn draw_emulator(
@@ -463,68 +372,6 @@ impl Gui {
             });
     }
 
-    pub fn show_steal_input_dialog(
-        &mut self,
-        ctx: &egui::Context,
-        language: &unic_langid::LanguageIdentifier,
-        steal_input: &mut Option<StealInputState>,
-    ) {
-        let mut steal_input_open = steal_input.is_some();
-        if let Some(inner_response) = egui::Window::new("")
-            .id(egui::Id::new("input-capture-window"))
-            .open(&mut steal_input_open)
-            .title_bar(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(ctx, |ui| {
-                ui.with_layout(
-                    egui::Layout::top_down_justified(egui::Align::Center),
-                    |ui| {
-                        egui::Frame::none()
-                            .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
-                            .show(ui, |ui| {
-                                let userdata =
-                                    if let Some(StealInputState { userdata, .. }) = &steal_input {
-                                        userdata
-                                    } else {
-                                        unreachable!();
-                                    };
-
-                                ui.label(
-                                    egui::RichText::new(
-                                        i18n::LOCALES
-                                            .lookup_with_args(
-                                                &language,
-                                                "input-mapping.prompt",
-                                                &std::collections::HashMap::from([(
-                                                    "key",
-                                                    i18n::LOCALES
-                                                        .lookup(
-                                                            &language,
-                                                            userdata
-                                                                .downcast_ref::<&str>()
-                                                                .unwrap(),
-                                                        )
-                                                        .unwrap()
-                                                        .into(),
-                                                )]),
-                                            )
-                                            .unwrap(),
-                                    )
-                                    .size(32.0),
-                                );
-                            });
-                    },
-                );
-            })
-        {
-            ctx.move_to_top(inner_response.response.layer_id);
-        }
-        if !steal_input_open {
-            *steal_input = None;
-        }
-    }
-
     pub fn show(
         &mut self,
         ctx: &egui::Context,
@@ -607,14 +454,15 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
-        self.draw_debug_overlay(ctx, handle.clone(), state);
+        self.debug_window.show(ctx, handle.clone(), state);
         self.settings_window.show(
             ctx,
             &mut state.show_settings,
             &mut state.config,
             &mut state.steal_input,
         );
-        self.show_steal_input_dialog(ctx, &state.config.language, &mut state.steal_input);
+        self.steal_input_window
+            .show(ctx, &state.config.language, &mut state.steal_input);
 
         match &mut state.main_screen {
             MainScreenState::Session(session) => {

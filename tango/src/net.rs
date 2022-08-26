@@ -87,11 +87,8 @@ impl Transport {
             .await
     }
 
-    pub async fn send_set_settings(
-        &mut self,
-        set_settings: protocol::SetSettings,
-    ) -> anyhow::Result<()> {
-        self.send_packet(&protocol::Packet::SetSettings(set_settings))
+    pub async fn send_settings(&mut self, settings: protocol::Settings) -> anyhow::Result<()> {
+        self.send_packet(&protocol::Packet::Settings(settings))
             .await
     }
 
