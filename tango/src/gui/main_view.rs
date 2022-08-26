@@ -175,18 +175,18 @@ async fn run_connection_task(
                         todo!(),
                         todo!(),
                         todo!(),
+                        todo!(),
+                        todo!(),
                         &negotiated_state.save_data,
                         emu_tps_counter.clone(),
                         lobby.sender,
                         receiver,
                         lobby.is_offerer,
-                        battle::Settings {
-                            replays_path: todo!(),
-                            match_type: lobby.match_type,
-                            input_delay: lobby.input_delay as u32,
-                            rng_seed: std::iter::zip(nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect(),
-                            max_queue_length,
-                        },
+                        todo!(),
+                        lobby.match_type,
+                        lobby.input_delay as u32,
+                        std::iter::zip(nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
+                        max_queue_length,
                     )?);
                     return Ok(());
                 })(

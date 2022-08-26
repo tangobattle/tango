@@ -21,14 +21,6 @@ pub struct CommittedState {
     pub packet: Vec<u8>,
 }
 
-pub struct Settings {
-    pub replays_path: std::path::PathBuf,
-    pub match_type: (u8, u8),
-    pub input_delay: u32,
-    pub rng_seed: Vec<u8>,
-    pub max_queue_length: usize,
-}
-
 pub struct RoundState {
     pub number: u8,
     pub round: Option<Round>,
@@ -61,7 +53,11 @@ pub struct Match {
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
-    settings: Settings,
+    replays_path: std::path::PathBuf,
+    match_type: (u8, u8),
+    input_delay: u32,
+    rng_seed: [u8; 16],
+    max_queue_length: usize,
     is_offerer: bool,
     round_state: tokio::sync::Mutex<RoundState>,
     primary_thread_handle: mgba::thread::Handle,
@@ -80,7 +76,11 @@ impl Match {
         primary_thread_handle: mgba::thread::Handle,
         shadow_rom: &[u8],
         shadow_save: &[u8],
-        settings: Settings,
+        replays_path: std::path::PathBuf,
+        match_type: (u8, u8),
+        input_delay: u32,
+        rng_seed: [u8; 16],
+        max_queue_length: usize,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let did_polite_win_last_round = rng.gen::<bool>();
@@ -93,7 +93,7 @@ impl Match {
             shadow: std::sync::Arc::new(parking_lot::Mutex::new(shadow::Shadow::new(
                 &shadow_rom,
                 &shadow_save,
-                settings.match_type,
+                match_type,
                 is_offerer,
                 last_result,
                 rng.clone(),
@@ -104,7 +104,11 @@ impl Match {
             sender: std::sync::Arc::new(tokio::sync::Mutex::new(sender)),
             rng: tokio::sync::Mutex::new(rng),
             cancellation_token: tokio_util::sync::CancellationToken::new(),
-            settings,
+            replays_path,
+            match_type,
+            input_delay,
+            rng_seed,
+            max_queue_length,
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
                 round: None,
@@ -225,7 +229,7 @@ impl Match {
     }
 
     pub fn match_type(&self) -> (u8, u8) {
-        self.settings.match_type
+        self.match_type
     }
 
     pub fn is_offerer(&self) -> bool {
@@ -243,7 +247,7 @@ impl Match {
             "starting round: local_player_index = {}",
             local_player_index
         );
-        let mut replay_filename = self.settings.replays_path.clone().as_os_str().to_owned();
+        let mut replay_filename = self.replays_path.clone().as_os_str().to_owned();
         replay_filename.push(format!(
             "-round{}-p{}.tangoreplay",
             round_state.number,
@@ -258,13 +262,12 @@ impl Match {
         let (first_state_committed_local_packet, first_state_committed_rx) =
             tokio::sync::oneshot::channel();
 
-        let mut iq =
-            lockstep::PairQueue::new(self.settings.max_queue_length, self.settings.input_delay);
-        log::info!("filling {} ticks of input delay", self.settings.input_delay,);
+        let mut iq = lockstep::PairQueue::new(self.max_queue_length, self.input_delay);
+        log::info!("filling {} ticks of input delay", self.input_delay,);
 
         {
             let mut sender = self.sender.lock().await;
-            for i in 0..self.settings.input_delay {
+            for i in 0..self.input_delay {
                 iq.add_local_input(lockstep::PartialInput {
                     local_tick: i,
                     remote_tick: 0,

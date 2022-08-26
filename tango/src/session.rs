@@ -51,7 +51,11 @@ impl Session {
         sender: net::Sender,
         receiver: net::Receiver,
         is_offerer: bool,
-        settings: battle::Settings,
+        replays_path: std::path::PathBuf,
+        match_type: (u8, u8),
+        input_delay: u32,
+        rng_seed: [u8; 16],
+        max_queue_length: usize,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -71,7 +75,7 @@ impl Session {
         let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
-        let _ = std::fs::create_dir_all(settings.replays_path.parent().unwrap());
+        let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
         let mut traps = hooks.common_traps();
         traps.extend(hooks.primary_traps(
             handle.clone(),
@@ -87,7 +91,6 @@ impl Session {
 
         let match_ = match_.clone();
         handle.block_on(async {
-            let rng_seed = settings.rng_seed.clone().try_into().expect("rng seed");
             *match_.lock().await = Some({
                 let inner_match = battle::Match::new(
                     local_rom.to_vec(),
@@ -99,7 +102,11 @@ impl Session {
                     thread.handle(),
                     shadow_rom,
                     shadow_save,
-                    settings,
+                    replays_path,
+                    match_type,
+                    input_delay,
+                    rng_seed,
+                    max_queue_length,
                 )
                 .expect("new match");
 
