@@ -59,7 +59,6 @@ pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
     hooks: &'static (dyn games::Hooks + Send + Sync),
-    _peer_conn: datachannel_wrapper::PeerConnection,
     transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
@@ -75,7 +74,6 @@ impl Match {
     pub fn new(
         rom: Vec<u8>,
         hooks: &'static (dyn games::Hooks + Send + Sync),
-        peer_conn: datachannel_wrapper::PeerConnection,
         dc_tx: datachannel_wrapper::DataChannelSender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
@@ -102,7 +100,6 @@ impl Match {
             )?)),
             rom,
             hooks,
-            _peer_conn: peer_conn,
             transport: std::sync::Arc::new(tokio::sync::Mutex::new(net::Transport::new(dc_tx))),
             rng: tokio::sync::Mutex::new(rng),
             cancellation_token: tokio_util::sync::CancellationToken::new(),

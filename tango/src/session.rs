@@ -47,7 +47,7 @@ impl Session {
         shadow_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         dc: datachannel_wrapper::DataChannel,
-        peer_conn: datachannel_wrapper::PeerConnection,
+        is_offerer: bool,
         settings: battle::Settings,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
@@ -86,14 +86,11 @@ impl Session {
 
         let match_ = match_.clone();
         handle.block_on(async {
-            let is_offerer = peer_conn.local_description().unwrap().sdp_type
-                == datachannel_wrapper::SdpType::Offer;
             let rng_seed = settings.rng_seed.clone().try_into().expect("rng seed");
             *match_.lock().await = Some({
                 let inner_match = battle::Match::new(
                     rom.to_vec(),
                     hooks,
-                    peer_conn,
                     dc_tx,
                     rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                     is_offerer,

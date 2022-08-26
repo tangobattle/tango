@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n, input};
+use crate::{i18n, input};
 
 pub struct State {
     callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
