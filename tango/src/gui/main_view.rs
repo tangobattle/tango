@@ -14,7 +14,6 @@ enum ConnectionTask {
         state: ConnectionState,
         cancellation_token: tokio_util::sync::CancellationToken,
     },
-    InLobby(std::sync::Arc<tokio::sync::Mutex<Lobby>>),
     Failed(anyhow::Error),
 }
 
@@ -22,6 +21,7 @@ enum ConnectionState {
     Starting,
     Signaling,
     Waiting,
+    InLobby(std::sync::Arc<tokio::sync::Mutex<Lobby>>),
 }
 
 struct Lobby {
@@ -94,7 +94,12 @@ async fn run_connection_task(
                         raw_negotiated_state: vec![],
                     }));
 
-                    *connection_task.lock().await = Some(ConnectionTask::InLobby(lobby.clone()));
+                    *connection_task.lock().await =
+                    Some(ConnectionTask::InProgress {
+                        state: ConnectionState::InLobby(lobby.clone()),
+                        cancellation_token:
+                            cancellation_token.clone(),
+                    });
 
                     loop {
                         match receiver.receive().await? {
@@ -283,7 +288,6 @@ impl MainView {
                                                 state: _,
                                                 cancellation_token,
                                             } => Some(cancellation_token.clone()),
-                                            ConnectionTask::InLobby(_) => None,
                                             ConnectionTask::Failed(_) => None,
                                         }
                                     } else {
