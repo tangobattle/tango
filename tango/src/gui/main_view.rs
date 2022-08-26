@@ -32,7 +32,10 @@ struct Lobby {
     is_offerer: bool,
     input_delay: usize,
     nonce: [u8; 16],
-    local_settings: net::protocol::Settings,
+    local_game: Option<(&'static (dyn games::Game + Send + Sync), Vec<u8>)>,
+    nickname: String,
+    match_type: (u8, u8),
+    reveal_setup: bool,
     remote_settings: net::protocol::Settings,
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
@@ -79,26 +82,25 @@ impl Lobby {
         Ok(())
     }
 
-    async fn set_local_settings(
-        &mut self,
-        settings: net::protocol::Settings,
-    ) -> Result<(), anyhow::Error> {
-        let sender = if let Some(sender) = self.sender.as_mut() {
-            sender
-        } else {
-            anyhow::bail!("no sender?")
-        };
-        sender.send_settings(settings.clone()).await?;
-        self.local_settings = settings;
-        if !are_settings_compatible(&self.local_settings, &self.remote_settings) {
-            self.remote_commitment = None;
+    fn make_local_settings(&self) -> net::protocol::Settings {
+        net::protocol::Settings {
+            nickname: todo!(),
+            match_type: self.match_type,
+            game_info: self.local_game.as_ref().map(|(game, _)| {
+                let (family, variant) = game.family_and_variant();
+                net::protocol::GameInfo {
+                    family_and_variant: (family.to_string(), variant),
+                    patch: None,
+                }
+            }),
+            available_games: vec![], // TODO
+            reveal_setup: false,
         }
-        Ok(())
     }
 
     fn set_remote_settings(&mut self, settings: net::protocol::Settings) {
         self.remote_settings = settings;
-        if !are_settings_compatible(&self.local_settings, &self.remote_settings) {
+        if !are_settings_compatible(&self.make_local_settings(), &self.remote_settings) {
             self.local_negotiated_state = None;
         }
     }
@@ -187,11 +189,11 @@ async fn run_connection_task(
                         sender: Some(sender),
                         input_delay: 2, // TODO
                         nonce: [0u8; 16],
+                        local_game: None,
+                        nickname: "".to_string(), // TODO
+                        match_type: (0, 0), // TODO
+                        reveal_setup: false, // TODO
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
-                        local_settings: net::protocol::Settings{
-                            nickname,
-                            ..net::protocol::Settings::default()
-                        },
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
@@ -306,29 +308,28 @@ async fn run_connection_task(
 
                     let remote_negotiated_state = zstd::stream::decode_all(&raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
 
-                    let local_game = if let Some(game) = lobby.local_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
+                    let (local_game, local_rom) = if let Some((game, rom)) = lobby.local_game.as_ref() {
+                        (game, rom)
+                    } else {
+                        anyhow::bail!("attempted to start match in invalid state");
+                    };
+
+                    let shadow_game = if let Some(game) = lobby.remote_settings.game_info.as_ref().and_then(|(gi)| {
+                        let (family, variant) = &gi.family_and_variant;
+                        games::find_by_family_and_variant(family, *variant)
+                    }) {
                         game
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
-                        game
-                    } else {
-                        anyhow::bail!("attempted to start match in invalid state");
-                    };
-
-                    let (local_rom, shadow_rom) = {
+                    let shadow_rom = {
                         let saves_list = saves_list.read();
-                        (if let Some(local_rom) = saves_list.roms.get(&local_game).cloned() {
-                            local_rom
-                        } else {
-                            anyhow::bail!("missing local rom");
-                        }, if let Some(shadow_rom) = saves_list.roms.get(&shadow_game).cloned() {
+                        if let Some(shadow_rom) = saves_list.roms.get(&shadow_game).cloned() {
                             shadow_rom
                         } else {
-                            anyhow::bail!("missing local rom");
-                        })
+                            anyhow::bail!("missing shadow rom");
+                        }
                     };
 
                     sender.send_start_match().await?;
@@ -340,7 +341,7 @@ async fn run_connection_task(
                     *main_view.lock() = State::Session(session::Session::new_pvp(
                         handle,
                         audio_binder,
-                        local_game,
+                        *local_game,
                         &local_rom,
                         &local_negotiated_state.save_data,
                         shadow_game,
@@ -351,7 +352,7 @@ async fn run_connection_task(
                         receiver,
                         lobby.is_offerer,
                         replays_path,
-                        lobby.local_settings.match_type,
+                        lobby.match_type,
                         lobby.input_delay as u32,
                         std::iter::zip(lobby.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
                         max_queue_length,

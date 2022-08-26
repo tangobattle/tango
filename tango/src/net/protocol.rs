@@ -80,7 +80,7 @@ pub struct PatchInfo {
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct GameInfo {
-    pub family_and_variant: Option<(String, u8)>,
+    pub family_and_variant: (String, u8),
     pub patch: Option<PatchInfo>,
 }
 
@@ -88,7 +88,7 @@ pub struct GameInfo {
 pub struct Settings {
     pub nickname: String,
     pub match_type: (u8, u8),
-    pub game_info: GameInfo,
+    pub game_info: Option<GameInfo>,
     pub available_games: Vec<GameInfo>,
     pub reveal_setup: bool,
 }
