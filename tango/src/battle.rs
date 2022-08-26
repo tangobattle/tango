@@ -27,7 +27,6 @@ pub struct Settings {
     pub match_type: (u8, u8),
     pub input_delay: u32,
     pub rng_seed: Vec<u8>,
-    pub opponent_nickname: Option<String>,
     pub max_queue_length: usize,
 }
 

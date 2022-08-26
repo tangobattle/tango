@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{games, gui, i18n, input, net, session, stats};
+use crate::{audio, battle, games, gui, i18n, input, net, session, stats};
 
 pub enum State {
     Session(session::Session),
@@ -40,10 +40,14 @@ pub struct Start {
 }
 
 async fn run_connection_task(
+    handle: tokio::runtime::Handle,
+    audio_binder: audio::LateBinder,
+    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     main_view: std::sync::Arc<parking_lot::Mutex<State>>,
     saves_list: gui::SavesListState,
     matchmaking_addr: String,
     link_code: String,
+    max_queue_length: usize,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) {
@@ -146,6 +150,26 @@ async fn run_connection_task(
                     };
 
                     *connection_task.lock().await = None;
+                    *main_view.lock() = State::Session(session::Session::new_pvp(
+                        handle,
+                        audio_binder,
+                        todo!(),
+                        todo!(),
+                        todo!(),
+                        todo!(),
+                        emu_tps_counter.clone(),
+                        lobby.sender,
+                        receiver,
+                        lobby.is_offerer,
+                        battle::Settings {
+                            replays_path: todo!(),
+                            replay_metadata: todo!(),
+                            match_type: todo!(),
+                            input_delay: todo!(),
+                            rng_seed: todo!(),
+                            max_queue_length,
+                        },
+                    )?);
                     return Ok(());
                 })(
                 )
@@ -270,10 +294,14 @@ impl MainView {
                                                 });
 
                                             handle.spawn(run_connection_task(
+                                                handle.clone(),
+                                                state.audio_binder.clone(),
+                                                state.emu_tps_counter.clone(),
                                                 state.main_view.clone(),
                                                 state.saves_list.clone(),
                                                 state.config.matchmaking_endpoint.clone(),
                                                 start.link_code.clone(),
+                                                state.config.max_queue_length as usize,
                                                 connection_task,
                                                 cancellation_token,
                                             ));
