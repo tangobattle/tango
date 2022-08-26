@@ -87,8 +87,7 @@ pub struct GameInfo {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct Settings {
     pub nickname: String,
-    pub match_type: u8,
-    pub match_subtype: u8,
+    pub match_type: (u8, u8),
     pub game_info: GameInfo,
     pub available_games: Vec<GameInfo>,
     pub reveal_setup: bool,
@@ -109,4 +108,14 @@ pub struct StartMatch {}
 pub struct NegotiatedState {
     pub nonce: [u8; 16],
     pub save_data: Vec<u8>,
+}
+
+impl NegotiatedState {
+    pub fn serialize(&self) -> bincode::Result<Vec<u8>> {
+        BINCODE_OPTIONS.serialize(self)
+    }
+
+    pub fn deserialize(d: &[u8]) -> bincode::Result<Self> {
+        BINCODE_OPTIONS.deserialize(d)
+    }
 }

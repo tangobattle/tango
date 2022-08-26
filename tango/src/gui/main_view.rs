@@ -1,4 +1,5 @@
 use fluent_templates::Loader;
+use rand::RngCore;
 
 use crate::{audio, battle, games, gui, i18n, input, net, session, stats};
 
@@ -27,8 +28,11 @@ enum ConnectionState {
 struct Lobby {
     sender: net::Sender,
     is_offerer: bool,
+    input_delay: usize,
+    nonce: [u8; 16],
+    match_type: (u8, u8),
     remote_settings: net::protocol::Settings,
-    remote_commit: Option<net::protocol::Commit>,
+    remote_commit: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
     raw_negotiated_state: Vec<u8>,
 }
@@ -89,8 +93,13 @@ async fn run_connection_task(
                     let mut receiver = net::Receiver::new(dc_rx);
                     net::negotiate(&mut sender, &mut receiver).await?;
 
+                    let mut nonce = [0u8; 16];
+                    rand::thread_rng().fill_bytes(&mut nonce);
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         sender,
+                        input_delay: 2, // TODO
+                        match_type: (0, 0), // TODO
+                        nonce,
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commit: None,
@@ -120,7 +129,9 @@ async fn run_connection_task(
                                 lobby.lock().await.remote_settings = settings;
                             },
                             net::protocol::Packet::Commit(commit) => {
-                                lobby.lock().await.remote_commit = Some(commit);
+                                lobby.lock().await.remote_commit = Some(commit.commitment);
+
+                                // TODO: If both sides have committed, we need to send data.
                             },
                             net::protocol::Packet::Uncommit(_) => {
                                 lobby.lock().await.remote_commit = None;
@@ -138,6 +149,14 @@ async fn run_connection_task(
                     }
 
                     let lobby = lobby.lock().await;
+
+                    // TODO: Validate against remote_commit.
+                    if Some(todo!()) != lobby.remote_commit {
+                        anyhow::bail!("commitment did not match");
+                    }
+
+                    let negotiated_state = zstd::stream::decode_all(&lobby.raw_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+
                     let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
                         game
                     } else {
@@ -156,7 +175,7 @@ async fn run_connection_task(
                         todo!(),
                         todo!(),
                         todo!(),
-                        todo!(),
+                        &negotiated_state.save_data,
                         emu_tps_counter.clone(),
                         lobby.sender,
                         receiver,
@@ -164,9 +183,9 @@ async fn run_connection_task(
                         battle::Settings {
                             replays_path: todo!(),
                             replay_metadata: todo!(),
-                            match_type: todo!(),
-                            input_delay: todo!(),
-                            rng_seed: todo!(),
+                            match_type: lobby.match_type,
+                            input_delay: lobby.input_delay as u32,
+                            rng_seed: std::iter::zip(nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect(),
                             max_queue_length,
                         },
                     )?);
