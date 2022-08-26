@@ -1,6 +1,7 @@
 use crate::lockstep;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
+use prost::Message;
 use std::io::Read;
 use std::io::Write;
 pub trait WriteSeek: std::io::Write + std::io::Seek {}
@@ -16,7 +17,7 @@ const VERSION: u8 = 0x10;
 
 pub struct Replay {
     pub is_complete: bool,
-    pub metadata: Vec<u8>,
+    pub metadata: tango_protos::replay::ReplayMetadata,
     pub local_player_index: u8,
     pub local_state: Option<mgba::state::State>,
     pub remote_state: Option<mgba::state::State>,
@@ -55,8 +56,9 @@ impl Replay {
         let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
 
         let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
-        let mut metadata = vec![0u8; metadata_len as usize];
-        r.read_exact(&mut metadata[..])?;
+        let mut raw_metadata = vec![0u8; metadata_len as usize];
+        r.read_exact(&mut raw_metadata[..])?;
+        let metadata = tango_protos::replay::ReplayMetadata::decode(&raw_metadata[..])?;
 
         let mut zr = zstd::stream::read::Decoder::new(r)?;
 
@@ -145,15 +147,16 @@ impl Replay {
 impl Writer {
     pub fn new(
         mut writer: Box<dyn WriteSeek + Send>,
-        metadata: &[u8],
+        metadata: tango_protos::replay::ReplayMetadata,
         local_player_index: u8,
         raw_input_size: u8,
     ) -> std::io::Result<Self> {
         writer.write_all(HEADER)?;
         writer.write_u8(VERSION)?;
         writer.write_u32::<byteorder::LittleEndian>(0)?;
-        writer.write_u32::<byteorder::LittleEndian>(metadata.len() as u32)?;
-        writer.write_all(metadata)?;
+        let raw_metadata = metadata.encode_to_vec();
+        writer.write_u32::<byteorder::LittleEndian>(raw_metadata.len() as u32)?;
+        writer.write_all(&raw_metadata[..])?;
         let mut encoder = zstd::Encoder::new(writer, 3)?;
         encoder.write_u8(local_player_index)?;
         encoder.write_u8(raw_input_size)?;
