@@ -232,9 +232,9 @@ async fn run_connection_task(
                         input_delay: 2, // TODO
                         nonce: [0u8; 16],
                         local_game: None,
-                        nickname: "".to_string(), // TODO
+                        nickname,
                         match_type: (0, 0), // TODO
-                        reveal_setup: false, // TODO
+                        reveal_setup: false,
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
