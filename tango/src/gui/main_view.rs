@@ -479,6 +479,33 @@ impl MainView {
                                     ));
                                     lobby.attention_requested = true;
                                 }
+
+                                egui_extras::TableBuilder::new(ui)
+                                    .column(egui_extras::Size::remainder())
+                                    .column(egui_extras::Size::relative(0.3))
+                                    .column(egui_extras::Size::relative(0.3))
+                                    .header(20.0, |mut header| {
+                                        header.col(|ui| {});
+                                        header.col(|ui| {
+                                            ui.strong("You");
+                                        });
+                                        header.col(|ui| {
+                                            ui.strong("Opponent");
+                                        });
+                                    })
+                                    .body(|mut body| {
+                                        body.row(20.0, |mut row| {
+                                            row.col(|ui| {
+                                                ui.strong("Game");
+                                            });
+                                            row.col(|ui| {
+                                                ui.label("A");
+                                            });
+                                            row.col(|ui| {
+                                                ui.label("B");
+                                            });
+                                        });
+                                    });
                             }
                         }
 
