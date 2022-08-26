@@ -17,7 +17,7 @@ pub struct State {
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    main_view: main_view::State,
+    main_view: std::sync::Arc<parking_lot::Mutex<main_view::State>>,
     show_settings: Option<settings_window::State>,
     drpc: discord_rpc_client::Client,
 }
@@ -87,7 +87,9 @@ impl State {
         Self {
             config,
             saves_list,
-            main_view: main_view::State::Start(main_view::Start::new()),
+            main_view: std::sync::Arc::new(parking_lot::Mutex::new(main_view::State::Start(
+                main_view::Start::new(),
+            ))),
             audio_binder,
             fps_counter,
             emu_tps_counter,
@@ -201,9 +203,12 @@ impl Gui {
         input_state: &input::State,
         state: &mut State,
     ) {
-        if let main_view::State::Session(session) = &state.main_view {
-            if session.completed() {
-                state.main_view = main_view::State::Start(main_view::Start::new());
+        {
+            let mut main_view = state.main_view.lock();
+            if let main_view::State::Session(session) = &*main_view {
+                if session.completed() {
+                    *main_view = main_view::State::Start(main_view::Start::new());
+                }
             }
         }
 

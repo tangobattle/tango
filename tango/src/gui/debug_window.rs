@@ -32,7 +32,7 @@ impl DebugWindow {
                         );
                         ui.end_row();
 
-                        if let gui::main_view::State::Session(session) = &state.main_view {
+                        if let gui::main_view::State::Session(session) = &*state.main_view.lock() {
                             let tps_adjustment = if let session::Mode::PvP(match_) = session.mode()
                             {
                                 handle.block_on(async {

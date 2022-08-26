@@ -40,6 +40,7 @@ pub struct Start {
 }
 
 async fn run_connection_task(
+    main_view: std::sync::Arc<parking_lot::Mutex<State>>,
     saves_list: gui::SavesListState,
     matchmaking_addr: String,
     link_code: String,
@@ -119,27 +120,28 @@ async fn run_connection_task(
                                 lobby.lock().await.raw_negotiated_state.extend(chunk.chunk);
                             },
                             net::protocol::Packet::StartMatch(_) => {
-                                let lobby = lobby.lock().await;
-
-                                let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
-                                    game
-                                } else {
-                                    anyhow::bail!("attempted to start match in invalid state");
-                                };
-
-                                let shadow_rom = {
-                                    let saves_list = saves_list.read();
-                                    saves_list.roms.get(&shadow_game).cloned()
-                                };
-
-                                *connection_task.lock().await = None;
-                                return Ok(());
+                                break
                             },
                             p => {
                                 anyhow::bail!("unexpected packet: {:?}", p);
                             }
                         }
                     }
+
+                    let lobby = lobby.lock().await;
+                    let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
+                        game
+                    } else {
+                        anyhow::bail!("attempted to start match in invalid state");
+                    };
+
+                    let shadow_rom = {
+                        let saves_list = saves_list.read();
+                        saves_list.roms.get(&shadow_game).cloned()
+                    };
+
+                    *connection_task.lock().await = None;
+                    return Ok(());
                 })(
                 )
             }
@@ -185,7 +187,7 @@ impl MainView {
         input_state: &input::State,
         state: &mut gui::State,
     ) {
-        match &mut state.main_view {
+        match &mut *state.main_view.lock() {
             State::Session(session) => {
                 self.session_view.show(
                     ctx,
@@ -263,6 +265,7 @@ impl MainView {
                                                 });
 
                                             handle.spawn(run_connection_task(
+                                                state.main_view.clone(),
                                                 state.saves_list.clone(),
                                                 state.config.matchmaking_endpoint.clone(),
                                                 start.link_code.clone(),
