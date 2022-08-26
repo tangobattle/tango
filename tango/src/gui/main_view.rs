@@ -185,6 +185,7 @@ async fn run_connection_task(
 
                     let mut remote_chunks = vec![];
                     loop {
+                        // TODO: Add pings.
                         match receiver.receive().await? {
                             net::protocol::Packet::Ping(ping) => {
                                 lobby.lock().await.send_pong(ping.ts).await?;
@@ -301,6 +302,13 @@ async fn run_connection_task(
                     };
 
                     *connection_task.lock().await = None;
+
+                    sender.send_start_match().await?;
+                    match receiver.receive().await? {
+                        net::protocol::Packet::StartMatch(_) => {},
+                        p => anyhow::bail!("unexpected packet when expecting start match: {:?}", p),
+                    }
+
                     *main_view.lock() = State::Session(session::Session::new_pvp(
                         handle,
                         audio_binder,
