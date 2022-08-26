@@ -71,6 +71,7 @@ flips = "0.2"
 urlencoding = "2.1"
 rayon = "1.5"
 constant_time_eq = "0.2"
+rfd = "0.10"
 
 [build-dependencies]
 winres = "0.1"

@@ -482,8 +482,8 @@ impl MainView {
 
                                 egui_extras::TableBuilder::new(ui)
                                     .column(egui_extras::Size::remainder())
-                                    .column(egui_extras::Size::relative(0.3))
-                                    .column(egui_extras::Size::relative(0.3))
+                                    .column(egui_extras::Size::relative(0.1))
+                                    .column(egui_extras::Size::relative(0.1))
                                     .header(20.0, |mut header| {
                                         header.col(|ui| {});
                                         header.col(|ui| {
