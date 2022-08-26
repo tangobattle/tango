@@ -68,6 +68,8 @@ fn get_config_path() -> Result<std::path::PathBuf, anyhow::Error> {
         .join("config.json"))
 }
 
+const DATA_DIR_NAME: &str = "Tango";
+
 impl Config {
     pub fn system_defaults() -> Result<Self, anyhow::Error> {
         let user_dirs = directories_next::UserDirs::new()
@@ -76,7 +78,7 @@ impl Config {
         let tango_data_dir = user_dirs
             .document_dir()
             .ok_or_else(|| anyhow::anyhow!("could not get tango data directory"))?
-            .join("Tango");
+            .join(DATA_DIR_NAME);
 
         Ok(Self {
             nickname: None,

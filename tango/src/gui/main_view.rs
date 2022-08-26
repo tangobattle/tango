@@ -457,55 +457,93 @@ impl MainView {
                             );
                         });
                     });
-                egui::TopBottomPanel::bottom("main-bottom-panel")
-                    .frame(egui::Frame {
-                        inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
-                        rounding: egui::Rounding::none(),
-                        fill: ctx.style().visuals.window_fill(),
-                        ..Default::default()
-                    })
-                    .show(ctx, |ui| {
+                egui::TopBottomPanel::bottom("main-bottom-panel").show(ctx, |ui| {
+                    ui.vertical(|ui| {
                         {
                             let connection_task = start.connection_task.blocking_lock();
                             if let Some(ConnectionTask::InProgress {
-                                state: ConnectionState::InLobby(lobby),
+                                state: connection_state,
                                 ..
                             }) = &*connection_task
                             {
-                                let mut lobby = lobby.blocking_lock();
-                                if !lobby.attention_requested {
-                                    window.request_user_attention(Some(
-                                        glutin::window::UserAttentionType::Critical,
-                                    ));
-                                    lobby.attention_requested = true;
-                                }
+                                match connection_state {
+                                    ConnectionState::Starting => {
+                                        ui.horizontal(|ui| {
+                                            ui.add(egui::Spinner::new().size(10.0));
+                                            ui.label(
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &state.config.language,
+                                                        "start-connection-task.starting",
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        });
+                                    }
+                                    ConnectionState::Signaling => {
+                                        ui.horizontal(|ui| {
+                                            ui.add(egui::Spinner::new().size(10.0));
+                                            ui.label(
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &state.config.language,
+                                                        "start-connection-task.signaling",
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        });
+                                    }
+                                    ConnectionState::Waiting => {
+                                        ui.horizontal(|ui| {
+                                            ui.add(egui::Spinner::new().size(10.0));
+                                            ui.label(
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &state.config.language,
+                                                        "start-connection-task.waiting",
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        });
+                                    }
+                                    ConnectionState::InLobby(lobby) => {
+                                        let mut lobby = lobby.blocking_lock();
+                                        if !lobby.attention_requested {
+                                            window.request_user_attention(Some(
+                                                glutin::window::UserAttentionType::Critical,
+                                            ));
+                                            lobby.attention_requested = true;
+                                        }
 
-                                egui_extras::TableBuilder::new(ui)
-                                    .column(egui_extras::Size::remainder())
-                                    .column(egui_extras::Size::relative(0.1))
-                                    .column(egui_extras::Size::relative(0.1))
-                                    .header(20.0, |mut header| {
-                                        header.col(|ui| {});
-                                        header.col(|ui| {
-                                            ui.strong("You");
-                                        });
-                                        header.col(|ui| {
-                                            ui.strong("Opponent");
-                                        });
-                                    })
-                                    .body(|mut body| {
-                                        body.row(20.0, |mut row| {
-                                            row.col(|ui| {
-                                                ui.strong("Game");
+                                        egui_extras::TableBuilder::new(ui)
+                                            .column(egui_extras::Size::remainder())
+                                            .column(egui_extras::Size::relative(0.1))
+                                            .column(egui_extras::Size::relative(0.1))
+                                            .header(20.0, |mut header| {
+                                                header.col(|ui| {});
+                                                header.col(|ui| {
+                                                    ui.strong("You");
+                                                });
+                                                header.col(|ui| {
+                                                    ui.strong("Opponent");
+                                                });
+                                            })
+                                            .body(|mut body| {
+                                                body.row(20.0, |mut row| {
+                                                    row.col(|ui| {
+                                                        ui.strong("Game");
+                                                    });
+                                                    row.col(|ui| {
+                                                        ui.label("A");
+                                                    });
+                                                    row.col(|ui| {
+                                                        ui.label("B");
+                                                    });
+                                                });
                                             });
-                                            row.col(|ui| {
-                                                ui.label("A");
-                                            });
-                                            row.col(|ui| {
-                                                ui.label("B");
-                                            });
-                                        });
-                                    });
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
 
@@ -650,6 +688,7 @@ impl MainView {
                             );
                         });
                     });
+                });
                 egui::CentralPanel::default().show(ctx, |ui| {});
             }
         }
