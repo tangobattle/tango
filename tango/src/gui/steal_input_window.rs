@@ -1,6 +1,24 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n};
+use crate::{gui, i18n, input};
+
+pub struct State {
+    callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
+    userdata: Box<dyn std::any::Any>,
+}
+
+impl State {
+    pub fn new(
+        callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
+        userdata: Box<dyn std::any::Any>,
+    ) -> Self {
+        Self { callback, userdata }
+    }
+
+    pub fn run_callback(&self, phy: input::PhysicalInput, mapping: &mut input::Mapping) {
+        (self.callback)(phy, mapping)
+    }
+}
 
 pub struct StealInputWindow;
 
@@ -13,11 +31,11 @@ impl StealInputWindow {
         &mut self,
         ctx: &egui::Context,
         language: &unic_langid::LanguageIdentifier,
-        steal_input: &mut Option<gui::StealInputState>,
+        steal_input: &mut Option<State>,
     ) {
         let mut steal_input_open = steal_input.is_some();
         if let Some(inner_response) = egui::Window::new("")
-            .id(egui::Id::new("input-capture-window"))
+            .id(egui::Id::new("steal-input-window"))
             .open(&mut steal_input_open)
             .title_bar(false)
             .resizable(false)
@@ -29,14 +47,11 @@ impl StealInputWindow {
                         egui::Frame::none()
                             .inner_margin(egui::style::Margin::symmetric(32.0, 16.0))
                             .show(ui, |ui| {
-                                let userdata =
-                                    if let Some(gui::StealInputState { userdata, .. }) =
-                                        &steal_input
-                                    {
-                                        userdata
-                                    } else {
-                                        unreachable!();
-                                    };
+                                let userdata = if let Some(State { userdata, .. }) = &steal_input {
+                                    userdata
+                                } else {
+                                    unreachable!();
+                                };
 
                                 ui.label(
                                     egui::RichText::new(

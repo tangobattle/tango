@@ -40,7 +40,7 @@ impl SettingsWindow {
         ctx: &egui::Context,
         show_settings: &mut Option<State>,
         config: &mut config::Config,
-        steal_input: &mut Option<gui::StealInputState>,
+        steal_input: &mut Option<gui::steal_input_window::State>,
     ) {
         let mut show_settings_bool = show_settings.is_some();
         egui::Window::new(format!(
@@ -257,7 +257,7 @@ impl SettingsWindow {
         ui: &mut egui::Ui,
         lang: &unic_langid::LanguageIdentifier,
         input_mapping: &mut input::Mapping,
-        steal_input: &mut Option<gui::StealInputState>,
+        steal_input: &mut Option<gui::steal_input_window::State>,
     ) {
         egui::Grid::new("settings-window-input-mapping-grid")
             .num_columns(2)
@@ -324,8 +324,8 @@ impl SettingsWindow {
                             });
                         }
                         if ui.add(egui::Button::new("➕")).clicked() {
-                            *steal_input = Some(gui::StealInputState {
-                                callback: {
+                            *steal_input = Some(gui::steal_input_window::State::new(
+                                {
                                     let get_mapping = get_mapping.clone();
                                     Box::new(move |phy, input_mapping| {
                                         let mapping = get_mapping(input_mapping);
@@ -342,8 +342,8 @@ impl SettingsWindow {
                                         mapping.dedup();
                                     })
                                 },
-                                userdata: Box::new(label_text_id),
-                            });
+                                Box::new(label_text_id),
+                            ));
                         }
                     });
                     ui.end_row();
