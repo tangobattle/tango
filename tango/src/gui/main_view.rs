@@ -1,5 +1,6 @@
 use fluent_templates::Loader;
 use rand::RngCore;
+use sha3::digest::{ExtendableOutput, Update};
 
 use crate::{audio, battle, games, gui, i18n, input, net, session, stats};
 
@@ -32,26 +33,35 @@ struct Lobby {
     nonce: [u8; 16],
     match_type: (u8, u8),
     remote_settings: net::protocol::Settings,
-    remote_commit: Option<[u8; 16]>,
-    local_committed: bool,
+    remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
     raw_remote_negotiated_state: Vec<u8>,
     raw_local_negotiated_state: Option<Vec<u8>>,
 }
 
+fn make_commitment(buf: &[u8]) -> [u8; 16] {
+    let mut shake128 = sha3::Shake128::default();
+    shake128.update(b"tango:lobby:");
+    shake128.update(buf);
+    let mut commitment = [0u8; 16];
+    shake128.finalize_xof_into(&mut commitment);
+    commitment
+}
+
 impl Lobby {
     fn commit(&mut self, save_data: &[u8]) -> Result<[u8; 16], anyhow::Error> {
         rand::thread_rng().fill_bytes(&mut self.nonce);
-        self.raw_local_negotiated_state = Some(zstd::stream::encode_all(
+        let buf = zstd::stream::encode_all(
             &net::protocol::NegotiatedState::serialize(&net::protocol::NegotiatedState {
                 nonce: self.nonce.clone(),
                 save_data: save_data.to_vec(),
             })
             .unwrap()[..],
             0,
-        )?);
-        // TODO: Make the commitment.
-        todo!()
+        )?;
+        let commitment = make_commitment(&buf);
+        self.raw_local_negotiated_state = Some(buf);
+        Ok(commitment)
     }
 }
 
@@ -118,8 +128,7 @@ async fn run_connection_task(
                         nonce: [0u8; 16],
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         remote_settings: net::protocol::Settings::default(),
-                        remote_commit: None,
-                        local_committed: false,
+                        remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
                         raw_remote_negotiated_state: vec![],
                         raw_local_negotiated_state: None,
@@ -149,14 +158,14 @@ async fn run_connection_task(
                             },
                             net::protocol::Packet::Commit(commit) => {
                                 let mut lobby = lobby.lock().await;
-                                lobby.remote_commit = Some(commit.commitment);
+                                lobby.remote_commitment = Some(commit.commitment);
 
-                                if lobby.local_committed {
+                                if lobby.raw_local_negotiated_state.is_some() {
                                     // TODO: If both sides have committed, we need to send data.
                                 }
                             },
                             net::protocol::Packet::Uncommit(_) => {
-                                lobby.lock().await.remote_commit = None;
+                                lobby.lock().await.remote_commitment = None;
                             },
                             net::protocol::Packet::Chunk(chunk) => {
                                 lobby.lock().await.raw_remote_negotiated_state.extend(chunk.chunk);
@@ -171,9 +180,14 @@ async fn run_connection_task(
                     }
 
                     let lobby = lobby.lock().await;
+                    let received_remote_commitment = if let Some(commitment) = lobby.remote_commitment {
+                        commitment
+                    } else {
+                        anyhow::bail!("no remote commitment?");
+                    };
 
-                    // TODO: Validate against remote_commit.
-                    if Some(todo!()) != lobby.remote_commit {
+                    let remote_commitment = make_commitment(&lobby.raw_remote_negotiated_state);
+                    if !constant_time_eq::constant_time_eq_16(&remote_commitment, &received_remote_commitment) {
                         anyhow::bail!("commitment did not match");
                     }
 
