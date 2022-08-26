@@ -326,7 +326,6 @@ async fn run_connection_task(
                         std::iter::zip(lobby.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
                         max_queue_length,
                     )?);
-                    *connection_task.lock().await = None;
 
                     return Ok(());
                 })(
