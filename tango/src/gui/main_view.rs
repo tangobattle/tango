@@ -33,8 +33,9 @@ struct Lobby {
     match_type: (u8, u8),
     remote_settings: net::protocol::Settings,
     remote_commit: Option<[u8; 16]>,
+    local_committed: bool,
     latencies: stats::DeltaCounter,
-    raw_negotiated_state: Vec<u8>,
+    raw_remote_negotiated_state: Vec<u8>,
 }
 
 pub struct Start {
@@ -103,8 +104,9 @@ async fn run_connection_task(
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commit: None,
+                        local_committed: false,
                         latencies: stats::DeltaCounter::new(10),
-                        raw_negotiated_state: vec![],
+                        raw_remote_negotiated_state: vec![],
                     }));
 
                     *connection_task.lock().await =
@@ -127,17 +129,21 @@ async fn run_connection_task(
                             },
                             net::protocol::Packet::Settings(settings) => {
                                 lobby.lock().await.remote_settings = settings;
+                                // TODO: Sometimes we need to automatically uncommit.
                             },
                             net::protocol::Packet::Commit(commit) => {
-                                lobby.lock().await.remote_commit = Some(commit.commitment);
+                                let mut lobby = lobby.lock().await;
+                                lobby.remote_commit = Some(commit.commitment);
 
-                                // TODO: If both sides have committed, we need to send data.
+                                if lobby.local_committed {
+                                    // TODO: If both sides have committed, we need to send data.
+                                }
                             },
                             net::protocol::Packet::Uncommit(_) => {
                                 lobby.lock().await.remote_commit = None;
                             },
                             net::protocol::Packet::Chunk(chunk) => {
-                                lobby.lock().await.raw_negotiated_state.extend(chunk.chunk);
+                                lobby.lock().await.raw_remote_negotiated_state.extend(chunk.chunk);
                             },
                             net::protocol::Packet::StartMatch(_) => {
                                 break
@@ -155,7 +161,7 @@ async fn run_connection_task(
                         anyhow::bail!("commitment did not match");
                     }
 
-                    let negotiated_state = zstd::stream::decode_all(&lobby.raw_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+                    let negotiated_state = zstd::stream::decode_all(&lobby.raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
 
                     let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
                         game
@@ -175,7 +181,7 @@ async fn run_connection_task(
                         todo!(),
                         todo!(),
                         todo!(),
-                        todo!(),
+                        shadow_game,
                         todo!(),
                         &negotiated_state.save_data,
                         emu_tps_counter.clone(),
