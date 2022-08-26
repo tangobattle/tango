@@ -78,13 +78,13 @@ pub struct PatchInfo {
     pub version: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct GameInfo {
-    pub family_and_variant: (String, u8),
+    pub family_and_variant: Option<(String, u8)>,
     pub patch: Option<PatchInfo>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct Settings {
     pub nickname: String,
     pub match_type: u8,

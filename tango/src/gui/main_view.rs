@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n, input, net, session};
+use crate::{gui, i18n, input, net, session, stats};
 
 pub enum State {
     Session(session::Session),
@@ -14,7 +14,7 @@ enum ConnectionTask {
         state: ConnectionState,
         cancellation_token: tokio_util::sync::CancellationToken,
     },
-    InLobby(Lobby),
+    InLobby(std::sync::Arc<tokio::sync::Mutex<Lobby>>),
     Failed(anyhow::Error),
 }
 
@@ -26,14 +26,118 @@ enum ConnectionState {
 
 struct Lobby {
     sender: net::Sender,
-    receiver: net::Receiver,
     is_offerer: bool,
+    remote_settings: net::protocol::Settings,
+    remote_commit: Option<net::protocol::Commit>,
+    latencies: stats::DeltaCounter,
+    raw_negotiated_state: Vec<u8>,
 }
 
 pub struct Start {
     link_code: String,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
+}
+
+async fn run_connection_task(
+    matchmaking_addr: String,
+    link_code: String,
+    connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
+    cancellation_token: tokio_util::sync::CancellationToken,
+) {
+    if let Err(e) = {
+        let connection_task = connection_task.clone();
+
+        tokio::select! {
+            r = {
+                let connection_task = connection_task.clone();
+                let cancellation_token = cancellation_token.clone();
+                (move || async move {
+                    *connection_task.lock().await =
+                        Some(ConnectionTask::InProgress {
+                            state: ConnectionState::Signaling,
+                            cancellation_token:
+                                cancellation_token.clone(),
+                        });
+                    const OPEN_TIMEOUT: std::time::Duration =
+                        std::time::Duration::from_secs(30);
+                    let pending_conn = tokio::time::timeout(
+                        OPEN_TIMEOUT,
+                        net::signaling::open(
+                            &matchmaking_addr,
+                            &link_code,
+                        ),
+                    )
+                    .await??;
+
+                    *connection_task.lock().await =
+                        Some(ConnectionTask::InProgress {
+                            state: ConnectionState::Waiting,
+                            cancellation_token:
+                                cancellation_token.clone(),
+                        });
+
+                    let (dc, peer_conn) = pending_conn.connect().await?;
+                    let (dc_tx, dc_rx) = dc.split();
+                    let mut sender = net::Sender::new(dc_tx);
+                    let mut receiver = net::Receiver::new(dc_rx);
+                    net::negotiate(&mut sender, &mut receiver).await?;
+
+                    let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
+                        sender,
+                        is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
+                        remote_settings: net::protocol::Settings::default(),
+                        remote_commit: None,
+                        latencies: stats::DeltaCounter::new(10),
+                        raw_negotiated_state: vec![],
+                    }));
+
+                    *connection_task.lock().await = Some(ConnectionTask::InLobby(lobby.clone()));
+
+                    loop {
+                        match receiver.receive().await? {
+                            net::protocol::Packet::Ping(ping) => {
+                                lobby.lock().await.sender.send_pong(ping.ts).await?;
+                            },
+                            net::protocol::Packet::Pong(pong) => {
+                                let mut lobby = lobby.lock().await;
+                                if let Ok(d) = std::time::SystemTime::now().duration_since(pong.ts) {
+                                    lobby.latencies.mark(d);
+                                }
+                            },
+                            net::protocol::Packet::Settings(settings) => {
+                                lobby.lock().await.remote_settings = settings;
+                            },
+                            net::protocol::Packet::Commit(commit) => {
+                                lobby.lock().await.remote_commit = Some(commit);
+                            },
+                            net::protocol::Packet::Uncommit(_) => {
+                                lobby.lock().await.remote_commit = None;
+                            },
+                            net::protocol::Packet::Chunk(chunk) => {
+                                lobby.lock().await.raw_negotiated_state.extend(chunk.chunk);
+                            },
+                            net::protocol::Packet::StartMatch(start_match) => {
+                                return Ok(());
+                            },
+                            p => {
+                                anyhow::bail!("unexpected packet: {:?}", p);
+                            }
+                        }
+                    }
+                })(
+                )
+            }
+            => { r }
+            _ = cancellation_token.cancelled() => {
+                *connection_task.lock().await = None;
+                return;
+            }
+        }
+    } {
+        log::info!("connection task failed: {:?}", e);
+        *connection_task.lock().await = Some(ConnectionTask::Failed(e));
+    }
 }
 
 impl Start {
@@ -140,84 +244,26 @@ impl MainView {
                                             *connection_task.blocking_lock() =
                                                 Some(ConnectionTask::InProgress {
                                                     state: ConnectionState::Starting,
-                                                    cancellation_token: cancellation_token
-                                                        .clone(),
+                                                    cancellation_token: cancellation_token.clone(),
                                                 });
 
-                                            let matchmaking_addr =
-                                                state.config.matchmaking_endpoint.clone();
-                                            let link_code = start.link_code.clone();
-
-                                            handle.spawn(async move {
-                                                log::info!("spawning connection task");
-                                                if let Err(e) = {
-                                                    let connection_task = connection_task.clone();
-
-                                                    tokio::select!{
-                                                        r = {
-                                                            let connection_task = connection_task.clone();
-                                                            let cancellation_token = cancellation_token.clone();
-                                                            (move || async move {
-                                                                *connection_task.lock().await =
-                                                                    Some(ConnectionTask::InProgress {
-                                                                        state: ConnectionState::Signaling,
-                                                                        cancellation_token:
-                                                                            cancellation_token.clone(),
-                                                                    });
-                                                                const OPEN_TIMEOUT: std::time::Duration =
-                                                                    std::time::Duration::from_secs(30);
-                                                                let pending_conn = tokio::time::timeout(
-                                                                    OPEN_TIMEOUT,
-                                                                    net::signaling::open(
-                                                                        &matchmaking_addr,
-                                                                        &link_code,
-                                                                    ),
-                                                                )
-                                                                .await??;
-
-                                                                *connection_task.lock().await =
-                                                                    Some(ConnectionTask::InProgress {
-                                                                        state: ConnectionState::Waiting,
-                                                                        cancellation_token:
-                                                                            cancellation_token.clone(),
-                                                                    });
-
-                                                                let (dc, peer_conn) = pending_conn.connect().await?;
-                                                                let (dc_tx, dc_rx) = dc.split();
-                                                                let mut sender = net::Sender::new(dc_tx);
-                                                                let mut receiver = net::Receiver::new(dc_rx);
-                                                                net::negotiate(&mut sender, &mut receiver).await?;
-
-                                                                *connection_task.lock().await =
-                                                                    Some(ConnectionTask::InLobby(Lobby{
-                                                                        sender,
-                                                                        receiver,
-                                                                        is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
-                                                                    }));
-
-                                                                Ok(())
-                                                            })(
-                                                            )
-                                                        }
-                                                        => { r }
-                                                        _ = cancellation_token.cancelled() => {
-                                                            *connection_task.lock().await = None;
-                                                            log::info!("connection task cancelled");
-                                                            return;
-                                                        }
-                                                    }
-                                                } {
-                                                    log::info!("connection task failed: {:?}", e);
-                                                    *connection_task.lock().await =
-                                                        Some(ConnectionTask::Failed(e));
-                                                }
-                                            });
+                                            handle.spawn(run_connection_task(
+                                                state.config.matchmaking_endpoint.clone(),
+                                                start.link_code.clone(),
+                                                connection_task,
+                                                cancellation_token,
+                                            ));
                                         }
                                     };
 
-                                    let cancellation_token = if let Some(connection_task) = &*start.connection_task.blocking_lock() {
+                                    let cancellation_token = if let Some(connection_task) =
+                                        &*start.connection_task.blocking_lock()
+                                    {
                                         match connection_task {
-                                            ConnectionTask::InProgress { state: _, cancellation_token } => Some(cancellation_token.clone()),
+                                            ConnectionTask::InProgress {
+                                                state: _,
+                                                cancellation_token,
+                                            } => Some(cancellation_token.clone()),
                                             ConnectionTask::InLobby(_) => None,
                                             ConnectionTask::Failed(_) => None,
                                         }
@@ -226,14 +272,15 @@ impl MainView {
                                     };
 
                                     if let Some(cancellation_token) = &cancellation_token {
-                                        if ui.button(
-                                            format!(
+                                        if ui
+                                            .button(format!(
                                                 "⏹️ {}",
                                                 i18n::LOCALES
                                                     .lookup(&state.config.language, "start.stop")
                                                     .unwrap()
-                                                )
-                                            ).clicked() {
+                                            ))
+                                            .clicked()
+                                        {
                                             cancellation_token.cancel();
                                         }
                                     } else {
@@ -242,14 +289,20 @@ impl MainView {
                                                 format!(
                                                     "▶️ {}",
                                                     i18n::LOCALES
-                                                        .lookup(&state.config.language, "start.play")
+                                                        .lookup(
+                                                            &state.config.language,
+                                                            "start.play"
+                                                        )
                                                         .unwrap()
                                                 )
                                             } else {
                                                 format!(
                                                     "🥊 {}",
                                                     i18n::LOCALES
-                                                        .lookup(&state.config.language, "start.fight")
+                                                        .lookup(
+                                                            &state.config.language,
+                                                            "start.fight"
+                                                        )
                                                         .unwrap()
                                                 )
                                             })
