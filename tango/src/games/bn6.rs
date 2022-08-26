@@ -11,7 +11,7 @@ impl games::Game for EXE6GImpl {
         (b"BR5J", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe6", 0)
     }
 
@@ -50,7 +50,7 @@ impl games::Game for EXE6FImpl {
         (b"BR6J", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe6", 1)
     }
 
@@ -89,7 +89,7 @@ impl games::Game for BN6GImpl {
         (b"BR5E", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn6", 0)
     }
 
@@ -128,7 +128,7 @@ impl games::Game for BN6FImpl {
         (b"BR6E", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn6", 1)
     }
 

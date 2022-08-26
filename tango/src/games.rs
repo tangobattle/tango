@@ -176,7 +176,7 @@ pub fn sorted_games(
 
 pub fn find_by_family_and_variant(
     family: &str,
-    variant: u32,
+    variant: u8,
 ) -> Option<&'static (dyn Game + Send + Sync)> {
     GAMES
         .iter()
@@ -215,7 +215,7 @@ pub trait Game
 where
     Self: Any,
 {
-    fn family_and_variant(&self) -> (&str, u32);
+    fn family_and_variant(&self) -> (&str, u8);
     fn language(&self) -> unic_langid::LanguageIdentifier;
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8);
     fn expected_crc32(&self) -> u32;

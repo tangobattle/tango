@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n, input, net, session, stats};
+use crate::{games, gui, i18n, input, net, session, stats};
 
 pub enum State {
     Session(session::Session),
@@ -40,6 +40,7 @@ pub struct Start {
 }
 
 async fn run_connection_task(
+    saves_list: gui::SavesListState,
     matchmaking_addr: String,
     link_code: String,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
@@ -117,7 +118,21 @@ async fn run_connection_task(
                             net::protocol::Packet::Chunk(chunk) => {
                                 lobby.lock().await.raw_negotiated_state.extend(chunk.chunk);
                             },
-                            net::protocol::Packet::StartMatch(start_match) => {
+                            net::protocol::Packet::StartMatch(_) => {
+                                let lobby = lobby.lock().await;
+
+                                let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
+                                    game
+                                } else {
+                                    anyhow::bail!("attempted to start match in invalid state");
+                                };
+
+                                let shadow_rom = {
+                                    let saves_list = saves_list.read();
+                                    saves_list.roms.get(&shadow_game).cloned()
+                                };
+
+                                *connection_task.lock().await = None;
                                 return Ok(());
                             },
                             p => {
@@ -248,6 +263,7 @@ impl MainView {
                                                 });
 
                                             handle.spawn(run_connection_task(
+                                                state.saves_list.clone(),
                                                 state.config.matchmaking_endpoint.clone(),
                                                 start.link_code.clone(),
                                                 connection_task,

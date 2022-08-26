@@ -28,8 +28,8 @@ pub struct SavesListState {
 }
 
 pub struct SavesListStateInner {
-    roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
-    saves: std::collections::HashMap<
+    pub roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
+    pub saves: std::collections::HashMap<
         &'static (dyn games::Game + Send + Sync),
         Vec<std::path::PathBuf>,
     >,

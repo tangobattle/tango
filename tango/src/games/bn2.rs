@@ -11,7 +11,7 @@ impl games::Game for EXE2Impl {
         (b"AE2J", 0x01)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe2", 0)
     }
 
@@ -41,7 +41,7 @@ impl games::Game for BN2Impl {
         (b"AE2E", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn2", 0)
     }
 

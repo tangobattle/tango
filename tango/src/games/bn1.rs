@@ -11,7 +11,7 @@ impl games::Game for EXE1Impl {
         (b"AREJ", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe1", 0)
     }
 
@@ -49,7 +49,7 @@ impl games::Game for BN1Impl {
         (b"AREE", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn1", 0)
     }
 

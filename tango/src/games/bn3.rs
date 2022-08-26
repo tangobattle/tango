@@ -11,7 +11,7 @@ impl games::Game for EXE3WImpl {
         (b"A6BJ", 0x01)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe3", 0)
     }
 
@@ -49,7 +49,7 @@ impl games::Game for EXE3BImpl {
         (b"A3XJ", 0x01)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe3", 1)
     }
 
@@ -87,7 +87,7 @@ impl games::Game for BN3WImpl {
         (b"A6BE", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn3", 0)
     }
 
@@ -125,7 +125,7 @@ impl games::Game for BN3BImpl {
         (b"A3XE", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn3", 1)
     }
 

@@ -11,7 +11,7 @@ impl games::Game for EXE45Impl {
         (b"BR4J", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe45", 0)
     }
 

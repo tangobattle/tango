@@ -11,7 +11,7 @@ impl games::Game for EXE4RSImpl {
         (b"B4WJ", 0x01)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe4", 0)
     }
 
@@ -47,7 +47,7 @@ impl games::Game for EXE4BMImpl {
         (b"B4BJ", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("exe4", 1)
     }
 
@@ -83,7 +83,7 @@ impl games::Game for BN4RSImpl {
         (b"B4WE", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn4", 0)
     }
 
@@ -119,7 +119,7 @@ impl games::Game for BN4BMImpl {
         (b"B4BE", 0x00)
     }
 
-    fn family_and_variant(&self) -> (&str, u32) {
+    fn family_and_variant(&self) -> (&str, u8) {
         ("bn4", 1)
     }
 
