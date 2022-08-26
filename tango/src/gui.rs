@@ -752,7 +752,16 @@ impl Gui {
                                         }
                                     };
 
-                                    let connection_in_progress = if let Some(connection_task) = &*start.connection_task.blocking_lock() {
+                                    let cancellation_token = if let Some(connection_task) = &*start.connection_task.blocking_lock() {
+                                        match connection_task {
+                                            ConnectionTask::InProgress { state: _, cancellation_token } => Some(cancellation_token.clone()),
+                                            ConnectionTask::Failed(_) => None,
+                                        }
+                                    } else {
+                                        None
+                                    };
+
+                                    if let Some(cancellation_token) = &cancellation_token {
                                         if ui.button(
                                             format!(
                                                 "⏹️ {}",
@@ -761,19 +770,9 @@ impl Gui {
                                                     .unwrap()
                                                 )
                                             ).clicked() {
-                                            match connection_task {
-                                                ConnectionTask::InProgress { state: _, cancellation_token } => {
-                                                    cancellation_token.cancel();
-                                                },
-                                                ConnectionTask::Failed(_) => {},
-                                            }
+                                            cancellation_token.cancel();
                                         }
-                                        true
                                     } else {
-                                        false
-                                    };
-
-                                    if !connection_in_progress {
                                         if ui
                                             .button(if start.link_code.is_empty() {
                                                 format!(
@@ -798,7 +797,7 @@ impl Gui {
 
                                     let input_resp = ui.add(
                                         egui::TextEdit::singleline(&mut start.link_code)
-                                            .interactive(!connection_in_progress)
+                                            .interactive(cancellation_token.is_none())
                                             .hint_text(
                                                 i18n::LOCALES
                                                     .lookup(
