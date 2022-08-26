@@ -680,22 +680,21 @@ impl Gui {
                                         if !start.link_code.is_empty() {
                                             let cancellation_token =
                                                 tokio_util::sync::CancellationToken::new();
-
-                                            handle.block_on(async {
-                                                *start.connection_task.lock().await =
-                                                    Some(ConnectionTask::InProgress {
-                                                        state: ConnectionState::Starting,
-                                                        cancellation_token: cancellation_token
-                                                            .clone(),
-                                                    });
-                                            });
-
                                             let connection_task = start.connection_task.clone();
+
+                                            *connection_task.blocking_lock() =
+                                                Some(ConnectionTask::InProgress {
+                                                    state: ConnectionState::Starting,
+                                                    cancellation_token: cancellation_token
+                                                        .clone(),
+                                                });
+
                                             let matchmaking_addr =
                                                 state.config.matchmaking_endpoint.clone();
                                             let link_code = start.link_code.clone();
 
                                             handle.spawn(async move {
+                                                log::info!("spawning connection task");
                                                 if let Err(e) = {
                                                     let connection_task = connection_task.clone();
 
@@ -740,10 +739,12 @@ impl Gui {
                                                         => { r }
                                                         _ = cancellation_token.cancelled() => {
                                                             *connection_task.lock().await = None;
+                                                            log::info!("connection task cancelled");
                                                             return;
                                                         }
                                                     }
                                                 } {
+                                                    log::info!("connection task failed: {:?}", e);
                                                     *connection_task.lock().await =
                                                         Some(ConnectionTask::Failed(e));
                                                 }
@@ -751,29 +752,53 @@ impl Gui {
                                         }
                                     };
 
-                                    if ui
-                                        .button(if start.link_code.is_empty() {
+                                    let connection_in_progress = if let Some(connection_task) = &*start.connection_task.blocking_lock() {
+                                        if ui.button(
                                             format!(
-                                                "▶️ {}",
+                                                "⏹️ {}",
                                                 i18n::LOCALES
-                                                    .lookup(&state.config.language, "start.play")
+                                                    .lookup(&state.config.language, "start.stop")
                                                     .unwrap()
-                                            )
-                                        } else {
-                                            format!(
-                                                "🥊 {}",
-                                                i18n::LOCALES
-                                                    .lookup(&state.config.language, "start.fight")
-                                                    .unwrap()
-                                            )
-                                        })
-                                        .clicked()
-                                    {
-                                        submit(start);
+                                                )
+                                            ).clicked() {
+                                            match connection_task {
+                                                ConnectionTask::InProgress { state: _, cancellation_token } => {
+                                                    cancellation_token.cancel();
+                                                },
+                                                ConnectionTask::Failed(_) => {},
+                                            }
+                                        }
+                                        true
+                                    } else {
+                                        false
+                                    };
+
+                                    if !connection_in_progress {
+                                        if ui
+                                            .button(if start.link_code.is_empty() {
+                                                format!(
+                                                    "▶️ {}",
+                                                    i18n::LOCALES
+                                                        .lookup(&state.config.language, "start.play")
+                                                        .unwrap()
+                                                )
+                                            } else {
+                                                format!(
+                                                    "🥊 {}",
+                                                    i18n::LOCALES
+                                                        .lookup(&state.config.language, "start.fight")
+                                                        .unwrap()
+                                                )
+                                            })
+                                            .clicked()
+                                        {
+                                            submit(start);
+                                        }
                                     }
 
                                     let input_resp = ui.add(
                                         egui::TextEdit::singleline(&mut start.link_code)
+                                            .interactive(!connection_in_progress)
                                             .hint_text(
                                                 i18n::LOCALES
                                                     .lookup(
