@@ -98,6 +98,48 @@ impl Lobby {
         }
     }
 
+    async fn send_local_settings(&mut self) -> Result<(), anyhow::Error> {
+        let settings = self.make_local_settings();
+        let sender = if let Some(sender) = self.sender.as_mut() {
+            sender
+        } else {
+            anyhow::bail!("no sender?")
+        };
+        sender.send_settings(settings).await?;
+        Ok(())
+    }
+
+    async fn set_reveal_setup(&mut self, reveal_setup: bool) -> Result<(), anyhow::Error> {
+        if reveal_setup == self.reveal_setup {
+            return Ok(());
+        }
+        self.reveal_setup = reveal_setup;
+        self.send_local_settings().await?;
+        Ok(())
+    }
+
+    async fn set_match_type(&mut self, match_type: (u8, u8)) -> Result<(), anyhow::Error> {
+        if match_type == self.match_type {
+            return Ok(());
+        }
+        self.match_type = match_type;
+        self.send_local_settings().await?;
+        Ok(())
+    }
+
+    async fn set_game(
+        &mut self,
+        game: &'static (dyn games::Game + Send + Sync),
+        rom: Vec<u8>,
+    ) -> Result<(), anyhow::Error> {
+        if Some(game) == self.local_game.as_ref().map(|(g, _)| *g) {
+            return Ok(());
+        }
+        self.local_game = Some((game, rom));
+        self.send_local_settings().await?;
+        Ok(())
+    }
+
     fn set_remote_settings(&mut self, settings: net::protocol::Settings) {
         self.remote_settings = settings;
         if !are_settings_compatible(&self.make_local_settings(), &self.remote_settings) {
@@ -199,13 +241,14 @@ async fn run_connection_task(
                         latencies: stats::DeltaCounter::new(10),
                         local_negotiated_state: None,
                     }));
+                    lobby.lock().await.send_local_settings().await?;
 
                     *connection_task.lock().await =
-                    Some(ConnectionTask::InProgress {
-                        state: ConnectionState::InLobby(lobby.clone()),
-                        cancellation_token:
-                            cancellation_token.clone(),
-                    });
+                        Some(ConnectionTask::InProgress {
+                            state: ConnectionState::InLobby(lobby.clone()),
+                            cancellation_token:
+                                cancellation_token.clone(),
+                        });
 
                     let mut remote_chunks = vec![];
                     const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
