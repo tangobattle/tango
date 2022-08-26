@@ -37,7 +37,6 @@ struct Lobby {
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
     local_negotiated_state: Option<(net::protocol::NegotiatedState, Vec<u8>)>,
-    raw_remote_negotiated_state: Vec<u8>,
 }
 
 fn make_commitment(buf: &[u8]) -> [u8; 16] {
@@ -74,16 +73,22 @@ impl Lobby {
 
     async fn set_local_settings(
         &mut self,
-        local_settings: net::protocol::Settings,
+        settings: net::protocol::Settings,
     ) -> Result<(), anyhow::Error> {
         let sender = if let Some(sender) = self.sender.as_mut() {
             sender
         } else {
             anyhow::bail!("no sender?")
         };
-        sender.send_settings(local_settings.clone()).await?;
-        self.local_settings = local_settings;
+        sender.send_settings(settings.clone()).await?;
+        self.local_settings = settings;
+        // TODO: Check setting compatibility.
         Ok(())
+    }
+
+    fn set_remote_settings(&mut self, settings: net::protocol::Settings) {
+        self.remote_settings = settings;
+        // TODO: Check setting compatibility.
     }
 
     async fn send_pong(&mut self, ts: std::time::SystemTime) -> Result<(), anyhow::Error> {
@@ -169,7 +174,6 @@ async fn run_connection_task(
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
                         local_negotiated_state: None,
-                        raw_remote_negotiated_state: vec![],
                     }));
 
                     *connection_task.lock().await =
@@ -179,6 +183,7 @@ async fn run_connection_task(
                             cancellation_token.clone(),
                     });
 
+                    let mut remote_chunks = vec![];
                     loop {
                         match receiver.receive().await? {
                             net::protocol::Packet::Ping(ping) => {
@@ -191,25 +196,23 @@ async fn run_connection_task(
                                 }
                             },
                             net::protocol::Packet::Settings(settings) => {
-                                lobby.lock().await.remote_settings = settings;
-                                // TODO: Sometimes we need to automatically uncommit.
+                                let mut lobby = lobby.lock().await;
+                                lobby.set_remote_settings(settings);
                             },
                             net::protocol::Packet::Commit(commit) => {
                                 let mut lobby = lobby.lock().await;
                                 lobby.remote_commitment = Some(commit.commitment);
 
                                 if lobby.local_negotiated_state.is_some() {
-                                    // TODO: If both sides have committed, we need to send data.
+                                    break;
                                 }
                             },
                             net::protocol::Packet::Uncommit(_) => {
                                 lobby.lock().await.remote_commitment = None;
                             },
                             net::protocol::Packet::Chunk(chunk) => {
-                                lobby.lock().await.raw_remote_negotiated_state.extend(chunk.chunk);
-                            },
-                            net::protocol::Packet::StartMatch(_) => {
-                                break
+                                remote_chunks.push(chunk.chunk);
+                                break;
                             },
                             p => {
                                 anyhow::bail!("unexpected packet: {:?}", p);
@@ -218,30 +221,59 @@ async fn run_connection_task(
                     }
 
                     let mut lobby = lobby.lock().await;
-                    let sender = if let Some(sender) = lobby.sender.take() {
+                    let mut sender = if let Some(sender) = lobby.sender.take() {
                         sender
                     } else {
                         anyhow::bail!("no sender?");
                     };
 
+                    let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = lobby.local_negotiated_state.take() {
+                        (negotiated_state, raw_local_state)
+                    } else {
+                        anyhow::bail!("attempted to start match in invalid state");
+                    };
+
+                    const CHUNK_SIZE: usize = 32 * 1024;
+                    const CHUNKS_REQUIRED: usize = 5;
+                    for i in 0..CHUNKS_REQUIRED {
+                        sender.send_chunk(raw_local_state.get((i*CHUNK_SIZE)..(i+1*CHUNK_SIZE)).unwrap_or(&[]).to_vec()).await?;
+
+                        if remote_chunks.len() < CHUNK_SIZE {
+                            loop {
+                                match receiver.receive().await? {
+                                    net::protocol::Packet::Ping(ping) => {
+                                        sender.send_pong(ping.ts).await?;
+                                    },
+                                    net::protocol::Packet::Pong(pong) => {
+                                        if let Ok(d) = std::time::SystemTime::now().duration_since(pong.ts) {
+                                            lobby.latencies.mark(d);
+                                        }
+                                    },
+                                    net::protocol::Packet::Chunk(chunk) => {
+                                        remote_chunks.push(chunk.chunk);
+                                        break;
+                                    },
+                                    p => {
+                                        anyhow::bail!("unexpected packet: {:?}", p);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let raw_remote_negotiated_state = remote_chunks.into_iter().flatten().collect::<Vec<_>>();
                     let received_remote_commitment = if let Some(commitment) = lobby.remote_commitment {
                         commitment
                     } else {
                         anyhow::bail!("no remote commitment?");
                     };
 
-                    let remote_commitment = make_commitment(&lobby.raw_remote_negotiated_state);
+                    let remote_commitment = make_commitment(&raw_remote_negotiated_state);
                     if !constant_time_eq::constant_time_eq_16(&remote_commitment, &received_remote_commitment) {
                         anyhow::bail!("commitment did not match");
                     }
 
-                    let local_negotiated_state = if let Some((negotiated_state, _)) = lobby.local_negotiated_state.clone() {
-                        negotiated_state
-                    } else {
-                        anyhow::bail!("attempted to start match in invalid state");
-                    };
-
-                    let remote_negotiated_state = zstd::stream::decode_all(&lobby.raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+                    let remote_negotiated_state = zstd::stream::decode_all(&raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
 
                     let local_game = if let Some(game) = lobby.local_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
                         game
