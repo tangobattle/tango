@@ -289,6 +289,7 @@ impl Gui {
         );
         self.steal_input_window
             .show(ctx, &state.config.language, &mut state.steal_input);
-        self.main_view.show(ctx, handle.clone(), input_state, state);
+        self.main_view
+            .show(ctx, handle.clone(), window, input_state, state);
     }
 }

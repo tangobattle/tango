@@ -31,12 +31,19 @@ struct Lobby {
     is_offerer: bool,
     input_delay: usize,
     nonce: [u8; 16],
-    match_type: (u8, u8),
     local_settings: net::protocol::Settings,
     remote_settings: net::protocol::Settings,
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
     local_negotiated_state: Option<(net::protocol::NegotiatedState, Vec<u8>)>,
+}
+
+fn are_settings_compatible(
+    local_settings: &net::protocol::Settings,
+    remote_settings: &net::protocol::Settings,
+) -> bool {
+    // TODO: Check setting compatibility.
+    false
 }
 
 fn make_commitment(buf: &[u8]) -> [u8; 16] {
@@ -82,13 +89,17 @@ impl Lobby {
         };
         sender.send_settings(settings.clone()).await?;
         self.local_settings = settings;
-        // TODO: Check setting compatibility.
+        if !are_settings_compatible(&self.local_settings, &self.remote_settings) {
+            self.remote_commitment = None;
+        }
         Ok(())
     }
 
     fn set_remote_settings(&mut self, settings: net::protocol::Settings) {
         self.remote_settings = settings;
-        // TODO: Check setting compatibility.
+        if !are_settings_compatible(&self.local_settings, &self.remote_settings) {
+            self.local_negotiated_state = None;
+        }
     }
 
     async fn send_pong(&mut self, ts: std::time::SystemTime) -> Result<(), anyhow::Error> {
@@ -173,7 +184,6 @@ async fn run_connection_task(
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         sender: Some(sender),
                         input_delay: 2, // TODO
-                        match_type: (0, 0), // TODO
                         nonce: [0u8; 16],
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         local_settings: net::protocol::Settings{
@@ -339,7 +349,7 @@ async fn run_connection_task(
                         receiver,
                         lobby.is_offerer,
                         replays_path,
-                        lobby.match_type,
+                        lobby.local_settings.match_type,
                         lobby.input_delay as u32,
                         std::iter::zip(lobby.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
                         max_queue_length,
@@ -388,6 +398,7 @@ impl MainView {
         &mut self,
         ctx: &egui::Context,
         handle: tokio::runtime::Handle,
+        window: &glutin::window::Window,
         input_state: &input::State,
         state: &mut gui::State,
     ) {

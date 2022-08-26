@@ -329,6 +329,7 @@ fn child_main() -> Result<(), anyhow::Error> {
                         &mut state,
                     )
                 });
+
                 egui_glow.paint(gl_window.window());
 
                 gl_window.swap_buffers().unwrap();
