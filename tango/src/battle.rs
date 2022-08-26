@@ -23,7 +23,6 @@ pub struct CommittedState {
 
 pub struct Settings {
     pub replays_path: std::path::PathBuf,
-    pub replay_metadata: Vec<u8>,
     pub match_type: (u8, u8),
     pub input_delay: u32,
     pub rng_seed: Vec<u8>,
@@ -57,7 +56,8 @@ impl RoundState {
 pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
-    hooks: &'static (dyn games::Hooks + Send + Sync),
+    local_game: &'static (dyn games::Game + Send + Sync),
+    shadow_game: &'static (dyn games::Game + Send + Sync),
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
@@ -72,7 +72,8 @@ pub struct Match {
 impl Match {
     pub fn new(
         rom: Vec<u8>,
-        hooks: &'static (dyn games::Hooks + Send + Sync),
+        local_game: &'static (dyn games::Game + Send + Sync),
+        shadow_game: &'static (dyn games::Game + Send + Sync),
         sender: net::Sender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
@@ -97,8 +98,9 @@ impl Match {
                 last_result,
                 rng.clone(),
             )?)),
+            local_game,
+            shadow_game,
             rom,
-            hooks,
             sender: std::sync::Arc::new(tokio::sync::Mutex::new(sender)),
             rng: tokio::sync::Mutex::new(rng),
             cancellation_token: tokio_util::sync::CancellationToken::new(),
@@ -272,8 +274,11 @@ impl Match {
             }
         }
 
+        let hooks = self.local_game.hooks();
+        let local_family_and_variant = self.local_game.family_and_variant();
+        let shadow_family_and_variant = self.shadow_game.family_and_variant();
         round_state.round = Some(Round {
-            hooks: self.hooks,
+            hooks,
             number: round_state.number,
             local_player_index,
             current_tick: 0,
@@ -283,18 +288,42 @@ impl Match {
                 local_tick: 0,
                 remote_tick: 0,
                 joyflags: 0,
-                packet: vec![0u8; self.hooks.packet_size()],
+                packet: vec![0u8; hooks.packet_size()],
             },
             first_state_committed_local_packet: Some(first_state_committed_local_packet),
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
             replay_writer: Some(replay::Writer::new(
                 Box::new(replay_file),
-                &self.settings.replay_metadata,
+                tango_protos::replay::ReplayMetadata {
+                    ts: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
+                    link_code: todo!(),
+                    local_side: Some(tango_protos::replay::replay_metadata::Side {
+                        nickname: todo!(),
+                        game_info: Some(tango_protos::replay::replay_metadata::GameInfo {
+                            rom_family: local_family_and_variant.0.to_string(),
+                            rom_variant: local_family_and_variant.1 as u32,
+                            patch: todo!(),
+                        }),
+                        reveal_setup: todo!(),
+                    }),
+                    remote_side: Some(tango_protos::replay::replay_metadata::Side {
+                        nickname: todo!(),
+                        game_info: Some(tango_protos::replay::replay_metadata::GameInfo {
+                            rom_family: shadow_family_and_variant.0.to_string(),
+                            rom_variant: shadow_family_and_variant.1 as u32,
+                            patch: todo!(),
+                        }),
+                        reveal_setup: todo!(),
+                    }),
+                },
                 local_player_index,
-                self.hooks.packet_size() as u8,
+                hooks.packet_size() as u8,
             )?),
-            replayer: replayer::Fastforwarder::new(&self.rom, self.hooks, local_player_index)?,
+            replayer: replayer::Fastforwarder::new(&self.rom, hooks, local_player_index)?,
             primary_thread_handle: self.primary_thread_handle.clone(),
             sender: self.sender.clone(),
             shadow: self.shadow.clone(),

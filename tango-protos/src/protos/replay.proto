@@ -8,8 +8,9 @@ message ReplayMetadata {
       string name = 1;
       string version = 2;
     }
-    string rom = 1;
-    Patch patch = 2;
+    string rom_family = 1;
+    uint32 rom_variant = 2;
+    Patch patch = 3;
   }
 
   message Side {

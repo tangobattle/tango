@@ -13,7 +13,7 @@ pub struct Writer {
 }
 
 const HEADER: &[u8] = b"TOOT";
-const VERSION: u8 = 0x10;
+const VERSION: u8 = 0x11;
 
 pub struct Replay {
     pub is_complete: bool,

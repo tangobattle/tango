@@ -41,8 +41,10 @@ impl Session {
     pub fn new_pvp(
         handle: tokio::runtime::Handle,
         audio_binder: audio::LateBinder,
-        rom: &[u8],
-        save: &[u8],
+        local_game: &'static (dyn games::Game + Send + Sync),
+        local_rom: &[u8],
+        local_save: &[u8],
+        shadow_game: &'static (dyn games::Game + Send + Sync),
         shadow_rom: &[u8],
         shadow_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -55,9 +57,9 @@ impl Session {
         core.enable_video_buffer();
 
         core.as_mut()
-            .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
+            .load_rom(mgba::vfile::VFile::open_memory(&local_rom))?;
         core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(&save))?;
+            .load_save(mgba::vfile::VFile::open_memory(&local_save))?;
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
@@ -88,8 +90,9 @@ impl Session {
             let rng_seed = settings.rng_seed.clone().try_into().expect("rng seed");
             *match_.lock().await = Some({
                 let inner_match = battle::Match::new(
-                    rom.to_vec(),
-                    hooks,
+                    local_rom.to_vec(),
+                    local_game,
+                    shadow_game,
                     sender,
                     rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                     is_offerer,

@@ -182,7 +182,6 @@ async fn run_connection_task(
                         lobby.is_offerer,
                         battle::Settings {
                             replays_path: todo!(),
-                            replay_metadata: todo!(),
                             match_type: lobby.match_type,
                             input_delay: lobby.input_delay as u32,
                             rng_seed: std::iter::zip(nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect(),
