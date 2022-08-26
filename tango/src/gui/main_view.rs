@@ -27,16 +27,17 @@ enum ConnectionState {
 }
 
 struct Lobby {
-    sender: net::Sender,
+    sender: Option<net::Sender>,
     is_offerer: bool,
     input_delay: usize,
     nonce: [u8; 16],
     match_type: (u8, u8),
+    local_settings: net::protocol::Settings,
     remote_settings: net::protocol::Settings,
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
+    local_negotiated_state: Option<(net::protocol::NegotiatedState, Vec<u8>)>,
     raw_remote_negotiated_state: Vec<u8>,
-    raw_local_negotiated_state: Option<Vec<u8>>,
 }
 
 fn make_commitment(buf: &[u8]) -> [u8; 16] {
@@ -49,19 +50,50 @@ fn make_commitment(buf: &[u8]) -> [u8; 16] {
 }
 
 impl Lobby {
-    fn commit(&mut self, save_data: &[u8]) -> Result<[u8; 16], anyhow::Error> {
+    async fn commit(&mut self, save_data: &[u8]) -> Result<(), anyhow::Error> {
         rand::thread_rng().fill_bytes(&mut self.nonce);
+        let negotiated_state = net::protocol::NegotiatedState {
+            nonce: self.nonce.clone(),
+            save_data: save_data.to_vec(),
+        };
         let buf = zstd::stream::encode_all(
-            &net::protocol::NegotiatedState::serialize(&net::protocol::NegotiatedState {
-                nonce: self.nonce.clone(),
-                save_data: save_data.to_vec(),
-            })
-            .unwrap()[..],
+            &net::protocol::NegotiatedState::serialize(&negotiated_state).unwrap()[..],
             0,
         )?;
         let commitment = make_commitment(&buf);
-        self.raw_local_negotiated_state = Some(buf);
-        Ok(commitment)
+        self.local_negotiated_state = Some((negotiated_state, buf));
+
+        let sender = if let Some(sender) = self.sender.as_mut() {
+            sender
+        } else {
+            anyhow::bail!("no sender?")
+        };
+        sender.send_commit(commitment).await?;
+        Ok(())
+    }
+
+    async fn set_local_settings(
+        &mut self,
+        local_settings: net::protocol::Settings,
+    ) -> Result<(), anyhow::Error> {
+        let sender = if let Some(sender) = self.sender.as_mut() {
+            sender
+        } else {
+            anyhow::bail!("no sender?")
+        };
+        sender.send_settings(local_settings.clone()).await?;
+        self.local_settings = local_settings;
+        Ok(())
+    }
+
+    async fn send_pong(&mut self, ts: std::time::SystemTime) -> Result<(), anyhow::Error> {
+        let sender = if let Some(sender) = self.sender.as_mut() {
+            sender
+        } else {
+            anyhow::bail!("no sender?")
+        };
+        sender.send_pong(ts).await?;
+        Ok(())
     }
 }
 
@@ -80,6 +112,7 @@ async fn run_connection_task(
     matchmaking_addr: String,
     link_code: String,
     max_queue_length: usize,
+    nickname: String,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     cancellation_token: tokio_util::sync::CancellationToken,
 ) {
@@ -122,16 +155,20 @@ async fn run_connection_task(
                     net::negotiate(&mut sender, &mut receiver).await?;
 
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
-                        sender,
+                        sender: Some(sender),
                         input_delay: 2, // TODO
                         match_type: (0, 0), // TODO
                         nonce: [0u8; 16],
                         is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
+                        local_settings: net::protocol::Settings{
+                            nickname,
+                            ..net::protocol::Settings::default()
+                        },
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
+                        local_negotiated_state: None,
                         raw_remote_negotiated_state: vec![],
-                        raw_local_negotiated_state: None,
                     }));
 
                     *connection_task.lock().await =
@@ -144,7 +181,7 @@ async fn run_connection_task(
                     loop {
                         match receiver.receive().await? {
                             net::protocol::Packet::Ping(ping) => {
-                                lobby.lock().await.sender.send_pong(ping.ts).await?;
+                                lobby.lock().await.send_pong(ping.ts).await?;
                             },
                             net::protocol::Packet::Pong(pong) => {
                                 let mut lobby = lobby.lock().await;
@@ -160,7 +197,7 @@ async fn run_connection_task(
                                 let mut lobby = lobby.lock().await;
                                 lobby.remote_commitment = Some(commit.commitment);
 
-                                if lobby.raw_local_negotiated_state.is_some() {
+                                if lobby.local_negotiated_state.is_some() {
                                     // TODO: If both sides have committed, we need to send data.
                                 }
                             },
@@ -179,7 +216,13 @@ async fn run_connection_task(
                         }
                     }
 
-                    let lobby = lobby.lock().await;
+                    let mut lobby = lobby.lock().await;
+                    let sender = if let Some(sender) = lobby.sender.take() {
+                        sender
+                    } else {
+                        anyhow::bail!("no sender?");
+                    };
+
                     let received_remote_commitment = if let Some(commitment) = lobby.remote_commitment {
                         commitment
                     } else {
@@ -191,7 +234,19 @@ async fn run_connection_task(
                         anyhow::bail!("commitment did not match");
                     }
 
-                    let negotiated_state = zstd::stream::decode_all(&lobby.raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+                    let local_negotiated_state = if let Some((negotiated_state, _)) = lobby.local_negotiated_state.clone() {
+                        negotiated_state
+                    } else {
+                        anyhow::bail!("attempted to start match in invalid state");
+                    };
+
+                    let remote_negotiated_state = zstd::stream::decode_all(&lobby.raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+
+                    let local_game = if let Some(game) = lobby.local_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
+                        game
+                    } else {
+                        anyhow::bail!("attempted to start match in invalid state");
+                    };
 
                     let shadow_game = if let Some(game) = lobby.remote_settings.game_info.family_and_variant.as_ref().and_then(|(family, variant)| games::find_by_family_and_variant(family, *variant)) {
                         game
@@ -199,29 +254,37 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let shadow_rom = {
+                    let (local_rom, shadow_rom) = {
                         let saves_list = saves_list.read();
-                        saves_list.roms.get(&shadow_game).cloned()
+                        (if let Some(local_rom) = saves_list.roms.get(&local_game).cloned() {
+                            local_rom
+                        } else {
+                            anyhow::bail!("missing local rom");
+                        }, if let Some(shadow_rom) = saves_list.roms.get(&shadow_game).cloned() {
+                            shadow_rom
+                        } else {
+                            anyhow::bail!("missing local rom");
+                        })
                     };
 
                     *connection_task.lock().await = None;
                     *main_view.lock() = State::Session(session::Session::new_pvp(
                         handle,
                         audio_binder,
-                        todo!(),
-                        todo!(),
-                        todo!(),
+                        local_game,
+                        &local_rom,
+                        &local_negotiated_state.save_data,
                         shadow_game,
-                        todo!(),
-                        &negotiated_state.save_data,
+                        &shadow_rom,
+                        &remote_negotiated_state.save_data,
                         emu_tps_counter.clone(),
-                        lobby.sender,
+                        sender,
                         receiver,
                         lobby.is_offerer,
                         todo!(),
                         lobby.match_type,
                         lobby.input_delay as u32,
-                        std::iter::zip(lobby.nonce, negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
+                        std::iter::zip(lobby.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
                         max_queue_length,
                     )?);
                     return Ok(());
@@ -356,6 +419,11 @@ impl MainView {
                                                 state.config.matchmaking_endpoint.clone(),
                                                 start.link_code.clone(),
                                                 state.config.max_queue_length as usize,
+                                                state
+                                                    .config
+                                                    .nickname
+                                                    .clone()
+                                                    .unwrap_or_else(|| "".to_string()),
                                                 connection_task,
                                                 cancellation_token,
                                             ));
