@@ -100,6 +100,16 @@ impl Lobby {
         sender.send_pong(ts).await?;
         Ok(())
     }
+
+    async fn send_ping(&mut self) -> Result<(), anyhow::Error> {
+        let sender = if let Some(sender) = self.sender.as_mut() {
+            sender
+        } else {
+            anyhow::bail!("no sender?")
+        };
+        sender.send_ping(std::time::SystemTime::now()).await?;
+        Ok(())
+    }
 }
 
 pub struct Start {
@@ -184,39 +194,47 @@ async fn run_connection_task(
                     });
 
                     let mut remote_chunks = vec![];
-                    loop {
-                        // TODO: Add pings.
-                        match receiver.receive().await? {
-                            net::protocol::Packet::Ping(ping) => {
-                                lobby.lock().await.send_pong(ping.ts).await?;
-                            },
-                            net::protocol::Packet::Pong(pong) => {
-                                let mut lobby = lobby.lock().await;
-                                if let Ok(d) = std::time::SystemTime::now().duration_since(pong.ts) {
-                                    lobby.latencies.mark(d);
-                                }
-                            },
-                            net::protocol::Packet::Settings(settings) => {
-                                let mut lobby = lobby.lock().await;
-                                lobby.set_remote_settings(settings);
-                            },
-                            net::protocol::Packet::Commit(commit) => {
-                                let mut lobby = lobby.lock().await;
-                                lobby.remote_commitment = Some(commit.commitment);
+                    const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+                    let mut ping_timer = tokio::time::interval(PING_INTERVAL);
+                    'l: loop {
+                        tokio::select! {
+                            _ = ping_timer.tick() => {
+                                lobby.lock().await.send_ping().await?;
+                            }
+                            p = receiver.receive() => {
+                                match p? {
+                                    net::protocol::Packet::Ping(ping) => {
+                                        lobby.lock().await.send_pong(ping.ts).await?;
+                                    },
+                                    net::protocol::Packet::Pong(pong) => {
+                                        let mut lobby = lobby.lock().await;
+                                        if let Ok(d) = std::time::SystemTime::now().duration_since(pong.ts) {
+                                            lobby.latencies.mark(d);
+                                        }
+                                    },
+                                    net::protocol::Packet::Settings(settings) => {
+                                        let mut lobby = lobby.lock().await;
+                                        lobby.set_remote_settings(settings);
+                                    },
+                                    net::protocol::Packet::Commit(commit) => {
+                                        let mut lobby = lobby.lock().await;
+                                        lobby.remote_commitment = Some(commit.commitment);
 
-                                if lobby.local_negotiated_state.is_some() {
-                                    break;
+                                        if lobby.local_negotiated_state.is_some() {
+                                            break 'l;
+                                        }
+                                    },
+                                    net::protocol::Packet::Uncommit(_) => {
+                                        lobby.lock().await.remote_commitment = None;
+                                    },
+                                    net::protocol::Packet::Chunk(chunk) => {
+                                        remote_chunks.push(chunk.chunk);
+                                        break 'l;
+                                    },
+                                    p => {
+                                        anyhow::bail!("unexpected packet: {:?}", p);
+                                    }
                                 }
-                            },
-                            net::protocol::Packet::Uncommit(_) => {
-                                lobby.lock().await.remote_commitment = None;
-                            },
-                            net::protocol::Packet::Chunk(chunk) => {
-                                remote_chunks.push(chunk.chunk);
-                                break;
-                            },
-                            p => {
-                                anyhow::bail!("unexpected packet: {:?}", p);
                             }
                         }
                     }
