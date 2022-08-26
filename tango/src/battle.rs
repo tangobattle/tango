@@ -59,7 +59,7 @@ pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
     hooks: &'static (dyn games::Hooks + Send + Sync),
-    transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
+    sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     settings: Settings,
@@ -74,7 +74,7 @@ impl Match {
     pub fn new(
         rom: Vec<u8>,
         hooks: &'static (dyn games::Hooks + Send + Sync),
-        dc_tx: datachannel_wrapper::DataChannelSender,
+        sender: net::Sender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
@@ -100,7 +100,7 @@ impl Match {
             )?)),
             rom,
             hooks,
-            transport: std::sync::Arc::new(tokio::sync::Mutex::new(net::Transport::new(dc_tx))),
+            sender: std::sync::Arc::new(tokio::sync::Mutex::new(sender)),
             rng: tokio::sync::Mutex::new(rng),
             cancellation_token: tokio_util::sync::CancellationToken::new(),
             settings,
@@ -135,24 +135,12 @@ impl Match {
         self.shadow.lock().advance_until_first_committed_state()
     }
 
-    pub async fn run(
-        &self,
-        mut dc_rx: datachannel_wrapper::DataChannelReceiver,
-    ) -> anyhow::Result<()> {
+    pub async fn run(&self, mut receiver: net::Receiver) -> anyhow::Result<()> {
         let mut last_round_number = 0;
         loop {
-            match net::protocol::Packet::deserialize(
-                match dc_rx.receive().await {
-                    None => {
-                        log::info!("data channel closed");
-                        break;
-                    }
-                    Some(buf) => buf,
-                }
-                .as_slice(),
-            )? {
+            match receiver.receive().await? {
                 net::protocol::Packet::Ping(ping) => {
-                    self.transport.lock().await.send_pong(ping.ts).await?;
+                    self.sender.lock().await.send_pong(ping.ts).await?;
                 }
                 net::protocol::Packet::Pong(_pong) => {
                     // TODO
@@ -274,14 +262,14 @@ impl Match {
         log::info!("filling {} ticks of input delay", self.settings.input_delay,);
 
         {
-            let mut transport = self.transport.lock().await;
+            let mut sender = self.sender.lock().await;
             for i in 0..self.settings.input_delay {
                 iq.add_local_input(lockstep::PartialInput {
                     local_tick: i,
                     remote_tick: 0,
                     joyflags: 0,
                 });
-                transport.send_input(round_state.number, i, 0, 0).await?;
+                sender.send_input(round_state.number, i, 0, 0).await?;
             }
         }
 
@@ -309,7 +297,7 @@ impl Match {
             )?),
             replayer: replayer::Fastforwarder::new(&self.rom, self.hooks, local_player_index)?,
             primary_thread_handle: self.primary_thread_handle.clone(),
-            transport: self.transport.clone(),
+            sender: self.sender.clone(),
             shadow: self.shadow.clone(),
         });
         self.round_started_tx.send(round_state.number).await?;
@@ -332,7 +320,7 @@ pub struct Round {
     replay_writer: Option<replay::Writer>,
     replayer: replayer::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
-    transport: std::sync::Arc<tokio::sync::Mutex<net::Transport>>,
+    sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
 }
 
@@ -398,7 +386,7 @@ impl Round {
             anyhow::bail!("local input buffer overflow!");
         }
 
-        self.transport
+        self.sender
             .lock()
             .await
             .send_input(

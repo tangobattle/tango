@@ -25,8 +25,9 @@ enum ConnectionState {
 }
 
 struct Lobby {
-    dc: datachannel_wrapper::DataChannel,
-    peer_conn: datachannel_wrapper::PeerConnection,
+    sender: net::Sender,
+    receiver: net::Receiver,
+    is_offerer: bool,
 }
 
 pub struct Start {
@@ -181,13 +182,17 @@ impl MainView {
                                                                             cancellation_token.clone(),
                                                                     });
 
-                                                                let (mut dc, peer_conn) = pending_conn.connect().await?;
-                                                                net::negotiate(&mut dc).await?;
+                                                                let (dc, peer_conn) = pending_conn.connect().await?;
+                                                                let (dc_tx, dc_rx) = dc.split();
+                                                                let mut sender = net::Sender::new(dc_tx);
+                                                                let mut receiver = net::Receiver::new(dc_rx);
+                                                                net::negotiate(&mut sender, &mut receiver).await?;
 
                                                                 *connection_task.lock().await =
                                                                     Some(ConnectionTask::InLobby(Lobby{
-                                                                        dc,
-                                                                        peer_conn,
+                                                                        sender,
+                                                                        receiver,
+                                                                        is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                                                                     }));
 
                                                                 Ok(())

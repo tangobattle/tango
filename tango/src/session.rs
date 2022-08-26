@@ -1,4 +1,4 @@
-use crate::{audio, battle, games, replay, replayer, stats};
+use crate::{audio, battle, games, net, replay, replayer, stats};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -46,7 +46,8 @@ impl Session {
         shadow_rom: &[u8],
         shadow_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
-        dc: datachannel_wrapper::DataChannel,
+        sender: net::Sender,
+        receiver: net::Receiver,
         is_offerer: bool,
         settings: battle::Settings,
     ) -> Result<Self, anyhow::Error> {
@@ -82,8 +83,6 @@ impl Session {
 
         let thread = mgba::thread::Thread::new(core);
 
-        let (dc_tx, dc_rx) = dc.split();
-
         let match_ = match_.clone();
         handle.block_on(async {
             let rng_seed = settings.rng_seed.clone().try_into().expect("rng seed");
@@ -91,7 +90,7 @@ impl Session {
                 let inner_match = battle::Match::new(
                     rom.to_vec(),
                     hooks,
-                    dc_tx,
+                    sender,
                     rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
                     is_offerer,
                     thread.handle(),
@@ -106,7 +105,7 @@ impl Session {
                     let inner_match = inner_match.clone();
                     handle.spawn(async move {
                         tokio::select! {
-                            r = inner_match.run(dc_rx) => {
+                            r = inner_match.run(receiver) => {
                                 log::info!("match thread ending: {:?}", r);
                             }
                             _ = inner_match.cancelled() => {
