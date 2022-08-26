@@ -24,7 +24,7 @@ pub enum Packet {
     Pong(Pong),
 
     // Lobby.
-    SetSettings(SetSettings),
+    Settings(Settings),
     Commit(Commit),
     Uncommit(Uncommit),
     Chunk(Chunk),
@@ -85,7 +85,7 @@ pub struct GameInfo {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
-pub struct SetSettings {
+pub struct Settings {
     pub nickname: String,
     pub match_type: u8,
     pub match_subtype: u8,

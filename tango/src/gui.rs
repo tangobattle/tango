@@ -19,6 +19,7 @@ enum ConnectionTask {
         state: ConnectionState,
         cancellation_token: tokio_util::sync::CancellationToken,
     },
+    InLobby(Lobby),
     Failed(anyhow::Error),
 }
 
@@ -26,7 +27,11 @@ enum ConnectionState {
     Starting,
     Signaling,
     Waiting,
-    Ready,
+}
+
+struct Lobby {
+    dc: datachannel_wrapper::DataChannel,
+    peer_conn: datachannel_wrapper::PeerConnection,
 }
 
 struct Start {
@@ -730,7 +735,11 @@ impl Gui {
                                                                 let (mut dc, peer_conn) = pending_conn.connect().await?;
                                                                 net::negotiate(&mut dc).await?;
 
-                                                                log::info!("hello...");
+                                                                *connection_task.lock().await =
+                                                                    Some(ConnectionTask::InLobby(Lobby{
+                                                                        dc,
+                                                                        peer_conn,
+                                                                    }));
 
                                                                 Ok(())
                                                             })(
@@ -755,6 +764,7 @@ impl Gui {
                                     let cancellation_token = if let Some(connection_task) = &*start.connection_task.blocking_lock() {
                                         match connection_task {
                                             ConnectionTask::InProgress { state: _, cancellation_token } => Some(cancellation_token.clone()),
+                                            ConnectionTask::InLobby(_) => None,
                                             ConnectionTask::Failed(_) => None,
                                         }
                                     } else {
