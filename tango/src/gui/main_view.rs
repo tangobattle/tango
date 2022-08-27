@@ -98,8 +98,10 @@ impl Lobby {
         }
     }
 
-    async fn send_local_settings(&mut self) -> Result<(), anyhow::Error> {
-        let settings = self.make_local_settings();
+    async fn send_settings(
+        &mut self,
+        settings: net::protocol::Settings,
+    ) -> Result<(), anyhow::Error> {
         let sender = if let Some(sender) = self.sender.as_mut() {
             sender
         } else {
@@ -113,8 +115,12 @@ impl Lobby {
         if reveal_setup == self.reveal_setup {
             return Ok(());
         }
+        self.send_settings(net::protocol::Settings {
+            reveal_setup,
+            ..self.make_local_settings()
+        })
+        .await?;
         self.reveal_setup = reveal_setup;
-        self.send_local_settings().await?;
         Ok(())
     }
 
@@ -122,8 +128,12 @@ impl Lobby {
         if match_type == self.match_type {
             return Ok(());
         }
+        self.send_settings(net::protocol::Settings {
+            match_type,
+            ..self.make_local_settings()
+        })
+        .await?;
         self.match_type = match_type;
-        self.send_local_settings().await?;
         Ok(())
     }
 
@@ -135,8 +145,18 @@ impl Lobby {
         if Some(game) == self.local_game.as_ref().map(|(g, _)| *g) {
             return Ok(());
         }
+        self.send_settings(net::protocol::Settings {
+            game_info: self.local_game.as_ref().map(|(game, _)| {
+                let (family, variant) = game.family_and_variant();
+                net::protocol::GameInfo {
+                    family_and_variant: (family.to_string(), variant),
+                    patch: None,
+                }
+            }),
+            ..self.make_local_settings()
+        })
+        .await?;
         self.local_game = Some((game, rom));
-        self.send_local_settings().await?;
         Ok(())
     }
 
@@ -241,7 +261,11 @@ async fn run_connection_task(
                         latencies: stats::DeltaCounter::new(10),
                         local_negotiated_state: None,
                     }));
-                    lobby.lock().await.send_local_settings().await?;
+                    {
+                        let mut lobby = lobby.lock().await;
+                        let settings = lobby.make_local_settings();
+                        lobby.send_settings(settings).await?;
+                    }
 
                     *connection_task.lock().await =
                         Some(ConnectionTask::InProgress {
@@ -582,6 +606,28 @@ impl MainView {
                                                     });
                                                     row.col(|ui| {
                                                         ui.label("B");
+                                                    });
+                                                });
+
+                                                body.row(20.0, |mut row| {
+                                                    row.col(|ui| {
+                                                        ui.strong("Reveal setup");
+                                                    });
+                                                    row.col(|ui| {
+                                                        let mut checked = lobby.reveal_setup;
+                                                        ui.checkbox(&mut checked, "");
+                                                        handle.block_on(async {
+                                                            lobby.set_reveal_setup(checked).await;
+                                                        });
+                                                    });
+                                                    row.col(|ui| {
+                                                        ui.checkbox(
+                                                            &mut lobby
+                                                                .remote_settings
+                                                                .reveal_setup
+                                                                .clone(),
+                                                            "",
+                                                        );
                                                     });
                                                 });
                                             });
