@@ -31,7 +31,6 @@ struct Lobby {
     sender: Option<net::Sender>,
     is_offerer: bool,
     input_delay: usize,
-    nonce: [u8; 16],
     local_game: Option<(&'static (dyn games::Game + Send + Sync), Vec<u8>)>,
     nickname: String,
     match_type: (u8, u8),
@@ -73,9 +72,10 @@ impl Lobby {
     }
 
     async fn commit(&mut self, save_data: &[u8]) -> Result<(), anyhow::Error> {
-        rand::thread_rng().fill_bytes(&mut self.nonce);
+        let mut nonce = [0u8; 16];
+        rand::thread_rng().fill_bytes(&mut nonce);
         let negotiated_state = net::protocol::NegotiatedState {
-            nonce: self.nonce.clone(),
+            nonce: nonce.clone(),
             save_data: save_data.to_vec(),
         };
         let buf = zstd::stream::encode_all(
@@ -84,11 +84,7 @@ impl Lobby {
         )?;
         let commitment = make_commitment(&buf);
 
-        log::info!(
-            "nonce = {:02x?}, commitment = {:02x?}",
-            self.nonce,
-            commitment
-        );
+        log::info!("nonce = {:02x?}, commitment = {:02x?}", nonce, commitment);
 
         let sender = if let Some(sender) = self.sender.as_mut() {
             sender
@@ -269,7 +265,6 @@ async fn run_connection_task(
                         attention_requested: false,
                         sender: Some(sender),
                         input_delay: 2, // TODO
-                        nonce: [0u8; 16],
                         local_game: None,
                         nickname,
                         match_type: (0, 0), // TODO
@@ -449,7 +444,7 @@ async fn run_connection_task(
                         replays_path,
                         lobby.match_type,
                         lobby.input_delay as u32,
-                        std::iter::zip(lobby.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
+                        std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
                         max_queue_length,
                     )?);
 
