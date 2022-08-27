@@ -608,8 +608,8 @@ impl MainView {
 
                                         egui_extras::TableBuilder::new(ui)
                                             .column(egui_extras::Size::remainder())
-                                            .column(egui_extras::Size::relative(0.1))
-                                            .column(egui_extras::Size::relative(0.1))
+                                            .column(egui_extras::Size::exact(100.0))
+                                            .column(egui_extras::Size::exact(100.0))
                                             .header(20.0, |mut header| {
                                                 header.col(|ui| {});
                                                 header.col(|ui| {
@@ -698,6 +698,44 @@ impl MainView {
                                                                     .unwrap()
                                                             },
                                                         );
+                                                    });
+                                                });
+
+                                                body.row(20.0, |mut row| {
+                                                    row.col(|ui| {
+                                                        ui.strong(i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "start-details.match-type",
+                                                            )
+                                                            .unwrap());
+                                                    });
+                                                    row.col(|ui| {
+                                                        egui::ComboBox::new("start-match-type-combobox", "")
+                                                            .width(94.0)
+                                                            .selected_text(format!("{:?}", lobby.match_type))
+                                                            .show_ui(ui, |ui| {
+                                                                if let Some((game, _)) = lobby.local_game.as_ref() {
+                                                                    let mut match_type = lobby.match_type;
+                                                                    for (typ, subtype_count) in game.match_types().iter().enumerate() {
+                                                                        for subtype in 0..*subtype_count {
+                                                                            ui.selectable_value(
+                                                                                &mut match_type,
+                                                                                (typ as u8, subtype as u8),
+                                                                                format!("{:?}", (typ, subtype)),
+                                                                            );
+                                                                        }
+                                                                    }
+                                                                    if match_type != lobby.match_type {
+                                                                        handle.block_on(async {
+                                                                            let _ = lobby.set_match_type(match_type).await;
+                                                                        });
+                                                                    }
+                                                                }
+                                                            });
+                                                    });
+                                                    row.col(|ui| {
+                                                        ui.label(format!("{:?}", lobby.remote_settings.match_type));
                                                     });
                                                 });
 

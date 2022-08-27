@@ -9,6 +9,7 @@ start =
 
 start-details =
     .game = Game
+    .match-type = Match type
     .reveal-setup = Reveal setup
 
 start-connection-task =
