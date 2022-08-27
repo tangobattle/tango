@@ -89,9 +89,7 @@ impl State {
         Self {
             config,
             saves_list,
-            main_view: std::sync::Arc::new(parking_lot::Mutex::new(main_view::State::Start(
-                main_view::Start::new(),
-            ))),
+            main_view: std::sync::Arc::new(parking_lot::Mutex::new(main_view::State::new())),
             audio_binder,
             fps_counter,
             emu_tps_counter,
@@ -210,9 +208,9 @@ impl Gui {
     ) {
         {
             let mut main_view = state.main_view.lock();
-            if let main_view::State::Session(session) = &*main_view {
+            if let Some(session) = main_view.session.as_ref() {
                 if session.completed() {
-                    *main_view = main_view::State::Start(main_view::Start::new());
+                    *main_view = main_view::State::new();
                 }
             }
         }

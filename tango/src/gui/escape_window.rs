@@ -56,7 +56,7 @@ impl EscapeWindow {
                         .clicked()
                     {
                         let mut main_view = main_view.lock();
-                        *main_view = gui::main_view::State::new();
+                        main_view.session = None;
                         *show_escape_window = None;
                     }
                 });

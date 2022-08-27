@@ -1,4 +1,4 @@
-start =
+main =
     .play = Play
     .fight = Fight!
     .stop = Stop
@@ -7,12 +7,12 @@ start =
     .no-game = None
     .you = You
 
-start-details =
+main-details =
     .game = Game
     .match-type = Match type
     .reveal-setup = Reveal setup
 
-start-connection-task =
+main-connection-task =
     .starting = Starting connection...
     .signaling = Connecting to matchmaking server...
     .waiting = Waiting for opponent...
