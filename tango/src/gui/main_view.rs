@@ -498,15 +498,38 @@ impl MainView {
 
         let main_view = &mut *main_view;
 
-        // TODO: Lobby stuff
-        self.save_select_window.show(
-            ctx,
-            &mut main_view.show_save_select,
-            &mut *main_view.selection.lock(),
-            &state.config.language,
-            &state.config.saves_path,
-            state.saves_list.clone(),
-        );
+        let selection_changed = {
+            let mut selection = main_view.selection.lock();
+            let selection = &mut *selection;
+
+            let initial_game = selection.as_ref().map(|selection| selection.game);
+
+            self.save_select_window.show(
+                ctx,
+                &mut main_view.show_save_select,
+                selection,
+                &state.config.language,
+                &state.config.saves_path,
+                state.saves_list.clone(),
+            );
+
+            selection.as_ref().map(|selection| selection.game) != initial_game
+        };
+
+        if selection_changed {
+            let connection_task = main_view.connection_task.blocking_lock();
+            if let Some(ConnectionTask::InProgress {
+                state: ConnectionState::InLobby(lobby),
+                ..
+            }) = &*connection_task
+            {
+                handle.block_on(async {
+                    let mut lobby = lobby.lock().await;
+                    let settings = lobby.make_local_settings();
+                    let _ = lobby.send_settings(settings).await;
+                });
+            }
+        }
 
         egui::TopBottomPanel::top("main-top-panel")
             .frame(egui::Frame {
@@ -643,10 +666,7 @@ impl MainView {
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &state.config.language,
-                                                                &format!(
-                                                                    "games.{}-{}",
-                                                                    family, variant
-                                                                ),
+                                                                &format!("games.{}", family),
                                                             )
                                                             .unwrap()
                                                     } else {
@@ -678,10 +698,7 @@ impl MainView {
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &state.config.language,
-                                                                &format!(
-                                                                    "games.{}-{}",
-                                                                    family, variant
-                                                                ),
+                                                                &format!("games.{}", family),
                                                             )
                                                             .unwrap()
                                                     } else {
