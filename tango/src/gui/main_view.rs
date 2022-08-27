@@ -60,6 +60,18 @@ fn make_commitment(buf: &[u8]) -> [u8; 16] {
 }
 
 impl Lobby {
+    async fn uncommit(&mut self) -> Result<(), anyhow::Error> {
+        let sender = if let Some(sender) = self.sender.as_mut() {
+            sender
+        } else {
+            anyhow::bail!("no sender?")
+        };
+
+        sender.send_uncommit().await?;
+        self.local_negotiated_state = None;
+        Ok(())
+    }
+
     async fn commit(&mut self, save_data: &[u8]) -> Result<(), anyhow::Error> {
         rand::thread_rng().fill_bytes(&mut self.nonce);
         let negotiated_state = net::protocol::NegotiatedState {
@@ -71,7 +83,6 @@ impl Lobby {
             0,
         )?;
         let commitment = make_commitment(&buf);
-        self.local_negotiated_state = Some((negotiated_state, buf));
 
         let sender = if let Some(sender) = self.sender.as_mut() {
             sender
@@ -79,6 +90,7 @@ impl Lobby {
             anyhow::bail!("no sender?")
         };
         sender.send_commit(commitment).await?;
+        self.local_negotiated_state = Some((negotiated_state, buf));
         Ok(())
     }
 
@@ -618,7 +630,9 @@ impl MainView {
                                                         let mut checked = lobby.reveal_setup;
                                                         ui.checkbox(&mut checked, "");
                                                         handle.block_on(async {
-                                                            lobby.set_reveal_setup(checked).await;
+                                                            let _ = lobby
+                                                                .set_reveal_setup(checked)
+                                                                .await;
                                                         });
                                                     });
                                                     row.col(|ui| {
@@ -673,18 +687,26 @@ impl MainView {
                                         }
                                     };
 
-                                    let cancellation_token = if let Some(connection_task) =
+                                    let (lobby, cancellation_token) = if let Some(connection_task) =
                                         &*start.connection_task.blocking_lock()
                                     {
                                         match connection_task {
                                             ConnectionTask::InProgress {
-                                                state: _,
+                                                state: task_state,
                                                 cancellation_token,
-                                            } => Some(cancellation_token.clone()),
-                                            ConnectionTask::Failed(_) => None,
+                                            } => (
+                                                if let ConnectionState::InLobby(lobby) = task_state
+                                                {
+                                                    Some(lobby.clone())
+                                                } else {
+                                                    None
+                                                },
+                                                Some(cancellation_token.clone()),
+                                            ),
+                                            ConnectionTask::Failed(_) => (None, None),
                                         }
                                     } else {
-                                        None
+                                        (None, None)
                                     };
 
                                     if let Some(cancellation_token) = &cancellation_token {
@@ -726,6 +748,26 @@ impl MainView {
                                         {
                                             submit(start);
                                         }
+                                    }
+
+                                    if let Some(lobby) = lobby {
+                                        let mut lobby = lobby.blocking_lock();
+                                        let mut ready = lobby.local_negotiated_state.is_some();
+                                        let was_ready = ready;
+                                        ui.checkbox(
+                                            &mut ready,
+                                            i18n::LOCALES
+                                                .lookup(&state.config.language, "start.ready")
+                                                .unwrap(),
+                                        );
+                                        handle.block_on(async {
+                                            if !was_ready && ready {
+                                                // TODO
+                                                let _ = lobby.commit(&[]).await;
+                                            } else if !ready {
+                                                let _ = lobby.uncommit().await;
+                                            }
+                                        });
                                     }
 
                                     let input_resp = ui.add(
