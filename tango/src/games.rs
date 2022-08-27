@@ -219,6 +219,7 @@ where
     fn language(&self) -> unic_langid::LanguageIdentifier;
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8);
     fn expected_crc32(&self) -> u32;
+    fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn Save>, anyhow::Error>;
 }

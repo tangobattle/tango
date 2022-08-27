@@ -3,6 +3,8 @@ mod save;
 
 use crate::games;
 
+const MATCH_TYPES: &[usize] = &[1];
+
 struct EXE1Impl;
 pub const EXE1: &'static (dyn games::Game + Send + Sync) = &EXE1Impl {};
 
@@ -21,6 +23,10 @@ impl games::Game for EXE1Impl {
 
     fn expected_crc32(&self) -> u32 {
         0xd9516e50
+    }
+
+    fn match_types(&self) -> &[usize] {
+        MATCH_TYPES
     }
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
@@ -59,6 +65,10 @@ impl games::Game for BN1Impl {
 
     fn expected_crc32(&self) -> u32 {
         0x1d347971
+    }
+
+    fn match_types(&self) -> &[usize] {
+        MATCH_TYPES
     }
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {

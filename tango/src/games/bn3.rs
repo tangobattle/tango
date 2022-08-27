@@ -3,6 +3,8 @@ mod save;
 
 use crate::games;
 
+const MATCH_TYPES: &[usize] = &[3, 1];
+
 struct EXE3WImpl;
 pub const EXE3W: &'static (dyn games::Game + Send + Sync) = &EXE3WImpl {};
 
@@ -21,6 +23,10 @@ impl games::Game for EXE3WImpl {
 
     fn expected_crc32(&self) -> u32 {
         0xe48e6bc9
+    }
+
+    fn match_types(&self) -> &[usize] {
+        MATCH_TYPES
     }
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
@@ -61,6 +67,10 @@ impl games::Game for EXE3BImpl {
         0xfd57493b
     }
 
+    fn match_types(&self) -> &[usize] {
+        MATCH_TYPES
+    }
+
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::A3XJ_01
     }
@@ -99,6 +109,10 @@ impl games::Game for BN3WImpl {
         0x0be4410a
     }
 
+    fn match_types(&self) -> &[usize] {
+        MATCH_TYPES
+    }
+
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
         &hooks::A6BE_00
     }
@@ -135,6 +149,10 @@ impl games::Game for BN3BImpl {
 
     fn expected_crc32(&self) -> u32 {
         0xc0c780f9
+    }
+
+    fn match_types(&self) -> &[usize] {
+        MATCH_TYPES
     }
 
     fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
