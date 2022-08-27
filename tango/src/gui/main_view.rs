@@ -640,10 +640,59 @@ impl MainView {
                                                         ui.strong("Game");
                                                     });
                                                     row.col(|ui| {
-                                                        ui.label("A");
+                                                        ui.label(
+                                                            if let Some((game, _)) =
+                                                                lobby.local_game
+                                                            {
+                                                                let (family, variant) =
+                                                                    game.family_and_variant();
+                                                                i18n::LOCALES
+                                                                    .lookup(
+                                                                        &state.config.language,
+                                                                        &format!(
+                                                                            "games.{}-{}",
+                                                                            family, variant
+                                                                        ),
+                                                                    )
+                                                                    .unwrap()
+                                                            } else {
+                                                                i18n::LOCALES
+                                                                    .lookup(
+                                                                        &state.config.language,
+                                                                        "start.no-game",
+                                                                    )
+                                                                    .unwrap()
+                                                            },
+                                                        );
                                                     });
                                                     row.col(|ui| {
-                                                        ui.label("B");
+                                                        ui.label(
+                                                            if let Some(game) =
+                                                                lobby.remote_settings.game_info.as_ref().and_then(|game_info| {
+                                                                    let (family, variant) = &game_info.family_and_variant;
+                                                                    games::find_by_family_and_variant(&family, *variant)
+                                                                })
+                                                            {
+                                                                let (family, variant) =
+                                                                    game.family_and_variant();
+                                                                i18n::LOCALES
+                                                                    .lookup(
+                                                                        &state.config.language,
+                                                                        &format!(
+                                                                            "games.{}-{}",
+                                                                            family, variant
+                                                                        ),
+                                                                    )
+                                                                    .unwrap()
+                                                            } else {
+                                                                i18n::LOCALES
+                                                                    .lookup(
+                                                                        &state.config.language,
+                                                                        "start.no-game",
+                                                                    )
+                                                                    .unwrap()
+                                                            },
+                                                        );
                                                     });
                                                 });
 

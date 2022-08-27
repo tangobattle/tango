@@ -4,6 +4,7 @@ start =
     .stop = Stop
     .ready = I'm ready!
     .link-code = Link code
+    .no-game = None
 
 start-connection-task =
     .starting = Starting connection...
