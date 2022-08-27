@@ -809,6 +809,13 @@ impl MainView {
                                                 start.connection_task.clone(),
                                                 cancellation_token,
                                             ));
+                                        } else {
+                                            *state.main_view.lock() = State::Session(session::Session::new_singleplayer(
+                                                state.audio_binder.clone(),
+                                                todo!(),
+                                                todo!(),
+                                                state.emu_tps_counter.clone(),
+                                            ).unwrap()); // TODO: Don't unwrap maybe
                                         }
                                     };
 
