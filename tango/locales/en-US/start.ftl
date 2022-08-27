@@ -5,6 +5,11 @@ start =
     .ready = I'm ready!
     .link-code = Link code
     .no-game = None
+    .you = You
+
+start-details =
+    .game = Game
+    .reveal-setup = Reveal setup
 
 start-connection-task =
     .starting = Starting connection...

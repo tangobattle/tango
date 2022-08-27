@@ -619,7 +619,12 @@ impl MainView {
                                                 header.col(|ui| {});
                                                 header.col(|ui| {
                                                     ui.horizontal(|ui| {
-                                                        ui.strong("You");
+                                                        ui.strong(i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "start.you",
+                                                            )
+                                                            .unwrap());
                                                         if lobby.local_negotiated_state.is_some() {
                                                             ui.strong("✅");
                                                         }
@@ -627,7 +632,7 @@ impl MainView {
                                                 });
                                                 header.col(|ui| {
                                                     ui.horizontal(|ui| {
-                                                        ui.strong("Remote");
+                                                        ui.strong(lobby.remote_settings.nickname.clone());
                                                         if lobby.remote_commitment.is_some() {
                                                             ui.strong("✅");
                                                         }
@@ -637,7 +642,12 @@ impl MainView {
                                             .body(|mut body| {
                                                 body.row(20.0, |mut row| {
                                                     row.col(|ui| {
-                                                        ui.strong("Game");
+                                                        ui.strong(i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "start-details.game",
+                                                            )
+                                                            .unwrap());
                                                     });
                                                     row.col(|ui| {
                                                         ui.label(
@@ -698,7 +708,12 @@ impl MainView {
 
                                                 body.row(20.0, |mut row| {
                                                     row.col(|ui| {
-                                                        ui.strong("Reveal setup");
+                                                        ui.strong(i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "start-details.game",
+                                                            )
+                                                            .unwrap());
                                                     });
                                                     row.col(|ui| {
                                                         let mut checked = lobby.reveal_setup;
