@@ -62,8 +62,9 @@ impl SessionView {
 
         let mut scaling_factor = std::cmp::max_by(
             std::cmp::min_by(
-                ui.available_width() / mgba::gba::SCREEN_WIDTH as f32,
-                ui.available_height() / mgba::gba::SCREEN_HEIGHT as f32,
+                ui.available_width() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_WIDTH as f32,
+                ui.available_height() * ui.ctx().pixels_per_point()
+                    / mgba::gba::SCREEN_HEIGHT as f32,
                 |a, b| a.partial_cmp(b).unwrap(),
             )
             .floor(),
@@ -78,8 +79,10 @@ impl SessionView {
         ui.image(
             &vbuf.texture,
             egui::Vec2::new(
-                mgba::gba::SCREEN_WIDTH as f32 * scaling_factor as f32,
-                mgba::gba::SCREEN_HEIGHT as f32 * scaling_factor as f32,
+                mgba::gba::SCREEN_WIDTH as f32 * scaling_factor as f32
+                    / ui.ctx().pixels_per_point(),
+                mgba::gba::SCREEN_HEIGHT as f32 * scaling_factor as f32
+                    / ui.ctx().pixels_per_point(),
             ),
         );
     }
