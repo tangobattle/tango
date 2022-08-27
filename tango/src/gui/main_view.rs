@@ -84,6 +84,12 @@ impl Lobby {
         )?;
         let commitment = make_commitment(&buf);
 
+        log::info!(
+            "nonce = {:02x?}, commitment = {:02x?}",
+            self.nonce,
+            commitment
+        );
+
         let sender = if let Some(sender) = self.sender.as_mut() {
             sender
         } else {
@@ -346,10 +352,15 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
+                    log::info!("local state = {:02x?}", raw_local_state);
+
                     const CHUNK_SIZE: usize = 32 * 1024;
                     const CHUNKS_REQUIRED: usize = 5;
-                    for i in 0..CHUNKS_REQUIRED {
-                        sender.send_chunk(raw_local_state.get((i*CHUNK_SIZE)..(i+1*CHUNK_SIZE)).unwrap_or(&[]).to_vec()).await?;
+                    for (_, chunk) in std::iter::zip(
+                        0..CHUNKS_REQUIRED,
+                        raw_local_state.chunks(CHUNK_SIZE).chain(std::iter::repeat(&[][..]))
+                     ) {
+                        sender.send_chunk(chunk.to_vec()).await?;
 
                         if remote_chunks.len() < CHUNK_SIZE {
                             loop {
@@ -375,11 +386,15 @@ async fn run_connection_task(
                     }
 
                     let raw_remote_negotiated_state = remote_chunks.into_iter().flatten().collect::<Vec<_>>();
+                    log::info!("remote state = {:02x?}", raw_remote_negotiated_state);
+
                     let received_remote_commitment = if let Some(commitment) = lobby.remote_commitment {
                         commitment
                     } else {
                         anyhow::bail!("no remote commitment?");
                     };
+
+                    log::info!("remote commitment = {:02x?}", received_remote_commitment);
 
                     let remote_commitment = make_commitment(&raw_remote_negotiated_state);
                     if !constant_time_eq::constant_time_eq_16(&remote_commitment, &received_remote_commitment) {
@@ -603,10 +618,20 @@ impl MainView {
                                             .header(20.0, |mut header| {
                                                 header.col(|ui| {});
                                                 header.col(|ui| {
-                                                    ui.strong("You");
+                                                    ui.horizontal(|ui| {
+                                                        ui.strong("You");
+                                                        if lobby.local_negotiated_state.is_some() {
+                                                            ui.strong("✅");
+                                                        }
+                                                    });
                                                 });
                                                 header.col(|ui| {
-                                                    ui.strong("Opponent");
+                                                    ui.horizontal(|ui| {
+                                                        ui.strong("Remote");
+                                                        if lobby.remote_commitment.is_some() {
+                                                            ui.strong("✅");
+                                                        }
+                                                    });
                                                 });
                                             })
                                             .body(|mut body| {
