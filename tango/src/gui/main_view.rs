@@ -1,8 +1,11 @@
 use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
+use thiserror::private::PathAsDisplay;
 
 use crate::{audio, games, gui, i18n, input, net, session, stats};
+
+use super::save_select_window;
 
 pub enum State {
     Session(session::Session),
@@ -204,7 +207,7 @@ impl Lobby {
 
 pub struct Start {
     link_code: String,
-    selected_game: Option<&'static (dyn games::Game + Send + Sync)>,
+    selection: Option<(&'static (dyn games::Game + Send + Sync), std::path::PathBuf)>,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
 }
@@ -468,7 +471,7 @@ impl Start {
     pub fn new() -> Self {
         Self {
             link_code: String::new(),
-            selected_game: None,
+            selection: None,
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
         }
@@ -511,7 +514,7 @@ impl MainView {
                 self.save_select_window.show(
                     ctx,
                     &mut start.show_save_select,
-                    &mut start.selected_game,
+                    &mut start.selection,
                     &state.config.language,
                     &state.config.saves_path,
                     state.saves_list.clone(),
@@ -974,7 +977,75 @@ impl MainView {
                         });
                     });
                 });
-                egui::CentralPanel::default().show(ctx, |ui| {});
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.group(|ui| {
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui
+                                        .button(
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    &state.config.language,
+                                                    "select-save.select-button",
+                                                )
+                                                .unwrap(),
+                                        )
+                                        .clicked()
+                                    {
+                                        start.show_save_select =
+                                            Some(save_select_window::State::new(
+                                                start
+                                                    .selection
+                                                    .clone()
+                                                    .map(|(game, path)| (game, Some(path))),
+                                            ));
+                                    }
+                                    ui.with_layout(
+                                        egui::Layout::top_down(egui::Align::Min)
+                                            .with_cross_justify(true),
+                                        |ui| {
+                                            if let Some((game, path)) = start.selection.as_ref() {
+                                                ui.vertical(|ui| {
+                                                    ui.label(format!(
+                                                        "{}",
+                                                        path.strip_prefix(&state.config.saves_path)
+                                                            .unwrap_or(path)
+                                                            .as_display()
+                                                    ));
+
+                                                    let (family, variant) =
+                                                        game.family_and_variant();
+                                                    ui.small(
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                &format!(
+                                                                    "games.{}-{}",
+                                                                    family, variant
+                                                                ),
+                                                            )
+                                                            .unwrap(),
+                                                    );
+                                                });
+                                            } else {
+                                                ui.label(
+                                                    i18n::LOCALES
+                                                        .lookup(
+                                                            &state.config.language,
+                                                            "select-save.no-game-selected",
+                                                        )
+                                                        .unwrap(),
+                                                );
+                                            }
+                                        },
+                                    );
+                                },
+                            );
+                        });
+                    });
+                });
             }
         }
     }
