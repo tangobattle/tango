@@ -825,11 +825,38 @@ impl MainView {
                                                 },
                                                 Some(cancellation_token.clone()),
                                             ),
-                                            ConnectionTask::Failed(_) => (None, None),
+                                            ConnectionTask::Failed(err) => {
+                                                (None, None)
+                                            },
                                         }
                                     } else {
                                         (None, None)
                                     };
+
+                                    let error_window_open = {
+                                        let connection_task = start.connection_task.blocking_lock();
+                                        if let Some(ConnectionTask::Failed(err)) = &*connection_task {
+                                            let mut open = true;
+                                            egui::Window::new("")
+                                                .id(egui::Id::new("connection-failed-window"))
+                                                .open(&mut open)
+                                                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                                                .show(ctx, |ui| {
+                                                    // TODO: Localization
+                                                    ui.label(format!("{:?}", err));
+                                                });
+                                            open
+                                        } else {
+                                            false
+                                        }
+                                    };
+
+                                    if !error_window_open {
+                                        let mut connection_task = start.connection_task.blocking_lock();
+                                        if let Some(ConnectionTask::Failed(_)) = &*connection_task {
+                                            *connection_task = None;
+                                        }
+                                    }
 
                                     if let Some(cancellation_token) = &cancellation_token {
                                         if ui
@@ -839,7 +866,7 @@ impl MainView {
                                                     .lookup(&state.config.language, "start.stop")
                                                     .unwrap()
                                             ))
-                                            .clicked()
+                                            .clicked() && !error_window_open
                                         {
                                             cancellation_token.cancel();
                                         }
@@ -866,7 +893,7 @@ impl MainView {
                                                         .unwrap()
                                                 )
                                             })
-                                            .clicked()
+                                            .clicked() && !error_window_open
                                         {
                                             submit(start);
                                         }
@@ -882,6 +909,9 @@ impl MainView {
                                                 .lookup(&state.config.language, "start.ready")
                                                 .unwrap(),
                                         );
+                                        if error_window_open {
+                                            ready = was_ready;
+                                        }
                                         handle.block_on(async {
                                             if !was_ready && ready {
                                                 // TODO
@@ -894,7 +924,7 @@ impl MainView {
 
                                     let input_resp = ui.add(
                                         egui::TextEdit::singleline(&mut start.link_code)
-                                            .interactive(cancellation_token.is_none())
+                                            .interactive(cancellation_token.is_none() && !error_window_open)
                                             .hint_text(
                                                 i18n::LOCALES
                                                     .lookup(
