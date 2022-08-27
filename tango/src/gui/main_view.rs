@@ -809,13 +809,23 @@ impl MainView {
                                                 start.connection_task.clone(),
                                                 cancellation_token,
                                             ));
-                                        } else {
-                                            *state.main_view.lock() = State::Session(session::Session::new_singleplayer(
-                                                state.audio_binder.clone(),
-                                                todo!(),
-                                                todo!(),
-                                                state.emu_tps_counter.clone(),
-                                            ).unwrap()); // TODO: Don't unwrap maybe
+                                        } else if let Some((g, save_path)) = start.selection.as_ref() {
+                                            let audio_binder = state.audio_binder.clone();
+                                            let saves_list = state.saves_list.clone();
+                                            let save_path = save_path.clone();
+                                            let main_view = state.main_view.clone();
+                                            let emu_tps_counter = state.emu_tps_counter.clone();
+                                            let g = *g;
+
+                                            // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
+                                            rayon::spawn(move || {
+                                                *main_view.lock() = State::Session(session::Session::new_singleplayer(
+                                                    audio_binder,
+                                                    saves_list.read().roms.get(&g).unwrap(),
+                                                    &save_path,
+                                                    emu_tps_counter,
+                                                ).unwrap()); // TODO: Don't unwrap maybe
+                                            });
                                         }
                                     };
 
@@ -1001,6 +1011,14 @@ impl MainView {
                                         )
                                         .clicked()
                                     {
+                                        rayon::spawn({
+                                            let saves_list = state.saves_list.clone();
+                                            let roms_path = state.config.roms_path.clone();
+                                            let saves_path = state.config.saves_path.clone();
+                                            move || {
+                                                saves_list.rescan(&roms_path, &saves_path);
+                                            }
+                                        });
                                         start.show_save_select =
                                             Some(save_select_window::State::new(
                                                 start
