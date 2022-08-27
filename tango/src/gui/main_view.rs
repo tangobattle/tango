@@ -711,7 +711,7 @@ impl MainView {
                                                         ui.strong(i18n::LOCALES
                                                             .lookup(
                                                                 &state.config.language,
-                                                                "start-details.game",
+                                                                "start-details.reveal-setup",
                                                             )
                                                             .unwrap());
                                                     });
