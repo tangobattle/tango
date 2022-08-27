@@ -4,6 +4,7 @@ use std::str::FromStr;
 const DISCORD_APP_ID: u64 = 974089681333534750;
 
 mod debug_window;
+mod escape_window;
 mod main_view;
 mod save_select_window;
 mod session_view;
@@ -18,6 +19,7 @@ pub struct State {
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     main_view: std::sync::Arc<parking_lot::Mutex<main_view::State>>,
+    show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
     drpc: discord_rpc_client::Client,
 }
@@ -95,6 +97,7 @@ impl State {
             emu_tps_counter,
             steal_input: None,
             show_settings: None,
+            show_escape_window: None,
             drpc,
         }
     }
@@ -118,6 +121,7 @@ pub struct Gui {
     settings_window: settings_window::SettingsWindow,
     debug_window: debug_window::DebugWindow,
     steal_input_window: steal_input_window::StealInputWindow,
+    escape_window: escape_window::EscapeWindow,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
     themes: Themes,
@@ -150,6 +154,7 @@ impl Gui {
             steal_input_window: steal_input_window::StealInputWindow::new(),
             debug_window: debug_window::DebugWindow::new(),
             settings_window: settings_window::SettingsWindow::new(font_families.clone()),
+            escape_window: escape_window::EscapeWindow::new(),
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
@@ -289,6 +294,13 @@ impl Gui {
         );
         self.steal_input_window
             .show(ctx, &state.config.language, &mut state.steal_input);
+        self.escape_window.show(
+            ctx,
+            state.main_view.clone(),
+            &mut state.show_escape_window,
+            &state.config.language,
+            &mut state.show_settings,
+        );
         self.main_view
             .show(ctx, handle.clone(), window, input_state, state);
     }

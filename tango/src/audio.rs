@@ -42,9 +42,9 @@ pub fn open_stream(
                     if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
-                    let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
+                    let n = stream.fill(&mut buf[..data.len() / channels as usize * NUM_CHANNELS]);
                     realign_samples(&mut buf, channels);
-                    for (x, y) in data.iter_mut().zip(buf[..n / 2 * channels as usize].iter()) {
+                    for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = (std::num::Wrapping(*y as u16) + std::num::Wrapping(32768)).0;
                     }
                 }
@@ -59,9 +59,9 @@ pub fn open_stream(
                     if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
-                    let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
+                    let n = stream.fill(&mut buf[..data.len() / channels as usize * NUM_CHANNELS]);
                     realign_samples(&mut buf, channels);
-                    for (x, y) in data.iter_mut().zip(buf[..n / 2 * channels as usize].iter()) {
+                    for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = *y;
                     }
                 }
@@ -76,9 +76,9 @@ pub fn open_stream(
                     if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
-                    let n = stream.fill(&mut buf[..data.len() / channels as usize * 2]);
+                    let n = stream.fill(&mut buf[..data.len() / channels as usize * NUM_CHANNELS]);
                     realign_samples(&mut buf, channels);
-                    for (x, y) in data.iter_mut().zip(buf[..n / 2 * channels as usize].iter()) {
+                    for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = *y as f32 / 32768.0;
                     }
                 }
@@ -171,7 +171,10 @@ impl Stream for LateBinder {
         let stream = if let Some(stream) = &mut *stream {
             stream
         } else {
-            return 0;
+            for v in buf.iter_mut() {
+                *v = 0;
+            }
+            return buf.len() / 2;
         };
         stream.fill(buf)
     }
@@ -230,6 +233,6 @@ impl Stream for MGBAStream {
         );
         right.read_samples(&mut buf[1..], available, true);
 
-        available as usize * NUM_CHANNELS
+        available as usize
     }
 }

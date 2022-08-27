@@ -1,4 +1,4 @@
-use crate::{input, session, video};
+use crate::{gui, input, session, video};
 
 struct VBuf {
     buf: Vec<u8>,
@@ -95,8 +95,17 @@ impl SessionView {
         session: &session::Session,
         video_filter: &str,
         max_scale: u32,
+        show_escape_window: &mut Option<gui::escape_window::State>,
     ) {
         session.set_joyflags(input_mapping.to_mgba_keys(input_state));
+
+        if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Escape) {
+            *show_escape_window = if show_escape_window.is_some() {
+                None
+            } else {
+                Some(gui::escape_window::State::new())
+            };
+        }
 
         // If we're in single-player mode, allow speedup.
         if let session::Mode::SinglePlayer = session.mode() {

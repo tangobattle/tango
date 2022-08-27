@@ -12,6 +12,12 @@ pub enum State {
     Start(Start),
 }
 
+impl State {
+    pub fn new() -> Self {
+        Self::Start(Start::new())
+    }
+}
+
 enum ConnectionFailure {}
 
 enum ConnectionTask {
@@ -508,6 +514,7 @@ impl MainView {
                     session,
                     &state.config.video_filter,
                     state.config.max_scale,
+                    &mut state.show_escape_window,
                 );
             }
             State::Start(start) => {
