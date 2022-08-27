@@ -190,6 +190,7 @@ impl Lobby {
 
 pub struct Start {
     link_code: String,
+    selected_game: Option<&'static (dyn games::Game + Send + Sync)>,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
 }
@@ -445,6 +446,7 @@ impl Start {
     pub fn new() -> Self {
         Self {
             link_code: String::new(),
+            selected_game: None,
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
         }
@@ -487,11 +489,10 @@ impl MainView {
                 self.save_select_window.show(
                     ctx,
                     &mut start.show_save_select,
+                    &mut start.selected_game,
                     &state.config.language,
                     &state.config.saves_path,
                     state.saves_list.clone(),
-                    state.audio_binder.clone(),
-                    state.emu_tps_counter.clone(),
                 );
 
                 egui::TopBottomPanel::top("main-top-panel")

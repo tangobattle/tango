@@ -2,15 +2,11 @@ use fluent_templates::Loader;
 
 use crate::{audio, games, gui, i18n, stats};
 
-pub struct State {
-    selected_game: Option<&'static (dyn games::Game + Send + Sync)>,
-}
+pub struct State {}
 
 impl State {
     pub fn new() -> Self {
-        State {
-            selected_game: None,
-        }
+        Self {}
     }
 }
 
@@ -25,11 +21,10 @@ impl SaveSelectWindow {
         &mut self,
         ctx: &egui::Context,
         show: &mut Option<State>,
+        selected_game: &mut Option<&'static (dyn games::Game + Send + Sync)>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
         saves_list: gui::SavesListState,
-        audio_binder: audio::LateBinder,
-        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) {
         let mut show_play_bool = show.is_some();
         egui::Window::new(format!(
@@ -41,7 +36,7 @@ impl SaveSelectWindow {
         .show(ctx, |ui| {
             let saves_list = saves_list.read();
             let games = games::sorted_games(language);
-            if let Some(game) = show.as_ref().unwrap().selected_game {
+            if let Some(game) = selected_game {
                 let (family, variant) = game.family_and_variant();
                 ui.heading(
                     i18n::LOCALES
@@ -53,7 +48,7 @@ impl SaveSelectWindow {
             ui.group(|ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                        if let Some(selected_game) = show.as_ref().unwrap().selected_game {
+                        if let Some(game) = selected_game.clone() {
                             if ui
                                 .selectable_label(
                                     false,
@@ -66,10 +61,10 @@ impl SaveSelectWindow {
                                 )
                                 .clicked()
                             {
-                                show.as_mut().unwrap().selected_game = None;
+                                *selected_game = None;
                             }
 
-                            if let Some(saves) = saves_list.saves.get(&selected_game) {
+                            if let Some(saves) = saves_list.saves.get(&game) {
                                 for save in saves {
                                     if ui
                                         .selectable_label(
@@ -82,18 +77,7 @@ impl SaveSelectWindow {
                                         .clicked()
                                     {
                                         *show = None;
-
-                                        // HACK: audio::Binding has to be dropped first.
-                                        // *session = None;
-                                        // *session = Some(
-                                        //     session::Session::new_singleplayer(
-                                        //         audio_binder.clone(),
-                                        //         saves_list.roms.get(&selected_game).unwrap(),
-                                        //         save.as_path(),
-                                        //         emu_tps_counter.clone(),
-                                        //     )
-                                        //     .unwrap(),
-                                        // );
+                                        // TODO: Mark selected save.
                                     }
                                 }
                             }
@@ -116,7 +100,7 @@ impl SaveSelectWindow {
 
                                 if available {
                                     if ui.selectable_label(false, text).clicked() {
-                                        show.as_mut().unwrap().selected_game = Some(*game);
+                                        *selected_game = Some(*game);
                                     }
                                 } else {
                                     ui.weak(text);
