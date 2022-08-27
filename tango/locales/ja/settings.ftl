@@ -1,6 +1,9 @@
 settings = 設定
     .general = 一般設定
     .input = 入力
+    .graphics = グラフィックス
+    .audio = オーディオ
+    .netplay = ネットプレー
     .about = Tangoについて
 
 settings-theme = テーマ
