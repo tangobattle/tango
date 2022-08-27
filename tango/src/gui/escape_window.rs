@@ -1,4 +1,6 @@
-use crate::gui;
+use fluent_templates::Loader;
+
+use crate::{gui, i18n};
 
 pub struct State {}
 
@@ -33,14 +35,24 @@ impl EscapeWindow {
             .show(ctx, |ui| {
                 ui.vertical_centered_justified(|ui| {
                     if ui
-                        .button(egui::RichText::new("Settings").heading())
+                        .button(
+                            egui::RichText::new(
+                                i18n::LOCALES.lookup(language, "escape.settings").unwrap(),
+                            )
+                            .heading(),
+                        )
                         .clicked()
                     {
                         *show_settings = Some(gui::settings_window::State::new());
                         *show_escape_window = None;
                     }
                     if ui
-                        .button(egui::RichText::new("End game").heading())
+                        .button(
+                            egui::RichText::new(
+                                i18n::LOCALES.lookup(language, "escape.end-game").unwrap(),
+                            )
+                            .heading(),
+                        )
                         .clicked()
                     {
                         let mut main_view = main_view.lock();
