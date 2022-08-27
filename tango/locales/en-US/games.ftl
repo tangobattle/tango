@@ -12,14 +12,14 @@ games =
     .exe3 = Rockman EXE 3
     .exe3-0 = Rockman EXE 3: White
     .exe3-1 = Rockman EXE 3: Black
-    .bn3 = Mega Man Battle Network 3: White
+    .bn3 = Mega Man Battle Network 3
     .bn3-0 = Mega Man Battle Network 3: White
     .bn3-1 = Mega Man Battle Network 3: Blue
 
     .exe4 = Rockman EXE 4
     .exe4-0 = Rockman EXE 4: Tournament Red Sun
     .exe4-1 = Rockman EXE 4: Tournament Blue Moon
-    .bn4 = Mega Man Battle Network 4: Red Sun
+    .bn4 = Mega Man Battle Network 4
     .bn4-0 = Mega Man Battle Network 4: Red Sun
     .bn4-1 = Mega Man Battle Network 4: Blue Moon
 
@@ -29,7 +29,7 @@ games =
     .exe5 = Rockman EXE 5
     .exe5-0 = Rockman EXE 5: Team of Blues
     .exe5-1 = Rockman EXE 5: Team of Colonel
-    .bn5 = Mega Man Battle Network 5: Team Protoman
+    .bn5 = Mega Man Battle Network 5
     .bn5-0 = Mega Man Battle Network 5: Team Protoman
     .bn5-1 = Mega Man Battle Network 5: Team Colonel
 
