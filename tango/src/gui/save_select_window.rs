@@ -31,7 +31,7 @@ impl SaveSelectWindow {
         &mut self,
         ctx: &egui::Context,
         show: &mut Option<State>,
-        selection: &mut Option<(&'static (dyn games::Game + Send + Sync), std::path::PathBuf)>,
+        selection: &mut Option<gui::main_view::Selection>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
         saves_list: gui::SavesListState,
@@ -80,7 +80,9 @@ impl SaveSelectWindow {
                                         .selectable_label(
                                             selection
                                                 .as_ref()
-                                                .map(|(_, p)| save.as_path() == p)
+                                                .map(|selection| {
+                                                    selection.save_path.as_path() == save.as_path()
+                                                })
                                                 .unwrap_or(false),
                                             format!(
                                                 "{}",
@@ -93,7 +95,11 @@ impl SaveSelectWindow {
                                         .clicked()
                                     {
                                         *show = None;
-                                        *selection = Some((game, save.as_path().to_path_buf()));
+                                        *selection = Some(gui::main_view::Selection {
+                                            game,
+                                            save_path: save.as_path().to_path_buf(),
+                                            rom: saves_list.roms.get(&game).unwrap().clone(),
+                                        });
                                     }
                                 }
                             }

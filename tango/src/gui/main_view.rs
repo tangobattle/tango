@@ -9,7 +9,7 @@ use super::save_select_window;
 pub struct State {
     pub session: Option<session::Session>,
     link_code: String,
-    selection: Option<(&'static (dyn games::Game + Send + Sync), std::path::PathBuf)>,
+    selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
 }
@@ -19,7 +19,7 @@ impl State {
         Self {
             session: None,
             link_code: String::new(),
-            selection: None,
+            selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
         }
@@ -43,12 +43,19 @@ enum ConnectionState {
     InLobby(std::sync::Arc<tokio::sync::Mutex<Lobby>>),
 }
 
+#[derive(Clone)]
+pub struct Selection {
+    pub game: &'static (dyn games::Game + Send + Sync),
+    pub rom: Vec<u8>,
+    pub save_path: std::path::PathBuf,
+}
+
 struct Lobby {
     attention_requested: bool,
     sender: Option<net::Sender>,
     is_offerer: bool,
     input_delay: usize,
-    local_game: Option<(&'static (dyn games::Game + Send + Sync), Vec<u8>)>,
+    selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     nickname: String,
     match_type: (u8, u8),
     reveal_setup: bool,
@@ -117,8 +124,8 @@ impl Lobby {
         net::protocol::Settings {
             nickname: self.nickname.clone(),
             match_type: self.match_type,
-            game_info: self.local_game.as_ref().map(|(game, _)| {
-                let (family, variant) = game.family_and_variant();
+            game_info: self.selection.lock().as_ref().map(|selection| {
+                let (family, variant) = selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
                     patch: None,
@@ -168,29 +175,6 @@ impl Lobby {
         Ok(())
     }
 
-    async fn set_game(
-        &mut self,
-        game: &'static (dyn games::Game + Send + Sync),
-        rom: Vec<u8>,
-    ) -> Result<(), anyhow::Error> {
-        if Some(game) == self.local_game.as_ref().map(|(g, _)| *g) {
-            return Ok(());
-        }
-        self.send_settings(net::protocol::Settings {
-            game_info: self.local_game.as_ref().map(|(game, _)| {
-                let (family, variant) = game.family_and_variant();
-                net::protocol::GameInfo {
-                    family_and_variant: (family.to_string(), variant),
-                    patch: None,
-                }
-            }),
-            ..self.make_local_settings()
-        })
-        .await?;
-        self.local_game = Some((game, rom));
-        Ok(())
-    }
-
     fn set_remote_settings(&mut self, settings: net::protocol::Settings) {
         self.remote_settings = settings;
         if !are_settings_compatible(&self.make_local_settings(), &self.remote_settings) {
@@ -224,6 +208,7 @@ async fn run_connection_task(
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     main_view: std::sync::Arc<parking_lot::Mutex<State>>,
+    selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     saves_list: gui::SavesListState,
     matchmaking_addr: String,
     link_code: String,
@@ -275,7 +260,7 @@ async fn run_connection_task(
                         attention_requested: false,
                         sender: Some(sender),
                         input_delay: 2, // TODO
-                        local_game: None,
+                        selection,
                         nickname,
                         match_type: (0, 0), // TODO
                         reveal_setup: false,
@@ -408,8 +393,8 @@ async fn run_connection_task(
 
                     let remote_negotiated_state = zstd::stream::decode_all(&raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
 
-                    let (local_game, local_rom) = if let Some((game, rom)) = lobby.local_game.as_ref() {
-                        (game, rom)
+                    let (local_game, local_rom) = if let Some(selection) = lobby.selection.lock().as_ref() {
+                        (selection.game, selection.rom.clone())
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
                     };
@@ -443,7 +428,7 @@ async fn run_connection_task(
                     main_view.lock().session = Some(session::Session::new_pvp(
                         handle,
                         audio_binder,
-                        *local_game,
+                        local_game,
                         &local_rom,
                         &local_negotiated_state.save_data,
                         shadow_game,
@@ -512,10 +497,12 @@ impl MainView {
         }
 
         let main_view = &mut *main_view;
+
+        // TODO: Lobby stuff
         self.save_select_window.show(
             ctx,
             &mut main_view.show_save_select,
-            &mut main_view.selection,
+            &mut *main_view.selection.lock(),
             &state.config.language,
             &state.config.saves_path,
             state.saves_list.clone(),
@@ -648,9 +635,11 @@ impl MainView {
                                             });
                                             row.col(|ui| {
                                                 ui.label(
-                                                    if let Some((game, _)) = lobby.local_game {
+                                                    if let Some(selection) =
+                                                        &*main_view.selection.lock()
+                                                    {
                                                         let (family, variant) =
-                                                            game.family_and_variant();
+                                                            selection.game.family_and_variant();
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &state.config.language,
@@ -726,9 +715,12 @@ impl MainView {
                                                 .width(94.0)
                                                 .selected_text(format!("{:?}", lobby.match_type))
                                                 .show_ui(ui, |ui| {
-                                                    if let Some((game, _)) =
-                                                        lobby.local_game.as_ref()
-                                                    {
+                                                    let game = lobby
+                                                        .selection
+                                                        .lock()
+                                                        .as_ref()
+                                                        .map(|selection| selection.game);
+                                                    if let Some(game) = game {
                                                         let mut match_type = lobby.match_type;
                                                         for (typ, subtype_count) in
                                                             game.match_types().iter().enumerate()
@@ -807,6 +799,7 @@ impl MainView {
                                     state.audio_binder.clone(),
                                     state.emu_tps_counter.clone(),
                                     state.main_view.clone(),
+                                    main_view.selection.clone(),
                                     state.saves_list.clone(),
                                     state.config.matchmaking_endpoint.clone(),
                                     main_view.link_code.clone(),
@@ -820,13 +813,13 @@ impl MainView {
                                     main_view.connection_task.clone(),
                                     cancellation_token,
                                 ));
-                            } else if let Some((g, save_path)) = main_view.selection.as_ref() {
+                            } else if let Some(selection) = &*main_view.selection.lock() {
                                 let audio_binder = state.audio_binder.clone();
                                 let saves_list = state.saves_list.clone();
-                                let save_path = save_path.clone();
+                                let save_path = selection.save_path.clone();
                                 let main_view = state.main_view.clone();
                                 let emu_tps_counter = state.emu_tps_counter.clone();
-                                let g = *g;
+                                let g = selection.game;
 
                                 // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
                                 rayon::spawn(move || {
@@ -858,7 +851,7 @@ impl MainView {
                                     },
                                     Some(cancellation_token.clone()),
                                 ),
-                                ConnectionTask::Failed(err) => (None, None),
+                                ConnectionTask::Failed(_) => (None, None),
                             }
                         } else {
                             (None, None)
@@ -1016,25 +1009,26 @@ impl MainView {
                                 }
                             });
                             main_view.show_save_select = Some(save_select_window::State::new(
-                                main_view
-                                    .selection
-                                    .clone()
-                                    .map(|(game, path)| (game, Some(path))),
+                                main_view.selection.lock().as_ref().map(|selection| {
+                                    (selection.game, Some(selection.save_path.to_path_buf()))
+                                }),
                             ));
                         }
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
                             |ui| {
-                                if let Some((game, path)) = main_view.selection.as_ref() {
+                                if let Some(selection) = &*main_view.selection.lock() {
                                     ui.vertical(|ui| {
                                         ui.label(format!(
                                             "{}",
-                                            path.strip_prefix(&state.config.saves_path)
-                                                .unwrap_or(path)
+                                            selection
+                                                .save_path
+                                                .strip_prefix(&state.config.saves_path)
+                                                .unwrap_or(selection.save_path.as_path())
                                                 .display()
                                         ));
 
-                                        let (family, variant) = game.family_and_variant();
+                                        let (family, variant) = selection.game.family_and_variant();
                                         ui.small(
                                             i18n::LOCALES
                                                 .lookup(
