@@ -114,7 +114,12 @@ fn child_main() -> Result<(), anyhow::Error> {
         .with_min_inner_size(glutin::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
-        ));
+        ))
+        .with_fullscreen(if config.full_screen {
+            Some(glutin::window::Fullscreen::Borderless(None))
+        } else {
+            None
+        });
 
     let gl_window = glutin::ContextBuilder::new()
         .with_depth_buffer(0)
@@ -231,6 +236,9 @@ fn child_main() -> Result<(), anyhow::Error> {
                             }
                             glutin::event::WindowEvent::Resized(size) => {
                                 gl_window.resize(size);
+                            }
+                            glutin::event::WindowEvent::Occluded(false) => {
+                                config.full_screen = gl_window.window().fullscreen().is_some();
                             }
                             glutin::event::WindowEvent::CloseRequested => {
                                 control_flow.set_exit();

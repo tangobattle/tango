@@ -293,6 +293,7 @@ impl Gui {
             &mut state.show_settings,
             config,
             state.saves_list.clone(),
+            window,
             &mut state.steal_input,
         );
         self.steal_input_window

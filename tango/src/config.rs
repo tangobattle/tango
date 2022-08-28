@@ -52,6 +52,7 @@ pub struct Config {
     pub input_delay: u32,
     pub default_match_type: u8,
     pub data_path: std::path::PathBuf,
+    pub full_screen: bool,
 }
 
 pub fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
@@ -95,6 +96,7 @@ impl Config {
             input_delay: 2,
             default_match_type: 1,
             data_path: tango_data_dir,
+            full_screen: false,
         })
     }
 

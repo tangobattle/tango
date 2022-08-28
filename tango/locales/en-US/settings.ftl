@@ -31,3 +31,4 @@ settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint
 settings-data-path = Data path
     .change = Change
+settings-full-screen = Full screen

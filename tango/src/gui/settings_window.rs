@@ -41,6 +41,7 @@ impl SettingsWindow {
         show_settings: &mut Option<State>,
         config: &mut config::Config,
         saves_list: gui::SavesListState,
+        window: &glutin::window::Window,
         steal_input: &mut Option<gui::steal_input_window::State>,
     ) {
         let mut show_settings_bool = show_settings.is_some();
@@ -113,7 +114,7 @@ impl SettingsWindow {
                                     &mut config.input_mapping,
                                     steal_input,
                                 ),
-                                State::Graphics => self.show_graphics_tab(ui, config),
+                                State::Graphics => self.show_graphics_tab(ui, config, window),
                                 State::Audio => self.show_audio_tab(ui, config),
                                 State::Netplay => self.show_netplay_tab(ui, config),
                                 State::About => self.show_about_tab(ui),
@@ -418,7 +419,12 @@ impl SettingsWindow {
             });
     }
 
-    fn show_graphics_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+    fn show_graphics_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        config: &mut config::Config,
+        window: &glutin::window::Window,
+    ) {
         egui::Grid::new("settings-window-graphics-grid")
             .num_columns(2)
             .show(ui, |ui| {
@@ -454,6 +460,20 @@ impl SettingsWindow {
                         .suffix("%")
                         .clamp_range(50..=400),
                 );
+                ui.end_row();
+
+                ui.label(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-full-screen")
+                        .unwrap(),
+                );
+                ui.add(egui::Checkbox::new(&mut config.full_screen, ""));
+                if config.full_screen && window.fullscreen().is_none() {
+                    window.set_fullscreen(Some(glutin::window::Fullscreen::Borderless(None)));
+                } else if !config.full_screen && window.fullscreen().is_some() {
+                    window.set_fullscreen(None);
+                }
+
                 ui.end_row();
 
                 ui.label(
