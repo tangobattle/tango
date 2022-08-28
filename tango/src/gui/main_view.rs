@@ -53,7 +53,6 @@ pub struct Selection {
 struct Lobby {
     attention_requested: bool,
     sender: Option<net::Sender>,
-    is_offerer: bool,
     selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     nickname: String,
     match_type: (u8, u8),
@@ -276,11 +275,10 @@ async fn run_connection_task(
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         attention_requested: false,
                         sender: Some(sender),
-                        selection,
+                        selection: selection.clone(),
                         nickname,
                         match_type: (0, 0), // TODO
                         reveal_setup: false,
-                        is_offerer: peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
@@ -346,18 +344,19 @@ async fn run_connection_task(
                     }
 
                     log::info!("ending lobby");
-                    *connection_task.lock().await = None;
 
-                    let mut lobby = lobby.lock().await;
-                    let local_settings = lobby.make_local_settings();
-
-                    let mut sender = if let Some(sender) = lobby.sender.take() {
-                        sender
-                    } else {
-                        anyhow::bail!("no sender?");
+                    let (mut sender, match_type, local_settings, remote_settings, remote_commitment, local_negotiated_state) = {
+                        let mut lobby = lobby.lock().await;
+                        let local_settings = lobby.make_local_settings();
+                        let sender = if let Some(sender) = lobby.sender.take() {
+                            sender
+                        } else {
+                            anyhow::bail!("no sender?");
+                        };
+                        (sender, lobby.match_type, local_settings, lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take())
                     };
 
-                    let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = lobby.local_negotiated_state.take() {
+                    let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = local_negotiated_state {
                         (negotiated_state, raw_local_state)
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
@@ -377,11 +376,7 @@ async fn run_connection_task(
                                     net::protocol::Packet::Ping(ping) => {
                                         sender.send_pong(ping.ts).await?;
                                     },
-                                    net::protocol::Packet::Pong(pong) => {
-                                        if let Ok(d) = std::time::SystemTime::now().duration_since(pong.ts) {
-                                            lobby.latencies.mark(d);
-                                        }
-                                    },
+                                    net::protocol::Packet::Pong(_) => { },
                                     net::protocol::Packet::Chunk(chunk) => {
                                         remote_chunks.push(chunk.chunk);
                                         break;
@@ -396,7 +391,7 @@ async fn run_connection_task(
 
                     let raw_remote_negotiated_state = remote_chunks.into_iter().flatten().collect::<Vec<_>>();
 
-                    let received_remote_commitment = if let Some(commitment) = lobby.remote_commitment {
+                    let received_remote_commitment = if let Some(commitment) = remote_commitment {
                         commitment
                     } else {
                         anyhow::bail!("no remote commitment?");
@@ -414,13 +409,13 @@ async fn run_connection_task(
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
-                    let (local_game, local_rom) = if let Some(selection) = lobby.selection.lock().as_ref() { // DEADLOCK HERE?
+                    let (local_game, local_rom) = if let Some(selection) = selection.lock().as_ref() { // DEADLOCK HERE?
                         (selection.game, selection.rom.clone())
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let remote_game = if let Some(game) = lobby.remote_settings.game_info.as_ref().and_then(|gi| {
+                    let remote_game = if let Some(game) = remote_settings.game_info.as_ref().and_then(|gi| {
                         let (family, variant) = &gi.family_and_variant;
                         games::find_by_family_and_variant(family, *variant)
                     }) {
@@ -445,6 +440,7 @@ async fn run_connection_task(
                     }
 
                     log::info!("starting session");
+                    let is_offerer = peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer;
                     main_view.lock().session = Some(session::Session::new_pvp(
                         handle,
                         audio_binder,
@@ -453,7 +449,7 @@ async fn run_connection_task(
                         local_game,
                         &local_rom,
                         &local_negotiated_state.save_data,
-                        lobby.remote_settings.clone(),
+                        remote_settings,
                         remote_game,
                         &remote_rom,
                         &remote_negotiated_state.save_data,
@@ -461,13 +457,14 @@ async fn run_connection_task(
                         sender,
                         receiver,
                         peer_conn,
-                        lobby.is_offerer,
+                        is_offerer,
                         replays_path,
-                        lobby.match_type,
+                        match_type,
                         config.read().input_delay,
                         rng_seed,
                         max_queue_length,
                     )?);
+                    *connection_task.lock().await = None;
 
                     Ok(())
                 })(
