@@ -157,7 +157,13 @@ pub fn scan_saves(
     }
 
     for (_, saves) in paths.iter_mut() {
-        saves.sort();
+        saves.sort_by_key(|path| {
+            let components = path
+                .components()
+                .map(|c| c.as_os_str().to_os_string())
+                .collect::<Vec<_>>();
+            (components.len(), components)
+        });
     }
 
     paths
