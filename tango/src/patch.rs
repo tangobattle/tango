@@ -33,6 +33,7 @@ pub struct Patch {
     pub authors: Vec<mailparse::SingleInfo>,
     pub license: Option<spdx::LicenseId>,
     pub source: Option<String>,
+    pub readme: Option<String>,
     pub versions: std::collections::HashMap<semver::Version, Version>,
 }
 
@@ -65,7 +66,7 @@ pub fn scan(
 
         let raw_info = match std::fs::read(entry.path().join("info.toml")) {
             Ok(buf) => buf,
-            Err(e) => {
+            Err(_) => {
                 continue;
             }
         };
@@ -77,6 +78,19 @@ pub fn scan(
                 continue;
             }
         };
+
+        let readme = std::fs::read_dir(entry.path())
+            .ok()
+            .and_then(|mut it| {
+                it.find(|p| {
+                    p.as_ref()
+                        .map(|entry| entry.file_name().to_ascii_lowercase() == "readme")
+                        .unwrap_or(false)
+                })
+                .and_then(|r| r.ok())
+            })
+            .and_then(|entry| std::fs::read(entry.path()).ok())
+            .map(|buf| String::from_utf8_lossy(&buf).to_string());
 
         let mut versions = std::collections::HashMap::new();
         for (v, version) in info.versions.into_iter() {
@@ -173,6 +187,7 @@ pub fn scan(
                     .patch
                     .license
                     .and_then(|license| spdx::license_id(&license)),
+                readme,
                 source: info.patch.source,
                 versions,
             },
