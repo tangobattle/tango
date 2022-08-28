@@ -33,10 +33,9 @@ impl DebugWindow {
                         ui.end_row();
 
                         if let Some(session) = state.main_view.lock().session.as_ref() {
-                            let tps_adjustment = if let session::Mode::PvP(match_) = session.mode()
-                            {
+                            let tps_adjustment = if let session::Mode::PvP(pvp) = session.mode() {
                                 handle.block_on(async {
-                                    if let Some(match_) = &*match_.lock().await {
+                                    if let Some(match_) = &*pvp.match_.lock().await {
                                         ui.label("Match active");
                                         ui.end_row();
 

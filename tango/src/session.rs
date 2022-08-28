@@ -24,9 +24,14 @@ impl CompletionToken {
     }
 }
 
+pub struct PvP {
+    pub match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
+    cancellation_token: tokio_util::sync::CancellationToken,
+}
+
 pub enum Mode {
     SinglePlayer,
-    PvP(std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>),
+    PvP(PvP),
     Replayer,
 }
 
@@ -93,6 +98,7 @@ impl Session {
 
         let thread = mgba::thread::Thread::new(core);
 
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
         let match_ = match_.clone();
         *match_.try_lock().unwrap() = Some({
             let inner_match = battle::Match::new(
@@ -102,6 +108,7 @@ impl Session {
                 local_settings,
                 remote_game,
                 remote_settings,
+                cancellation_token.clone(),
                 sender,
                 peer_conn,
                 rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
@@ -169,7 +176,10 @@ impl Session {
             _audio_binding: audio_binding,
             thread,
             joyflags,
-            mode: Mode::PvP(match_),
+            mode: Mode::PvP(PvP {
+                match_,
+                cancellation_token,
+            }),
             completed,
         })
     }
@@ -356,5 +366,16 @@ impl Session {
     pub fn set_joyflags(&self, joyflags: u32) {
         self.joyflags
             .store(joyflags, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        match &mut self.mode {
+            Mode::PvP(pvp) => {
+                pvp.cancellation_token.cancel();
+            }
+            _ => {}
+        }
     }
 }
