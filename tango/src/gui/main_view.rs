@@ -2,7 +2,7 @@ use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 
-use crate::{audio, games, gui, i18n, input, net, session, stats};
+use crate::{audio, config, games, gui, i18n, input, net, session, stats};
 
 use super::save_select_window;
 
@@ -828,7 +828,11 @@ impl MainView {
                                     state.main_view.clone(),
                                     main_view.selection.clone(),
                                     state.saves_list.clone(),
-                                    state.config.matchmaking_endpoint.clone(),
+                                    if !state.config.matchmaking_endpoint.is_empty() {
+                                        state.config.matchmaking_endpoint.clone()
+                                    } else {
+                                        config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+                                    },
                                     main_view.link_code.clone(),
                                     state.config.max_queue_length as usize,
                                     state
