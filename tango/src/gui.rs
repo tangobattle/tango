@@ -6,6 +6,7 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 mod debug_window;
 mod escape_window;
 mod main_view;
+mod patches_window;
 mod save_select_window;
 mod session_view;
 mod settings_window;

@@ -102,6 +102,11 @@ pub fn scan(
                 }
             };
 
+            if sv.to_string() != v {
+                log::warn!("{}: semver did not round trip", entry.path().display());
+                continue;
+            }
+
             let read_version_dir =
                 match std::fs::read_dir(entry.path().join(format!("v{}", sv.to_string()))) {
                     Ok(read_version_dir) => read_version_dir,
