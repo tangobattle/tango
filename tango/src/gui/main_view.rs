@@ -395,13 +395,13 @@ async fn run_connection_task(
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
-                    let (local_game, local_rom) = if let Some(selection) = lobby.selection.lock().as_ref() {
+                    let (local_game, local_rom) = if let Some(selection) = lobby.selection.lock().as_ref() { // DEADLOCK HERE?
                         (selection.game, selection.rom.clone())
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let shadow_game = if let Some(game) = lobby.remote_settings.game_info.as_ref().and_then(|(gi)| {
+                    let shadow_game = if let Some(game) = lobby.remote_settings.game_info.as_ref().and_then(|gi| {
                         let (family, variant) = &gi.family_and_variant;
                         games::find_by_family_and_variant(family, *variant)
                     }) {
@@ -424,8 +424,6 @@ async fn run_connection_task(
                         net::protocol::Packet::StartMatch(_) => {},
                         p => anyhow::bail!("unexpected packet when expecting start match: {:?}", p),
                     }
-
-                    *connection_task.lock().await = None;
 
                     log::info!("starting session");
                     main_view.lock().session = Some(session::Session::new_pvp(
@@ -452,15 +450,18 @@ async fn run_connection_task(
                 })(
                 )
             }
-            => { r }
+            => {
+                r
+            }
             _ = cancellation_token.cancelled() => {
-                *connection_task.lock().await = None;
-                return;
+                Ok(())
             }
         }
     } {
         log::info!("connection task failed: {:?}", e);
         *connection_task.lock().await = Some(ConnectionTask::Failed(e));
+    } else {
+        *connection_task.lock().await = None;
     }
 }
 
@@ -664,7 +665,7 @@ impl MainView {
                                                     if let Some(selection) =
                                                         &*main_view.selection.lock()
                                                     {
-                                                        let (family, variant) =
+                                                        let (family, _) =
                                                             selection.game.family_and_variant();
                                                         i18n::LOCALES
                                                             .lookup(
@@ -696,8 +697,7 @@ impl MainView {
                                                             )
                                                         })
                                                     {
-                                                        let (family, variant) =
-                                                            game.family_and_variant();
+                                                        let (family, _) = game.family_and_variant();
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &state.config.language,
