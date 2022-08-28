@@ -333,6 +333,8 @@ async fn run_connection_task(
 
                     let mut lobby = lobby.lock().await;
                     // DO NOT ACQUIRE connection_task's LOCK PAST THIS POINT. DOING SO IS A LOCK INVERSION.
+                    let local_settings = lobby.make_local_settings();
+
                     let mut sender = if let Some(sender) = lobby.sender.take() {
                         sender
                     } else {
@@ -402,7 +404,7 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let shadow_game = if let Some(game) = lobby.remote_settings.game_info.as_ref().and_then(|gi| {
+                    let remote_game = if let Some(game) = lobby.remote_settings.game_info.as_ref().and_then(|gi| {
                         let (family, variant) = &gi.family_and_variant;
                         games::find_by_family_and_variant(family, *variant)
                     }) {
@@ -411,10 +413,10 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let shadow_rom = {
+                    let remote_rom = {
                         let saves_list = saves_list.read();
-                        if let Some(shadow_rom) = saves_list.roms.get(&shadow_game).cloned() {
-                            shadow_rom
+                        if let Some(remote_rom) = saves_list.roms.get(&remote_game).cloned() {
+                            remote_rom
                         } else {
                             anyhow::bail!("missing shadow rom");
                         }
@@ -430,11 +432,14 @@ async fn run_connection_task(
                     main_view.lock().session = Some(session::Session::new_pvp(
                         handle,
                         audio_binder,
+                        link_code,
+                        local_settings,
                         local_game,
                         &local_rom,
                         &local_negotiated_state.save_data,
-                        shadow_game,
-                        &shadow_rom,
+                        lobby.remote_settings.clone(),
+                        remote_game,
+                        &remote_rom,
                         &remote_negotiated_state.save_data,
                         emu_tps_counter.clone(),
                         sender,

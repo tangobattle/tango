@@ -48,15 +48,17 @@ impl RoundState {
 pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
+    link_code: String,
     local_game: &'static (dyn games::Game + Send + Sync),
-    shadow_game: &'static (dyn games::Game + Send + Sync),
+    local_settings: net::protocol::Settings,
+    remote_game: &'static (dyn games::Game + Send + Sync),
+    remote_settings: net::protocol::Settings,
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     rng: tokio::sync::Mutex<rand_pcg::Mcg128Xsl64>,
     cancellation_token: tokio_util::sync::CancellationToken,
     replays_path: std::path::PathBuf,
     match_type: (u8, u8),
     input_delay: u32,
-    rng_seed: [u8; 16],
     max_queue_length: usize,
     is_offerer: bool,
     round_state: tokio::sync::Mutex<RoundState>,
@@ -67,19 +69,21 @@ pub struct Match {
 
 impl Match {
     pub fn new(
+        link_code: String,
         rom: Vec<u8>,
         local_game: &'static (dyn games::Game + Send + Sync),
-        shadow_game: &'static (dyn games::Game + Send + Sync),
+        local_settings: net::protocol::Settings,
+        remote_game: &'static (dyn games::Game + Send + Sync),
+        remote_settings: net::protocol::Settings,
         sender: net::Sender,
         mut rng: rand_pcg::Mcg128Xsl64,
         is_offerer: bool,
         primary_thread_handle: mgba::thread::Handle,
-        shadow_rom: &[u8],
-        shadow_save: &[u8],
+        remote_rom: &[u8],
+        remote_save: &[u8],
         replays_path: std::path::PathBuf,
         match_type: (u8, u8),
         input_delay: u32,
-        rng_seed: [u8; 16],
         max_queue_length: usize,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
@@ -91,15 +95,18 @@ impl Match {
         };
         let match_ = std::sync::Arc::new(Self {
             shadow: std::sync::Arc::new(parking_lot::Mutex::new(shadow::Shadow::new(
-                &shadow_rom,
-                &shadow_save,
+                &remote_rom,
+                &remote_save,
                 match_type,
                 is_offerer,
                 last_result,
                 rng.clone(),
             )?)),
+            link_code,
             local_game,
-            shadow_game,
+            local_settings,
+            remote_game,
+            remote_settings,
             rom,
             sender: std::sync::Arc::new(tokio::sync::Mutex::new(sender)),
             rng: tokio::sync::Mutex::new(rng),
@@ -107,7 +114,6 @@ impl Match {
             replays_path,
             match_type,
             input_delay,
-            rng_seed,
             max_queue_length,
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
@@ -279,7 +285,7 @@ impl Match {
 
         let hooks = self.local_game.hooks();
         let local_family_and_variant = self.local_game.family_and_variant();
-        let shadow_family_and_variant = self.shadow_game.family_and_variant();
+        let remote_family_and_variant = self.remote_game.family_and_variant();
         round_state.round = Some(Round {
             hooks,
             number: round_state.number,
@@ -303,24 +309,24 @@ impl Match {
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
                         .as_millis() as u64,
-                    link_code: todo!(),
+                    link_code: self.link_code.clone(),
                     local_side: Some(tango_protos::replay::replay_metadata::Side {
-                        nickname: todo!(),
+                        nickname: self.local_settings.nickname.clone(),
                         game_info: Some(tango_protos::replay::replay_metadata::GameInfo {
                             rom_family: local_family_and_variant.0.to_string(),
                             rom_variant: local_family_and_variant.1 as u32,
-                            patch: todo!(),
+                            patch: None, // TODO
                         }),
-                        reveal_setup: todo!(),
+                        reveal_setup: self.local_settings.reveal_setup,
                     }),
                     remote_side: Some(tango_protos::replay::replay_metadata::Side {
-                        nickname: todo!(),
+                        nickname: self.remote_settings.nickname.clone(),
                         game_info: Some(tango_protos::replay::replay_metadata::GameInfo {
-                            rom_family: shadow_family_and_variant.0.to_string(),
-                            rom_variant: shadow_family_and_variant.1 as u32,
-                            patch: todo!(),
+                            rom_family: remote_family_and_variant.0.to_string(),
+                            rom_variant: remote_family_and_variant.1 as u32,
+                            patch: None, // TODO
                         }),
-                        reveal_setup: todo!(),
+                        reveal_setup: self.remote_settings.reveal_setup,
                     }),
                 },
                 local_player_index,
