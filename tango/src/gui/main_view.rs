@@ -995,7 +995,9 @@ impl MainView {
                             let mut ready = lobby.local_negotiated_state.is_some();
                             let was_ready = ready;
                             ui.add_enabled(
-                                has_selection,
+                                has_selection
+                                    && SimplifiedSettings::new(&lobby.make_local_settings())
+                                        == SimplifiedSettings::new(&lobby.remote_settings),
                                 egui::Checkbox::new(
                                     &mut ready,
                                     i18n::LOCALES

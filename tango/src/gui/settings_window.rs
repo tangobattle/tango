@@ -269,6 +269,7 @@ impl SettingsWindow {
                                 .pick_folder()
                             {
                                 config.data_path = data_path;
+                                let _ = config.ensure_dirs();
                                 rayon::spawn({
                                     let saves_list = saves_list.clone();
                                     let roms_path = config.roms_path();
