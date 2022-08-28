@@ -882,18 +882,17 @@ impl MainView {
                                 ));
                             } else if let Some(selection) = &*main_view.selection.lock() {
                                 let audio_binder = state.audio_binder.clone();
-                                let saves_list = state.saves_list.clone();
                                 let save_path = selection.save_path.clone();
                                 let main_view = state.main_view.clone();
                                 let emu_tps_counter = state.emu_tps_counter.clone();
-                                let g = selection.game;
+                                let rom = selection.rom.clone();
 
                                 // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
                                 rayon::spawn(move || {
                                     main_view.lock().session = Some(
                                         session::Session::new_singleplayer(
                                             audio_binder,
-                                            saves_list.read().roms.get(&g).unwrap(),
+                                            &rom,
                                             &save_path,
                                             emu_tps_counter,
                                         )
