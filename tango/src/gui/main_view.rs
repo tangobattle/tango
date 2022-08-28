@@ -409,7 +409,7 @@ async fn run_connection_task(
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
-                    let (local_game, local_rom) = if let Some(selection) = selection.lock().as_ref() { // DEADLOCK HERE?
+                    let (local_game, local_rom) = if let Some(selection) = selection.lock().as_ref() {
                         (selection.game, selection.rom.clone())
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
