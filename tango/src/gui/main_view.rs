@@ -1,6 +1,7 @@
 use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
+use subtle::ConstantTimeEq;
 
 use crate::{audio, config, games, gui, i18n, input, net, patch, session, stats};
 
@@ -399,8 +400,7 @@ async fn run_connection_task(
 
                     log::info!("remote commitment = {:02x?}", received_remote_commitment);
 
-                    let remote_commitment = make_commitment(&raw_remote_negotiated_state);
-                    if !constant_time_eq::constant_time_eq_16(&remote_commitment, &received_remote_commitment) {
+                    if make_commitment(&raw_remote_negotiated_state).ct_eq(&received_remote_commitment).unwrap_u8() == 0 {
                         anyhow::bail!("commitment did not match");
                     }
 
