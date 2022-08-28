@@ -332,6 +332,7 @@ async fn run_connection_task(
                     log::info!("ending lobby");
 
                     let mut lobby = lobby.lock().await;
+                    // DO NOT ACQUIRE connection_task's LOCK PAST THIS POINT. DOING SO IS A LOCK INVERSION.
                     let mut sender = if let Some(sender) = lobby.sender.take() {
                         sender
                     } else {
