@@ -297,6 +297,17 @@ impl SettingsWindow {
                             }
                         }
 
+                        if ui
+                            .button(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "settings-data-path.open")
+                                    .unwrap(),
+                            )
+                            .clicked()
+                        {
+                            let _ = open::that(&config.data_path);
+                        }
+
                         ui.add(
                             egui::TextEdit::singleline(&mut format!(
                                 "{}",

@@ -30,5 +30,6 @@ settings-max-queue-length = Max queue length
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint
 settings-data-path = Data path
+    .open = Open
     .change = Change
 settings-full-screen = Full screen
