@@ -225,7 +225,7 @@ async fn run_connection_task(
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     main_view: std::sync::Arc<parking_lot::Mutex<State>>,
     selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
-    saves_list: gui::SavesListState,
+    roms_scanner: gui::ROMsScanner,
     matchmaking_addr: String,
     link_code: String,
     max_queue_length: usize,
@@ -425,8 +425,8 @@ async fn run_connection_task(
                     };
 
                     let remote_rom = {
-                        let saves_list = saves_list.read();
-                        if let Some(remote_rom) = saves_list.roms.get(&remote_game).cloned() {
+                        let roms = roms_scanner.read();
+                        if let Some(remote_rom) = roms.get(&remote_game).cloned() {
                             remote_rom
                         } else {
                             anyhow::bail!("missing shadow rom");
@@ -535,7 +535,8 @@ impl MainView {
                 selection,
                 &config.language,
                 &config.saves_path(),
-                state.saves_list.clone(),
+                state.roms_scanner.clone(),
+                state.saves_scanner.clone(),
             );
 
             (
@@ -885,7 +886,7 @@ impl MainView {
                                     state.emu_tps_counter.clone(),
                                     state.main_view.clone(),
                                     main_view.selection.clone(),
-                                    state.saves_list.clone(),
+                                    state.roms_scanner.clone(),
                                     if !config.matchmaking_endpoint.is_empty() {
                                         config.matchmaking_endpoint.clone()
                                     } else {
@@ -1157,11 +1158,13 @@ impl MainView {
                 if (resp.inner | resp.response).clicked() {
                     main_view.show_save_select = if main_view.show_save_select.is_none() {
                         rayon::spawn({
-                            let saves_list = state.saves_list.clone();
+                            let roms_scanner = state.roms_scanner.clone();
+                            let saves_scanner = state.saves_scanner.clone();
                             let roms_path = config.roms_path();
                             let saves_path = config.saves_path();
                             move || {
-                                saves_list.rescan(&roms_path, &saves_path);
+                                roms_scanner.rescan(move || games::scan_roms(&roms_path));
+                                saves_scanner.rescan(move || games::scan_saves(&saves_path));
                             }
                         });
                         Some(save_select_window::State::new(

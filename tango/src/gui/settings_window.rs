@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{config, gui, i18n, input};
+use crate::{config, games, gui, i18n, input};
 
 #[derive(PartialEq, Eq)]
 pub enum State {
@@ -40,7 +40,8 @@ impl SettingsWindow {
         ctx: &egui::Context,
         show_settings: &mut Option<State>,
         config: &mut config::Config,
-        saves_list: gui::SavesListState,
+        roms_scanner: gui::ROMsScanner,
+        saves_scanner: gui::SavesScanner,
         window: &glutin::window::Window,
         steal_input: &mut Option<gui::steal_input_window::State>,
     ) {
@@ -105,9 +106,12 @@ impl SettingsWindow {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                             match show_settings.as_ref().unwrap() {
-                                State::General => {
-                                    self.show_general_tab(ui, config, saves_list.clone())
-                                }
+                                State::General => self.show_general_tab(
+                                    ui,
+                                    config,
+                                    roms_scanner.clone(),
+                                    saves_scanner.clone(),
+                                ),
                                 State::Input => self.show_input_tab(
                                     ui,
                                     &config.language,
@@ -132,7 +136,8 @@ impl SettingsWindow {
         &mut self,
         ui: &mut egui::Ui,
         config: &mut config::Config,
-        saves_list: gui::SavesListState,
+        roms_scanner: gui::ROMsScanner,
+        saves_scanner: gui::SavesScanner,
     ) {
         egui::Grid::new("settings-window-general-grid")
             .num_columns(2)
@@ -271,11 +276,14 @@ impl SettingsWindow {
                                 config.data_path = data_path;
                                 let _ = config.ensure_dirs();
                                 rayon::spawn({
-                                    let saves_list = saves_list.clone();
+                                    let roms_scanner = roms_scanner.clone();
+                                    let saves_scanner = saves_scanner.clone();
                                     let roms_path = config.roms_path();
                                     let saves_path = config.saves_path();
                                     move || {
-                                        saves_list.rescan(&roms_path, &saves_path);
+                                        roms_scanner.rescan(move || games::scan_roms(&roms_path));
+                                        saves_scanner
+                                            .rescan(move || games::scan_saves(&saves_path));
                                     }
                                 });
                             }

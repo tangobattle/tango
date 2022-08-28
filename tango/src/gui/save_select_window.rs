@@ -34,7 +34,8 @@ impl SaveSelectWindow {
         selection: &mut Option<gui::main_view::Selection>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
-        saves_list: gui::SavesListState,
+        roms_scanner: gui::ROMsScanner,
+        saves_scanner: gui::SavesScanner,
     ) {
         let mut show_play_bool = show.is_some();
         egui::Window::new(format!(
@@ -44,7 +45,9 @@ impl SaveSelectWindow {
         .id(egui::Id::new("select-save-window"))
         .open(&mut show_play_bool)
         .show(ctx, |ui| {
-            let saves_list = saves_list.read();
+            let roms = roms_scanner.read();
+            let saves = saves_scanner.read();
+
             let games = games::sorted_games(language);
             if let Some((game, _)) = show.as_mut().unwrap().selection {
                 let (family, variant) = game.family_and_variant();
@@ -65,7 +68,7 @@ impl SaveSelectWindow {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                         if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
-                            if let Some(saves) = saves_list.saves.get(&game) {
+                            if let Some(saves) = saves.get(&game) {
                                 for save in saves {
                                     if ui
                                         .selectable_label(
@@ -89,7 +92,7 @@ impl SaveSelectWindow {
                                         *selection = Some(gui::main_view::Selection {
                                             game,
                                             save_path: save.as_path().to_path_buf(),
-                                            rom: saves_list.roms.get(&game).unwrap().clone(),
+                                            rom: roms.get(&game).unwrap().clone(),
                                         });
                                     }
                                 }
@@ -97,12 +100,12 @@ impl SaveSelectWindow {
                         } else {
                             for (available, game) in games
                                 .iter()
-                                .filter(|g| saves_list.roms.contains_key(*g))
+                                .filter(|g| roms.contains_key(*g))
                                 .map(|g| (true, g))
                                 .chain(
                                     games
                                         .iter()
-                                        .filter(|g| !saves_list.roms.contains_key(*g))
+                                        .filter(|g| !roms.contains_key(*g))
                                         .map(|g| (false, g)),
                                 )
                             {

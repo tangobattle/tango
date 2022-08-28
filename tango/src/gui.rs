@@ -1,4 +1,4 @@
-use crate::{audio, config, games, input, stats};
+use crate::{audio, config, games, input, scanner, stats};
 use std::str::FromStr;
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
@@ -11,10 +11,17 @@ mod session_view;
 mod settings_window;
 mod steal_input_window;
 
+type ROMsScanner =
+    scanner::Scanner<std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>>;
+type SavesScanner = scanner::Scanner<
+    std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<std::path::PathBuf>>,
+>;
+
 pub struct State {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub steal_input: Option<steal_input_window::State>,
-    saves_list: SavesListState,
+    roms_scanner: ROMsScanner,
+    saves_scanner: SavesScanner,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -22,55 +29,6 @@ pub struct State {
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
     drpc: discord_rpc_client::Client,
-}
-
-#[derive(Clone)]
-pub struct SavesListState {
-    inner: std::sync::Arc<parking_lot::RwLock<SavesListStateInner>>,
-}
-
-pub struct SavesListStateInner {
-    pub roms: std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<u8>>,
-    pub saves: std::collections::HashMap<
-        &'static (dyn games::Game + Send + Sync),
-        Vec<std::path::PathBuf>,
-    >,
-    last_rescan_time: std::time::Instant,
-}
-
-impl SavesListState {
-    pub fn new() -> Self {
-        Self {
-            inner: std::sync::Arc::new(parking_lot::RwLock::new(SavesListStateInner {
-                roms: std::collections::HashMap::new(),
-                saves: std::collections::HashMap::new(),
-                last_rescan_time: std::time::Instant::now(),
-            })),
-        }
-    }
-
-    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, SavesListStateInner> {
-        self.inner.read()
-    }
-
-    pub fn rescan(&self, roms_path: &std::path::Path, saves_path: &std::path::Path) {
-        if self.inner.is_locked_exclusive() {
-            return;
-        }
-
-        let roms = games::scan_roms(&roms_path);
-        let saves = games::scan_saves(&saves_path);
-        let last_rescan_time = std::time::Instant::now();
-
-        let mut inner = self.inner.write();
-        if inner.last_rescan_time > last_rescan_time {
-            return;
-        }
-
-        inner.roms = roms;
-        inner.saves = saves;
-        inner.last_rescan_time = last_rescan_time;
-    }
 }
 
 impl State {
@@ -83,15 +41,20 @@ impl State {
         let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
         drpc.start();
 
-        let saves_list = SavesListState::new();
+        let roms_scanner = scanner::Scanner::new();
+        let saves_scanner = scanner::Scanner::new();
         {
             let config = config.read().clone();
-            saves_list.rescan(&config.roms_path(), &config.saves_path());
+            let roms_path = config.roms_path();
+            let saves_path = config.saves_path();
+            roms_scanner.rescan(move || games::scan_roms(&roms_path));
+            saves_scanner.rescan(move || games::scan_saves(&saves_path));
         }
 
         Self {
             config,
-            saves_list,
+            roms_scanner,
+            saves_scanner,
             main_view: std::sync::Arc::new(parking_lot::Mutex::new(main_view::State::new())),
             audio_binder,
             fps_counter,
@@ -318,7 +281,8 @@ impl Gui {
             ctx,
             &mut state.show_settings,
             config,
-            state.saves_list.clone(),
+            state.roms_scanner.clone(),
+            state.saves_scanner.clone(),
             window,
             &mut state.steal_input,
         );
