@@ -509,7 +509,7 @@ impl MainView {
 
         let main_view = &mut *main_view;
 
-        let selection_changed = {
+        let (selection_changed, has_selection) = {
             let mut selection = main_view.selection.lock();
             let selection = &mut *selection;
 
@@ -524,7 +524,10 @@ impl MainView {
                 state.saves_list.clone(),
             );
 
-            selection.as_ref().map(|selection| selection.game) != initial_game
+            (
+                selection.as_ref().map(|selection| selection.game) != initial_game,
+                selection.is_some(),
+            )
         };
 
         if selection_changed {
@@ -805,7 +808,6 @@ impl MainView {
                                         });
                                     });
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -915,36 +917,41 @@ impl MainView {
 
                         if let Some(cancellation_token) = &cancellation_token {
                             if ui
-                                .button(format!(
-                                    "⏹️ {}",
-                                    i18n::LOCALES
-                                        .lookup(&state.config.language, "main.stop")
-                                        .unwrap()
-                                ))
+                                .add_enabled(
+                                    !error_window_open,
+                                    egui::Button::new(format!(
+                                        "⏹️ {}",
+                                        i18n::LOCALES
+                                            .lookup(&state.config.language, "main.stop")
+                                            .unwrap()
+                                    )),
+                                )
                                 .clicked()
-                                && !error_window_open
                             {
                                 cancellation_token.cancel();
                             }
                         } else {
                             if ui
-                                .button(if main_view.link_code.is_empty() {
-                                    format!(
-                                        "▶️ {}",
-                                        i18n::LOCALES
-                                            .lookup(&state.config.language, "main.play")
-                                            .unwrap()
-                                    )
-                                } else {
-                                    format!(
-                                        "🥊 {}",
-                                        i18n::LOCALES
-                                            .lookup(&state.config.language, "main.fight")
-                                            .unwrap()
-                                    )
-                                })
+                                .add_enabled(
+                                    !error_window_open
+                                        && (!main_view.link_code.is_empty() || has_selection),
+                                    egui::Button::new(if main_view.link_code.is_empty() {
+                                        format!(
+                                            "▶️ {}",
+                                            i18n::LOCALES
+                                                .lookup(&state.config.language, "main.play")
+                                                .unwrap()
+                                        )
+                                    } else {
+                                        format!(
+                                            "🥊 {}",
+                                            i18n::LOCALES
+                                                .lookup(&state.config.language, "main.fight")
+                                                .unwrap()
+                                        )
+                                    }),
+                                )
                                 .clicked()
-                                && !error_window_open
                             {
                                 submit(&main_view);
                             }
@@ -981,9 +988,9 @@ impl MainView {
                             });
                         }
 
-                        let input_resp = ui.add(
+                        let input_resp = ui.add_enabled(
+                            cancellation_token.is_none() && !error_window_open,
                             egui::TextEdit::singleline(&mut main_view.link_code)
-                                .interactive(cancellation_token.is_none() && !error_window_open)
                                 .hint_text(
                                     i18n::LOCALES
                                         .lookup(&state.config.language, "main.link-code")
@@ -1029,30 +1036,14 @@ impl MainView {
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.group(|ui| {
+                let resp = ui.group(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button(
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "select-save.select-button")
-                                    .unwrap(),
-                            )
-                            .clicked()
-                        {
-                            rayon::spawn({
-                                let saves_list = state.saves_list.clone();
-                                let roms_path = state.config.roms_path.clone();
-                                let saves_path = state.config.saves_path.clone();
-                                move || {
-                                    saves_list.rescan(&roms_path, &saves_path);
-                                }
-                            });
-                            main_view.show_save_select = Some(save_select_window::State::new(
-                                main_view.selection.lock().as_ref().map(|selection| {
-                                    (selection.game, Some(selection.save_path.to_path_buf()))
-                                }),
-                            ));
-                        }
+                        let resp = ui.button(
+                            i18n::LOCALES
+                                .lookup(&state.config.language, "select-save.select-button")
+                                .unwrap(),
+                        );
+
                         ui.with_layout(
                             egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
                             |ui| {
@@ -1089,8 +1080,27 @@ impl MainView {
                                 }
                             },
                         );
-                    });
+
+                        resp
+                    })
+                    .inner
                 });
+
+                if (resp.inner | resp.response).clicked() {
+                    rayon::spawn({
+                        let saves_list = state.saves_list.clone();
+                        let roms_path = state.config.roms_path.clone();
+                        let saves_path = state.config.saves_path.clone();
+                        move || {
+                            saves_list.rescan(&roms_path, &saves_path);
+                        }
+                    });
+                    main_view.show_save_select = Some(save_select_window::State::new(
+                        main_view.selection.lock().as_ref().map(|selection| {
+                            (selection.game, Some(selection.save_path.to_path_buf()))
+                        }),
+                    ));
+                }
             });
         });
     }
