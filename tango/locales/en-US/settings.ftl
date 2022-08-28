@@ -25,6 +25,7 @@ settings-ui-scale = UI scale
 settings-language = Language
 settings-nickname = Nickname
 settings-debug-overlay = Show debug overlay
+settings-input-delay = Input delay
 settings-max-queue-length = Max queue length
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint

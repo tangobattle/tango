@@ -476,6 +476,14 @@ impl SettingsWindow {
             .show(ui, |ui| {
                 ui.label(
                     i18n::LOCALES
+                        .lookup(&config.language, "settings-input-delay")
+                        .unwrap(),
+                );
+                ui.add(egui::Slider::new(&mut config.input_delay, 2..=10));
+                ui.end_row();
+
+                ui.label(
+                    i18n::LOCALES
                         .lookup(&config.language, "settings-max-queue-length")
                         .unwrap(),
                 );
