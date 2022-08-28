@@ -65,36 +65,18 @@ Tango is rollback netplay for Mega Man Battle Network.
 1.  Build it.
 
     ```sh
-    cargo build --target x86_64-pc-windows-gnu tango
+    cargo build --target x86_64-pc-windows-gnu --release --bin tango
     ```
 
 ### Server
 
-#### Signaling
-
-The signaling server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by sending WebRTC SDPs around.
+The server is the remote HTTP server-based component that Tango connects to. It doesn't actually do very much, so you can run it on absolutely piddly hardware. All it does is provide signaling by sending WebRTC SDPs around.
 
 If you already have Rust installed, you can build it like so:
 
-1.  Enter the core directory and build it.
-
-    ```sh
-    cd core &&
-    cargo build --release --bin tango-signaling-server
-    ```
-
-That should be it! The server should be available in the usual Rust output directory.
-
-##### ICE configuration
-
-**An ICE configuration server is not provided. You must write your own. Note that by default Tango will use Google's public STUN servers, but will not use any TURN servers.**
-
-If you want to guarantee connections across even funny NATed connections, you will need to use an ICE configuration server. This can be configured in Tango under _Settings > Advanced > ICE configuration endpoint_.
-
-The ICE configuration server must:
-
--   Run over HTTP or HTTPS.
--   Accept, via POST, `GetRequest` and return `GetResponse` as defined in `core/tango-protos/src/protos/iceconfig.proto`. Note that these must be in serialized Protobuf format.
+```sh
+cargo build --release --bin tango-server
+```
 
 ## Language support
 
