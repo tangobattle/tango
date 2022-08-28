@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{config, games, gui, i18n, input};
+use crate::{config, games, gui, i18n, input, patch};
 
 #[derive(PartialEq, Eq)]
 pub enum State {
@@ -42,6 +42,7 @@ impl SettingsWindow {
         config: &mut config::Config,
         roms_scanner: gui::ROMsScanner,
         saves_scanner: gui::SavesScanner,
+        patches_scanner: gui::PatchesScanner,
         window: &glutin::window::Window,
         steal_input: &mut Option<gui::steal_input_window::State>,
     ) {
@@ -111,6 +112,7 @@ impl SettingsWindow {
                                     config,
                                     roms_scanner.clone(),
                                     saves_scanner.clone(),
+                                    patches_scanner.clone(),
                                 ),
                                 State::Input => self.show_input_tab(
                                     ui,
@@ -138,6 +140,7 @@ impl SettingsWindow {
         config: &mut config::Config,
         roms_scanner: gui::ROMsScanner,
         saves_scanner: gui::SavesScanner,
+        patches_scanner: gui::PatchesScanner,
     ) {
         egui::Grid::new("settings-window-general-grid")
             .num_columns(2)
@@ -278,12 +281,17 @@ impl SettingsWindow {
                                 rayon::spawn({
                                     let roms_scanner = roms_scanner.clone();
                                     let saves_scanner = saves_scanner.clone();
+                                    let patches_scanner = patches_scanner.clone();
                                     let roms_path = config.roms_path();
                                     let saves_path = config.saves_path();
+                                    let patches_path = config.patches_path();
                                     move || {
                                         roms_scanner.rescan(move || games::scan_roms(&roms_path));
                                         saves_scanner
                                             .rescan(move || games::scan_saves(&saves_path));
+                                        patches_scanner.rescan(move || {
+                                            patch::scan(&patches_path).unwrap_or_default()
+                                        });
                                     }
                                 });
                             }

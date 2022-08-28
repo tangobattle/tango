@@ -2,7 +2,7 @@ use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 
-use crate::{audio, config, games, gui, i18n, input, net, session, stats};
+use crate::{audio, config, games, gui, i18n, input, net, patch, session, stats};
 
 use super::save_select_window;
 
@@ -1160,11 +1160,15 @@ impl MainView {
                         rayon::spawn({
                             let roms_scanner = state.roms_scanner.clone();
                             let saves_scanner = state.saves_scanner.clone();
+                            let patches_scanner = state.patches_scanner.clone();
                             let roms_path = config.roms_path();
                             let saves_path = config.saves_path();
+                            let patches_path = config.patches_path();
                             move || {
                                 roms_scanner.rescan(move || games::scan_roms(&roms_path));
                                 saves_scanner.rescan(move || games::scan_saves(&saves_path));
+                                patches_scanner
+                                    .rescan(move || patch::scan(&patches_path).unwrap_or_default());
                             }
                         });
                         Some(save_select_window::State::new(

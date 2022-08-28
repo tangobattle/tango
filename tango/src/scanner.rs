@@ -3,9 +3,16 @@ struct Inner<T> {
     last_rescan_time: std::time::Instant,
 }
 
-#[derive(Clone)]
 pub struct Scanner<T> {
     inner: std::sync::Arc<parking_lot::RwLock<Inner<T>>>,
+}
+
+impl<T> Clone for Scanner<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl<T> Scanner<T>

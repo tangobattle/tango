@@ -1,4 +1,4 @@
-use crate::{audio, config, games, input, scanner, stats};
+use crate::{audio, config, games, input, patch, scanner, stats};
 use std::str::FromStr;
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
@@ -16,12 +16,15 @@ type ROMsScanner =
 type SavesScanner = scanner::Scanner<
     std::collections::HashMap<&'static (dyn games::Game + Send + Sync), Vec<std::path::PathBuf>>,
 >;
+type PatchesScanner =
+    scanner::Scanner<std::collections::BTreeMap<std::ffi::OsString, patch::Patch>>;
 
 pub struct State {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub steal_input: Option<steal_input_window::State>,
     roms_scanner: ROMsScanner,
     saves_scanner: SavesScanner,
+    patches_scanner: PatchesScanner,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -43,18 +46,22 @@ impl State {
 
         let roms_scanner = scanner::Scanner::new();
         let saves_scanner = scanner::Scanner::new();
+        let patches_scanner = scanner::Scanner::new();
         {
             let config = config.read().clone();
             let roms_path = config.roms_path();
             let saves_path = config.saves_path();
+            let patches_path = config.patches_path();
             roms_scanner.rescan(move || games::scan_roms(&roms_path));
             saves_scanner.rescan(move || games::scan_saves(&saves_path));
+            patches_scanner.rescan(move || patch::scan(&patches_path).unwrap_or_default());
         }
 
         Self {
             config,
             roms_scanner,
             saves_scanner,
+            patches_scanner,
             main_view: std::sync::Arc::new(parking_lot::Mutex::new(main_view::State::new())),
             audio_binder,
             fps_counter,
@@ -283,6 +290,7 @@ impl Gui {
             config,
             state.roms_scanner.clone(),
             state.saves_scanner.clone(),
+            state.patches_scanner.clone(),
             window,
             &mut state.steal_input,
         );

@@ -66,7 +66,6 @@ pub fn scan(
         let raw_info = match std::fs::read(entry.path().join("info.toml")) {
             Ok(buf) => buf,
             Err(e) => {
-                log::warn!("{}: {}", entry.path().display(), e);
                 continue;
             }
         };
