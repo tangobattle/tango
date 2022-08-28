@@ -86,7 +86,7 @@ impl State {
         let saves_list = SavesListState::new();
         {
             let config = config.read().clone();
-            saves_list.rescan(&config.roms_path, &config.saves_path);
+            saves_list.rescan(&config.roms_path(), &config.saves_path());
         }
 
         Self {

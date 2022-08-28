@@ -537,7 +537,7 @@ impl MainView {
                 &mut main_view.show_save_select,
                 selection,
                 &config.language,
-                &config.saves_path,
+                &config.saves_path(),
                 state.saves_list.clone(),
             );
 
@@ -876,7 +876,7 @@ impl MainView {
                                     main_view.link_code.clone(),
                                     config.max_queue_length as usize,
                                     config.nickname.clone().unwrap_or_else(|| "".to_string()),
-                                    config.replays_path.clone(),
+                                    config.replays_path(),
                                     main_view.connection_task.clone(),
                                     cancellation_token,
                                 ));
@@ -1098,7 +1098,7 @@ impl MainView {
                                             "{}",
                                             selection
                                                 .save_path
-                                                .strip_prefix(&config.saves_path)
+                                                .strip_prefix(&config.saves_path())
                                                 .unwrap_or(selection.save_path.as_path())
                                                 .display()
                                         ));
@@ -1135,8 +1135,8 @@ impl MainView {
                     main_view.show_save_select = if main_view.show_save_select.is_none() {
                         rayon::spawn({
                             let saves_list = state.saves_list.clone();
-                            let roms_path = config.roms_path.clone();
-                            let saves_path = config.saves_path.clone();
+                            let roms_path = config.roms_path();
+                            let saves_path = config.saves_path();
                             move || {
                                 saves_list.rescan(&roms_path, &saves_path);
                             }

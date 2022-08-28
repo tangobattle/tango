@@ -51,10 +51,7 @@ pub struct Config {
     pub patch_repo: String,
     pub input_delay: u32,
     pub default_match_type: u8,
-    pub saves_path: std::path::PathBuf,
-    pub roms_path: std::path::PathBuf,
-    pub replays_path: std::path::PathBuf,
-    pub patches_path: std::path::PathBuf,
+    pub data_path: std::path::PathBuf,
 }
 
 pub fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
@@ -97,10 +94,7 @@ impl Config {
             patch_repo: "".to_string(),
             input_delay: 2,
             default_match_type: 1,
-            saves_path: tango_data_dir.join("saves"),
-            roms_path: tango_data_dir.join("roms"),
-            replays_path: tango_data_dir.join("replays"),
-            patches_path: tango_data_dir.join("patches"),
+            data_path: tango_data_dir,
         })
     }
 
@@ -138,11 +132,27 @@ impl Config {
         Ok(())
     }
 
+    pub fn saves_path(&self) -> std::path::PathBuf {
+        self.data_path.join("saves")
+    }
+
+    pub fn roms_path(&self) -> std::path::PathBuf {
+        self.data_path.join("roms")
+    }
+
+    pub fn replays_path(&self) -> std::path::PathBuf {
+        self.data_path.join("replays")
+    }
+
+    pub fn patches_path(&self) -> std::path::PathBuf {
+        self.data_path.join("patches")
+    }
+
     pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
-        std::fs::create_dir_all(&self.saves_path)?;
-        std::fs::create_dir_all(&self.roms_path)?;
-        std::fs::create_dir_all(&self.replays_path)?;
-        std::fs::create_dir_all(&self.patches_path)?;
+        std::fs::create_dir_all(&self.saves_path())?;
+        std::fs::create_dir_all(&self.roms_path())?;
+        std::fs::create_dir_all(&self.replays_path())?;
+        std::fs::create_dir_all(&self.patches_path())?;
         Ok(())
     }
 }
