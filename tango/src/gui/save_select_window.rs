@@ -48,32 +48,23 @@ impl SaveSelectWindow {
             let games = games::sorted_games(language);
             if let Some((game, _)) = show.as_mut().unwrap().selection {
                 let (family, variant) = game.family_and_variant();
-                ui.heading(
-                    i18n::LOCALES
-                        .lookup(language, &format!("games.{}-{}", family, variant))
-                        .unwrap(),
-                );
+                ui.horizontal(|ui| {
+                    if ui.selectable_label(false, "⬅️").clicked() {
+                        show.as_mut().unwrap().selection = None;
+                    }
+
+                    ui.heading(
+                        i18n::LOCALES
+                            .lookup(language, &format!("games.{}-{}", family, variant))
+                            .unwrap(),
+                    );
+                });
             }
 
             ui.group(|ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                         if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
-                            if ui
-                                .selectable_label(
-                                    false,
-                                    format!(
-                                        "⬅️ {}",
-                                        i18n::LOCALES
-                                            .lookup(language, "select-save.return-to-games-list")
-                                            .unwrap()
-                                    ),
-                                )
-                                .clicked()
-                            {
-                                show.as_mut().unwrap().selection = None;
-                            }
-
                             if let Some(saves) = saves_list.saves.get(&game) {
                                 for save in saves {
                                     if ui
