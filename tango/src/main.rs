@@ -156,6 +156,8 @@ fn child_main() -> Result<(), anyhow::Error> {
     let audio_supported_config = audio::get_supported_config(&audio_device)?;
     log::info!("selected audio config: {:?}", audio_supported_config);
 
+    log::info!("patches: {:#?}", patch::scan(&config.patches_path())?);
+
     let audio_binder = audio::LateBinder::new(audio_supported_config.clone());
     let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
     stream.play()?;

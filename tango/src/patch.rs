@@ -2,25 +2,32 @@ use crate::games;
 
 #[derive(serde::Deserialize)]
 struct Metadata {
+    pub patch: PatchMetadata,
+    pub versions: std::collections::HashMap<String, VersionMetadata>,
+}
+
+#[derive(serde::Deserialize)]
+struct PatchMetadata {
     pub title: String,
     pub authors: Vec<String>,
     pub license: Option<String>,
     pub source: Option<String>,
-    pub versions: std::collections::HashMap<String, VersionMetadata>,
 }
 
 #[derive(serde::Deserialize)]
 struct VersionMetadata {
     pub saveedit_overrides: Option<toml::value::Table>,
-    pub netplay_compatiblity: String,
+    pub netplay_compatibility: String,
 }
 
+#[derive(Debug)]
 pub struct Version {
     pub saveedit_overrides: Option<toml::value::Table>,
-    pub netplay_compatiblity: String,
+    pub netplay_compatibility: String,
     pub supported_games: std::collections::HashSet<&'static (dyn games::Game + Send + Sync)>,
 }
 
+#[derive(Debug)]
 pub struct Patch {
     pub title: String,
     pub authors: Vec<mailparse::SingleInfo>,
@@ -46,6 +53,15 @@ pub fn scan(
                 continue;
             }
         };
+
+        if entry
+            .file_type()
+            .ok()
+            .map(|ft| !ft.is_dir())
+            .unwrap_or(false)
+        {
+            continue;
+        }
 
         let raw_info = match std::fs::read(entry.path().join("info.toml")) {
             Ok(buf) => buf,
@@ -73,13 +89,14 @@ pub fn scan(
                 }
             };
 
-            let read_version_dir = match std::fs::read_dir(path.join(sv.to_string())) {
-                Ok(read_version_dir) => read_version_dir,
-                Err(e) => {
-                    log::warn!("{}: {}", entry.path().display(), e);
-                    continue;
-                }
-            };
+            let read_version_dir =
+                match std::fs::read_dir(entry.path().join(format!("v{}", sv.to_string()))) {
+                    Ok(read_version_dir) => read_version_dir,
+                    Err(e) => {
+                        log::warn!("{}: {}", entry.path().display(), e);
+                        continue;
+                    }
+                };
 
             let mut supported_games = std::collections::HashSet::new();
 
@@ -124,7 +141,7 @@ pub fn scan(
                 sv,
                 Version {
                     saveedit_overrides: version.saveedit_overrides,
-                    netplay_compatiblity: version.netplay_compatiblity,
+                    netplay_compatibility: version.netplay_compatibility,
                     supported_games,
                 },
             );
@@ -133,8 +150,9 @@ pub fn scan(
         patches.insert(
             entry.file_name(),
             Patch {
-                title: info.title,
+                title: info.patch.title,
                 authors: info
+                    .patch
                     .authors
                     .into_iter()
                     .flat_map(|author| match mailparse::addrparse(&author) {
@@ -142,15 +160,21 @@ pub fn scan(
                             .into_inner()
                             .into_iter()
                             .flat_map(|addr| match addr {
-                                mailparse::MailAddr::Group(_) => vec![],
+                                mailparse::MailAddr::Group(group) => group.addrs,
                                 mailparse::MailAddr::Single(single) => vec![single],
                             })
                             .collect(),
-                        Err(_) => vec![],
+                        Err(_) => vec![mailparse::SingleInfo {
+                            display_name: Some(author),
+                            addr: "".to_string(),
+                        }],
                     })
                     .collect(),
-                license: info.license.and_then(|license| spdx::license_id(&license)),
-                source: info.source,
+                license: info
+                    .patch
+                    .license
+                    .and_then(|license| spdx::license_id(&license)),
+                source: info.patch.source,
                 versions,
             },
         );

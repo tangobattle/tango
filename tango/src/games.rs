@@ -25,6 +25,12 @@ impl std::hash::Hash for &'static (dyn Game + Send + Sync) {
     }
 }
 
+impl std::fmt::Debug for &'static (dyn Game + Send + Sync) {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (*self).type_id().fmt(f)
+    }
+}
+
 pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn1::EXE1,
     bn1::BN1,
