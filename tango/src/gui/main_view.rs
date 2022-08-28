@@ -65,12 +65,22 @@ struct Lobby {
     local_negotiated_state: Option<(net::protocol::NegotiatedState, Vec<u8>)>,
 }
 
-fn are_settings_compatible(
-    local_settings: &net::protocol::Settings,
-    remote_settings: &net::protocol::Settings,
-) -> bool {
-    // TODO: Check setting compatibility.
-    false
+#[derive(PartialEq)]
+struct SimplifiedSettings {
+    netplay_compatiblity: Option<String>,
+    match_type: (u8, u8),
+}
+
+impl SimplifiedSettings {
+    fn new(settings: &net::protocol::Settings) -> Self {
+        Self {
+            netplay_compatiblity: settings
+                .game_info
+                .as_ref()
+                .map(|g| g.family_and_variant.0.clone()),
+            match_type: settings.match_type,
+        }
+    }
 }
 
 fn make_commitment(buf: &[u8]) -> [u8; 16] {
@@ -159,6 +169,9 @@ impl Lobby {
         })
         .await?;
         self.reveal_setup = reveal_setup;
+        if !self.reveal_setup {
+            self.remote_commitment = None;
+        }
         Ok(())
     }
 
@@ -176,8 +189,12 @@ impl Lobby {
     }
 
     fn set_remote_settings(&mut self, settings: net::protocol::Settings) {
+        let old_reveal_setup = self.remote_settings.reveal_setup;
         self.remote_settings = settings;
-        if !are_settings_compatible(&self.make_local_settings(), &self.remote_settings) {
+        if SimplifiedSettings::new(&self.make_local_settings())
+            != SimplifiedSettings::new(&self.remote_settings)
+            || (old_reveal_setup && !self.remote_settings.reveal_setup)
+        {
             self.local_negotiated_state = None;
         }
     }
@@ -541,6 +558,11 @@ impl MainView {
                     let mut lobby = lobby.lock().await;
                     let settings = lobby.make_local_settings();
                     let _ = lobby.send_settings(settings).await;
+                    if SimplifiedSettings::new(&lobby.make_local_settings())
+                        != SimplifiedSettings::new(&lobby.remote_settings)
+                    {
+                        lobby.remote_commitment = None;
+                    }
                 });
             }
         }
@@ -961,11 +983,14 @@ impl MainView {
                             let mut lobby = lobby.blocking_lock();
                             let mut ready = lobby.local_negotiated_state.is_some();
                             let was_ready = ready;
-                            ui.checkbox(
-                                &mut ready,
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "main.ready")
-                                    .unwrap(),
+                            ui.add_enabled(
+                                has_selection,
+                                egui::Checkbox::new(
+                                    &mut ready,
+                                    i18n::LOCALES
+                                        .lookup(&state.config.language, "main.ready")
+                                        .unwrap(),
+                                ),
                             );
                             if error_window_open {
                                 ready = was_ready;
