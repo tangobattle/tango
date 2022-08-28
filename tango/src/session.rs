@@ -90,44 +90,42 @@ impl Session {
         let thread = mgba::thread::Thread::new(core);
 
         let match_ = match_.clone();
-        handle.block_on(async {
-            *match_.lock().await = Some({
-                let inner_match = battle::Match::new(
-                    local_rom.to_vec(),
-                    local_game,
-                    shadow_game,
-                    sender,
-                    rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
-                    is_offerer,
-                    thread.handle(),
-                    shadow_rom,
-                    shadow_save,
-                    replays_path,
-                    match_type,
-                    input_delay,
-                    rng_seed,
-                    max_queue_length,
-                )
-                .expect("new match");
+        *match_.try_lock().unwrap() = Some({
+            let inner_match = battle::Match::new(
+                local_rom.to_vec(),
+                local_game,
+                shadow_game,
+                sender,
+                rand_pcg::Mcg128Xsl64::from_seed(rng_seed),
+                is_offerer,
+                thread.handle(),
+                shadow_rom,
+                shadow_save,
+                replays_path,
+                match_type,
+                input_delay,
+                rng_seed,
+                max_queue_length,
+            )
+            .expect("new match");
 
-                {
-                    let match_ = match_.clone();
-                    let inner_match = inner_match.clone();
-                    handle.spawn(async move {
-                        tokio::select! {
-                            r = inner_match.run(receiver) => {
-                                log::info!("match thread ending: {:?}", r);
-                            }
-                            _ = inner_match.cancelled() => {
-                            }
+            {
+                let match_ = match_.clone();
+                let inner_match = inner_match.clone();
+                handle.spawn(async move {
+                    tokio::select! {
+                        r = inner_match.run(receiver) => {
+                            log::info!("match thread ending: {:?}", r);
                         }
-                        log::info!("match thread ended");
-                        *match_.lock().await = None;
-                    });
-                }
+                        _ = inner_match.cancelled() => {
+                        }
+                    }
+                    log::info!("match thread ended");
+                    *match_.lock().await = None;
+                });
+            }
 
-                inner_match
-            });
+            inner_match
         });
 
         thread.start()?;
