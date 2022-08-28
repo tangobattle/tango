@@ -73,6 +73,10 @@ rayon = "1.5"
 constant_time_eq = "0.2"
 rfd = "0.10"
 toml = "0.5"
+semver = "1.0"
+spdx = "0.9"
+mailparse = "0.13"
+regex = "1.6"
 
 [build-dependencies]
 winres = "0.1"
