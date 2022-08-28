@@ -329,6 +329,8 @@ async fn run_connection_task(
                         }
                     }
 
+                    log::info!("ending lobby");
+
                     let mut lobby = lobby.lock().await;
                     let mut sender = if let Some(sender) = lobby.sender.take() {
                         sender
@@ -342,8 +344,6 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    log::info!("local state = {:02x?}", raw_local_state);
-
                     const CHUNK_SIZE: usize = 32 * 1024;
                     const CHUNKS_REQUIRED: usize = 5;
                     for (_, chunk) in std::iter::zip(
@@ -352,7 +352,7 @@ async fn run_connection_task(
                      ) {
                         sender.send_chunk(chunk.to_vec()).await?;
 
-                        if remote_chunks.len() < CHUNK_SIZE {
+                        if remote_chunks.len() < CHUNKS_REQUIRED {
                             loop {
                                 match receiver.receive().await? {
                                     net::protocol::Packet::Ping(ping) => {
@@ -376,7 +376,6 @@ async fn run_connection_task(
                     }
 
                     let raw_remote_negotiated_state = remote_chunks.into_iter().flatten().collect::<Vec<_>>();
-                    log::info!("remote state = {:02x?}", raw_remote_negotiated_state);
 
                     let received_remote_commitment = if let Some(commitment) = lobby.remote_commitment {
                         commitment
@@ -392,6 +391,9 @@ async fn run_connection_task(
                     }
 
                     let remote_negotiated_state = zstd::stream::decode_all(&raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+
+                    let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
+                    log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
                     let (local_game, local_rom) = if let Some(selection) = lobby.selection.lock().as_ref() {
                         (selection.game, selection.rom.clone())
@@ -425,6 +427,7 @@ async fn run_connection_task(
 
                     *connection_task.lock().await = None;
 
+                    log::info!("starting session");
                     main_view.lock().session = Some(session::Session::new_pvp(
                         handle,
                         audio_binder,
@@ -441,7 +444,7 @@ async fn run_connection_task(
                         replays_path,
                         lobby.match_type,
                         lobby.input_delay as u32,
-                        std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap(),
+                        rng_seed,
                         max_queue_length,
                     )?);
 
@@ -951,8 +954,16 @@ impl MainView {
                             }
                             handle.block_on(async {
                                 if !was_ready && ready {
-                                    // TODO
-                                    let _ = lobby.commit(&[]).await;
+                                    let save_path = lobby
+                                        .selection
+                                        .lock()
+                                        .as_ref()
+                                        .map(|selection| selection.save_path.clone());
+                                    if let Some(save_path) = save_path {
+                                        if let Ok(save_data) = std::fs::read(&save_path) {
+                                            let _ = lobby.commit(&save_data).await;
+                                        }
+                                    }
                                 } else if !ready {
                                     let _ = lobby.uncommit().await;
                                 }

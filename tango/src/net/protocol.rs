@@ -12,6 +12,10 @@ lazy_static! {
     > = bincode::DefaultOptions::new()
         .with_varint_encoding()
         .with_limit(64 * 1024);
+    static ref STATE_BINCODE_OPTIONS: bincode::config::WithOtherIntEncoding<
+        bincode::config::DefaultOptions,
+        bincode::config::VarintEncoding,
+    > = bincode::DefaultOptions::new().with_varint_encoding();
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -112,10 +116,10 @@ pub struct NegotiatedState {
 
 impl NegotiatedState {
     pub fn serialize(&self) -> bincode::Result<Vec<u8>> {
-        BINCODE_OPTIONS.serialize(self)
+        STATE_BINCODE_OPTIONS.serialize(self)
     }
 
     pub fn deserialize(d: &[u8]) -> bincode::Result<Self> {
-        BINCODE_OPTIONS.deserialize(d)
+        STATE_BINCODE_OPTIONS.deserialize(d)
     }
 }
