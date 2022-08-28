@@ -653,182 +653,202 @@ impl MainView {
                                     lobby.attention_requested = true;
                                 }
 
-                                egui_extras::TableBuilder::new(ui)
-                                    .column(egui_extras::Size::remainder())
-                                    .column(egui_extras::Size::exact(100.0))
-                                    .column(egui_extras::Size::exact(100.0))
-                                    .header(20.0, |mut header| {
-                                        header.col(|ui| {});
-                                        header.col(|ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.strong(
-                                                    i18n::LOCALES
-                                                        .lookup(&state.config.language, "main.you")
-                                                        .unwrap(),
-                                                );
-                                                if lobby.local_negotiated_state.is_some() {
-                                                    ui.strong("✅");
-                                                }
-                                            });
-                                        });
-                                        header.col(|ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.strong(lobby.remote_settings.nickname.clone());
-                                                if lobby.remote_commitment.is_some() {
-                                                    ui.strong("✅");
-                                                }
-                                            });
-                                        });
-                                    })
-                                    .body(|mut body| {
-                                        body.row(20.0, |mut row| {
-                                            row.col(|ui| {
-                                                ui.strong(
-                                                    i18n::LOCALES
-                                                        .lookup(
-                                                            &state.config.language,
-                                                            "main-details.game",
-                                                        )
-                                                        .unwrap(),
-                                                );
-                                            });
-                                            row.col(|ui| {
-                                                ui.label(
-                                                    if let Some(selection) =
-                                                        &*main_view.selection.lock()
-                                                    {
-                                                        let (family, _) =
-                                                            selection.game.family_and_variant();
+                                ui.add_enabled_ui(lobby.local_negotiated_state.is_none(), |ui| {
+                                    egui_extras::TableBuilder::new(ui)
+                                        .column(egui_extras::Size::remainder())
+                                        .column(egui_extras::Size::exact(100.0))
+                                        .column(egui_extras::Size::exact(100.0))
+                                        .header(20.0, |mut header| {
+                                            header.col(|ui| {});
+                                            header.col(|ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.strong(
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &state.config.language,
-                                                                &format!("games.{}", family),
+                                                                "main.you",
                                                             )
-                                                            .unwrap()
-                                                    } else {
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &state.config.language,
-                                                                "main.no-game",
-                                                            )
-                                                            .unwrap()
-                                                    },
-                                                );
-                                            });
-                                            row.col(|ui| {
-                                                ui.label(
-                                                    if let Some(game) = lobby
-                                                        .remote_settings
-                                                        .game_info
-                                                        .as_ref()
-                                                        .and_then(|game_info| {
-                                                            let (family, variant) =
-                                                                &game_info.family_and_variant;
-                                                            games::find_by_family_and_variant(
-                                                                &family, *variant,
-                                                            )
-                                                        })
-                                                    {
-                                                        let (family, _) = game.family_and_variant();
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &state.config.language,
-                                                                &format!("games.{}", family),
-                                                            )
-                                                            .unwrap()
-                                                    } else {
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &state.config.language,
-                                                                "main.no-game",
-                                                            )
-                                                            .unwrap()
-                                                    },
-                                                );
-                                            });
-                                        });
-
-                                        body.row(20.0, |mut row| {
-                                            row.col(|ui| {
-                                                ui.strong(
-                                                    i18n::LOCALES
-                                                        .lookup(
-                                                            &state.config.language,
-                                                            "main-details.match-type",
-                                                        )
-                                                        .unwrap(),
-                                                );
-                                            });
-                                            row.col(|ui| {
-                                                egui::ComboBox::new(
-                                                    "start-match-type-combobox",
-                                                    "",
-                                                )
-                                                .width(94.0)
-                                                .selected_text(format!("{:?}", lobby.match_type))
-                                                .show_ui(ui, |ui| {
-                                                    let game = lobby
-                                                        .selection
-                                                        .lock()
-                                                        .as_ref()
-                                                        .map(|selection| selection.game);
-                                                    if let Some(game) = game {
-                                                        let mut match_type = lobby.match_type;
-                                                        for (typ, subtype_count) in
-                                                            game.match_types().iter().enumerate()
-                                                        {
-                                                            for subtype in 0..*subtype_count {
-                                                                ui.selectable_value(
-                                                                    &mut match_type,
-                                                                    (typ as u8, subtype as u8),
-                                                                    format!("{:?}", (typ, subtype)),
-                                                                );
-                                                            }
-                                                        }
-                                                        if match_type != lobby.match_type {
-                                                            handle.block_on(async {
-                                                                let _ = lobby
-                                                                    .set_match_type(match_type)
-                                                                    .await;
-                                                            });
-                                                        }
+                                                            .unwrap(),
+                                                    );
+                                                    if lobby.local_negotiated_state.is_some() {
+                                                        ui.strong("✅");
                                                     }
                                                 });
                                             });
-                                            row.col(|ui| {
-                                                ui.label(format!(
-                                                    "{:?}",
-                                                    lobby.remote_settings.match_type
-                                                ));
-                                            });
-                                        });
-
-                                        body.row(20.0, |mut row| {
-                                            row.col(|ui| {
-                                                ui.strong(
-                                                    i18n::LOCALES
-                                                        .lookup(
-                                                            &state.config.language,
-                                                            "main-details.reveal-setup",
-                                                        )
-                                                        .unwrap(),
-                                                );
-                                            });
-                                            row.col(|ui| {
-                                                let mut checked = lobby.reveal_setup;
-                                                ui.checkbox(&mut checked, "");
-                                                handle.block_on(async {
-                                                    let _ = lobby.set_reveal_setup(checked).await;
+                                            header.col(|ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.strong(
+                                                        lobby.remote_settings.nickname.clone(),
+                                                    );
+                                                    if lobby.remote_commitment.is_some() {
+                                                        ui.strong("✅");
+                                                    }
                                                 });
                                             });
-                                            row.col(|ui| {
-                                                ui.checkbox(
-                                                    &mut lobby.remote_settings.reveal_setup.clone(),
-                                                    "",
-                                                );
+                                        })
+                                        .body(|mut body| {
+                                            body.row(20.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.strong(
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "main-details.game",
+                                                            )
+                                                            .unwrap(),
+                                                    );
+                                                });
+                                                row.col(|ui| {
+                                                    ui.label(
+                                                        if let Some(selection) =
+                                                            &*main_view.selection.lock()
+                                                        {
+                                                            let (family, _) =
+                                                                selection.game.family_and_variant();
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &state.config.language,
+                                                                    &format!("games.{}", family),
+                                                                )
+                                                                .unwrap()
+                                                        } else {
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &state.config.language,
+                                                                    "main.no-game",
+                                                                )
+                                                                .unwrap()
+                                                        },
+                                                    );
+                                                });
+                                                row.col(|ui| {
+                                                    ui.label(
+                                                        if let Some(game) = lobby
+                                                            .remote_settings
+                                                            .game_info
+                                                            .as_ref()
+                                                            .and_then(|game_info| {
+                                                                let (family, variant) =
+                                                                    &game_info.family_and_variant;
+                                                                games::find_by_family_and_variant(
+                                                                    &family, *variant,
+                                                                )
+                                                            })
+                                                        {
+                                                            let (family, _) =
+                                                                game.family_and_variant();
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &state.config.language,
+                                                                    &format!("games.{}", family),
+                                                                )
+                                                                .unwrap()
+                                                        } else {
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &state.config.language,
+                                                                    "main.no-game",
+                                                                )
+                                                                .unwrap()
+                                                        },
+                                                    );
+                                                });
+                                            });
+
+                                            body.row(20.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.strong(
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "main-details.match-type",
+                                                            )
+                                                            .unwrap(),
+                                                    );
+                                                });
+                                                row.col(|ui| {
+                                                    egui::ComboBox::new(
+                                                        "start-match-type-combobox",
+                                                        "",
+                                                    )
+                                                    .width(94.0)
+                                                    .selected_text(format!(
+                                                        "{:?}",
+                                                        lobby.match_type
+                                                    ))
+                                                    .show_ui(ui, |ui| {
+                                                        let game = lobby
+                                                            .selection
+                                                            .lock()
+                                                            .as_ref()
+                                                            .map(|selection| selection.game);
+                                                        if let Some(game) = game {
+                                                            let mut match_type = lobby.match_type;
+                                                            for (typ, subtype_count) in game
+                                                                .match_types()
+                                                                .iter()
+                                                                .enumerate()
+                                                            {
+                                                                for subtype in 0..*subtype_count {
+                                                                    ui.selectable_value(
+                                                                        &mut match_type,
+                                                                        (typ as u8, subtype as u8),
+                                                                        format!(
+                                                                            "{:?}",
+                                                                            (typ, subtype)
+                                                                        ),
+                                                                    );
+                                                                }
+                                                            }
+                                                            if match_type != lobby.match_type {
+                                                                handle.block_on(async {
+                                                                    let _ = lobby
+                                                                        .set_match_type(match_type)
+                                                                        .await;
+                                                                });
+                                                            }
+                                                        }
+                                                    });
+                                                });
+                                                row.col(|ui| {
+                                                    ui.label(format!(
+                                                        "{:?}",
+                                                        lobby.remote_settings.match_type
+                                                    ));
+                                                });
+                                            });
+
+                                            body.row(20.0, |mut row| {
+                                                row.col(|ui| {
+                                                    ui.strong(
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                &state.config.language,
+                                                                "main-details.reveal-setup",
+                                                            )
+                                                            .unwrap(),
+                                                    );
+                                                });
+                                                row.col(|ui| {
+                                                    let mut checked = lobby.reveal_setup;
+                                                    ui.checkbox(&mut checked, "");
+                                                    handle.block_on(async {
+                                                        let _ =
+                                                            lobby.set_reveal_setup(checked).await;
+                                                    });
+                                                });
+                                                row.col(|ui| {
+                                                    ui.checkbox(
+                                                        &mut lobby
+                                                            .remote_settings
+                                                            .reveal_setup
+                                                            .clone(),
+                                                        "",
+                                                    );
+                                                });
                                             });
                                         });
-                                    });
+                                });
                             }
                         }
                     }
