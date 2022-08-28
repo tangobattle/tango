@@ -29,3 +29,5 @@ settings-input-delay = Input delay
 settings-max-queue-length = Max queue length
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint
+settings-data-path = Data path
+    .change = Change

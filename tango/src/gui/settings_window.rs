@@ -40,6 +40,7 @@ impl SettingsWindow {
         ctx: &egui::Context,
         show_settings: &mut Option<State>,
         config: &mut config::Config,
+        saves_list: gui::SavesListState,
         steal_input: &mut Option<gui::steal_input_window::State>,
     ) {
         let mut show_settings_bool = show_settings.is_some();
@@ -103,7 +104,9 @@ impl SettingsWindow {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                             match show_settings.as_ref().unwrap() {
-                                State::General => self.show_general_tab(ui, config),
+                                State::General => {
+                                    self.show_general_tab(ui, config, saves_list.clone())
+                                }
                                 State::Input => self.show_input_tab(
                                     ui,
                                     &config.language,
@@ -124,7 +127,12 @@ impl SettingsWindow {
         }
     }
 
-    fn show_general_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+    fn show_general_tab(
+        &mut self,
+        ui: &mut egui::Ui,
+        config: &mut config::Config,
+        saves_list: gui::SavesListState,
+    ) {
         egui::Grid::new("settings-window-general-grid")
             .num_columns(2)
             .show(ui, |ui| {
@@ -237,6 +245,48 @@ impl SettingsWindow {
                                 zh_hant_label.clone(),
                             );
                         });
+                    ui.end_row();
+                }
+
+                {
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(&config.language, "settings-data-path")
+                            .unwrap(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .button(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "settings-data-path.change")
+                                    .unwrap(),
+                            )
+                            .clicked()
+                        {
+                            if let Some(data_path) = rfd::FileDialog::new()
+                                .set_directory(&config.data_path)
+                                .pick_folder()
+                            {
+                                config.data_path = data_path;
+                                rayon::spawn({
+                                    let saves_list = saves_list.clone();
+                                    let roms_path = config.roms_path();
+                                    let saves_path = config.saves_path();
+                                    move || {
+                                        saves_list.rescan(&roms_path, &saves_path);
+                                    }
+                                });
+                            }
+                        }
+
+                        ui.add(
+                            egui::TextEdit::singleline(&mut format!(
+                                "{}",
+                                config.data_path.display()
+                            ))
+                            .interactive(false),
+                        );
+                    });
                     ui.end_row();
                 }
 

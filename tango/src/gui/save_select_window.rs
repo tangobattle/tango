@@ -111,12 +111,11 @@ impl SaveSelectWindow {
                                     .lookup(language, &format!("games.{}-{}", family, variant))
                                     .unwrap();
 
-                                if available {
-                                    if ui.selectable_label(false, text).clicked() {
-                                        show.as_mut().unwrap().selection = Some((*game, None));
-                                    }
-                                } else {
-                                    ui.weak(text);
+                                if ui
+                                    .add_enabled(available, egui::SelectableLabel::new(false, text))
+                                    .clicked()
+                                {
+                                    show.as_mut().unwrap().selection = Some((*game, None));
                                 }
                             }
                         }
