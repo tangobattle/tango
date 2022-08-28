@@ -1,4 +1,4 @@
-use crate::{gui, session};
+use crate::{config, gui, session};
 
 pub struct DebugWindow {}
 
@@ -10,6 +10,7 @@ impl DebugWindow {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
+        config: &mut config::Config,
         handle: tokio::runtime::Handle,
         state: &mut gui::State,
     ) {
@@ -17,7 +18,7 @@ impl DebugWindow {
             .id(egui::Id::new("debug-window"))
             .resizable(false)
             .title_bar(false)
-            .open(&mut state.config.show_debug_overlay)
+            .open(&mut config.show_debug_overlay)
             .show(ctx, |ui| {
                 egui::Grid::new("debug-window-grid")
                     .num_columns(2)

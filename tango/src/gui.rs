@@ -12,7 +12,7 @@ mod settings_window;
 mod steal_input_window;
 
 pub struct State {
-    pub config: config::Config,
+    pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub steal_input: Option<steal_input_window::State>,
     saves_list: SavesListState,
     audio_binder: audio::LateBinder,
@@ -75,7 +75,7 @@ impl SavesListState {
 
 impl State {
     pub fn new(
-        config: config::Config,
+        config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -84,7 +84,10 @@ impl State {
         drpc.start();
 
         let saves_list = SavesListState::new();
-        saves_list.rescan(&config.roms_path, &config.saves_path);
+        {
+            let config = config.read().clone();
+            saves_list.rescan(&config.roms_path, &config.saves_path);
+        }
 
         Self {
             config,
@@ -201,6 +204,7 @@ impl Gui {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
+        config: &mut config::Config,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
         input_state: &input::State,
@@ -215,8 +219,8 @@ impl Gui {
             }
         }
 
-        if self.current_language.as_ref() != Some(&state.config.language) {
-            let mut language = state.config.language.clone();
+        if self.current_language.as_ref() != Some(&config.language) {
+            let mut language = config.language.clone();
             language.maximize();
 
             let primary_font = match language.script {
@@ -267,14 +271,14 @@ impl Gui {
                     ),
                 ]),
             });
-            self.current_language = Some(state.config.language.clone());
+            self.current_language = Some(config.language.clone());
             log::info!(
                 "language was changed to {}",
                 self.current_language.as_ref().unwrap()
             );
         }
 
-        ctx.set_visuals(match state.config.theme {
+        ctx.set_visuals(match config.theme {
             config::Theme::System => match dark_light::detect() {
                 dark_light::Mode::Light => self.themes.light.clone(),
                 dark_light::Mode::Dark => self.themes.dark.clone(),
@@ -283,23 +287,23 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
-        self.debug_window.show(ctx, handle.clone(), state);
+        self.debug_window.show(ctx, config, handle.clone(), state);
         self.settings_window.show(
             ctx,
             &mut state.show_settings,
-            &mut state.config,
+            config,
             &mut state.steal_input,
         );
         self.steal_input_window
-            .show(ctx, &state.config.language, &mut state.steal_input);
+            .show(ctx, &config.language, &mut state.steal_input);
         self.escape_window.show(
             ctx,
             state.main_view.clone(),
             &mut state.show_escape_window,
-            &state.config.language,
+            &config.language,
             &mut state.show_settings,
         );
         self.main_view
-            .show(ctx, handle.clone(), window, input_state, state);
+            .show(ctx, config, handle.clone(), window, input_state, state);
     }
 }

@@ -54,7 +54,6 @@ struct Lobby {
     attention_requested: bool,
     sender: Option<net::Sender>,
     is_offerer: bool,
-    input_delay: usize,
     selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     nickname: String,
     match_type: (u8, u8),
@@ -221,6 +220,7 @@ impl Lobby {
 }
 
 async fn run_connection_task(
+    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     handle: tokio::runtime::Handle,
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -276,7 +276,6 @@ async fn run_connection_task(
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         attention_requested: false,
                         sender: Some(sender),
-                        input_delay: 2, // TODO
                         selection,
                         nickname,
                         match_type: (0, 0), // TODO
@@ -465,7 +464,7 @@ async fn run_connection_task(
                         lobby.is_offerer,
                         replays_path,
                         lobby.match_type,
-                        lobby.input_delay as u32,
+                        config.read().input_delay,
                         rng_seed,
                         max_queue_length,
                     )?);
@@ -505,6 +504,7 @@ impl MainView {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
+        config: &mut config::Config,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
         input_state: &input::State,
@@ -515,10 +515,10 @@ impl MainView {
             self.session_view.show(
                 ctx,
                 input_state,
-                &state.config.input_mapping,
+                &config.input_mapping,
                 session,
-                &state.config.video_filter,
-                state.config.max_scale,
+                &config.video_filter,
+                config.max_scale,
                 &mut state.show_escape_window,
             );
             return;
@@ -536,8 +536,8 @@ impl MainView {
                 ctx,
                 &mut main_view.show_save_select,
                 selection,
-                &state.config.language,
-                &state.config.saves_path,
+                &config.language,
+                &config.saves_path,
                 state.saves_list.clone(),
             );
 
@@ -580,9 +580,7 @@ impl MainView {
                         if ui
                             .selectable_label(state.show_settings.is_some(), "⚙️")
                             .on_hover_text_at_pointer(
-                                i18n::LOCALES
-                                    .lookup(&state.config.language, "settings")
-                                    .unwrap(),
+                                i18n::LOCALES.lookup(&config.language, "settings").unwrap(),
                             )
                             .clicked()
                         {
@@ -611,7 +609,7 @@ impl MainView {
                                     ui.label(
                                         i18n::LOCALES
                                             .lookup(
-                                                &state.config.language,
+                                                &config.language,
                                                 "main-connection-task.starting",
                                             )
                                             .unwrap(),
@@ -624,7 +622,7 @@ impl MainView {
                                     ui.label(
                                         i18n::LOCALES
                                             .lookup(
-                                                &state.config.language,
+                                                &config.language,
                                                 "main-connection-task.signaling",
                                             )
                                             .unwrap(),
@@ -637,7 +635,7 @@ impl MainView {
                                     ui.label(
                                         i18n::LOCALES
                                             .lookup(
-                                                &state.config.language,
+                                                &config.language,
                                                 "main-connection-task.waiting",
                                             )
                                             .unwrap(),
@@ -659,15 +657,12 @@ impl MainView {
                                         .column(egui_extras::Size::exact(100.0))
                                         .column(egui_extras::Size::exact(100.0))
                                         .header(20.0, |mut header| {
-                                            header.col(|ui| {});
+                                            header.col(|_ui| {});
                                             header.col(|ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.strong(
                                                         i18n::LOCALES
-                                                            .lookup(
-                                                                &state.config.language,
-                                                                "main.you",
-                                                            )
+                                                            .lookup(&config.language, "main.you")
                                                             .unwrap(),
                                                     );
                                                     if lobby.local_negotiated_state.is_some() {
@@ -692,7 +687,7 @@ impl MainView {
                                                     ui.strong(
                                                         i18n::LOCALES
                                                             .lookup(
-                                                                &state.config.language,
+                                                                &config.language,
                                                                 "main-details.game",
                                                             )
                                                             .unwrap(),
@@ -707,14 +702,14 @@ impl MainView {
                                                                 selection.game.family_and_variant();
                                                             i18n::LOCALES
                                                                 .lookup(
-                                                                    &state.config.language,
+                                                                    &config.language,
                                                                     &format!("games.{}", family),
                                                                 )
                                                                 .unwrap()
                                                         } else {
                                                             i18n::LOCALES
                                                                 .lookup(
-                                                                    &state.config.language,
+                                                                    &config.language,
                                                                     "main.no-game",
                                                                 )
                                                                 .unwrap()
@@ -739,14 +734,14 @@ impl MainView {
                                                                 game.family_and_variant();
                                                             i18n::LOCALES
                                                                 .lookup(
-                                                                    &state.config.language,
+                                                                    &config.language,
                                                                     &format!("games.{}", family),
                                                                 )
                                                                 .unwrap()
                                                         } else {
                                                             i18n::LOCALES
                                                                 .lookup(
-                                                                    &state.config.language,
+                                                                    &config.language,
                                                                     "main.no-game",
                                                                 )
                                                                 .unwrap()
@@ -760,7 +755,7 @@ impl MainView {
                                                     ui.strong(
                                                         i18n::LOCALES
                                                             .lookup(
-                                                                &state.config.language,
+                                                                &config.language,
                                                                 "main-details.match-type",
                                                             )
                                                             .unwrap(),
@@ -823,7 +818,7 @@ impl MainView {
                                                     ui.strong(
                                                         i18n::LOCALES
                                                             .lookup(
-                                                                &state.config.language,
+                                                                &config.language,
                                                                 "main-details.reveal-setup",
                                                             )
                                                             .unwrap(),
@@ -866,25 +861,22 @@ impl MainView {
                                     });
 
                                 handle.spawn(run_connection_task(
+                                    state.config.clone(),
                                     handle.clone(),
                                     state.audio_binder.clone(),
                                     state.emu_tps_counter.clone(),
                                     state.main_view.clone(),
                                     main_view.selection.clone(),
                                     state.saves_list.clone(),
-                                    if !state.config.matchmaking_endpoint.is_empty() {
-                                        state.config.matchmaking_endpoint.clone()
+                                    if !config.matchmaking_endpoint.is_empty() {
+                                        config.matchmaking_endpoint.clone()
                                     } else {
                                         config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
                                     },
                                     main_view.link_code.clone(),
-                                    state.config.max_queue_length as usize,
-                                    state
-                                        .config
-                                        .nickname
-                                        .clone()
-                                        .unwrap_or_else(|| "".to_string()),
-                                    state.config.replays_path.clone(),
+                                    config.max_queue_length as usize,
+                                    config.nickname.clone().unwrap_or_else(|| "".to_string()),
+                                    config.replays_path.clone(),
                                     main_view.connection_task.clone(),
                                     cancellation_token,
                                 ));
@@ -964,7 +956,7 @@ impl MainView {
                                     egui::Button::new(format!(
                                         "⏹️ {}",
                                         i18n::LOCALES
-                                            .lookup(&state.config.language, "main.stop")
+                                            .lookup(&config.language, "main.stop")
                                             .unwrap()
                                     )),
                                 )
@@ -981,14 +973,14 @@ impl MainView {
                                         format!(
                                             "▶️ {}",
                                             i18n::LOCALES
-                                                .lookup(&state.config.language, "main.play")
+                                                .lookup(&config.language, "main.play")
                                                 .unwrap()
                                         )
                                     } else {
                                         format!(
                                             "🥊 {}",
                                             i18n::LOCALES
-                                                .lookup(&state.config.language, "main.fight")
+                                                .lookup(&config.language, "main.fight")
                                                 .unwrap()
                                         )
                                     }),
@@ -1008,7 +1000,7 @@ impl MainView {
                                 egui::Checkbox::new(
                                     &mut ready,
                                     i18n::LOCALES
-                                        .lookup(&state.config.language, "main.ready")
+                                        .lookup(&config.language, "main.ready")
                                         .unwrap(),
                                 ),
                             );
@@ -1038,7 +1030,7 @@ impl MainView {
                             egui::TextEdit::singleline(&mut main_view.link_code)
                                 .hint_text(
                                     i18n::LOCALES
-                                        .lookup(&state.config.language, "main.link-code")
+                                        .lookup(&config.language, "main.link-code")
                                         .unwrap(),
                                 )
                                 .desired_width(f32::INFINITY),
@@ -1086,7 +1078,7 @@ impl MainView {
                         let resp = ui.add({
                             let button = egui::Button::new(
                                 i18n::LOCALES
-                                    .lookup(&state.config.language, "select-save.select-button")
+                                    .lookup(&config.language, "select-save.select-button")
                                     .unwrap(),
                             );
 
@@ -1106,7 +1098,7 @@ impl MainView {
                                             "{}",
                                             selection
                                                 .save_path
-                                                .strip_prefix(&state.config.saves_path)
+                                                .strip_prefix(&config.saves_path)
                                                 .unwrap_or(selection.save_path.as_path())
                                                 .display()
                                         ));
@@ -1115,7 +1107,7 @@ impl MainView {
                                         ui.small(
                                             i18n::LOCALES
                                                 .lookup(
-                                                    &state.config.language,
+                                                    &config.language,
                                                     &format!("games.{}-{}", family, variant),
                                                 )
                                                 .unwrap(),
@@ -1125,7 +1117,7 @@ impl MainView {
                                     ui.label(
                                         i18n::LOCALES
                                             .lookup(
-                                                &state.config.language,
+                                                &config.language,
                                                 "select-save.no-game-selected",
                                             )
                                             .unwrap(),
@@ -1143,8 +1135,8 @@ impl MainView {
                     main_view.show_save_select = if main_view.show_save_select.is_none() {
                         rayon::spawn({
                             let saves_list = state.saves_list.clone();
-                            let roms_path = state.config.roms_path.clone();
-                            let saves_path = state.config.saves_path.clone();
+                            let roms_path = config.roms_path.clone();
+                            let saves_path = config.saves_path.clone();
                             move || {
                                 saves_list.rescan(&roms_path, &saves_path);
                             }

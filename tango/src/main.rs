@@ -172,7 +172,7 @@ fn child_main() -> Result<(), anyhow::Error> {
     }
 
     let mut state = gui::State::new(
-        config,
+        std::sync::Arc::new(parking_lot::RwLock::new(config)),
         audio_binder.clone(),
         fps_counter.clone(),
         emu_tps_counter.clone(),
@@ -181,7 +181,8 @@ fn child_main() -> Result<(), anyhow::Error> {
     event_loop.run(move |event, _, control_flow| {
         control_flow.set_poll();
 
-        let old_config = state.config.clone();
+        let mut config = state.config.read().clone();
+        let old_config = config.clone();
 
         match event {
             glutin::event::Event::WindowEvent {
@@ -208,7 +209,7 @@ fn child_main() -> Result<(), anyhow::Error> {
                             if let Some(steal_input) = state.steal_input.take() {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Key(virutal_keycode),
-                                    &mut state.config.input_mapping,
+                                    &mut config.input_mapping,
                                 );
                             } else {
                                 if !egui_glow.on_event(&window_event) {
@@ -278,7 +279,7 @@ fn child_main() -> Result<(), anyhow::Error> {
                                                 input::AxisDirection::Negative
                                             },
                                         },
-                                        &mut state.config.input_mapping,
+                                        &mut config.input_mapping,
                                     );
                                 } else {
                                     input_state.handle_controller_axis_motion(
@@ -294,7 +295,7 @@ fn child_main() -> Result<(), anyhow::Error> {
                             if let Some(steal_input) = state.steal_input.take() {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Button(button),
-                                    &mut state.config.input_mapping,
+                                    &mut config.input_mapping,
                                 );
                             } else {
                                 input_state.handle_controller_button_down(which, button);
@@ -317,12 +318,12 @@ fn child_main() -> Result<(), anyhow::Error> {
 
                 egui_glow.run(gl_window.window(), |ctx| {
                     ctx.set_pixels_per_point(
-                        gl_window.window().scale_factor() as f32
-                            * state.config.ui_scale_percent as f32
+                        gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32
                             / 100.0,
                     );
                     gui.show(
                         ctx,
+                        &mut config,
                         handle.clone(),
                         gl_window.window(),
                         &input_state,
@@ -339,8 +340,9 @@ fn child_main() -> Result<(), anyhow::Error> {
             _ => {}
         }
 
-        if state.config != old_config {
-            let r = state.config.save();
+        if config != old_config {
+            *state.config.write() = config.clone();
+            let r = config.save();
             log::info!("config save: {:?}", r);
         }
     });
