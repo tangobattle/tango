@@ -6,7 +6,7 @@ pub struct Metadata {
     pub authors: Vec<String>,
     pub license: Option<String>,
     pub source: Option<String>,
-    pub versions: Vec<VersionMetadata>,
+    pub versions: std::collections::HashMap<String, VersionMetadata>,
 }
 
 #[derive(serde::Deserialize)]
