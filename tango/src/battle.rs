@@ -256,19 +256,24 @@ impl Match {
             "starting round: local_player_index = {}",
             local_player_index
         );
-        let replay_filename = self.replays_path.join(format!(
-            "{}-{}-{}-vs-{}-round{}-p{}.tangoreplay",
-            time::OffsetDateTime::from(std::time::SystemTime::now())
-                .format(time::macros::format_description!(
-                    "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
-                ))
-                .expect("format time"),
-            self.link_code,
-            self.local_game.family_and_variant().0,
-            self.remote_settings.nickname,
-            round_state.number,
-            local_player_index + 1
-        ).chars().filter(|c| "/\\?%*:|\"<>. ".chars().any(|c2| c2 != *c)).collect::<String>());
+        let replay_filename = self.replays_path.join(
+            format!(
+                "{}-{}-{}-vs-{}-round{}-p{}.tangoreplay",
+                time::OffsetDateTime::from(std::time::SystemTime::now())
+                    .format(time::macros::format_description!(
+                        "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
+                    ))
+                    .expect("format time"),
+                self.link_code,
+                self.local_game.family_and_variant().0,
+                self.remote_settings.nickname,
+                round_state.number,
+                local_player_index + 1
+            )
+            .chars()
+            .filter(|c| "/\\?%*:|\"<>. ".chars().any(|c2| c2 != *c))
+            .collect::<String>(),
+        );
         log::info!("open replay: {}", replay_filename.display());
 
         let replay_file = std::fs::File::create(&replay_filename)?;
