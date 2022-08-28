@@ -12,6 +12,7 @@ mod i18n;
 mod input;
 mod lockstep;
 mod net;
+mod patch;
 mod randomcode;
 mod replay;
 mod replayer;
