@@ -1,5 +1,5 @@
 struct Inner<T> {
-    pub items: T,
+    items: T,
     last_rescan_time: std::time::Instant,
 }
 
