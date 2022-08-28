@@ -210,7 +210,7 @@ impl Gui {
             let mut main_view = state.main_view.lock();
             if let Some(session) = main_view.session.as_ref() {
                 if session.completed() {
-                    *main_view = main_view::State::new();
+                    main_view.session = None;
                 }
             }
         }

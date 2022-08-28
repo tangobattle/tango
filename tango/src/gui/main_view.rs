@@ -330,9 +330,9 @@ async fn run_connection_task(
                     }
 
                     log::info!("ending lobby");
+                    *connection_task.lock().await = None;
 
                     let mut lobby = lobby.lock().await;
-                    // DO NOT ACQUIRE connection_task's LOCK PAST THIS POINT. DOING SO IS A LOCK INVERSION.
                     let local_settings = lobby.make_local_settings();
 
                     let mut sender = if let Some(sender) = lobby.sender.take() {
@@ -444,6 +444,7 @@ async fn run_connection_task(
                         emu_tps_counter.clone(),
                         sender,
                         receiver,
+                        peer_conn,
                         lobby.is_offerer,
                         replays_path,
                         lobby.match_type,
