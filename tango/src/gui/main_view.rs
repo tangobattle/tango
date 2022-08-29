@@ -1139,70 +1139,75 @@ impl MainView {
                                 }
                             }) | ui
                                 .vertical_centered_justified(|ui| {
-                                    let mut layouter = |ui: &egui::Ui, _: &str, wrap_width: f32| {
-                                        let mut layout_job = egui::text::LayoutJob::default();
-                                        if let Some(selection) = &*main_view.selection.lock() {
-                                            let (family, variant) =
-                                                selection.game.family_and_variant();
-                                            layout_job.append(
-                                                &format!(
-                                                    "{}\n",
-                                                    selection
-                                                        .save
-                                                        .path
-                                                        .strip_prefix(&config.saves_path())
-                                                        .unwrap_or(selection.save.path.as_path())
-                                                        .display()
-                                                ),
-                                                0.0,
-                                                egui::TextFormat::simple(
-                                                    ui.style()
-                                                        .text_styles
-                                                        .get(&egui::TextStyle::Body)
-                                                        .unwrap()
-                                                        .clone(),
-                                                    ui.visuals().text_color(),
-                                                ),
-                                            );
-                                            layout_job.append(
-                                                &i18n::LOCALES
-                                                    .lookup(
-                                                        &config.language,
-                                                        &format!("games.{}-{}", family, variant),
-                                                    )
-                                                    .unwrap(),
-                                                0.0,
-                                                egui::TextFormat::simple(
-                                                    ui.style()
-                                                        .text_styles
-                                                        .get(&egui::TextStyle::Small)
-                                                        .unwrap()
-                                                        .clone(),
-                                                    ui.visuals().text_color(),
-                                                ),
-                                            );
-                                            layout_job.wrap.max_width = wrap_width;
-                                        } else {
-                                            layout_job.append(
-                                                &i18n::LOCALES
-                                                    .lookup(
-                                                        &config.language,
-                                                        "select-save.no-save-selected",
-                                                    )
-                                                    .unwrap(),
-                                                0.0,
-                                                egui::TextFormat::simple(
-                                                    ui.style()
-                                                        .text_styles
-                                                        .get(&egui::TextStyle::Small)
-                                                        .unwrap()
-                                                        .clone(),
-                                                    ui.visuals().text_color(),
-                                                ),
-                                            );
-                                        }
-                                        ui.fonts().layout_job(layout_job)
-                                    };
+                                    let mut layouter =
+                                        |ui: &egui::Ui, _: &str, _wrap_width: f32| {
+                                            let mut layout_job = egui::text::LayoutJob::default();
+                                            if let Some(selection) = &*main_view.selection.lock() {
+                                                let (family, variant) =
+                                                    selection.game.family_and_variant();
+                                                layout_job.append(
+                                                    &format!(
+                                                        "{}",
+                                                        selection
+                                                            .save
+                                                            .path
+                                                            .strip_prefix(&config.saves_path())
+                                                            .unwrap_or(
+                                                                selection.save.path.as_path()
+                                                            )
+                                                            .display()
+                                                    ),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Body)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                                layout_job.append(
+                                                    &i18n::LOCALES
+                                                        .lookup(
+                                                            &config.language,
+                                                            &format!(
+                                                                "games.{}-{}",
+                                                                family, variant
+                                                            ),
+                                                        )
+                                                        .unwrap(),
+                                                    5.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Small)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                            } else {
+                                                layout_job.append(
+                                                    &i18n::LOCALES
+                                                        .lookup(
+                                                            &config.language,
+                                                            "select-save.no-save-selected",
+                                                        )
+                                                        .unwrap(),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Small)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                            }
+                                            ui.fonts().layout_job(layout_job)
+                                        };
                                     ui.add(
                                         egui::TextEdit::singleline(&mut String::new())
                                             .layouter(&mut layouter),
