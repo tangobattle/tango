@@ -1,10 +1,21 @@
 use byteorder::ByteOrder;
 
-use crate::games;
+use crate::save;
 
-const SRAM_SIZE: usize = 0x3a78;
-const GAME_NAME_OFFSET: usize = 0x1198;
-const CHECKSUM_OFFSET: usize = 0x114c;
+const SRAM_SIZE: usize = 0x2308;
+const GAME_NAME_OFFSET: usize = 0x03fc;
+const CHECKSUM_OFFSET: usize = 0x03f0;
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub enum Region {
+    US,
+    JP,
+}
+
+#[derive(PartialEq, Debug)]
+pub struct GameInfo {
+    pub region: Region,
+}
 
 pub struct Save {
     buf: Vec<u8>,
@@ -17,12 +28,8 @@ impl Save {
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
-        if n != b"ROCKMANEXE2 20011016" {
-            anyhow::bail!("unknown game name: {:02x?}", n);
-        }
-
         let save = Self { buf };
+        save.game_info()?;
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
@@ -36,13 +43,23 @@ impl Save {
         Ok(save)
     }
 
+    pub fn game_info(&self) -> Result<GameInfo, anyhow::Error> {
+        Ok(match &self.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
+            b"ROCKMAN EXE 20010120" => GameInfo { region: Region::JP },
+            b"ROCKMAN EXE 20010727" => GameInfo { region: Region::US },
+            n => {
+                anyhow::bail!("unknown game name: {:02x?}", n);
+            }
+        })
+    }
+
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        games::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
+        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 }
 
-impl games::Save for Save {}
+impl save::Save for Save {}

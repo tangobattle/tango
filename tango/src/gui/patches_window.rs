@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{games, gui, i18n, patch};
+use crate::{game, gui, i18n};
 
 pub struct State {
     selection: Option<std::ffi::OsString>,
@@ -186,7 +186,7 @@ impl PatchesWindow {
                                                     .iter()
                                                     .cloned()
                                                     .collect::<Vec<_>>();
-                                                games::sort_games(language, &mut games);
+                                                game::sort_games(language, &mut games);
                                                 for game in games.iter() {
                                                     let (family, variant) =
                                                         game.family_and_variant();

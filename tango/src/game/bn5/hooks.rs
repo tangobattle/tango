@@ -1,4 +1,4 @@
-use crate::{battle, games, lockstep, replayer, session, shadow};
+use crate::{battle, game, lockstep, replayer, session, shadow};
 
 mod munger;
 mod offsets;
@@ -15,17 +15,17 @@ impl Hooks {
     }
 }
 
-pub static BR6E_00: Hooks = Hooks {
-    offsets: &offsets::MEGAMAN6_FXXBR6E_00,
+pub static BRBE_00: Hooks = Hooks {
+    offsets: &offsets::BRBE_00,
 };
-pub static BR5E_00: Hooks = Hooks {
-    offsets: &offsets::MEGAMAN6_GXXBR5E_00,
+pub static BRKE_00: Hooks = Hooks {
+    offsets: &offsets::BRKE_00,
 };
-pub static BR6J_00: Hooks = Hooks {
-    offsets: &offsets::ROCKEXE6_RXXBR6J_00,
+pub static BRBJ_00: Hooks = Hooks {
+    offsets: &offsets::BRBJ_00,
 };
-pub static BR5J_00: Hooks = Hooks {
-    offsets: &offsets::ROCKEXE6_GXXBR5J_00,
+pub static BRKJ_00: Hooks = Hooks {
+    offsets: &offsets::BRKJ_00,
 };
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
@@ -44,22 +44,11 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
-fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> u16 {
-    const BATTLE_BACKGROUNDS: &[u16] = &[
-        0x00, 0x01, 0x01, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
-        0x0f, 0x10, 0x11, 0x11, 0x13, 0x13,
-    ];
-
-    let lo = match match_type {
-        0 => rng.gen_range(0..0x44u16),
-        1 => rng.gen_range(0..0x60u16),
-        2 => rng.gen_range(0..0x44u16) + 0x60u16,
-        _ => 0u16,
-    };
-
-    let hi = BATTLE_BACKGROUNDS[rng.gen_range(0..BATTLE_BACKGROUNDS.len())];
-
-    hi << 0x8 | lo
+fn random_battle_settings_and_background(extended: bool, rng: &mut impl rand::Rng) -> (u8, u8) {
+    (
+        rng.gen_range(0..if !extended { 0x44u8 } else { 0x60 }),
+        rng.gen_range(0..0x1bu8),
+    )
 }
 
 fn step_rng(seed: u32) -> u32 {
@@ -67,7 +56,7 @@ fn step_rng(seed: u32) -> u32 {
     ((seed << 1) + (seed >> 0x1f) + std::num::Wrapping(1)).0 ^ 0x873ca9e5
 }
 
-impl games::Hooks for Hooks {
+impl game::Hooks for Hooks {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
@@ -360,12 +349,15 @@ impl games::Hooks for Hooks {
                             };
 
                             let mut rng = match_.lock_rng().await;
-                            munger.set_link_battle_settings_and_background(
-                                core,
+                            let (battle_settings, background) =
                                 random_battle_settings_and_background(
+                                    match_.match_type().1 == 1,
                                     &mut *rng,
-                                    match_.match_type().0,
-                                ),
+                                );
+                            munger.set_battle_settings_and_background(
+                                core,
+                                battle_settings,
+                                background,
                             );
                         });
                     }),
@@ -387,13 +379,11 @@ impl games::Hooks for Hooks {
                 let munger = self.munger();
                 let handle = handle.clone();
                 (
-                    self.offsets
-                        .rom
-                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         handle.block_on(async {
                             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
+                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                             munger.set_copy_data_input_state(
                                 core,
                                 if match_.lock().await.is_some() { 2 } else { 4 },
@@ -459,7 +449,6 @@ impl games::Hooks for Hooks {
                                         .expect("shadow save state"),
                                     &munger.tx_packet(core),
                                 );
-
                                 log::info!(
                                     "primary rng1 state: {:08x}, rng2 state: {:08x}, rng3 state: {:08x}",
                                     munger.rng1_state(core),
@@ -482,7 +471,7 @@ impl games::Hooks for Hooks {
                             }
 
                             'abort: loop {
-                                if let Err(e) = round
+                                    if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
@@ -678,12 +667,14 @@ impl games::Hooks for Hooks {
                     self.offsets.rom.comm_menu_init_battle_entry,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
-                        munger.set_link_battle_settings_and_background(
+                        let (battle_settings, background) = random_battle_settings_and_background(
+                            shadow_state.match_type().1 == 1,
+                            &mut *rng,
+                        );
+                        munger.set_battle_settings_and_background(
                             core,
-                            random_battle_settings_and_background(
-                                &mut *rng,
-                                shadow_state.match_type().0,
-                            ),
+                            battle_settings,
+                            background,
                         );
                     }),
                 )
@@ -691,12 +682,10 @@ impl games::Hooks for Hooks {
             {
                 let munger = self.munger();
                 (
-                    self.offsets
-                        .rom
-                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                         munger.set_copy_data_input_state(core, 2);
                     }),
                 )
@@ -953,12 +942,10 @@ impl games::Hooks for Hooks {
             {
                 let munger = self.munger();
                 (
-                    self.offsets
-                        .rom
-                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                    self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                         munger.set_copy_data_input_state(core, 2);
                     }),
                 )

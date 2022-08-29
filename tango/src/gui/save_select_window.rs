@@ -1,10 +1,10 @@
 use fluent_templates::Loader;
 
-use crate::{games, gui, i18n};
+use crate::{game, gui, i18n};
 
 pub struct State {
     selection: Option<(
-        &'static (dyn games::Game + Send + Sync),
+        &'static (dyn game::Game + Send + Sync),
         Option<std::path::PathBuf>,
     )>,
 }
@@ -12,7 +12,7 @@ pub struct State {
 impl State {
     pub fn new(
         selection: Option<(
-            &'static (dyn games::Game + Send + Sync),
+            &'static (dyn game::Game + Send + Sync),
             Option<std::path::PathBuf>,
         )>,
     ) -> Self {
@@ -48,7 +48,7 @@ impl SaveSelectWindow {
             let roms = roms_scanner.read();
             let saves = saves_scanner.read();
 
-            let games = games::sorted_all_games(language);
+            let games = game::sorted_all_games(language);
             if let Some((game, _)) = show.as_mut().unwrap().selection {
                 let (family, variant) = game.family_and_variant();
                 ui.heading(

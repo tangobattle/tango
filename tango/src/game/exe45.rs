@@ -1,14 +1,14 @@
 mod hooks;
 mod save;
 
-use crate::games;
+use crate::game;
 
 const MATCH_TYPES: &[usize] = &[1, 1];
 
 struct EXE45Impl;
-pub const EXE45: &'static (dyn games::Game + Send + Sync) = &EXE45Impl {};
+pub const EXE45: &'static (dyn game::Game + Send + Sync) = &EXE45Impl {};
 
-impl games::Game for EXE45Impl {
+impl game::Game for EXE45Impl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
         (b"BR4J", 0x00)
     }
@@ -29,11 +29,11 @@ impl games::Game for EXE45Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
         &hooks::BR4J_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
     }

@@ -1,4 +1,4 @@
-use crate::{battle, games, lockstep};
+use crate::{battle, game, lockstep};
 
 pub struct Round {
     current_tick: u32,
@@ -103,7 +103,7 @@ struct InnerState {
 pub struct Shadow {
     core: mgba::core::Core,
     state: State,
-    hooks: &'static (dyn games::Hooks + Send + Sync),
+    hooks: &'static (dyn game::Hooks + Send + Sync),
 }
 
 #[derive(Clone)]
@@ -198,7 +198,7 @@ impl Shadow {
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 
-        let game = games::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
+        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
             .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());

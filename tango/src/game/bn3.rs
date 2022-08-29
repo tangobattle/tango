@@ -1,20 +1,20 @@
 mod hooks;
 mod save;
 
-use crate::games;
+use crate::game;
 
-const MATCH_TYPES: &[usize] = &[1, 1];
+const MATCH_TYPES: &[usize] = &[3, 1];
 
-struct EXE6GImpl;
-pub const EXE6G: &'static (dyn games::Game + Send + Sync) = &EXE6GImpl {};
+struct EXE3WImpl;
+pub const EXE3W: &'static (dyn game::Game + Send + Sync) = &EXE3WImpl {};
 
-impl games::Game for EXE6GImpl {
+impl game::Game for EXE3WImpl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BR5J", 0x00)
+        (b"A6BJ", 0x01)
     }
 
     fn family_and_variant(&self) -> (&str, u8) {
-        ("exe6", 0)
+        ("exe3", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -22,24 +22,23 @@ impl games::Game for EXE6GImpl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0x6285918a
+        0xe48e6bc9
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
-        &hooks::BR5J_00
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
+        &hooks::A6BJ_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info().unwrap();
-        if game_info
+        let game_info = save.game_info();
+        if *game_info
             != (save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::Gregar,
+                variant: save::Variant::White,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
@@ -48,16 +47,16 @@ impl games::Game for EXE6GImpl {
     }
 }
 
-struct EXE6FImpl;
-pub const EXE6F: &'static (dyn games::Game + Send + Sync) = &EXE6FImpl {};
+struct EXE3BImpl;
+pub const EXE3B: &'static (dyn game::Game + Send + Sync) = &EXE3BImpl {};
 
-impl games::Game for EXE6FImpl {
+impl game::Game for EXE3BImpl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BR6J", 0x00)
+        (b"A3XJ", 0x01)
     }
 
     fn family_and_variant(&self) -> (&str, u8) {
-        ("exe6", 1)
+        ("exe3", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -65,24 +64,23 @@ impl games::Game for EXE6FImpl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0x2dfb603e
+        0xfd57493b
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
-        &hooks::BR6J_00
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
+        &hooks::A3XJ_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info().unwrap();
-        if game_info
+        let game_info = save.game_info();
+        if *game_info
             != (save::GameInfo {
-                region: save::Region::JP,
-                variant: save::Variant::Falzar,
+                variant: save::Variant::Blue,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
@@ -91,16 +89,16 @@ impl games::Game for EXE6FImpl {
     }
 }
 
-struct BN6GImpl;
-pub const BN6G: &'static (dyn games::Game + Send + Sync) = &BN6GImpl {};
+struct BN3WImpl;
+pub const BN3W: &'static (dyn game::Game + Send + Sync) = &BN3WImpl {};
 
-impl games::Game for BN6GImpl {
+impl game::Game for BN3WImpl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BR5E", 0x00)
+        (b"A6BE", 0x00)
     }
 
     fn family_and_variant(&self) -> (&str, u8) {
-        ("bn6", 0)
+        ("bn3", 0)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -108,24 +106,23 @@ impl games::Game for BN6GImpl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0x79452182
+        0x0be4410a
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
-        &hooks::BR5E_00
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
+        &hooks::A6BE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info().unwrap();
-        if game_info
+        let game_info = save.game_info();
+        if *game_info
             != (save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::Gregar,
+                variant: save::Variant::White,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
@@ -134,16 +131,16 @@ impl games::Game for BN6GImpl {
     }
 }
 
-struct BN6FImpl;
-pub const BN6F: &'static (dyn games::Game + Send + Sync) = &BN6FImpl {};
+struct BN3BImpl;
+pub const BN3B: &'static (dyn game::Game + Send + Sync) = &BN3BImpl {};
 
-impl games::Game for BN6FImpl {
+impl game::Game for BN3BImpl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"BR6E", 0x00)
+        (b"A3XE", 0x00)
     }
 
     fn family_and_variant(&self) -> (&str, u8) {
-        ("bn6", 1)
+        ("bn3", 1)
     }
 
     fn language(&self) -> unic_langid::LanguageIdentifier {
@@ -151,24 +148,23 @@ impl games::Game for BN6FImpl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0xdee6f2a9
+        0xc0c780f9
     }
 
     fn match_types(&self) -> &[usize] {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
-        &hooks::BR6E_00
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
+        &hooks::A3XE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info().unwrap();
-        if game_info
+        let game_info = save.game_info();
+        if *game_info
             != (save::GameInfo {
-                region: save::Region::US,
-                variant: save::Variant::Falzar,
+                variant: save::Variant::Blue,
             })
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);

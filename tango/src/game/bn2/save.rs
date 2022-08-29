@@ -1,19 +1,10 @@
 use byteorder::ByteOrder;
 
-use crate::games;
+use crate::save;
 
-const SRAM_SIZE: usize = 0xc7a8;
-const MASK_OFFSET: usize = 0x3c84;
-const GAME_NAME_OFFSET: usize = 0x4ba8;
-const CHECKSUM_OFFSET: usize = 0x4b88;
-
-fn mask(buf: &mut [u8]) {
-    let mask = byteorder::LittleEndian::read_u32(&buf[MASK_OFFSET..MASK_OFFSET + 4]);
-    for b in buf.iter_mut() {
-        *b = *b ^ (mask as u8);
-    }
-    byteorder::LittleEndian::write_u32(&mut buf[MASK_OFFSET..MASK_OFFSET + 4], mask);
-}
+const SRAM_SIZE: usize = 0x3a78;
+const GAME_NAME_OFFSET: usize = 0x1198;
+const CHECKSUM_OFFSET: usize = 0x114c;
 
 pub struct Save {
     buf: Vec<u8>,
@@ -21,19 +12,18 @@ pub struct Save {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
-        let mut buf = buf
+        let buf = buf
             .get(..SRAM_SIZE)
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        mask(&mut buf[..]);
-
         let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
-        if n != b"ROCKMANEXE4RO 040607" && n != b"ROCKMANEXE4RO 041217" {
+        if n != b"ROCKMANEXE2 20011016" {
             anyhow::bail!("unknown game name: {:02x?}", n);
         }
 
         let save = Self { buf };
+
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
             anyhow::bail!(
@@ -51,19 +41,8 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        self.buf
-            .iter()
-            .enumerate()
-            .map(|(i, b)| {
-                if i < CHECKSUM_OFFSET || i >= CHECKSUM_OFFSET + 4 {
-                    *b as u32
-                } else {
-                    0
-                }
-            })
-            .sum::<u32>()
-            + 0x38
+        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 }
 
-impl games::Save for Save {}
+impl save::Save for Save {}

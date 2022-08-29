@@ -1,4 +1,4 @@
-use crate::games;
+use crate::game;
 
 #[derive(serde::Deserialize)]
 struct Metadata {
@@ -24,7 +24,7 @@ struct VersionMetadata {
 pub struct Version {
     pub saveedit_overrides: Option<toml::value::Table>,
     pub netplay_compatibility: String,
-    pub supported_games: std::collections::HashSet<&'static (dyn games::Game + Send + Sync)>,
+    pub supported_games: std::collections::HashSet<&'static (dyn game::Game + Send + Sync)>,
 }
 
 #[derive(Debug)]
@@ -146,7 +146,7 @@ pub fn scan(
                 let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
 
                 let game = if let Some(game) =
-                    games::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision)
+                    game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision)
                 {
                     game
                 } else {

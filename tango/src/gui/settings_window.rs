@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{config, games, gui, i18n, input, patch};
+use crate::{config, game, gui, i18n, input, patch, save};
 
 #[derive(PartialEq, Eq)]
 pub enum State {
@@ -286,9 +286,8 @@ impl SettingsWindow {
                                     let saves_path = config.saves_path();
                                     let patches_path = config.patches_path();
                                     move || {
-                                        roms_scanner.rescan(move || games::scan_roms(&roms_path));
-                                        saves_scanner
-                                            .rescan(move || games::scan_saves(&saves_path));
+                                        roms_scanner.rescan(move || game::scan_roms(&roms_path));
+                                        saves_scanner.rescan(move || save::scan_saves(&saves_path));
                                         patches_scanner.rescan(move || {
                                             patch::scan(&patches_path).unwrap_or_default()
                                         });

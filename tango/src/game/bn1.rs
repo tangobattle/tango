@@ -1,14 +1,14 @@
 mod hooks;
 mod save;
 
-use crate::games;
+use crate::game;
 
 const MATCH_TYPES: &[usize] = &[1];
 
 struct EXE1Impl;
-pub const EXE1: &'static (dyn games::Game + Send + Sync) = &EXE1Impl {};
+pub const EXE1: &'static (dyn game::Game + Send + Sync) = &EXE1Impl {};
 
-impl games::Game for EXE1Impl {
+impl game::Game for EXE1Impl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
         (b"AREJ", 0x00)
     }
@@ -29,11 +29,11 @@ impl games::Game for EXE1Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
         &hooks::AREJ_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info
@@ -48,9 +48,9 @@ impl games::Game for EXE1Impl {
 }
 
 struct BN1Impl;
-pub const BN1: &'static (dyn games::Game + Send + Sync) = &BN1Impl {};
+pub const BN1: &'static (dyn game::Game + Send + Sync) = &BN1Impl {};
 
-impl games::Game for BN1Impl {
+impl game::Game for BN1Impl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
         (b"AREE", 0x00)
     }
@@ -71,11 +71,11 @@ impl games::Game for BN1Impl {
         MATCH_TYPES
     }
 
-    fn hooks(&self) -> &'static (dyn games::Hooks + Send + Sync) {
+    fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
         &hooks::AREE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn games::Save>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info

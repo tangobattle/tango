@@ -3,7 +3,7 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{audio, config, games, gui, i18n, input, net, patch, session, stats};
+use crate::{audio, config, game, gui, i18n, input, net, patch, save, session, stats};
 
 use super::save_select_window;
 
@@ -48,7 +48,7 @@ enum ConnectionState {
 
 #[derive(Clone)]
 pub struct Selection {
-    pub game: &'static (dyn games::Game + Send + Sync),
+    pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
     pub save_path: std::path::PathBuf,
 }
@@ -419,7 +419,7 @@ async fn run_connection_task(
 
                     let remote_game = if let Some(game) = remote_settings.game_info.as_ref().and_then(|gi| {
                         let (family, variant) = &gi.family_and_variant;
-                        games::find_by_family_and_variant(family, *variant)
+                        game::find_by_family_and_variant(family, *variant)
                     }) {
                         game
                     } else {
@@ -761,7 +761,7 @@ impl MainView {
                                                             .and_then(|game_info| {
                                                                 let (family, variant) =
                                                                     &game_info.family_and_variant;
-                                                                games::find_by_family_and_variant(
+                                                                game::find_by_family_and_variant(
                                                                     &family, *variant,
                                                                 )
                                                             })
@@ -1191,8 +1191,8 @@ impl MainView {
                             let saves_path = config.saves_path();
                             let patches_path = config.patches_path();
                             move || {
-                                roms_scanner.rescan(move || games::scan_roms(&roms_path));
-                                saves_scanner.rescan(move || games::scan_saves(&saves_path));
+                                roms_scanner.rescan(move || game::scan_roms(&roms_path));
+                                saves_scanner.rescan(move || save::scan_saves(&saves_path));
                                 patches_scanner
                                     .rescan(move || patch::scan(&patches_path).unwrap_or_default());
                             }

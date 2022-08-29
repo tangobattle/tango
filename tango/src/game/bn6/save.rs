@@ -1,12 +1,12 @@
 use byteorder::ByteOrder;
 
-use crate::games;
+use crate::save;
 
 const SRAM_START_OFFSET: usize = 0x0100;
-const SRAM_SIZE: usize = 0x7c14;
-const MASK_OFFSET: usize = 0x1a34;
-const GAME_NAME_OFFSET: usize = 0x29e0;
-const CHECKSUM_OFFSET: usize = 0x29dc;
+const SRAM_SIZE: usize = 0x6710;
+const MASK_OFFSET: usize = 0x1064;
+const GAME_NAME_OFFSET: usize = 0x1c70;
+const CHECKSUM_OFFSET: usize = 0x1c6c;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Region {
@@ -16,8 +16,8 @@ pub enum Region {
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Variant {
-    Protoman,
-    Colonel,
+    Gregar,
+    Falzar,
 }
 
 #[derive(PartialEq, Debug)]
@@ -36,7 +36,7 @@ impl Save {
             .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
-        games::mask_save(&mut buf[..], MASK_OFFSET);
+        save::mask_save(&mut buf[..], MASK_OFFSET);
 
         let save = Self { buf };
         save.game_info()?;
@@ -55,21 +55,21 @@ impl Save {
 
     pub fn game_info(&self) -> Result<GameInfo, anyhow::Error> {
         Ok(match &self.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
-            b"REXE5TOB 20041104 JP" => GameInfo {
+            b"REXE6 G 20050924a JP" => GameInfo {
                 region: Region::JP,
-                variant: Variant::Protoman,
+                variant: Variant::Gregar,
             },
-            b"REXE5TOK 20041104 JP" => GameInfo {
+            b"REXE6 F 20050924a JP" => GameInfo {
                 region: Region::JP,
-                variant: Variant::Colonel,
+                variant: Variant::Falzar,
             },
-            b"REXE5TOB 20041006 US" => GameInfo {
+            b"REXE6 G 20060110a US" => GameInfo {
                 region: Region::US,
-                variant: Variant::Protoman,
+                variant: Variant::Gregar,
             },
-            b"REXE5TOK 20041006 US" => GameInfo {
+            b"REXE6 F 20060110a US" => GameInfo {
                 region: Region::US,
-                variant: Variant::Colonel,
+                variant: Variant::Falzar,
             },
             n => {
                 anyhow::bail!("unknown game name: {:02x?}", n);
@@ -82,12 +82,12 @@ impl Save {
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        games::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET)
+        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET)
             + match self.game_info().unwrap().variant {
-                Variant::Protoman => 0x72,
-                Variant::Colonel => 0x18,
+                Variant::Gregar => 0x72,
+                Variant::Falzar => 0x18,
             }
     }
 }
 
-impl games::Save for Save {}
+impl save::Save for Save {}

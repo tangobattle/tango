@@ -1,6 +1,6 @@
 use rand::Rng;
 
-use crate::games;
+use crate::game;
 use crate::lockstep;
 use crate::net;
 use crate::replay;
@@ -49,9 +49,9 @@ pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
     link_code: String,
-    local_game: &'static (dyn games::Game + Send + Sync),
+    local_game: &'static (dyn game::Game + Send + Sync),
     local_settings: net::protocol::Settings,
-    remote_game: &'static (dyn games::Game + Send + Sync),
+    remote_game: &'static (dyn game::Game + Send + Sync),
     remote_settings: net::protocol::Settings,
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     _peer_conn: datachannel_wrapper::PeerConnection,
@@ -72,9 +72,9 @@ impl Match {
     pub fn new(
         link_code: String,
         rom: Vec<u8>,
-        local_game: &'static (dyn games::Game + Send + Sync),
+        local_game: &'static (dyn game::Game + Send + Sync),
         local_settings: net::protocol::Settings,
-        remote_game: &'static (dyn games::Game + Send + Sync),
+        remote_game: &'static (dyn game::Game + Send + Sync),
         remote_settings: net::protocol::Settings,
         cancellation_token: tokio_util::sync::CancellationToken,
         sender: net::Sender,
@@ -360,7 +360,7 @@ impl Match {
 }
 
 pub struct Round {
-    hooks: &'static (dyn games::Hooks + Send + Sync),
+    hooks: &'static (dyn game::Hooks + Send + Sync),
     number: u8,
     local_player_index: u8,
     current_tick: u32,

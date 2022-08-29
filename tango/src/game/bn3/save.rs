@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::games;
+use crate::save;
 
 const SRAM_SIZE: usize = 0x57b0;
 const GAME_NAME_OFFSET: usize = 0x1e00;
@@ -30,7 +30,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8]) -> u32 {
-    games::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
+    save::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
 }
 
 impl Save {
@@ -81,4 +81,4 @@ impl Save {
     }
 }
 
-impl games::Save for Save {}
+impl save::Save for Save {}

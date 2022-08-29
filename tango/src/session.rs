@@ -1,4 +1,4 @@
-use crate::{audio, battle, games, net, replay, replayer, stats};
+use crate::{audio, battle, game, net, replay, replayer, stats};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -48,11 +48,11 @@ impl Session {
         audio_binder: audio::LateBinder,
         link_code: String,
         local_settings: net::protocol::Settings,
-        local_game: &'static (dyn games::Game + Send + Sync),
+        local_game: &'static (dyn game::Game + Send + Sync),
         local_rom: &[u8],
         local_save: &[u8],
         remote_settings: net::protocol::Settings,
-        remote_game: &'static (dyn games::Game + Send + Sync),
+        remote_game: &'static (dyn game::Game + Send + Sync),
         remote_rom: &[u8],
         remote_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -76,7 +76,7 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let game = games::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
+        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
             .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
@@ -205,7 +205,7 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let game = games::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
+        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
             .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
@@ -265,7 +265,7 @@ impl Session {
         core.as_mut()
             .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
-        let game = games::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
+        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
             .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());

@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::games;
+use crate::save;
 
 const SRAM_SIZE: usize = 0x73d2;
 const MASK_OFFSET: usize = 0x1554;
@@ -41,7 +41,7 @@ pub struct Save {
 }
 
 fn compute_raw_checksum(buf: &[u8], shift: usize) -> u32 {
-    games::compute_save_raw_checksum(&buf, shift + CHECKSUM_OFFSET)
+    save::compute_save_raw_checksum(&buf, shift + CHECKSUM_OFFSET)
 }
 
 impl Save {
@@ -51,7 +51,7 @@ impl Save {
             .map(|buf| buf.to_vec())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        games::mask_save(&mut buf[..], MASK_OFFSET);
+        save::mask_save(&mut buf[..], MASK_OFFSET);
 
         let shift =
             byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
@@ -123,4 +123,4 @@ impl Save {
     }
 }
 
-impl games::Save for Save {}
+impl save::Save for Save {}

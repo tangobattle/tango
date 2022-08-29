@@ -1,5 +1,5 @@
 use crate::battle;
-use crate::games;
+use crate::game;
 use crate::lockstep;
 
 pub struct InnerState {
@@ -189,7 +189,7 @@ pub struct RoundResult {
 pub struct Fastforwarder {
     core: mgba::core::Core,
     state: State,
-    hooks: &'static (dyn games::Hooks + Send + Sync),
+    hooks: &'static (dyn game::Hooks + Send + Sync),
     local_player_index: u8,
 }
 
@@ -261,7 +261,7 @@ impl State {
 impl Fastforwarder {
     pub fn new(
         rom: &[u8],
-        hooks: &'static (dyn games::Hooks + Send + Sync),
+        hooks: &'static (dyn game::Hooks + Send + Sync),
         local_player_index: u8,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
