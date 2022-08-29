@@ -71,7 +71,11 @@ pub fn scan_saves(
     paths
 }
 
-pub trait Save {}
+pub trait Save {
+    fn view_chips<'a>(&'a self) -> Option<Box<dyn ChipsView<'a> + 'a>> {
+        None
+    }
+}
 
 pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
     let mask = byteorder::LittleEndian::read_u32(&buf[mask_offset..mask_offset + 4]);
@@ -92,4 +96,20 @@ pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
             }
         })
         .sum::<u32>()
+}
+
+#[derive(Clone, Debug)]
+pub struct Chip {
+    pub id: usize,
+    pub variant: usize,
+}
+
+pub trait ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8];
+    fn num_folders(&self) -> usize;
+    fn equipped_folder_index(&self) -> usize;
+    fn regular_chip_is_in_place(&self) -> bool;
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize>;
+    fn tag_chip_indexes(&self, folder_index: usize) -> Option<(usize, usize)>;
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<Chip>;
 }

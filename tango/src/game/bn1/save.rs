@@ -62,4 +62,49 @@ impl Save {
     }
 }
 
-impl save::Save for Save {}
+impl save::Save for Save {
+    fn view_chips<'a>(&'a self) -> Option<Box<dyn save::ChipsView<'a> + 'a>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+}
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8] {
+        &b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[..]
+    }
+
+    fn num_folders(&self) -> usize {
+        1
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        0
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        false
+    }
+
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        None
+    }
+
+    fn tag_chip_indexes(&self, folder_index: usize) -> Option<(usize, usize)> {
+        None
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index > 0 || chip_index > 30 {
+            return None;
+        }
+
+        Some(save::Chip {
+            id: self.save.buf[0x01c0 + chip_index * 2] as usize,
+            variant: self.save.buf[0x01c0 + chip_index * 2 + 1] as usize,
+        })
+    }
+}
