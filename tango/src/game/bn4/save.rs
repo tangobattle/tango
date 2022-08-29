@@ -125,10 +125,63 @@ impl Save {
 }
 
 impl save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SRAM_SIZE].copy_from_slice(&self.buf);
         save::mask_save(&mut buf[..SRAM_SIZE], MASK_OFFSET);
         buf
+    }
+}
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8] {
+        &b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[..]
+    }
+
+    fn num_folders(&self) -> usize {
+        3 // TODO
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        self.save.buf[self.save.shift + 0x2132] as usize
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        false
+    }
+
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        let idx = self.save.buf[self.save.shift + 0x214d + folder_index];
+        if idx == 0 {
+            None
+        } else {
+            Some(idx as usize)
+        }
+    }
+
+    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<(usize, usize)> {
+        None
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index > 3 || chip_index > 30 {
+            return None;
+        }
+
+        let offset = self.save.shift + 0x262c + folder_index * (30 * 2) + chip_index * 2;
+        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
+
+        Some(save::Chip {
+            id: (raw & 0x1ff) as usize,
+            code: (raw >> 9) as usize,
+        })
     }
 }
