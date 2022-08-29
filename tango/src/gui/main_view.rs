@@ -402,7 +402,7 @@ async fn run_connection_task(
 
                     log::info!("remote commitment = {:02x?}", received_remote_commitment);
 
-                    if make_commitment(&raw_remote_negotiated_state).ct_eq(&received_remote_commitment).unwrap_u8() == 0 {
+                    if !bool::from(make_commitment(&raw_remote_negotiated_state).ct_eq(&received_remote_commitment)) {
                         anyhow::bail!("commitment did not match");
                     }
 
