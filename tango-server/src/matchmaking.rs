@@ -41,66 +41,69 @@ impl Server {
         ws: hyper_tungstenite::WebSocketStream<hyper::upgrade::Upgraded>,
         remote_ip: std::net::IpAddr,
         session_id: &str,
+        skip_hello: bool,
     ) -> anyhow::Result<()> {
         let (mut tx, mut rx) = ws.split();
 
-        let ice_servers = if let Some(backend) = self.iceconfig_backend.as_ref() {
-            match tokio::time::timeout(ICECONFIG_TIMEOUT, backend.get(&remote_ip)).await {
-                Ok(Ok(ice_servers)) => Some(ice_servers),
-                Err(_) => {
-                    log::error!("requesting ICE servers timed out");
-                    None
+        if !skip_hello {
+            let ice_servers = if let Some(backend) = self.iceconfig_backend.as_ref() {
+                match tokio::time::timeout(ICECONFIG_TIMEOUT, backend.get(&remote_ip)).await {
+                    Ok(Ok(ice_servers)) => Some(ice_servers),
+                    Err(_) => {
+                        log::error!("requesting ICE servers timed out");
+                        None
+                    }
+                    Ok(Err(e)) => {
+                        log::error!("failed to request ICE servers: {:?}", e);
+                        None
+                    }
                 }
-                Ok(Err(e)) => {
-                    log::error!("failed to request ICE servers: {:?}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        };
+            } else {
+                None
+            };
 
-        tx.send(tungstenite::Message::Binary(
-            tango_protos::matchmaking::Packet {
-                which: Some(tango_protos::matchmaking::packet::Which::Hello(
-                    tango_protos::matchmaking::packet::Hello {
-                        ice_servers: if let Some(ice_servers) = ice_servers {
-                            ice_servers
-                        } else {
-                            vec![
-                                tango_protos::matchmaking::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun.l.google.com:19302".to_string()],
-                                },
-                                tango_protos::matchmaking::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun1.l.google.com:19302".to_string()],
-                                },
-                                tango_protos::matchmaking::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun2.l.google.com:19302".to_string()],
-                                },
-                                tango_protos::matchmaking::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun3.l.google.com:19302".to_string()],
-                                },
-                                tango_protos::matchmaking::packet::hello::IceServer {
-                                    username: None,
-                                    credential: None,
-                                    urls: vec!["stun:stun4.l.google.com:19302".to_string()],
-                                },
-                            ]
+            tx.send(tungstenite::Message::Binary(
+                tango_protos::matchmaking::Packet {
+                    which: Some(tango_protos::matchmaking::packet::Which::Hello(
+                        tango_protos::matchmaking::packet::Hello {
+                            ice_servers: if let Some(ice_servers) = ice_servers {
+                                ice_servers
+                            } else {
+                                vec![
+                                    tango_protos::matchmaking::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun.l.google.com:19302".to_string()],
+                                    },
+                                    tango_protos::matchmaking::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun1.l.google.com:19302".to_string()],
+                                    },
+                                    tango_protos::matchmaking::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun2.l.google.com:19302".to_string()],
+                                    },
+                                    tango_protos::matchmaking::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun3.l.google.com:19302".to_string()],
+                                    },
+                                    tango_protos::matchmaking::packet::hello::IceServer {
+                                        username: None,
+                                        credential: None,
+                                        urls: vec!["stun:stun4.l.google.com:19302".to_string()],
+                                    },
+                                ]
+                            },
                         },
-                    },
-                )),
-            }
-            .encode_to_vec(),
-        ))
-        .await?;
+                    )),
+                }
+                .encode_to_vec(),
+            ))
+            .await?;
+        }
 
         let session_id_for_cleanup = std::sync::Arc::new(tokio::sync::Mutex::new(None));
 

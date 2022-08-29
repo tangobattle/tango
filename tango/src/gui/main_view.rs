@@ -1251,6 +1251,13 @@ impl MainView {
                 }
             });
 
+            ui.with_layout(
+                egui::Layout::top_down_justified(egui::Align::Center),
+                |ui| {
+                    egui::ComboBox::from_id_source("patch-select-combobox").show_ui(ui, |ui| {});
+                },
+            );
+
             ui.separator();
 
             {
