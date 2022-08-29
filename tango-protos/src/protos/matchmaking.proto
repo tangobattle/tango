@@ -12,16 +12,16 @@ message Packet {
     repeated ICEServer ice_servers = 1;
   }
 
-  message Start { string offer_sdp = 1; }
+  message Start { string offer_sdp = 2; }
 
   message Offer { string sdp = 1; }
 
   message Answer { string sdp = 1; }
 
   oneof which {
-    Hello hello = 1;
-    Start start = 2;
-    Offer offer = 3;
-    Answer answer = 4;
+    Hello hello = 4;
+    Start start = 1;
+    Offer offer = 2;
+    Answer answer = 3;
   }
 }
