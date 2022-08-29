@@ -610,6 +610,15 @@ impl MainView {
                             .clicked()
                         {
                             main_view.show_patches = if main_view.show_patches.is_none() {
+                                rayon::spawn({
+                                    let patches_scanner = state.patches_scanner.clone();
+                                    let patches_path = config.patches_path();
+                                    move || {
+                                        patches_scanner.rescan(move || {
+                                            patch::scan(&patches_path).unwrap_or_default()
+                                        });
+                                    }
+                                });
                                 Some(gui::patches_window::State::new())
                             } else {
                                 None
@@ -1224,15 +1233,11 @@ impl MainView {
                         rayon::spawn({
                             let roms_scanner = state.roms_scanner.clone();
                             let saves_scanner = state.saves_scanner.clone();
-                            let patches_scanner = state.patches_scanner.clone();
                             let roms_path = config.roms_path();
                             let saves_path = config.saves_path();
-                            let patches_path = config.patches_path();
                             move || {
                                 roms_scanner.rescan(move || game::scan_roms(&roms_path));
                                 saves_scanner.rescan(move || save::scan_saves(&saves_path));
-                                patches_scanner
-                                    .rescan(move || patch::scan(&patches_path).unwrap_or_default());
                             }
                         });
                         Some(save_select_window::State::new(
