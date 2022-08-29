@@ -1,3 +1,4 @@
+use egui::epaint::text::layout;
 use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
@@ -1121,10 +1122,10 @@ impl MainView {
         });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    let resp = ui.group(|ui| {
+                if ui
+                    .horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let resp = ui.add({
+                            ui.add({
                                 let button = egui::Button::new(
                                     i18n::LOCALES
                                         .lookup(&config.language, "select-save.select-button")
@@ -1136,79 +1137,108 @@ impl MainView {
                                 } else {
                                     button
                                 }
-                            });
-
-                            ui.with_layout(
-                                egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
-                                |ui| {
-                                    if let Some(selection) = &*main_view.selection.lock() {
-                                        ui.vertical(|ui| {
-                                            ui.label(format!(
-                                                "{}",
-                                                selection
-                                                    .save
-                                                    .path
-                                                    .strip_prefix(&config.saves_path())
-                                                    .unwrap_or(selection.save.path.as_path())
-                                                    .display()
-                                            ));
-
+                            }) | ui
+                                .vertical_centered_justified(|ui| {
+                                    let mut layouter = |ui: &egui::Ui, _: &str, wrap_width: f32| {
+                                        let mut layout_job = egui::text::LayoutJob::default();
+                                        if let Some(selection) = &*main_view.selection.lock() {
                                             let (family, variant) =
                                                 selection.game.family_and_variant();
-                                            ui.small(
-                                                i18n::LOCALES
+                                            layout_job.append(
+                                                &format!(
+                                                    "{}\n",
+                                                    selection
+                                                        .save
+                                                        .path
+                                                        .strip_prefix(&config.saves_path())
+                                                        .unwrap_or(selection.save.path.as_path())
+                                                        .display()
+                                                ),
+                                                0.0,
+                                                egui::TextFormat::simple(
+                                                    ui.style()
+                                                        .text_styles
+                                                        .get(&egui::TextStyle::Body)
+                                                        .unwrap()
+                                                        .clone(),
+                                                    ui.visuals().text_color(),
+                                                ),
+                                            );
+                                            layout_job.append(
+                                                &i18n::LOCALES
                                                     .lookup(
                                                         &config.language,
                                                         &format!("games.{}-{}", family, variant),
                                                     )
                                                     .unwrap(),
+                                                0.0,
+                                                egui::TextFormat::simple(
+                                                    ui.style()
+                                                        .text_styles
+                                                        .get(&egui::TextStyle::Small)
+                                                        .unwrap()
+                                                        .clone(),
+                                                    ui.visuals().text_color(),
+                                                ),
                                             );
-                                        });
-                                    } else {
-                                        ui.label(
-                                            i18n::LOCALES
-                                                .lookup(
-                                                    &config.language,
-                                                    "select-save.no-save-selected",
-                                                )
-                                                .unwrap(),
-                                        );
-                                    }
-                                },
-                            );
-
-                            resp
+                                            layout_job.wrap.max_width = wrap_width;
+                                        } else {
+                                            layout_job.append(
+                                                &i18n::LOCALES
+                                                    .lookup(
+                                                        &config.language,
+                                                        "select-save.no-save-selected",
+                                                    )
+                                                    .unwrap(),
+                                                0.0,
+                                                egui::TextFormat::simple(
+                                                    ui.style()
+                                                        .text_styles
+                                                        .get(&egui::TextStyle::Small)
+                                                        .unwrap()
+                                                        .clone(),
+                                                    ui.visuals().text_color(),
+                                                ),
+                                            );
+                                        }
+                                        ui.fonts().layout_job(layout_job)
+                                    };
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut String::new())
+                                            .layouter(&mut layouter),
+                                    )
+                                })
+                                .inner
                         })
                         .inner
-                    });
-
-                    if (resp.inner | resp.response).clicked() {
-                        main_view.show_save_select = if main_view.show_save_select.is_none() {
-                            rayon::spawn({
-                                let roms_scanner = state.roms_scanner.clone();
-                                let saves_scanner = state.saves_scanner.clone();
-                                let patches_scanner = state.patches_scanner.clone();
-                                let roms_path = config.roms_path();
-                                let saves_path = config.saves_path();
-                                let patches_path = config.patches_path();
-                                move || {
-                                    roms_scanner.rescan(move || game::scan_roms(&roms_path));
-                                    saves_scanner.rescan(move || save::scan_saves(&saves_path));
-                                    patches_scanner.rescan(move || {
-                                        patch::scan(&patches_path).unwrap_or_default()
-                                    });
-                                }
-                            });
-                            Some(save_select_window::State::new(
-                                main_view.selection.lock().as_ref().map(|selection| {
-                                    (selection.game, Some(selection.save.path.to_path_buf()))
-                                }),
-                            ))
-                        } else {
-                            None
-                        };
-                    }
-                });
+                    })
+                    .inner
+                    .clicked()
+                {
+                    main_view.show_save_select = if main_view.show_save_select.is_none() {
+                        rayon::spawn({
+                            let roms_scanner = state.roms_scanner.clone();
+                            let saves_scanner = state.saves_scanner.clone();
+                            let patches_scanner = state.patches_scanner.clone();
+                            let roms_path = config.roms_path();
+                            let saves_path = config.saves_path();
+                            let patches_path = config.patches_path();
+                            move || {
+                                roms_scanner.rescan(move || game::scan_roms(&roms_path));
+                                saves_scanner.rescan(move || save::scan_saves(&saves_path));
+                                patches_scanner
+                                    .rescan(move || patch::scan(&patches_path).unwrap_or_default());
+                            }
+                        });
+                        Some(save_select_window::State::new(
+                            main_view.selection.lock().as_ref().map(|selection| {
+                                (selection.game, Some(selection.save.path.to_path_buf()))
+                            }),
+                        ))
+                    } else {
+                        None
+                    };
+                }
             });
 
             ui.separator();
