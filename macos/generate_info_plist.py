@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+import os
 import toml
 import semver
 
-with open("tango/Cargo.toml") as f:
+with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) as f:
     cargo_toml = toml.load(f)
 
 
