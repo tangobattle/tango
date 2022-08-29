@@ -29,6 +29,7 @@ pub struct Version {
 
 #[derive(Debug)]
 pub struct Patch {
+    pub path: std::path::PathBuf,
     pub title: String,
     pub authors: Vec<mailparse::SingleInfo>,
     pub license: Option<spdx::LicenseId>,
@@ -168,6 +169,7 @@ pub fn scan(
         patches.insert(
             entry.file_name(),
             Patch {
+                path: entry.path(),
                 title: info.patch.title,
                 authors: info
                     .patch

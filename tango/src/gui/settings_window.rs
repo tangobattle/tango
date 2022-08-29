@@ -147,7 +147,7 @@ impl SettingsWindow {
             .show(ui, |ui| {
                 {
                     let mut nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
-                    ui.label(
+                    ui.strong(
                         i18n::LOCALES
                             .lookup(&config.language, "settings-nickname")
                             .unwrap(),
@@ -158,7 +158,7 @@ impl SettingsWindow {
                 }
 
                 {
-                    ui.label(
+                    ui.strong(
                         i18n::LOCALES
                             .lookup(&config.language, "settings-theme")
                             .unwrap(),
@@ -201,7 +201,7 @@ impl SettingsWindow {
                 }
 
                 {
-                    ui.label(
+                    ui.strong(
                         i18n::LOCALES
                             .lookup(&config.language, "settings-language")
                             .unwrap(),
@@ -258,7 +258,7 @@ impl SettingsWindow {
                 }
 
                 {
-                    ui.label(
+                    ui.strong(
                         i18n::LOCALES
                             .lookup(&config.language, "settings-data-path")
                             .unwrap(),
@@ -320,7 +320,7 @@ impl SettingsWindow {
                 }
 
                 {
-                    ui.label(
+                    ui.strong(
                         i18n::LOCALES
                             .lookup(&config.language, "settings-debug-overlay")
                             .unwrap(),
@@ -346,7 +346,7 @@ impl SettingsWindow {
                     &mut input::Mapping,
                 )
                     -> &mut Vec<input::PhysicalInput>| {
-                    ui.label(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
+                    ui.strong(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
                     ui.horizontal_wrapped(|ui| {
                         let mapping = get_mapping(input_mapping);
                         for (i, c) in mapping.clone().iter().enumerate() {
@@ -456,7 +456,7 @@ impl SettingsWindow {
         egui::Grid::new("settings-window-graphics-grid")
             .num_columns(2)
             .show(ui, |ui| {
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-max-scale")
                         .unwrap(),
@@ -477,7 +477,7 @@ impl SettingsWindow {
                 );
                 ui.end_row();
 
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-ui-scale")
                         .unwrap(),
@@ -490,7 +490,7 @@ impl SettingsWindow {
                 );
                 ui.end_row();
 
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-full-screen")
                         .unwrap(),
@@ -504,7 +504,7 @@ impl SettingsWindow {
 
                 ui.end_row();
 
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-video-filter")
                         .unwrap(),
@@ -572,7 +572,7 @@ impl SettingsWindow {
         egui::Grid::new("settings-window-netplay-grid")
             .num_columns(2)
             .show(ui, |ui| {
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-input-delay")
                         .unwrap(),
@@ -580,7 +580,7 @@ impl SettingsWindow {
                 ui.add(egui::Slider::new(&mut config.input_delay, 2..=10));
                 ui.end_row();
 
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-max-queue-length")
                         .unwrap(),
@@ -588,7 +588,7 @@ impl SettingsWindow {
                 ui.add(egui::DragValue::new(&mut config.max_queue_length).speed(1));
                 ui.end_row();
 
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-matchmaking-endpoint")
                         .unwrap(),
@@ -605,7 +605,7 @@ impl SettingsWindow {
                 );
                 ui.end_row();
 
-                ui.label(
+                ui.strong(
                     i18n::LOCALES
                         .lookup(&config.language, "settings-replaycollector-endpoint")
                         .unwrap(),

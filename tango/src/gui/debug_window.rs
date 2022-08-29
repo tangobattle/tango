@@ -23,7 +23,7 @@ impl DebugWindow {
                 egui::Grid::new("debug-window-grid")
                     .num_columns(2)
                     .show(ui, |ui| {
-                        ui.label("FPS");
+                        ui.strong("FPS");
                         ui.label(
                             egui::RichText::new(format!(
                                 "{:3.02}",
@@ -42,7 +42,7 @@ impl DebugWindow {
 
                                         let round_state = match_.lock_round_state().await;
                                         if let Some(round) = round_state.round.as_ref() {
-                                            ui.label("Current tick");
+                                            ui.strong("Current tick");
                                             ui.label(
                                                 egui::RichText::new(format!(
                                                     "{:4}",
@@ -52,7 +52,7 @@ impl DebugWindow {
                                             );
                                             ui.end_row();
 
-                                            ui.label("Local player index");
+                                            ui.strong("Local player index");
                                             ui.label(
                                                 egui::RichText::new(format!(
                                                     "{:1}",
@@ -62,7 +62,7 @@ impl DebugWindow {
                                             );
                                             ui.end_row();
 
-                                            ui.label("Queue length");
+                                            ui.strong("Queue length");
                                             ui.label(
                                                 egui::RichText::new(format!(
                                                     "{:2} vs {:2} (delay = {:1})",
@@ -85,7 +85,7 @@ impl DebugWindow {
                                 0.0
                             };
 
-                            ui.label("Emu TPS");
+                            ui.strong("Emu TPS");
                             ui.label(
                                 egui::RichText::new(format!(
                                     "{:3.02} ({:+1.02})",

@@ -24,7 +24,7 @@ impl State {
             selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
-            show_patches: Some(gui::patches_window::State::new()),
+            show_patches: None,
         }
     }
 }
@@ -600,6 +600,20 @@ impl MainView {
                                 None
                             };
                         }
+
+                        if ui
+                            .selectable_label(main_view.show_patches.is_some(), "🩹")
+                            .on_hover_text_at_pointer(
+                                i18n::LOCALES.lookup(&config.language, "patches").unwrap(),
+                            )
+                            .clicked()
+                        {
+                            main_view.show_patches = if main_view.show_patches.is_none() {
+                                Some(gui::patches_window::State::new())
+                            } else {
+                                None
+                            };
+                        }
                     });
                 });
             });
@@ -684,7 +698,7 @@ impl MainView {
                                                         if lobby.local_negotiated_state.is_some()
                                                             || lobby.sender.is_none()
                                                         {
-                                                            ui.strong("✅");
+                                                            ui.label("✅");
                                                         }
                                                     });
                                                 });
@@ -694,7 +708,7 @@ impl MainView {
                                                             lobby.remote_settings.nickname.clone(),
                                                         );
                                                         if lobby.remote_commitment.is_some() {
-                                                            ui.strong("✅");
+                                                            ui.label("✅");
                                                         }
                                                     });
                                                 });

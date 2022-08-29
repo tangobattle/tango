@@ -29,10 +29,10 @@ impl PatchesWindow {
     ) {
         let mut show_window = show.is_some();
         egui::Window::new(format!(
-            "{}",
-            i18n::LOCALES.lookup(language, "select-patch").unwrap()
+            "🩹 {}",
+            i18n::LOCALES.lookup(language, "patches").unwrap()
         ))
-        .id(egui::Id::new("select-patch-window"))
+        .id(egui::Id::new("patch-window"))
         .resizable(true)
         .min_width(400.0)
         .default_width(600.0)
@@ -45,7 +45,7 @@ impl PatchesWindow {
                 egui::ScrollArea::vertical()
                     .max_width(200.0)
                     .auto_shrink([false, false])
-                    .id_source("select-patch-window-left")
+                    .id_source("patch-window-left")
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                             for (name, _) in patches.iter() {
@@ -62,39 +62,70 @@ impl PatchesWindow {
                         });
                     });
 
+                let patch =
+                    if let Some(patch) = state.selection.as_ref().and_then(|n| patches.get(n)) {
+                        patch
+                    } else {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .id_source("patch-window-right-empty")
+                            .show(ui, |_ui| {});
+                        return;
+                    };
+
                 ui.with_layout(
                     egui::Layout::top_down_justified(egui::Align::Min).with_main_justify(true),
                     |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            let patch = if let Some(patch) =
-                                state.selection.as_ref().and_then(|n| patches.get(n))
-                            {
-                                patch
-                            } else {
-                                return;
-                            };
+                            let latest_version_and_info =
+                                patch.versions.iter().max_by_key(|(k, _)| *k);
 
                             ui.vertical(|ui| {
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Min),
                                     |ui| {
-                                        ui.button("Select");
+                                        if ui
+                                            .button(
+                                                i18n::LOCALES
+                                                    .lookup(language, "patches.open-folder")
+                                                    .unwrap(),
+                                            )
+                                            .clicked()
+                                        {
+                                            let _ = open::that(&patch.path);
+                                        }
+
                                         ui.with_layout(
                                             egui::Layout::top_down_justified(egui::Align::Min),
                                             |ui| {
-                                                ui.heading(&patch.title);
+                                                ui.horizontal(|ui| {
+                                                    ui.with_layout(
+                                                        egui::Layout::left_to_right(
+                                                            egui::Align::Max,
+                                                        )
+                                                        .with_main_wrap(true),
+                                                        |ui| {
+                                                            ui.heading(&patch.title);
+                                                            if let Some((version, _)) =
+                                                                latest_version_and_info.as_ref()
+                                                            {
+                                                                ui.label(version.to_string());
+                                                            }
+                                                        },
+                                                    );
+                                                });
                                             },
                                         );
                                     },
                                 );
-                                egui::Grid::new("select-patch-info-grid")
+                                egui::Grid::new("patch-info-grid")
                                     .num_columns(2)
                                     .show(ui, |ui| {
                                         ui.with_layout(
                                             egui::Layout::left_to_right(egui::Align::Min)
                                                 .with_cross_justify(true),
                                             |ui| {
-                                                ui.label(
+                                                ui.strong(
                                                     i18n::LOCALES
                                                         .lookup(language, "patches.authors")
                                                         .unwrap(),
@@ -124,7 +155,7 @@ impl PatchesWindow {
                                                 egui::Layout::left_to_right(egui::Align::Min)
                                                     .with_cross_justify(true),
                                                 |ui| {
-                                                    ui.label(
+                                                    ui.strong(
                                                         i18n::LOCALES
                                                             .lookup(language, "patches.source")
                                                             .unwrap(),
@@ -134,12 +165,52 @@ impl PatchesWindow {
                                             ui.hyperlink_to("🌐", source);
                                             ui.end_row();
                                         }
+
+                                        if let Some((_, version_info)) =
+                                            latest_version_and_info.as_ref()
+                                        {
+                                            ui.with_layout(
+                                                egui::Layout::left_to_right(egui::Align::Min)
+                                                    .with_cross_justify(true),
+                                                |ui| {
+                                                    ui.strong(
+                                                        i18n::LOCALES
+                                                            .lookup(language, "patches.games")
+                                                            .unwrap(),
+                                                    );
+                                                },
+                                            );
+                                            ui.vertical(|ui| {
+                                                let mut games = version_info
+                                                    .supported_games
+                                                    .iter()
+                                                    .cloned()
+                                                    .collect::<Vec<_>>();
+                                                games::sort_games(language, &mut games);
+                                                for game in games.iter() {
+                                                    let (family, variant) =
+                                                        game.family_and_variant();
+                                                    ui.label(
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                language,
+                                                                &format!(
+                                                                    "games.{}-{}",
+                                                                    family, variant
+                                                                ),
+                                                            )
+                                                            .unwrap(),
+                                                    );
+                                                }
+                                            });
+                                            ui.end_row();
+                                        }
                                     });
                                 ui.separator();
 
                                 egui::ScrollArea::vertical()
                                     .auto_shrink([false, false])
-                                    .id_source("select-patch-window-right")
+                                    .id_source("patch-window-readme")
                                     .show(ui, |ui| {
                                         ui.monospace(
                                             patch.readme.clone().unwrap_or("".to_string()),

@@ -169,10 +169,10 @@ pub fn scan_saves(
     paths
 }
 
-pub fn sorted_games(
+pub fn sort_games(
     lang: &unic_langid::LanguageIdentifier,
-) -> Vec<&'static (dyn Game + Send + Sync)> {
-    let mut games = GAMES.to_vec();
+    games: &mut [&'static (dyn Game + Send + Sync)],
+) {
     games.sort_by_key(|g| {
         (
             if g.language().matches(lang, true, true) {
@@ -183,6 +183,13 @@ pub fn sorted_games(
             g.family_and_variant(),
         )
     });
+}
+
+pub fn sorted_all_games(
+    lang: &unic_langid::LanguageIdentifier,
+) -> Vec<&'static (dyn Game + Send + Sync)> {
+    let mut games = GAMES.to_vec();
+    sort_games(lang, &mut games);
     games
 }
 

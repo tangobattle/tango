@@ -48,7 +48,7 @@ impl SaveSelectWindow {
             let roms = roms_scanner.read();
             let saves = saves_scanner.read();
 
-            let games = games::sorted_games(language);
+            let games = games::sorted_all_games(language);
             if let Some((game, _)) = show.as_mut().unwrap().selection {
                 let (family, variant) = game.family_and_variant();
                 ui.heading(
