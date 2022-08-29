@@ -16,7 +16,7 @@ TEMPLATE = f"""\
 		<key>CFBundleDevelopmentRegion</key>
 		<string>en</string>
 		<key>CFBundleExecutable</key>
-		<string>Tango</string>
+		<string>tango</string>
 		<key>CFBundleIdentifier</key>
 		<string>com.tangobattle.Tango</string>
 		<key>CFBundleInfoDictionaryVersion</key>
