@@ -34,6 +34,7 @@ impl PatchesWindow {
         ))
         .id(egui::Id::new("select-patch-window"))
         .resizable(true)
+        .min_width(400.0)
         .default_width(600.0)
         .open(&mut show_window)
         .show(ctx, |ui| {
@@ -60,10 +61,10 @@ impl PatchesWindow {
                             }
                         });
                     });
-                egui::ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .id_source("select-patch-window-right")
-                    .show(ui, |ui| {
+
+                ui.with_layout(
+                    egui::Layout::top_down_justified(egui::Align::Min).with_main_justify(true),
+                    |ui| {
                         ui.horizontal_wrapped(|ui| {
                             let patch = if let Some(patch) =
                                 state.selection.as_ref().and_then(|n| patches.get(n))
@@ -74,7 +75,18 @@ impl PatchesWindow {
                             };
 
                             ui.vertical(|ui| {
-                                ui.heading(&patch.title);
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Min),
+                                    |ui| {
+                                        ui.button("Select");
+                                        ui.with_layout(
+                                            egui::Layout::top_down_justified(egui::Align::Min),
+                                            |ui| {
+                                                ui.heading(&patch.title);
+                                            },
+                                        );
+                                    },
+                                );
                                 egui::Grid::new("select-patch-info-grid")
                                     .num_columns(2)
                                     .show(ui, |ui| {
@@ -125,10 +137,18 @@ impl PatchesWindow {
                                     });
                                 ui.separator();
 
-                                ui.monospace(patch.readme.clone().unwrap_or("".to_string()));
+                                egui::ScrollArea::vertical()
+                                    .auto_shrink([false, false])
+                                    .id_source("select-patch-window-right")
+                                    .show(ui, |ui| {
+                                        ui.monospace(
+                                            patch.readme.clone().unwrap_or("".to_string()),
+                                        );
+                                    });
                             });
                         });
-                    });
+                    },
+                );
             });
         });
         if !show_window {
