@@ -104,7 +104,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
         Some(save::Chip {
             id: self.save.buf[0x01c0 + chip_index * 2] as usize,
-            variant: self.save.buf[0x01c0 + chip_index * 2 + 1] as usize,
+            code: self.save.buf[0x01c0 + chip_index * 2 + 1] as usize,
         })
     }
 }
