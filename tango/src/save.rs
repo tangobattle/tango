@@ -101,7 +101,7 @@ pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
 #[derive(Clone, Debug)]
 pub struct Chip {
     pub id: usize,
-    pub variant: usize,
+    pub code: usize,
 }
 
 pub trait ChipsView<'a> {
