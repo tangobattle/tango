@@ -94,7 +94,12 @@ where
     }
 }
 
-pub trait Save: SaveClone {
+pub trait Save
+where
+    Self: SaveClone,
+{
+    fn to_vec(&self) -> Vec<u8>;
+
     fn view_chips<'a>(&'a self) -> Option<Box<dyn ChipsView<'a> + 'a>> {
         None
     }

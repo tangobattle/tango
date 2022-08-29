@@ -19,14 +19,14 @@ pub struct GameInfo {
 
 #[derive(Clone)]
 pub struct Save {
-    buf: Vec<u8>,
+    buf: [u8; SRAM_SIZE],
 }
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let buf = buf
             .get(..SRAM_SIZE)
-            .map(|buf| buf.to_vec())
+            .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
         let save = Self { buf };
@@ -66,6 +66,12 @@ impl Save {
 impl save::Save for Save {
     fn view_chips<'a>(&'a self) -> Option<Box<dyn save::ChipsView<'a> + 'a>> {
         Some(Box::new(ChipsView { save: self }))
+    }
+
+    fn to_vec(&self) -> Vec<u8> {
+        let mut buf = vec![0; 65536];
+        buf[..SRAM_SIZE].copy_from_slice(&self.buf);
+        buf
     }
 }
 

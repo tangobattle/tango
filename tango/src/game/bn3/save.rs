@@ -26,7 +26,7 @@ pub struct GameInfo {
 
 #[derive(Clone)]
 pub struct Save {
-    buf: Vec<u8>,
+    buf: [u8; SRAM_SIZE],
     game_info: GameInfo,
 }
 
@@ -36,9 +36,9 @@ fn compute_raw_checksum(buf: &[u8]) -> u32 {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
-        let buf = buf
+        let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
-            .map(|buf| buf.to_vec())
+            .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
         let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
@@ -82,4 +82,10 @@ impl Save {
     }
 }
 
-impl save::Save for Save {}
+impl save::Save for Save {
+    fn to_vec(&self) -> Vec<u8> {
+        let mut buf = vec![0; 65536];
+        buf[..SRAM_SIZE].copy_from_slice(&self.buf);
+        buf
+    }
+}

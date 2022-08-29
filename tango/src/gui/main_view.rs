@@ -1058,15 +1058,13 @@ impl MainView {
                             if lobby.sender.is_some() {
                                 handle.block_on(async {
                                     if !was_ready && ready {
-                                        let save_path = lobby
+                                        let save_data = lobby
                                             .selection
                                             .lock()
                                             .as_ref()
-                                            .map(|selection| selection.save.path.clone());
-                                        if let Some(save_path) = save_path {
-                                            if let Ok(save_data) = std::fs::read(&save_path) {
-                                                let _ = lobby.commit(&save_data).await;
-                                            }
+                                            .map(|selection| selection.save.save.to_vec());
+                                        if let Some(save_data) = save_data {
+                                            let _ = lobby.commit(&save_data).await;
                                         }
                                     } else if !ready {
                                         let _ = lobby.uncommit().await;
