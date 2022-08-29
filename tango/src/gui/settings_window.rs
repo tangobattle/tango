@@ -180,6 +180,7 @@ impl SettingsWindow {
                             config::Theme::Light => &light_label,
                             config::Theme::Dark => &dark_label,
                         })
+                        .width(200.0)
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut config.theme,
@@ -217,6 +218,7 @@ impl SettingsWindow {
                         egui::RichText::new("繁體中文").family(self.font_families.hant.clone());
 
                     egui::ComboBox::from_id_source("settings-window-general-language")
+                        .width(200.0)
                         .selected_text(match &config.language {
                             lang if lang.matches(&unic_langid::langid!("en"), false, true) => {
                                 en_label.clone()
@@ -526,6 +528,7 @@ impl SettingsWindow {
                     .unwrap();
 
                 egui::ComboBox::from_id_source("settings-window-general-video-filter")
+                    .width(200.0)
                     .selected_text(match config.video_filter.as_str() {
                         "" => &null_label,
                         "hq2x" => &hq2x_label,
