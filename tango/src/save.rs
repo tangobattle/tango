@@ -100,7 +100,7 @@ where
 {
     fn to_vec(&self) -> Vec<u8>;
 
-    fn view_chips<'a>(&'a self) -> Option<Box<dyn ChipsView<'a> + 'a>> {
+    fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
     }
 }

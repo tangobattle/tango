@@ -64,7 +64,7 @@ impl Save {
 }
 
 impl save::Save for Save {
-    fn view_chips<'a>(&'a self) -> Option<Box<dyn save::ChipsView<'a> + 'a>> {
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
         Some(Box::new(ChipsView { save: self }))
     }
 
