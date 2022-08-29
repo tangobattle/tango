@@ -263,7 +263,26 @@ impl SettingsWindow {
                             .lookup(&config.language, "settings-data-path")
                             .unwrap(),
                     );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::TextEdit::singleline(&mut format!(
+                                "{}",
+                                config.data_path.display()
+                            ))
+                            .interactive(false),
+                        );
+
+                        if ui
+                            .button(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "settings-data-path.open")
+                                    .unwrap(),
+                            )
+                            .clicked()
+                        {
+                            let _ = open::that(&config.data_path);
+                        }
+
                         if ui
                             .button(
                                 i18n::LOCALES
@@ -295,25 +314,6 @@ impl SettingsWindow {
                                 });
                             }
                         }
-
-                        if ui
-                            .button(
-                                i18n::LOCALES
-                                    .lookup(&config.language, "settings-data-path.open")
-                                    .unwrap(),
-                            )
-                            .clicked()
-                        {
-                            let _ = open::that(&config.data_path);
-                        }
-
-                        ui.add(
-                            egui::TextEdit::singleline(&mut format!(
-                                "{}",
-                                config.data_path.display()
-                            ))
-                            .interactive(false),
-                        );
                     });
                     ui.end_row();
                 }
