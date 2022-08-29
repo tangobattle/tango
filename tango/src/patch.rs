@@ -32,7 +32,7 @@ pub struct Patch {
     pub path: std::path::PathBuf,
     pub title: String,
     pub authors: Vec<mailparse::SingleInfo>,
-    pub license: Option<spdx::LicenseId>,
+    pub license: Option<String>,
     pub source: Option<String>,
     pub readme: Option<String>,
     pub versions: std::collections::HashMap<semver::Version, Version>,
@@ -190,10 +190,7 @@ pub fn scan(
                         }],
                     })
                     .collect(),
-                license: info
-                    .patch
-                    .license
-                    .and_then(|license| spdx::license_id(&license)),
+                license: info.patch.license,
                 readme,
                 source: info.patch.source,
                 versions,

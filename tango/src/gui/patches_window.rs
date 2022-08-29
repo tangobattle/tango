@@ -150,6 +150,28 @@ impl PatchesWindow {
                                         });
                                         ui.end_row();
 
+                                        ui.with_layout(
+                                            egui::Layout::left_to_right(egui::Align::Min)
+                                                .with_cross_justify(true),
+                                            |ui| {
+                                                ui.strong(
+                                                    i18n::LOCALES
+                                                        .lookup(language, "patches.license")
+                                                        .unwrap(),
+                                                );
+                                            },
+                                        );
+                                        if let Some(license) = patch.license.as_ref() {
+                                            ui.label(license);
+                                        } else {
+                                            ui.label(
+                                                i18n::LOCALES
+                                                    .lookup(language, "patches.all-rights-reserved")
+                                                    .unwrap(),
+                                            );
+                                        }
+                                        ui.end_row();
+
                                         if let Some(source) = patch.source.as_ref() {
                                             ui.with_layout(
                                                 egui::Layout::left_to_right(egui::Align::Min)
