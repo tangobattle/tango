@@ -84,14 +84,16 @@ impl SaveSelectWindow {
                                             selection
                                                 .as_ref()
                                                 .map(|selection| {
-                                                    selection.save_path.as_path() == save.as_path()
+                                                    selection.save.path.as_path()
+                                                        == save.path.as_path()
                                                 })
                                                 .unwrap_or(false),
                                             format!(
                                                 "{}",
-                                                save.as_path()
+                                                save.path
+                                                    .as_path()
                                                     .strip_prefix(saves_path)
-                                                    .unwrap_or(save.as_path())
+                                                    .unwrap_or(save.path.as_path())
                                                     .display()
                                             ),
                                         )
@@ -100,7 +102,7 @@ impl SaveSelectWindow {
                                         *show = None;
                                         *selection = Some(gui::main_view::Selection {
                                             game,
-                                            save_path: save.as_path().to_path_buf(),
+                                            save: save.clone(),
                                             rom: roms.get(&game).unwrap().clone(),
                                         });
                                     }

@@ -33,7 +33,10 @@ impl game::Game for EXE3WImpl {
         &hooks::A6BJ_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if *game_info
@@ -75,7 +78,10 @@ impl game::Game for EXE3BImpl {
         &hooks::A3XJ_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if *game_info
@@ -117,7 +123,10 @@ impl game::Game for BN3WImpl {
         &hooks::A6BE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if *game_info
@@ -159,7 +168,10 @@ impl game::Game for BN3BImpl {
         &hooks::A3XE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if *game_info

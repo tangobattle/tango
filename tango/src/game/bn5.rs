@@ -33,7 +33,10 @@ impl game::Game for EXE5BImpl {
         &hooks::BRBJ_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info
@@ -76,7 +79,10 @@ impl game::Game for EXE5CImpl {
         &hooks::BRKJ_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info
@@ -119,7 +125,10 @@ impl game::Game for BN5PImpl {
         &hooks::BRBE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info
@@ -162,7 +171,10 @@ impl game::Game for BN5CImpl {
         &hooks::BRKE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info

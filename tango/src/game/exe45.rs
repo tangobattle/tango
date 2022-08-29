@@ -33,7 +33,10 @@ impl game::Game for EXE45Impl {
         &hooks::BR4J_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
     }

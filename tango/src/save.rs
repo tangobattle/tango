@@ -2,9 +2,15 @@ use byteorder::ByteOrder;
 
 use crate::game;
 
+#[derive(Clone)]
+pub struct ScannedSave {
+    pub path: std::path::PathBuf,
+    pub save: Box<dyn Save + Send + Sync>,
+}
+
 pub fn scan_saves(
     path: &std::path::Path,
-) -> std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<std::path::PathBuf>> {
+) -> std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>> {
     let mut paths = std::collections::HashMap::new();
 
     for entry in walkdir::WalkDir::new(path) {
@@ -33,10 +39,13 @@ pub fn scan_saves(
         let mut errors = vec![];
         for game in game::GAMES.iter() {
             match game.parse_save(&buf) {
-                Ok(_) => {
+                Ok(save) => {
                     log::info!("{}: {:?}", path.display(), game.family_and_variant());
-                    let save_paths = paths.entry(*game).or_insert_with(|| vec![]);
-                    save_paths.push(path.to_path_buf());
+                    let saves = paths.entry(*game).or_insert_with(|| vec![]);
+                    saves.push(ScannedSave {
+                        path: path.to_path_buf(),
+                        save,
+                    });
                     ok = true;
                 }
                 Err(e) => {
@@ -59,8 +68,9 @@ pub fn scan_saves(
     }
 
     for (_, saves) in paths.iter_mut() {
-        saves.sort_by_key(|path| {
-            let components = path
+        saves.sort_by_key(|s| {
+            let components = s
+                .path
                 .components()
                 .map(|c| c.as_os_str().to_os_string())
                 .collect::<Vec<_>>();
@@ -71,9 +81,28 @@ pub fn scan_saves(
     paths
 }
 
-pub trait Save {
+pub trait SaveClone {
+    fn clone_box(&self) -> Box<dyn Save + Sync + Send>;
+}
+
+impl<T> SaveClone for T
+where
+    T: 'static + Save + Sync + Send + Clone,
+{
+    fn clone_box(&self) -> Box<dyn Save + Sync + Send> {
+        Box::new(self.clone())
+    }
+}
+
+pub trait Save: SaveClone {
     fn view_chips<'a>(&'a self) -> Option<Box<dyn ChipsView<'a> + 'a>> {
         None
+    }
+}
+
+impl Clone for Box<dyn Save + Send + Sync> {
+    fn clone(&self) -> Self {
+        self.clone_box()
     }
 }
 

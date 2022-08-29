@@ -15,7 +15,7 @@ mod steal_input_window;
 type ROMsScanner =
     scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>>;
 type SavesScanner = scanner::Scanner<
-    std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<std::path::PathBuf>>,
+    std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<save::ScannedSave>>,
 >;
 type PatchesScanner =
     scanner::Scanner<std::collections::BTreeMap<std::ffi::OsString, patch::Patch>>;

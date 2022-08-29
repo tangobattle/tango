@@ -19,7 +19,7 @@ main-connection-task =
 
 select-save = Select save
     .select-button = Select
-    .no-game-selected = No game selected
+    .no-save-selected = No save selected
     .return-to-games-list = Return to games list
 
 select-patch = Select patch

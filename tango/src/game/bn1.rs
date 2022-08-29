@@ -33,7 +33,10 @@ impl game::Game for EXE1Impl {
         &hooks::AREJ_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info
@@ -75,7 +78,10 @@ impl game::Game for BN1Impl {
         &hooks::AREE_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info().unwrap();
         if game_info

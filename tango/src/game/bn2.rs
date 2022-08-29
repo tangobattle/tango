@@ -33,7 +33,10 @@ impl game::Game for EXE2Impl {
         &hooks::AE2J_01
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
     }
@@ -67,7 +70,10 @@ impl game::Game for BN2Impl {
         &hooks::AE2E_00
     }
 
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save>, anyhow::Error> {
+    fn parse_save(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
     }

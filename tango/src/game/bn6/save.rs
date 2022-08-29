@@ -26,6 +26,7 @@ pub struct GameInfo {
     pub variant: Variant,
 }
 
+#[derive(Clone)]
 pub struct Save {
     buf: Vec<u8>,
 }

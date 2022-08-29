@@ -15,6 +15,7 @@ fn mask(buf: &mut [u8]) {
     byteorder::LittleEndian::write_u32(&mut buf[MASK_OFFSET..MASK_OFFSET + 4], mask);
 }
 
+#[derive(Clone)]
 pub struct Save {
     buf: Vec<u8>,
 }

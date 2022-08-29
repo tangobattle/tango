@@ -19,11 +19,12 @@ const fn checksum_start_for_variant(variant: Variant) -> u32 {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct GameInfo {
     pub variant: Variant,
 }
 
+#[derive(Clone)]
 pub struct Save {
     buf: Vec<u8>,
     game_info: GameInfo,

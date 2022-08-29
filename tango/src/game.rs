@@ -168,7 +168,7 @@ where
     fn expected_crc32(&self) -> u32;
     fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
-    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn save::Save>, anyhow::Error>;
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
 }
 
 pub trait Hooks {

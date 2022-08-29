@@ -17,6 +17,7 @@ pub struct GameInfo {
     pub region: Region,
 }
 
+#[derive(Clone)]
 pub struct Save {
     buf: Vec<u8>,
 }

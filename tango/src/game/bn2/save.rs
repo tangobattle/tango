@@ -6,6 +6,7 @@ const SRAM_SIZE: usize = 0x3a78;
 const GAME_NAME_OFFSET: usize = 0x1198;
 const CHECKSUM_OFFSET: usize = 0x114c;
 
+#[derive(Clone)]
 pub struct Save {
     buf: Vec<u8>,
 }

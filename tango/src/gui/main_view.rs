@@ -50,7 +50,7 @@ enum ConnectionState {
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
-    pub save_path: std::path::PathBuf,
+    pub save: save::ScannedSave,
 }
 
 struct Lobby {
@@ -927,7 +927,7 @@ impl MainView {
                                 ));
                             } else if let Some(selection) = &*main_view.selection.lock() {
                                 let audio_binder = state.audio_binder.clone();
-                                let save_path = selection.save_path.clone();
+                                let save_path = selection.save.path.clone();
                                 let main_view = state.main_view.clone();
                                 let emu_tps_counter = state.emu_tps_counter.clone();
                                 let rom = selection.rom.clone();
@@ -1062,7 +1062,7 @@ impl MainView {
                                             .selection
                                             .lock()
                                             .as_ref()
-                                            .map(|selection| selection.save_path.clone());
+                                            .map(|selection| selection.save.path.clone());
                                         if let Some(save_path) = save_path {
                                             if let Ok(save_data) = std::fs::read(&save_path) {
                                                 let _ = lobby.commit(&save_data).await;
@@ -1122,91 +1122,134 @@ impl MainView {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                let resp = ui.group(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let resp = ui.add({
-                            let button = egui::Button::new(
-                                i18n::LOCALES
-                                    .lookup(&config.language, "select-save.select-button")
-                                    .unwrap(),
-                            );
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    let resp = ui.group(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let resp = ui.add({
+                                let button = egui::Button::new(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "select-save.select-button")
+                                        .unwrap(),
+                                );
 
-                            if main_view.show_save_select.is_some() {
-                                button.fill(ui.ctx().style().visuals.selection.bg_fill)
-                            } else {
-                                button
-                            }
-                        });
+                                if main_view.show_save_select.is_some() {
+                                    button.fill(ui.ctx().style().visuals.selection.bg_fill)
+                                } else {
+                                    button
+                                }
+                            });
 
-                        ui.with_layout(
-                            egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
-                            |ui| {
-                                if let Some(selection) = &*main_view.selection.lock() {
-                                    ui.vertical(|ui| {
-                                        ui.label(format!(
-                                            "{}",
-                                            selection
-                                                .save_path
-                                                .strip_prefix(&config.saves_path())
-                                                .unwrap_or(selection.save_path.as_path())
-                                                .display()
-                                        ));
+                            ui.with_layout(
+                                egui::Layout::top_down(egui::Align::Min).with_cross_justify(true),
+                                |ui| {
+                                    if let Some(selection) = &*main_view.selection.lock() {
+                                        ui.vertical(|ui| {
+                                            ui.label(format!(
+                                                "{}",
+                                                selection
+                                                    .save
+                                                    .path
+                                                    .strip_prefix(&config.saves_path())
+                                                    .unwrap_or(selection.save.path.as_path())
+                                                    .display()
+                                            ));
 
-                                        let (family, variant) = selection.game.family_and_variant();
-                                        ui.small(
+                                            let (family, variant) =
+                                                selection.game.family_and_variant();
+                                            ui.small(
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &config.language,
+                                                        &format!("games.{}-{}", family, variant),
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        });
+                                    } else {
+                                        ui.label(
                                             i18n::LOCALES
                                                 .lookup(
                                                     &config.language,
-                                                    &format!("games.{}-{}", family, variant),
+                                                    "select-save.no-save-selected",
                                                 )
                                                 .unwrap(),
                                         );
+                                    }
+                                },
+                            );
+
+                            resp
+                        })
+                        .inner
+                    });
+
+                    if (resp.inner | resp.response).clicked() {
+                        main_view.show_save_select = if main_view.show_save_select.is_none() {
+                            rayon::spawn({
+                                let roms_scanner = state.roms_scanner.clone();
+                                let saves_scanner = state.saves_scanner.clone();
+                                let patches_scanner = state.patches_scanner.clone();
+                                let roms_path = config.roms_path();
+                                let saves_path = config.saves_path();
+                                let patches_path = config.patches_path();
+                                move || {
+                                    roms_scanner.rescan(move || game::scan_roms(&roms_path));
+                                    saves_scanner.rescan(move || save::scan_saves(&saves_path));
+                                    patches_scanner.rescan(move || {
+                                        patch::scan(&patches_path).unwrap_or_default()
                                     });
-                                } else {
-                                    ui.label(
-                                        i18n::LOCALES
-                                            .lookup(
-                                                &config.language,
-                                                "select-save.no-game-selected",
-                                            )
-                                            .unwrap(),
-                                    );
                                 }
-                            },
-                        );
-
-                        resp
-                    })
-                    .inner
+                            });
+                            Some(save_select_window::State::new(
+                                main_view.selection.lock().as_ref().map(|selection| {
+                                    (selection.game, Some(selection.save.path.to_path_buf()))
+                                }),
+                            ))
+                        } else {
+                            None
+                        };
+                    }
                 });
-
-                if (resp.inner | resp.response).clicked() {
-                    main_view.show_save_select = if main_view.show_save_select.is_none() {
-                        rayon::spawn({
-                            let roms_scanner = state.roms_scanner.clone();
-                            let saves_scanner = state.saves_scanner.clone();
-                            let patches_scanner = state.patches_scanner.clone();
-                            let roms_path = config.roms_path();
-                            let saves_path = config.saves_path();
-                            let patches_path = config.patches_path();
-                            move || {
-                                roms_scanner.rescan(move || game::scan_roms(&roms_path));
-                                saves_scanner.rescan(move || save::scan_saves(&saves_path));
-                                patches_scanner
-                                    .rescan(move || patch::scan(&patches_path).unwrap_or_default());
-                            }
-                        });
-                        Some(save_select_window::State::new(
-                            main_view.selection.lock().as_ref().map(|selection| {
-                                (selection.game, Some(selection.save_path.to_path_buf()))
-                            }),
-                        ))
-                    } else {
-                        None
-                    };
-                }
             });
+
+            ui.separator();
+
+            {
+                let selection = main_view.selection.lock();
+                if let Some(selection) = &*selection {
+                    ui.horizontal(|ui| {
+                        ui.selectable_label(true, "TODO");
+                        ui.selectable_label(false, "TODO 2");
+                    });
+
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        if let Some(chip_view) = selection.save.save.view_chips() {
+                            egui_extras::TableBuilder::new(ui)
+                                .column(egui_extras::Size::remainder())
+                                .column(egui_extras::Size::exact(20.0))
+                                .body(|mut body| {
+                                    for i in 0..30 {
+                                        body.row(20.0, |mut row| {
+                                            let chip = chip_view
+                                                .chip(chip_view.equipped_folder_index(), i)
+                                                .unwrap();
+                                            row.col(|ui| {
+                                                ui.label(format!("{}", chip.id));
+                                            });
+                                            row.col(|ui| {
+                                                ui.label(format!(
+                                                    "{}",
+                                                    chip_view.chip_codes()[chip.code] as char
+                                                ));
+                                            });
+                                        });
+                                    }
+                                });
+                        }
+                    });
+                }
+            }
         });
     }
 }
