@@ -37,13 +37,13 @@ impl SaveSelectWindow {
         roms_scanner: gui::ROMsScanner,
         saves_scanner: gui::SavesScanner,
     ) {
-        let mut show_play_bool = show.is_some();
+        let mut show_window = show.is_some();
         egui::Window::new(format!(
             "{}",
             i18n::LOCALES.lookup(language, "select-save").unwrap()
         ))
         .id(egui::Id::new("select-save-window"))
-        .open(&mut show_play_bool)
+        .open(&mut show_window)
         .show(ctx, |ui| {
             let roms = roms_scanner.read();
             let saves = saves_scanner.read();
@@ -136,7 +136,7 @@ impl SaveSelectWindow {
             });
         });
 
-        if !show_play_bool {
+        if !show_window {
             *show = None;
         }
     }

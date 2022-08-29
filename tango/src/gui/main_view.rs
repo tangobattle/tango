@@ -13,6 +13,7 @@ pub struct State {
     selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
+    show_patches: Option<gui::patches_window::State>,
 }
 
 impl State {
@@ -23,6 +24,7 @@ impl State {
             selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
+            show_patches: Some(gui::patches_window::State::new()),
         }
     }
 }
@@ -488,6 +490,7 @@ async fn run_connection_task(
 pub struct MainView {
     session_view: gui::session_view::SessionView,
     save_select_window: gui::save_select_window::SaveSelectWindow,
+    patches_window: gui::patches_window::PatchesWindow,
 }
 
 impl MainView {
@@ -495,6 +498,7 @@ impl MainView {
         Self {
             session_view: gui::session_view::SessionView::new(),
             save_select_window: gui::save_select_window::SaveSelectWindow::new(),
+            patches_window: gui::patches_window::PatchesWindow::new(),
         }
     }
 
@@ -522,6 +526,14 @@ impl MainView {
         }
 
         let main_view = &mut *main_view;
+
+        self.patches_window.show(
+            ctx,
+            &mut main_view.show_patches,
+            &config.language,
+            &config.patches_path(),
+            state.patches_scanner.clone(),
+        );
 
         let (selection_changed, has_selection) = {
             let mut selection = main_view.selection.lock();
