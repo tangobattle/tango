@@ -1277,13 +1277,13 @@ impl MainView {
                             (selection.save.save.view_chips(), selection.assets.as_ref())
                         {
                             egui_extras::TableBuilder::new(ui)
-                                .column(egui_extras::Size::exact(32.0))
+                                .column(egui_extras::Size::exact(28.0))
                                 .column(egui_extras::Size::remainder())
-                                .column(egui_extras::Size::exact(32.0))
+                                .column(egui_extras::Size::exact(28.0))
                                 .column(egui_extras::Size::exact(30.0))
                                 .body(|mut body| {
                                     for i in 0..30 {
-                                        body.row(32.0, |mut row| {
+                                        body.row(28.0, |mut row| {
                                             let chip = chip_view
                                                 .chip(chip_view.equipped_folder_index(), i)
                                                 .unwrap();
@@ -1297,15 +1297,12 @@ impl MainView {
                                                     ui.ctx().load_texture(
                                                         "",
                                                         egui::ColorImage::from_rgba_unmultiplied(
-                                                            [
-                                                                info.icon.width() as usize,
-                                                                info.icon.height() as usize,
-                                                            ],
-                                                            &info.icon,
+                                                            [14, 14],
+                                                            &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14).to_image(),
                                                         ),
                                                         egui::TextureFilter::Nearest,
                                                     ).id(),
-                                                    egui::Vec2::new(32.0, 32.0),
+                                                    egui::Vec2::new(28.0, 28.0),
                                                 );
                                             });
                                             row.col(|ui| {
@@ -1325,15 +1322,12 @@ impl MainView {
                                                     ui.ctx().load_texture(
                                                         "",
                                                         egui::ColorImage::from_rgba_unmultiplied(
-                                                            [
-                                                                icon.width() as usize,
-                                                                icon.height() as usize,
-                                                            ],
-                                                            &icon,
+                                                            [14, 14],
+                                                            &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
                                                         ),
                                                         egui::TextureFilter::Nearest,
                                                     ).id(),
-                                                    egui::Vec2::new(32.0, 32.0),
+                                                    egui::Vec2::new(28.0, 28.0),
                                                 );
                                                 }
                                             });
