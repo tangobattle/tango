@@ -3,11 +3,11 @@ use byteorder::ByteOrder;
 use crate::rom;
 
 pub struct Offsets {
-    chip_data: usize,
-    chip_names_pointer: usize,
-    chip_icon_palette_pointer: usize,
-    element_icon_palette_pointer: usize,
-    element_icons_pointer: usize,
+    chip_data: u32,
+    chip_names_pointer: u32,
+    chip_icon_palette_pointer: u32,
+    element_icon_palette_pointer: u32,
+    element_icons_pointer: u32,
 }
 
 #[rustfmt::skip]
@@ -48,28 +48,22 @@ impl Assets {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
-            &mapper.get(
-                (byteorder::LittleEndian::read_u32(
-                    &mapper.get(offsets.chip_icon_palette_pointer)[..4],
-                )) as usize,
-            )[..32],
+            &mapper.get(byteorder::LittleEndian::read_u32(
+                &mapper.get(offsets.chip_icon_palette_pointer)[..4],
+            ))[..32],
         );
 
         Self {
             element_icons: {
                 let palette = rom::read_palette(
-                    &mapper.get(
-                        (byteorder::LittleEndian::read_u32(
-                            &mapper.get(offsets.element_icon_palette_pointer)[..4],
-                        )) as usize,
-                    )[..32],
+                    &mapper.get(byteorder::LittleEndian::read_u32(
+                        &mapper.get(offsets.element_icon_palette_pointer)[..4],
+                    ))[..32],
                 );
                 {
-                    let buf = mapper.get(
-                        (byteorder::LittleEndian::read_u32(
-                            &mapper.get(offsets.element_icons_pointer)[..4],
-                        )) as usize,
-                    );
+                    let buf = mapper.get(byteorder::LittleEndian::read_u32(
+                        &mapper.get(offsets.element_icons_pointer)[..4],
+                    ));
                     (0..5)
                         .map(|i| {
                             rom::apply_palette(
@@ -93,7 +87,7 @@ impl Assets {
                         name: if let Ok(parts) = rom::text::parse_entry(
                             &mapper.get(byteorder::LittleEndian::read_u32(
                                 &mapper.get(offsets.chip_names_pointer)[..4],
-                            ) as usize),
+                            )),
                             i,
                             &TEXT_PARSE_OPTIONS,
                         ) {
@@ -115,8 +109,8 @@ impl Assets {
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper
-                                    .get(byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4])
-                                        as usize)[..rom::TILE_BYTES * 4],
+                                    .get(byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4]))
+                                    [..rom::TILE_BYTES * 4],
                                 2,
                             )
                             .unwrap(),

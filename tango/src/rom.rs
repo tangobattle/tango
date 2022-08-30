@@ -139,20 +139,33 @@ pub fn unlz77(mut r: &[u8]) -> Option<Vec<u8>> {
 pub struct MemoryMapper<'a> {
     rom: &'a [u8],
     wram: &'a [u8],
+    unlz77_cache: std::cell::RefCell<std::collections::HashMap<u32, Vec<u8>>>,
 }
 
 impl<'a> MemoryMapper<'a> {
     pub fn new(rom: &'a [u8], wram: &'a [u8]) -> Self {
-        Self { rom, wram }
+        Self {
+            rom,
+            wram,
+            unlz77_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+        }
     }
 
-    pub fn get(&self, start: usize) -> std::borrow::Cow<'a, [u8]> {
+    pub fn get(&self, start: u32) -> std::borrow::Cow<'a, [u8]> {
         if start >= 0x02000000 && start < 0x04000000 {
-            std::borrow::Cow::Borrowed(&self.wram[start & !0x02000000..])
+            std::borrow::Cow::Borrowed(&self.wram[(start & !0x02000000) as usize..])
         } else if start >= 0x08000000 && start < 0x0a000000 {
-            std::borrow::Cow::Borrowed(&self.rom[start & !0x08000000..])
+            std::borrow::Cow::Borrowed(&self.rom[(start & !0x08000000) as usize..])
         } else if start >= 0x88000000 && start <= 0x8a000000 {
-            std::borrow::Cow::Owned(unlz77(&self.rom[start & !0x88000000..]).unwrap()[4..].to_vec())
+            std::borrow::Cow::Owned(
+                self.unlz77_cache
+                    .borrow_mut()
+                    .entry(start)
+                    .or_insert_with(|| {
+                        unlz77(&self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec()
+                    })
+                    .clone(),
+            )
         } else {
             panic!("could not get slice")
         }
