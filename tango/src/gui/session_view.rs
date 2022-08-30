@@ -1,7 +1,7 @@
 use crate::{gui, input, session, video};
 
 struct VBuf {
-    buf: egui::ColorImage,
+    image: egui::ColorImage,
     texture: egui::TextureHandle,
 }
 
@@ -33,7 +33,7 @@ impl SessionView {
         let make_vbuf = || {
             log::info!("vbuf reallocation: ({}, {})", vbuf_width, vbuf_height);
             VBuf {
-                buf: egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
+                image: egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
                 texture: ui.ctx().load_texture(
                     "vbuf",
                     egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
@@ -48,7 +48,7 @@ impl SessionView {
 
         video_filter.apply(
             &session.lock_vbuf(),
-            bytemuck::cast_slice_mut(&mut vbuf.buf.pixels[..]),
+            bytemuck::cast_slice_mut(&mut vbuf.image.pixels[..]),
             (
                 mgba::gba::SCREEN_WIDTH as usize,
                 mgba::gba::SCREEN_HEIGHT as usize,
@@ -56,7 +56,7 @@ impl SessionView {
         );
 
         vbuf.texture
-            .set(vbuf.buf.clone(), egui::TextureFilter::Nearest);
+            .set(vbuf.image.clone(), egui::TextureFilter::Nearest);
 
         let mut scaling_factor = std::cmp::max_by(
             std::cmp::min_by(
