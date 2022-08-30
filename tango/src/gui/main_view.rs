@@ -46,20 +46,13 @@ enum ConnectionState {
     InLobby(std::sync::Arc<tokio::sync::Mutex<Lobby>>),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-enum CachedAssetType {
-    ChipIcon,
-    ElementIcon,
-}
-
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
     pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
-    texture_cache: std::cell::RefCell<
-        std::collections::HashMap<(CachedAssetType, usize), egui::TextureHandle>,
-    >,
+    texture_cache:
+        std::collections::HashMap<(gui::save_view::CachedAssetType, usize), egui::TextureHandle>,
 }
 
 impl Selection {
@@ -74,7 +67,7 @@ impl Selection {
             rom,
             assets,
             save,
-            texture_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            texture_cache: std::collections::HashMap::new(),
         }
     }
 }
@@ -519,6 +512,7 @@ pub struct MainView {
     session_view: gui::session_view::SessionView,
     save_select_window: gui::save_select_window::SaveSelectWindow,
     patches_window: gui::patches_window::PatchesWindow,
+    save_view: gui::save_view::SaveView,
 }
 
 impl MainView {
@@ -527,6 +521,7 @@ impl MainView {
             session_view: gui::session_view::SessionView::new(),
             save_select_window: gui::save_select_window::SaveSelectWindow::new(),
             patches_window: gui::patches_window::PatchesWindow::new(),
+            save_view: gui::save_view::SaveView::new(),
         }
     }
 
@@ -1292,93 +1287,19 @@ impl MainView {
             ui.separator();
 
             {
-                let selection = main_view.selection.lock();
-                if let Some(selection) = &*selection {
-                    ui.horizontal(|ui| {
-                        ui.selectable_label(true, "TODO");
-                        ui.selectable_label(false, "TODO 2");
-                    });
-
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if let (Some(chip_view), Some(assets)) =
-                            (selection.save.save.view_chips(), selection.assets.as_ref())
-                        {
-                            egui_extras::TableBuilder::new(ui)
-                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                                .column(egui_extras::Size::exact(28.0))
-                                .column(egui_extras::Size::remainder())
-                                .column(egui_extras::Size::exact(28.0))
-                                .column(egui_extras::Size::exact(30.0))
-                                .striped(true)
-                                .body(|body| {
-                                    body.rows(28.0, 30,  |i, mut row| {
-                                        let chip = chip_view
-                                            .chip(chip_view.equipped_folder_index(), i)
-                                            .unwrap();
-                                        let info = if let Some(info) = assets.chip(chip.id) {
-                                            info
-                                        } else {
-                                            return;
-                                        };
-                                        row.col(|ui| {
-                                            ui.image(
-                                                selection.texture_cache.borrow_mut().entry((CachedAssetType::ChipIcon, chip.id)).or_insert_with(|| {
-                                                    ui.ctx().load_texture(
-                                                        "",
-                                                        egui::ColorImage::from_rgba_unmultiplied(
-                                                            [14, 14],
-                                                            &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14).to_image(),
-                                                        ),
-                                                        egui::TextureFilter::Nearest,
-                                                    )
-                                                })
-                                                .id(),
-                                                egui::Vec2::new(28.0, 28.0),
-                                            );
-                                        });
-                                        row.col(|ui| {
-                                            ui.spacing_mut().item_spacing.x = 0.0;
-                                            ui.label(egui::RichText::new(&info.name).family(font_families.for_language(&selection.game.language())));
-                                            ui.label(format!(" {}", chip_view.chip_codes()[chip.code] as char));
-                                        });
-                                        row.col(|ui| {
-                                            if let Some(icon) =
-                                                assets.element_icon(info.element)
-                                            {
-                                                ui.image(
-                                                    selection.texture_cache.borrow_mut().entry((CachedAssetType::ElementIcon, info.element)).or_insert_with(|| {
-                                                        ui.ctx().load_texture(
-                                                            "",
-                                                            egui::ColorImage::from_rgba_unmultiplied(
-                                                                [14, 14],
-                                                                &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
-                                                            ),
-                                                            egui::TextureFilter::Nearest,
-                                                        )
-                                                }).id(),
-                                                egui::Vec2::new(28.0, 28.0),
-                                            );
-                                            }
-                                        });
-                                        row.col(|ui| {
-                                            ui.with_layout(
-                                                egui::Layout::right_to_left(
-                                                    egui::Align::Center,
-                                                ),
-                                                |ui| {
-                                                    if info.damage > 0 {
-                                                        ui.label(format!(
-                                                            "{}",
-                                                            info.damage
-                                                        ));
-                                                    }
-                                                },
-                                            );
-                                        });
-                                    });
-                                });
-                        }
-                    });
+                let mut selection = main_view.selection.lock();
+                if let Some(selection) = &mut *selection {
+                    if let Some(assets) = selection.assets.as_ref() {
+                        self.save_view.show(
+                            ui,
+                            font_families,
+                            &config.language,
+                            selection.game,
+                            &selection.save.save,
+                            assets,
+                            &mut selection.texture_cache,
+                        );
+                    }
                 }
             }
         });

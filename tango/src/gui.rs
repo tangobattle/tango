@@ -8,6 +8,7 @@ mod escape_window;
 mod main_view;
 mod patches_window;
 mod save_select_window;
+mod save_view;
 mod session_view;
 mod settings_window;
 mod steal_input_window;
