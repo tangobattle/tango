@@ -46,11 +46,37 @@ enum ConnectionState {
     InLobby(std::sync::Arc<tokio::sync::Mutex<Lobby>>),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum CachedAssetType {
+    ChipIcon,
+    ElementIcon,
+}
+
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
     pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
+    texture_cache: std::cell::RefCell<
+        std::collections::HashMap<(CachedAssetType, usize), egui::TextureHandle>,
+    >,
+}
+
+impl Selection {
+    pub fn new(
+        game: &'static (dyn game::Game + Send + Sync),
+        rom: Vec<u8>,
+        save: save::ScannedSave,
+    ) -> Self {
+        let assets = game.load_rom_assets(&rom, &save.save.to_vec()).ok();
+        Self {
+            game,
+            rom,
+            assets,
+            save,
+            texture_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+        }
+    }
 }
 
 struct Lobby {
@@ -1282,6 +1308,7 @@ impl MainView {
                                 .column(egui_extras::Size::remainder())
                                 .column(egui_extras::Size::exact(28.0))
                                 .column(egui_extras::Size::exact(30.0))
+                                .striped(true)
                                 .body(|body| {
                                     body.rows(28.0, 30,  |i, mut row| {
                                         let chip = chip_view
@@ -1293,15 +1320,18 @@ impl MainView {
                                             return;
                                         };
                                         row.col(|ui| {
-                                            ui.image( // TODO: Optimize this.
-                                                ui.ctx().load_texture(
-                                                    "",
-                                                    egui::ColorImage::from_rgba_unmultiplied(
-                                                        [14, 14],
-                                                        &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14).to_image(),
-                                                    ),
-                                                    egui::TextureFilter::Nearest,
-                                                ).id(),
+                                            ui.image(
+                                                selection.texture_cache.borrow_mut().entry((CachedAssetType::ChipIcon, chip.id)).or_insert_with(|| {
+                                                    ui.ctx().load_texture(
+                                                        "",
+                                                        egui::ColorImage::from_rgba_unmultiplied(
+                                                            [14, 14],
+                                                            &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14).to_image(),
+                                                        ),
+                                                        egui::TextureFilter::Nearest,
+                                                    )
+                                                })
+                                                .id(),
                                                 egui::Vec2::new(28.0, 28.0),
                                             );
                                         });
@@ -1316,15 +1346,17 @@ impl MainView {
                                             if let Some(icon) =
                                                 assets.element_icon(info.element)
                                             {
-                                                ui.image( // TODO: Optimize this.
-                                                ui.ctx().load_texture(
-                                                    "",
-                                                    egui::ColorImage::from_rgba_unmultiplied(
-                                                        [14, 14],
-                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
-                                                    ),
-                                                    egui::TextureFilter::Nearest,
-                                                ).id(),
+                                                ui.image(
+                                                    selection.texture_cache.borrow_mut().entry((CachedAssetType::ElementIcon, info.element)).or_insert_with(|| {
+                                                        ui.ctx().load_texture(
+                                                            "",
+                                                            egui::ColorImage::from_rgba_unmultiplied(
+                                                                [14, 14],
+                                                                &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
+                                                            ),
+                                                            egui::TextureFilter::Nearest,
+                                                        )
+                                                }).id(),
                                                 egui::Vec2::new(28.0, 28.0),
                                             );
                                             }
