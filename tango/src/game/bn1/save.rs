@@ -62,6 +62,7 @@ impl Save {
         save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 
+    #[allow(dead_code)]
     pub fn armor(&self) -> usize {
         self.buf[0x0227] as usize
     }
