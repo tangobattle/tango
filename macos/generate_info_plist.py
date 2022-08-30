@@ -25,7 +25,7 @@ TEMPLATE = f"""\
 		<key>CFBundleName</key>
 		<string>Tango</string>
 		<key>CFBundleIconFile</key>
-		<string>tango.icns</string>
+		<string>Tango.icns</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>
