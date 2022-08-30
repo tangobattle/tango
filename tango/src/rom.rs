@@ -135,3 +135,26 @@ pub fn unlz77(mut r: &[u8]) -> Option<Vec<u8>> {
     out.truncate(n);
     Some(out)
 }
+
+pub struct MemoryMapper<'a> {
+    rom: &'a [u8],
+    wram: &'a [u8],
+}
+
+impl<'a> MemoryMapper<'a> {
+    pub fn new(rom: &'a [u8], wram: &'a [u8]) -> Self {
+        Self { rom, wram }
+    }
+
+    pub fn get(&self, start: usize) -> std::borrow::Cow<'a, [u8]> {
+        if start >= 0x02000000 && start < 0x04000000 {
+            std::borrow::Cow::Borrowed(&self.wram[start & !0x02000000..])
+        } else if start >= 0x08000000 && start < 0x0a000000 {
+            std::borrow::Cow::Borrowed(&self.rom[start & !0x08000000..])
+        } else if start >= 0x88000000 && start <= 0x8a000000 {
+            std::borrow::Cow::Owned(unlz77(&self.rom[start & !0x88000000..]).unwrap()[4..].to_vec())
+        } else {
+            panic!("could not get slice")
+        }
+    }
+}
