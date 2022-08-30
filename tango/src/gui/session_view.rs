@@ -56,7 +56,10 @@ impl SessionView {
         );
 
         vbuf.texture.set(
-            egui::ColorImage::from_rgba_unmultiplied([vbuf_width, vbuf_height], &vbuf.buf),
+            egui::ColorImage {
+                size: [vbuf_width, vbuf_height],
+                pixels: bytemuck::cast_vec(vbuf.buf.clone()),
+            },
             egui::TextureFilter::Nearest,
         );
 

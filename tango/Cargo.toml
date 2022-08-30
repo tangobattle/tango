@@ -74,6 +74,7 @@ mailparse = "0.13"
 regex = "1.6"
 open = "3.0"
 indexmap = "1.9"
+bytemuck = "1.12"
 
 [build-dependencies]
 embed-resource = "1.7"
