@@ -47,9 +47,59 @@ impl Save {
 }
 
 impl save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SRAM_SIZE].copy_from_slice(&self.buf);
         buf
+    }
+}
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8] {
+        &b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[..]
+    }
+
+    fn num_folders(&self) -> usize {
+        3
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        self.save.buf[0x0dc2] as usize
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        true
+    }
+
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        let idx = self.save.buf[0x0ddd + folder_index];
+        if idx == 0 {
+            None
+        } else {
+            Some(idx as usize)
+        }
+    }
+
+    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<(usize, usize)> {
+        None
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index > 3 || chip_index > 30 {
+            return None;
+        }
+
+        Some(save::Chip {
+            id: self.save.buf[0x0ab0 + folder_index * (30 * 4) + chip_index * 4] as usize,
+            code: self.save.buf[0x0ab0 + folder_index * (30 * 4) + chip_index * 4 + 2] as usize,
+        })
     }
 }
