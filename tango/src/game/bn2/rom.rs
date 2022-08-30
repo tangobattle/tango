@@ -34,7 +34,7 @@ lazy_static! {
 }
 
 pub struct Assets {
-    element_icons: [image::RgbaImage; 6],
+    element_icons: [image::RgbaImage; 5],
     chips: [rom::Chip; 240],
 }
 
