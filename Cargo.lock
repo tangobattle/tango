@@ -1452,7 +1452,7 @@ checksum = "6907e25393cdcc1f4f3f513d9aac1e840eb1cc341a0fccb01171f7d14d10b946"
 [[package]]
 name = "egui"
 version = "0.19.0"
-source = "git+https://github.com/tangobattle/egui?rev=cadf899b3837548af62e617daf8f0cccffa4bf1f#cadf899b3837548af62e617daf8f0cccffa4bf1f"
+source = "git+https://github.com/tangobattle/egui?rev=15dc0c29d6ba0534133912b1167ab8633daeb71d#15dc0c29d6ba0534133912b1167ab8633daeb71d"
 dependencies = [
  "ahash 0.8.0",
  "epaint",
@@ -1510,7 +1510,7 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 [[package]]
 name = "emath"
 version = "0.19.0"
-source = "git+https://github.com/tangobattle/egui?rev=cadf899b3837548af62e617daf8f0cccffa4bf1f#cadf899b3837548af62e617daf8f0cccffa4bf1f"
+source = "git+https://github.com/tangobattle/egui?rev=15dc0c29d6ba0534133912b1167ab8633daeb71d#15dc0c29d6ba0534133912b1167ab8633daeb71d"
 dependencies = [
  "bytemuck",
 ]
@@ -1607,7 +1607,7 @@ dependencies = [
 [[package]]
 name = "epaint"
 version = "0.19.0"
-source = "git+https://github.com/tangobattle/egui?rev=cadf899b3837548af62e617daf8f0cccffa4bf1f#cadf899b3837548af62e617daf8f0cccffa4bf1f"
+source = "git+https://github.com/tangobattle/egui?rev=15dc0c29d6ba0534133912b1167ab8633daeb71d#15dc0c29d6ba0534133912b1167ab8633daeb71d"
 dependencies = [
  "ab_glyph",
  "ahash 0.8.0",

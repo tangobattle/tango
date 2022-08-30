@@ -14,4 +14,4 @@ members = [
 [patch.crates-io]
 sdl2 = { git = "https://github.com/Rust-SDL2/rust-sdl2", rev = "bae03beaafc0040b8166d36a4bdbe570a05aa52a" }
 cmake = { git = "https://github.com/tangobattle/cmake-rs", rev = "fc9b8372f40bc611ca5df9a62dea00e8e8d3cfaa" }
-egui = { git = "https://github.com/tangobattle/egui", rev = "cadf899b3837548af62e617daf8f0cccffa4bf1f" }
+egui = { git = "https://github.com/tangobattle/egui", rev = "15dc0c29d6ba0534133912b1167ab8633daeb71d" }
