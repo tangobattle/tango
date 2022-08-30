@@ -3,7 +3,7 @@ use fluent_templates::Loader;
 use crate::{game, gui, i18n};
 
 pub struct State {
-    selection: Option<std::ffi::OsString>,
+    selection: Option<String>,
 }
 
 impl State {
@@ -50,10 +50,7 @@ impl PatchesWindow {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                             for (name, _) in patches.iter() {
                                 if ui
-                                    .selectable_label(
-                                        state.selection == Some(name.to_owned()),
-                                        format!("{}", name.to_string_lossy()),
-                                    )
+                                    .selectable_label(state.selection.as_ref() == Some(name), name)
                                     .clicked()
                                 {
                                     state.selection = Some(name.to_owned());

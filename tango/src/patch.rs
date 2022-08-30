@@ -45,7 +45,7 @@ lazy_static! {
 
 pub fn scan(
     path: &std::path::Path,
-) -> Result<std::collections::BTreeMap<std::ffi::OsString, Patch>, std::io::Error> {
+) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
     let mut patches = std::collections::BTreeMap::new();
     for entry in std::fs::read_dir(path)? {
         let entry = match entry {
@@ -54,6 +54,12 @@ pub fn scan(
                 log::error!("failed to read dir: {:?}", e);
                 continue;
             }
+        };
+
+        let name = if let Some(name) = entry.file_name().to_str().map(|s| s.to_owned()) {
+            name
+        } else {
+            continue;
         };
 
         if entry
@@ -167,7 +173,7 @@ pub fn scan(
         }
 
         patches.insert(
-            entry.file_name(),
+            name.to_string(),
             Patch {
                 path: entry.path(),
                 title: info.patch.title,

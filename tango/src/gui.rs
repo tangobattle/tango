@@ -17,8 +17,7 @@ type ROMsScanner =
 type SavesScanner = scanner::Scanner<
     std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<save::ScannedSave>>,
 >;
-type PatchesScanner =
-    scanner::Scanner<std::collections::BTreeMap<std::ffi::OsString, patch::Patch>>;
+type PatchesScanner = scanner::Scanner<std::collections::BTreeMap<String, patch::Patch>>;
 
 pub struct State {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
