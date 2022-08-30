@@ -61,7 +61,7 @@ impl Selection {
         rom: Vec<u8>,
         save: save::ScannedSave,
     ) -> Self {
-        let assets = game.load_rom_assets(&rom, &save.save.to_vec()).ok();
+        let assets = game.load_rom_assets(&rom, save.save.as_raw_wram()).ok();
         Self {
             game,
             rom,

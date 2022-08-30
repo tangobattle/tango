@@ -51,6 +51,10 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn as_raw_wram(&self) -> &[u8] {
+        &self.buf
+    }
+
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SRAM_SIZE].copy_from_slice(&self.buf);
@@ -100,8 +104,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         let offset = 0x0ab0 + folder_index * (30 * 4) + chip_index * 4;
 
         Some(save::Chip {
-            id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset+2]) as usize,
-            code: byteorder::LittleEndian::read_u16(&self.save.buf[offset+2..offset+4]) as usize,
+            id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]) as usize,
+            code: byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..offset + 4])
+                as usize,
         })
     }
 }

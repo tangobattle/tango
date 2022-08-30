@@ -83,6 +83,10 @@ impl Save {
 }
 
 impl save::Save for Save {
+    fn as_raw_wram(&self) -> &[u8] {
+        &self.buf
+    }
+
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SRAM_SIZE].copy_from_slice(&self.buf);

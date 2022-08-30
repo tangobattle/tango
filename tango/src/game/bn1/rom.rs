@@ -38,7 +38,7 @@ impl Assets {
         offsets: &Offsets,
         charset: &'static [&'static str],
         rom: &[u8],
-        _save: &[u8],
+        _wram: &[u8],
     ) -> Self {
         let chip_icon_palette = {
             let pointer = offsets.chip_icon_palette_pointer & !0x08000000;

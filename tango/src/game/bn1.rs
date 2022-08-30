@@ -53,13 +53,13 @@ impl game::Game for EXE1Impl {
     fn load_rom_assets(
         &self,
         rom: &[u8],
-        save: &[u8],
+        wram: &[u8],
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::AREJ_00,
             &rom::JA_CHARSET,
             rom,
-            save,
+            wram,
         )))
     }
 }
@@ -111,13 +111,13 @@ impl game::Game for BN1Impl {
     fn load_rom_assets(
         &self,
         rom: &[u8],
-        save: &[u8],
+        wram: &[u8],
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::AREE_00,
             &rom::EN_CHARSET,
             rom,
-            save,
+            wram,
         )))
     }
 }
