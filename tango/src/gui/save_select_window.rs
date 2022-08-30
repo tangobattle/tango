@@ -100,10 +100,14 @@ impl SaveSelectWindow {
                                         .clicked()
                                     {
                                         *show = None;
+                                        let rom = roms.get(&game).unwrap().clone();
+                                        let assets =
+                                            game.load_rom_assets(&rom, &save.save.to_vec()).ok();
                                         *selection = Some(gui::main_view::Selection {
                                             game,
                                             save: save.clone(),
-                                            rom: roms.get(&game).unwrap().clone(),
+                                            rom,
+                                            assets,
                                         });
                                     }
                                 }

@@ -16,6 +16,7 @@ mod patch;
 mod randomcode;
 mod replay;
 mod replayer;
+mod rom;
 mod save;
 mod scanner;
 mod session;

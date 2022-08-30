@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use crate::{battle, replayer, save, session, shadow};
+use crate::{battle, replayer, rom, save, session, shadow};
 
 mod bn1;
 mod bn2;
@@ -169,6 +169,13 @@ where
     fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
+    fn load_rom_assets(
+        &self,
+        _rom: &[u8],
+        _save: &[u8],
+    ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error> {
+        anyhow::bail!("not implemented");
+    }
 }
 
 pub trait Hooks {

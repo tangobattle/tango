@@ -1,4 +1,5 @@
 mod hooks;
+mod rom;
 mod save;
 
 use crate::game;
@@ -48,6 +49,19 @@ impl game::Game for EXE1Impl {
         }
         Ok(Box::new(save))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        save: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::AREJ_00,
+            &rom::JA_CHARSET,
+            rom,
+            save,
+        )))
+    }
 }
 
 struct BN1Impl;
@@ -92,5 +106,18 @@ impl game::Game for BN1Impl {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        save: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::AREE_00,
+            &rom::EN_CHARSET,
+            rom,
+            save,
+        )))
     }
 }
