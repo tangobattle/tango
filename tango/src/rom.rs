@@ -1,4 +1,4 @@
-use byteorder::ByteOrder;
+use byteorder::{ByteOrder, ReadBytesExt};
 
 #[derive(Clone, Debug)]
 pub enum ChipClass {
@@ -94,4 +94,42 @@ pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Option<PalettedImage> {
         .map(|raw_tile| read_tile(raw_tile))
         .collect::<Option<Vec<_>>>()?;
     Some(merge_tiles(&tiles, cols))
+}
+
+pub fn unlz77(mut r: &[u8]) -> Option<Vec<u8>> {
+    let mut out = vec![];
+
+    // Yes that's right, it's big endian here!
+    let header = r.read_u32::<byteorder::BigEndian>().ok()?;
+    if (header & 0xff) != 0x10 {
+        return None;
+    }
+
+    let n = (header >> 8) as usize;
+    while out.len() < n {
+        let ref_ = r.read_u8().ok()?;
+
+        for i in 0..8 {
+            if out.len() >= n {
+                break;
+            }
+
+            if (ref_ & (0x80 >> i)) == 0 {
+                out.push(r.read_u8().ok()?);
+                continue;
+            }
+
+            let info = r.read_u16::<byteorder::LittleEndian>().ok()?;
+
+            let m = info >> 12;
+            let offset = info & 0x0fff;
+
+            for _ in 0..(m + 3) {
+                out.push(out[out.len() - offset as usize - 1]);
+            }
+        }
+    }
+
+    out.truncate(n);
+    Some(out)
 }
