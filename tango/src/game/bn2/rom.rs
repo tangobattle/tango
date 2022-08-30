@@ -4,7 +4,7 @@ use crate::rom;
 
 pub struct Offsets {
     chip_data: u32,
-    chip_names_pointer: u32,
+    chip_names_pointers: u32,
     chip_icon_palette_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
@@ -13,8 +13,8 @@ pub struct Offsets {
 #[rustfmt::skip]
 pub static AE2E_00: Offsets = Offsets {
     chip_data:                      0x0800e450,
-    chip_names_pointer:             0x0800b528,
-    element_icons_pointer:          0x0800b890,
+    chip_names_pointers:            0x0800b528,
+    element_icons_pointer:          0x08025fe0,
     element_icon_palette_pointer:   0x08005388,
     chip_icon_palette_pointer:      0x08025fe0,
 };
@@ -22,7 +22,7 @@ pub static AE2E_00: Offsets = Offsets {
 #[rustfmt::skip]
 pub static AE2J_00: Offsets = Offsets {
     chip_data:                      0x0800e430,
-    chip_names_pointer:             0x0800b51c,
+    chip_names_pointers:            0x0800b51c,
     element_icons_pointer:          0x0800b884,
     element_icon_palette_pointer:   0x08005384,
     chip_icon_palette_pointer:      0x08025f8c,
@@ -93,7 +93,7 @@ impl Assets {
                     rom::Chip {
                         name: if let Ok(parts) = rom::text::parse_entry(
                             &mapper.get(byteorder::LittleEndian::read_u32(
-                                &mapper.get(offsets.chip_names_pointer)[..4],
+                                &mapper.get(offsets.chip_names_pointers)[..4],
                             )),
                             i,
                             &TEXT_PARSE_OPTIONS,
