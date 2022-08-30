@@ -28,6 +28,11 @@ pub static AREJ_00: Offsets = Offsets {
     chip_icon_palette_pointer:      0x08015e40,
 };
 
+lazy_static! {
+    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
+        rom::text::ParseOptions::new(0xe5, 0xe7).with_command(0xe8, 0);
+}
+
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
     chips: [rom::Chip; 240],
@@ -38,33 +43,38 @@ impl Assets {
         offsets: &Offsets,
         charset: &'static [&'static str],
         rom: &[u8],
-        _wram: &[u8],
+        wram: &[u8],
     ) -> Self {
-        let chip_icon_palette = {
-            let pointer = offsets.chip_icon_palette_pointer & !0x08000000;
-            let offset = (byteorder::LittleEndian::read_u32(&rom[pointer..pointer + 4])
-                & !0x08000000) as usize;
-            rom::read_palette(&rom[offset..offset + 32])
-        };
+        let mapper = rom::MemoryMapper::new(rom, wram);
+
+        let chip_icon_palette = rom::read_palette(
+            &mapper.get(
+                (byteorder::LittleEndian::read_u32(
+                    &mapper.get(offsets.chip_icon_palette_pointer)[..4],
+                )) as usize,
+            )[..32],
+        );
 
         Self {
             element_icons: {
-                let palette = {
-                    let pointer = offsets.element_icon_palette_pointer & !0x08000000;
-                    let offset = (byteorder::LittleEndian::read_u32(&rom[pointer..pointer + 4])
-                        & !0x08000000) as usize;
-                    rom::read_palette(&rom[offset..offset + 32])
-                };
+                let palette = rom::read_palette(
+                    &mapper.get(
+                        (byteorder::LittleEndian::read_u32(
+                            &mapper.get(offsets.element_icon_palette_pointer)[..4],
+                        )) as usize,
+                    )[..32],
+                );
                 {
-                    let pointer = offsets.element_icons_pointer & !0x08000000;
-                    let offset = (byteorder::LittleEndian::read_u32(&rom[pointer..pointer + 4])
-                        & !0x08000000) as usize;
+                    let buf = mapper.get(
+                        (byteorder::LittleEndian::read_u32(
+                            &mapper.get(offsets.element_icons_pointer)[..4],
+                        )) as usize,
+                    );
                     (0..5)
                         .map(|i| {
                             rom::apply_palette(
                                 rom::read_merged_tiles(
-                                    &rom[offset + (i * rom::TILE_BYTES * 4)
-                                        ..offset + ((i + 1) * rom::TILE_BYTES * 4)],
+                                    &buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4],
                                     2,
                                 )
                                 .unwrap(),
@@ -78,45 +88,40 @@ impl Assets {
             },
             chips: (0..240)
                 .map(|i| {
-                    let offset = (offsets.chip_data & !0x08000000) + i * 0x1c;
-                    let buf = &rom[offset..offset + 0x1c];
+                    let buf = &mapper.get(offsets.chip_data)[i * 0x1c..(i + 1) * 0x1c];
                     rom::Chip {
-                        name: {
-                            // TODO: This parser is _extremely_ shitty.
-                            let pointer = offsets.chip_names_pointer & !0x08000000;
-                            let offset =
-                                (byteorder::LittleEndian::read_u32(&rom[pointer..pointer + 4])
-                                    & !0x08000000) as usize;
-                            let mut inner_offset = byteorder::LittleEndian::read_u16(
-                                &rom[offset + i * 2..offset + (i + 1) * 2],
-                            ) as usize;
-                            let next_inner_offset = byteorder::LittleEndian::read_u16(
-                                &rom[offset + (i + 1) * 2..offset + (i + 2) * 2],
-                            ) as usize;
-
-                            let mut s = String::new();
-                            while inner_offset < rom.len() && inner_offset < next_inner_offset {
-                                let c = rom[offset + inner_offset];
-                                if c == 0xe7 {
-                                    break;
-                                }
-                                s.extend(charset[c as usize].chars());
-                                inner_offset += 1;
-                            }
-                            s
+                        name: if let Ok(parts) = rom::text::parse_entry(
+                            &mapper.get(byteorder::LittleEndian::read_u32(
+                                &mapper.get(offsets.chip_names_pointer)[..4],
+                            ) as usize),
+                            i,
+                            &TEXT_PARSE_OPTIONS,
+                        ) {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        rom::text::Part::Literal(c) => {
+                                            charset.get(c).unwrap_or(&"�")
+                                        }
+                                        _ => "",
+                                    }
+                                    .chars()
+                                })
+                                .collect::<String>()
+                        } else {
+                            "???".to_string()
                         },
-                        icon: {
-                            let offset = (byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4])
-                                & !0x08000000) as usize;
-                            rom::apply_palette(
-                                rom::read_merged_tiles(
-                                    &rom[offset..offset + rom::TILE_BYTES * 4],
-                                    2,
-                                )
-                                .unwrap(),
-                                &chip_icon_palette,
+                        icon: rom::apply_palette(
+                            rom::read_merged_tiles(
+                                &mapper
+                                    .get(byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4])
+                                        as usize)[..rom::TILE_BYTES * 4],
+                                2,
                             )
-                        },
+                            .unwrap(),
+                            &chip_icon_palette,
+                        ),
                         codes: buf[0x00..0x05].iter().cloned().collect(),
                         element: buf[0x05] as usize,
                         class: rom::ChipClass::Standard,
