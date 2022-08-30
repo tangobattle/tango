@@ -2,13 +2,16 @@
 set -euo pipefail
 
 # Cleanup.
-rm -rf Tango.app
+function cleanup {
+    rm -rf Tango.iconset TAngo.app
+}
+trap cleanup EXIT
+cleanup
 
 # Create directory structure.
 mkdir Tango.app{,/Contents{,/{MacOS,Resources}}}
 
 # Create icon.
-rm -rf Tango.iconset
 mkdir Tango.iconset
 sips -z 16 16 tango/src/icon.png --out Tango.iconset/icon_16x16.png
 sips -z 32 32 tango/src/icon.png --out Tango.iconset/icon_16x16@2x.png
@@ -30,3 +33,6 @@ rm -rf Tango.iconset
 cargo build --bin tango --target=aarch64-apple-darwin --release
 cargo build --bin tango --target=x86_64-apple-darwin --release
 lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -output Tango.app/Contents/MacOS/tango
+
+# Build zip.
+zip -r Tango.zip Tango.app
