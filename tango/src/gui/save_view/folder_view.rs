@@ -43,7 +43,7 @@ impl FolderView {
                                 .entry((gui::save_view::CachedAssetType::ChipIcon, chip.id))
                                 .or_insert_with(|| {
                                     ui.ctx().load_texture(
-                                        "",
+                                        format!("chip {}", chip.id),
                                         egui::ColorImage::from_rgba_unmultiplied(
                                             [14, 14],
                                             &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14)
@@ -74,7 +74,7 @@ impl FolderView {
                                     ))
                                     .or_insert_with(|| {
                                         ui.ctx().load_texture(
-                                            "",
+                                            format!("element {}", info.element),
                                             egui::ColorImage::from_rgba_unmultiplied(
                                                 [14, 14],
                                                 &image::imageops::crop_imm(icon, 1, 1, 14, 14)
