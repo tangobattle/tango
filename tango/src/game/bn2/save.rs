@@ -80,7 +80,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
-        let idx = self.save.buf[0x0ddd + folder_index];
+        let idx = self.save.buf[0x0ddd + folder_index] as usize;
         if idx == 0 {
             None
         } else {
@@ -97,9 +97,11 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
+        let offset = 0x0ab0 + folder_index * (30 * 4) + chip_index * 4;
+
         Some(save::Chip {
-            id: self.save.buf[0x0ab0 + folder_index * (30 * 4) + chip_index * 4] as usize,
-            code: self.save.buf[0x0ab0 + folder_index * (30 * 4) + chip_index * 4 + 2] as usize,
+            id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset+2]) as usize,
+            code: byteorder::LittleEndian::read_u16(&self.save.buf[offset+2..offset+4]) as usize,
         })
     }
 }
