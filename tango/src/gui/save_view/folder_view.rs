@@ -23,7 +23,7 @@ impl FolderView {
         struct GroupedChip {
             count: usize,
             is_regular: bool,
-            is_tag: bool,
+            tag_count: usize,
         }
 
         let mut chips = (0..30)
@@ -43,18 +43,53 @@ impl FolderView {
             }
         }
 
-        let mut grouped = indexmap::IndexMap::new();
-        for (i, chip) in chips.iter().enumerate() {
-            let g = grouped.entry(chip).or_insert(GroupedChip {
-                count: 0,
-                is_regular: chips_view.regular_chip_index(chips_view.equipped_folder_index())
-                    == Some(i),
-                is_tag: chips_view
+        let group = true;
+        let items = if group {
+            let mut grouped = indexmap::IndexMap::new();
+            for (i, chip) in chips.iter().enumerate() {
+                let g = grouped.entry(chip).or_insert(GroupedChip {
+                    count: 0,
+                    is_regular: false,
+                    tag_count: 0,
+                });
+                g.count += 1;
+                if chips_view.regular_chip_index(chips_view.equipped_folder_index()) == Some(i) {
+                    g.is_regular = true;
+                }
+                if chips_view
                     .tag_chip_indexes(chips_view.equipped_folder_index())
-                    .map_or(false, |is| is.contains(&i)),
-            });
-            g.count += 1;
-        }
+                    .map_or(false, |is| is.contains(&i))
+                {
+                    g.tag_count += 1;
+                }
+            }
+
+            grouped.into_iter().collect::<Vec<_>>()
+        } else {
+            chips
+                .iter()
+                .enumerate()
+                .map(|(i, chip)| {
+                    (
+                        chip,
+                        GroupedChip {
+                            count: 1,
+                            is_regular: chips_view
+                                .regular_chip_index(chips_view.equipped_folder_index())
+                                == Some(i),
+                            tag_count: if chips_view
+                                .tag_chip_indexes(chips_view.equipped_folder_index())
+                                .map_or(false, |is| is.contains(&i))
+                            {
+                                1
+                            } else {
+                                0
+                            },
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
 
         egui_extras::TableBuilder::new(ui)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
@@ -65,8 +100,8 @@ impl FolderView {
             .column(egui_extras::Size::exact(30.0))
             .striped(true)
             .body(|body| {
-                body.rows(28.0, grouped.len(), |i, mut row| {
-                    let (chip, g) = grouped.get_index(i).unwrap();
+                body.rows(28.0, items.len(), |i, mut row| {
+                    let (chip, g) = &items[i];
                     let info = if let Some(info) = assets.chip(chip.id) {
                         info
                     } else {
@@ -95,12 +130,25 @@ impl FolderView {
                         );
                     });
                     row.col(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(
-                            egui::RichText::new(&info.name)
-                                .family(font_families.for_language(&game.language())),
-                        );
-                        ui.label(format!(" {}", chips_view.chip_codes()[chip.code] as char));
+                        ui.horizontal(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.spacing_mut().item_spacing.x = 0.0;
+                                ui.label(
+                                    egui::RichText::new(&info.name)
+                                        .family(font_families.for_language(&game.language())),
+                                );
+                                ui.label(format!(
+                                    " {}",
+                                    chips_view.chip_codes()[chip.code] as char
+                                ));
+                            });
+                            if g.is_regular {
+                                ui.label("REG");
+                            }
+                            for _ in 0..g.tag_count {
+                                ui.label("TAG");
+                            }
+                        });
                     });
                     row.col(|ui| {
                         if let Some(icon) = assets.element_icon(info.element) {
