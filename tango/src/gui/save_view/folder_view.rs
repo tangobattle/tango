@@ -20,23 +20,35 @@ impl FolderView {
             egui::TextureHandle,
         >,
     ) {
+        let mut grouped = indexmap::IndexMap::new();
+        // TODO: Regchip/tagchip stuff.
+        for i in 0..30 {
+            let chip = chips_view
+                .chip(chips_view.equipped_folder_index(), i)
+                .unwrap();
+            let c = grouped.entry(chip).or_insert(0 as usize);
+            *c += 1;
+        }
+
         egui_extras::TableBuilder::new(ui)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+            .column(egui_extras::Size::exact(30.0))
             .column(egui_extras::Size::exact(28.0))
             .column(egui_extras::Size::remainder())
             .column(egui_extras::Size::exact(28.0))
             .column(egui_extras::Size::exact(30.0))
             .striped(true)
             .body(|body| {
-                body.rows(28.0, 30, |i, mut row| {
-                    let chip = chips_view
-                        .chip(chips_view.equipped_folder_index(), i)
-                        .unwrap();
+                body.rows(28.0, grouped.len(), |i, mut row| {
+                    let (chip, n) = grouped.get_index(i).unwrap();
                     let info = if let Some(info) = assets.chip(chip.id) {
                         info
                     } else {
                         return;
                     };
+                    row.col(|ui| {
+                        ui.label(format!("{}x", n));
+                    });
                     row.col(|ui| {
                         ui.image(
                             texture_cache
