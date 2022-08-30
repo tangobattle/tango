@@ -88,8 +88,7 @@ impl Assets {
             },
             chips: (0..240)
                 .map(|i| {
-                    let buf = mapper.get(offsets.chip_data);
-                    let buf = &buf[i * 0x1c..(i + 1) * 0x1c];
+                    let buf = &mapper.get(offsets.chip_data)[i * 0x1c..(i + 1) * 0x1c];
                     rom::Chip {
                         name: if let Ok(parts) = rom::text::parse_entry(
                             &mapper.get(byteorder::LittleEndian::read_u32(
