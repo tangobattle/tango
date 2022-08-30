@@ -20,9 +20,10 @@ impl bindgen::callbacks::ParseCallbacks for IgnoreMacros {
 fn main() {
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
-    let mgba_dst = cmake::Config::new("mgba")
-        .define("LIBMGBA_ONLY", "on")
-        .build();
+    let mut cfg = cmake::Config::new("mgba");
+    cfg.define("LIBMGBA_ONLY", "on");
+
+    let mgba_dst = cfg.build();
 
     println!(
         "cargo:rustc-link-search=native={}/build",
