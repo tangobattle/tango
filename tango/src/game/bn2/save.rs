@@ -80,7 +80,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
-        let idx = self.save.buf[0x0ddd + folder_index] as usize;
+        let idx = self.save.buf[0x0ddd + folder_index];
         if idx == 0 {
             None
         } else {
