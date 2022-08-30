@@ -87,6 +87,25 @@ pub struct FontFamilies {
     hant: egui::FontFamily,
 }
 
+impl FontFamilies {
+    pub fn for_language(&self, lang: &unic_langid::LanguageIdentifier) -> egui::FontFamily {
+        let mut lang = lang.clone();
+        lang.maximize();
+        match lang.script {
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
+                self.jpan.clone()
+            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
+                self.hans.clone()
+            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
+                self.hant.clone()
+            }
+            _ => self.latn.clone(),
+        }
+    }
+}
+
 pub struct Gui {
     main_view: main_view::MainView,
     settings_window: settings_window::SettingsWindow,
@@ -303,7 +322,14 @@ impl Gui {
             &config.language,
             &mut state.show_settings,
         );
-        self.main_view
-            .show(ctx, config, handle.clone(), window, input_state, state);
+        self.main_view.show(
+            ctx,
+            &self.font_families,
+            config,
+            handle.clone(),
+            window,
+            input_state,
+            state,
+        );
     }
 }

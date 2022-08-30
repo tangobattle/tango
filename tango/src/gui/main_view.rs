@@ -533,6 +533,7 @@ impl MainView {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
+        font_families: &gui::FontFamilies,
         config: &mut config::Config,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
@@ -1336,11 +1337,9 @@ impl MainView {
                                             );
                                         });
                                         row.col(|ui| {
-                                            ui.label(format!(
-                                                "{} {}",
-                                                info.name,
-                                                chip_view.chip_codes()[chip.code] as char
-                                            ));
+                                            ui.spacing_mut().item_spacing.x = 0.0;
+                                            ui.label(egui::RichText::new(&info.name).family(font_families.for_language(&selection.game.language())));
+                                            ui.label(format!(" {}", chip_view.chip_codes()[chip.code] as char));
                                         });
                                         row.col(|ui| {
                                             if let Some(icon) =
