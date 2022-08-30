@@ -1277,79 +1277,74 @@ impl MainView {
                             (selection.save.save.view_chips(), selection.assets.as_ref())
                         {
                             egui_extras::TableBuilder::new(ui)
+                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                                 .column(egui_extras::Size::exact(28.0))
                                 .column(egui_extras::Size::remainder())
                                 .column(egui_extras::Size::exact(28.0))
                                 .column(egui_extras::Size::exact(30.0))
-                                .body(|mut body| {
-                                    for i in 0..30 {
-                                        body.row(28.0, |mut row| {
-                                            let chip = chip_view
-                                                .chip(chip_view.equipped_folder_index(), i)
-                                                .unwrap();
-                                            let info = if let Some(info) = assets.chip(chip.id) {
-                                                info
-                                            } else {
-                                                return;
-                                            };
-                                            row.col(|ui| {
-                                                ui.image( // TODO: Optimize this.
-                                                    ui.ctx().load_texture(
-                                                        "",
-                                                        egui::ColorImage::from_rgba_unmultiplied(
-                                                            [14, 14],
-                                                            &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14).to_image(),
-                                                        ),
-                                                        egui::TextureFilter::Nearest,
-                                                    ).id(),
-                                                    egui::Vec2::new(28.0, 28.0),
-                                                );
-                                            });
-                                            row.col(|ui| {
-                                                ui.horizontal_centered(|ui| {
-                                                    ui.label(format!(
-                                                        "{} {}",
-                                                        info.name,
-                                                        chip_view.chip_codes()[chip.code] as char
-                                                    ));
-                                                });
-                                            });
-                                            row.col(|ui| {
-                                                if let Some(icon) =
-                                                    assets.element_icon(info.element)
-                                                {
-                                                    ui.image( // TODO: Optimize this.
-                                                    ui.ctx().load_texture(
-                                                        "",
-                                                        egui::ColorImage::from_rgba_unmultiplied(
-                                                            [14, 14],
-                                                            &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
-                                                        ),
-                                                        egui::TextureFilter::Nearest,
-                                                    ).id(),
-                                                    egui::Vec2::new(28.0, 28.0),
-                                                );
-                                                }
-                                            });
-                                            row.col(|ui| {
-                                                ui.horizontal_centered(|ui| {
-                                                    ui.with_layout(
-                                                        egui::Layout::right_to_left(
-                                                            egui::Align::Center,
-                                                        ),
-                                                        |ui| {
-                                                            if info.damage > 0 {
-                                                                ui.label(format!(
-                                                                    "{}",
-                                                                    info.damage
-                                                                ));
-                                                            }
-                                                        },
-                                                    );
-                                                });
-                                            });
+                                .body(|body| {
+                                    body.rows(28.0, 30,  |i, mut row| {
+                                        let chip = chip_view
+                                            .chip(chip_view.equipped_folder_index(), i)
+                                            .unwrap();
+                                        let info = if let Some(info) = assets.chip(chip.id) {
+                                            info
+                                        } else {
+                                            return;
+                                        };
+                                        row.col(|ui| {
+                                            ui.image( // TODO: Optimize this.
+                                                ui.ctx().load_texture(
+                                                    "",
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        [14, 14],
+                                                        &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14).to_image(),
+                                                    ),
+                                                    egui::TextureFilter::Nearest,
+                                                ).id(),
+                                                egui::Vec2::new(28.0, 28.0),
+                                            );
                                         });
-                                    }
+                                        row.col(|ui| {
+                                            ui.label(format!(
+                                                "{} {}",
+                                                info.name,
+                                                chip_view.chip_codes()[chip.code] as char
+                                            ));
+                                        });
+                                        row.col(|ui| {
+                                            if let Some(icon) =
+                                                assets.element_icon(info.element)
+                                            {
+                                                ui.image( // TODO: Optimize this.
+                                                ui.ctx().load_texture(
+                                                    "",
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        [14, 14],
+                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
+                                                    ),
+                                                    egui::TextureFilter::Nearest,
+                                                ).id(),
+                                                egui::Vec2::new(28.0, 28.0),
+                                            );
+                                            }
+                                        });
+                                        row.col(|ui| {
+                                            ui.with_layout(
+                                                egui::Layout::right_to_left(
+                                                    egui::Align::Center,
+                                                ),
+                                                |ui| {
+                                                    if info.damage > 0 {
+                                                        ui.label(format!(
+                                                            "{}",
+                                                            info.damage
+                                                        ));
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    });
                                 });
                         }
                     });
