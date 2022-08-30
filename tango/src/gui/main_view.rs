@@ -224,6 +224,7 @@ impl Lobby {
 async fn run_connection_task(
     config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     handle: tokio::runtime::Handle,
+    egui_ctx: egui::Context,
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     main_view: std::sync::Arc<parking_lot::Mutex<State>>,
@@ -466,6 +467,7 @@ async fn run_connection_task(
                         rng_seed,
                         max_queue_length,
                     )?);
+                    egui_ctx.request_repaint();
                     *connection_task.lock().await = None;
 
                     Ok(())
@@ -917,6 +919,7 @@ impl MainView {
                                 handle.spawn(run_connection_task(
                                     state.config.clone(),
                                     handle.clone(),
+                                    ctx.clone(),
                                     state.audio_binder.clone(),
                                     state.emu_tps_counter.clone(),
                                     state.main_view.clone(),
@@ -940,6 +943,7 @@ impl MainView {
                                 let main_view = state.main_view.clone();
                                 let emu_tps_counter = state.emu_tps_counter.clone();
                                 let rom = selection.rom.clone();
+                                let egui_ctx = ctx.clone();
 
                                 // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
                                 rayon::spawn(move || {
@@ -952,6 +956,7 @@ impl MainView {
                                         )
                                         .unwrap(),
                                     ); // TODO: Don't unwrap maybe
+                                    egui_ctx.request_repaint();
                                 });
                             }
                         };

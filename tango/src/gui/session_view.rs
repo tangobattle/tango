@@ -85,6 +85,7 @@ impl SessionView {
                     / ui.ctx().pixels_per_point(),
             ),
         );
+        ui.ctx().request_repaint();
     }
 
     pub fn show(

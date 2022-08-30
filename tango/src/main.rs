@@ -28,6 +28,10 @@ use glow::HasContext;
 
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 
+enum UserEvent {
+    RequestRepaint,
+}
+
 fn main() -> Result<(), anyhow::Error> {
     env_logger::Builder::from_default_env()
         .filter(Some("tango"), log::LevelFilter::Info)
@@ -96,7 +100,7 @@ fn child_main() -> Result<(), anyhow::Error> {
     let sdl = sdl2::init().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
-    let event_loop = glutin::event_loop::EventLoop::new();
+    let event_loop = glutin::event_loop::EventLoopBuilder::with_user_event().build();
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
     let icon = image::load_from_memory(include_bytes!("icon.png"))?;
@@ -186,11 +190,52 @@ fn child_main() -> Result<(), anyhow::Error> {
         emu_tps_counter.clone(),
     );
 
-    event_loop.run(move |event, _, control_flow| {
-        control_flow.set_poll();
+    egui_glow.egui_ctx.set_request_repaint_callback({
+        let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
+        move || {
+            let _ = el_proxy.lock().send_event(UserEvent::RequestRepaint);
+        }
+    });
 
+    event_loop.run(move |event, _, control_flow| {
         let mut config = state.config.read().clone();
         let old_config = config.clone();
+
+        let mut redraw = || {
+            let repaint_after = egui_glow.run(gl_window.window(), |ctx| {
+                ctx.set_pixels_per_point(
+                    gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32
+                        / 100.0,
+                );
+                gui.show(
+                    ctx,
+                    &mut config,
+                    handle.clone(),
+                    gl_window.window(),
+                    &input_state,
+                    &mut state,
+                )
+            });
+
+            if repaint_after.is_zero() {
+                gl_window.window().request_redraw();
+                control_flow.set_poll();
+            } else if let Some(repaint_after_instant) =
+                std::time::Instant::now().checked_add(repaint_after)
+            {
+                control_flow.set_wait_until(repaint_after_instant);
+            } else {
+                control_flow.set_wait();
+            }
+
+            unsafe {
+                gl.clear_color(0.0, 0.0, 0.0, 1.0);
+                gl.clear(glow::COLOR_BUFFER_BIT);
+            }
+            egui_glow.paint(gl_window.window());
+            gl_window.swap_buffers().unwrap();
+            fps_counter.lock().mark();
+        };
 
         match event {
             glutin::event::Event::WindowEvent {
@@ -250,9 +295,16 @@ fn child_main() -> Result<(), anyhow::Error> {
                         }
                     }
                 };
+                gl_window.window().request_redraw();
             }
-            glutin::event::Event::NewEvents(_) => {
+            glutin::event::Event::NewEvents(cause) => {
                 input_state.digest();
+                if let glutin::event::StartCause::ResumeTimeReached { .. } = cause {
+                    gl_window.window().request_redraw();
+                }
+            }
+            glutin::event::Event::UserEvent(UserEvent::RequestRepaint) => {
+                gl_window.window().request_redraw();
             }
             glutin::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
@@ -318,35 +370,10 @@ fn child_main() -> Result<(), anyhow::Error> {
                         _ => {}
                     })();
                 }
-                gl_window.window().request_redraw();
             }
 
-            glutin::event::Event::RedrawRequested(_) => {
-                unsafe {
-                    gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                    gl.clear(glow::COLOR_BUFFER_BIT);
-                }
-
-                egui_glow.run(gl_window.window(), |ctx| {
-                    ctx.set_pixels_per_point(
-                        gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32
-                            / 100.0,
-                    );
-                    gui.show(
-                        ctx,
-                        &mut config,
-                        handle.clone(),
-                        gl_window.window(),
-                        &input_state,
-                        &mut state,
-                    )
-                });
-
-                egui_glow.paint(gl_window.window());
-
-                gl_window.swap_buffers().unwrap();
-                fps_counter.lock().mark();
-            }
+            glutin::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
+            glutin::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
 
             _ => {}
         }
