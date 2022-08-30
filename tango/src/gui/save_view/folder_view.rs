@@ -26,16 +26,32 @@ impl FolderView {
             is_tag: bool,
         }
 
+        let mut chips = (0..30)
+            .map(|i| {
+                chips_view
+                    .chip(chips_view.equipped_folder_index(), i)
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+
+        if !chips_view.regular_chip_is_in_place() {
+            if let Some(regular_chip_index) =
+                chips_view.regular_chip_index(chips_view.equipped_folder_index())
+            {
+                let spliced = chips.splice(0..1, vec![]).collect::<Vec<_>>();
+                chips.splice(regular_chip_index..regular_chip_index + 1, spliced);
+            }
+        }
+
         let mut grouped = indexmap::IndexMap::new();
-        // TODO: Regchip/tagchip stuff.
-        for i in 0..30 {
-            let chip = chips_view
-                .chip(chips_view.equipped_folder_index(), i)
-                .unwrap();
+        for (i, chip) in chips.iter().enumerate() {
             let g = grouped.entry(chip).or_insert(GroupedChip {
                 count: 0,
-                is_regular: false,
-                is_tag: false,
+                is_regular: chips_view.regular_chip_index(chips_view.equipped_folder_index())
+                    == Some(i),
+                is_tag: chips_view
+                    .tag_chip_indexes(chips_view.equipped_folder_index())
+                    .map_or(false, |is| is.contains(&i)),
             });
             g.count += 1;
         }

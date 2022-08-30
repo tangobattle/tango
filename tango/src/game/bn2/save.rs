@@ -92,7 +92,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         }
     }
 
-    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<(usize, usize)> {
+    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<[usize; 2]> {
         None
     }
 
