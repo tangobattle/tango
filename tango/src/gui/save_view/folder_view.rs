@@ -20,14 +20,24 @@ impl FolderView {
             egui::TextureHandle,
         >,
     ) {
+        struct GroupedChip {
+            count: usize,
+            is_regular: bool,
+            is_tag: bool,
+        }
+
         let mut grouped = indexmap::IndexMap::new();
         // TODO: Regchip/tagchip stuff.
         for i in 0..30 {
             let chip = chips_view
                 .chip(chips_view.equipped_folder_index(), i)
                 .unwrap();
-            let c = grouped.entry(chip).or_insert(0 as usize);
-            *c += 1;
+            let g = grouped.entry(chip).or_insert(GroupedChip {
+                count: 0,
+                is_regular: false,
+                is_tag: false,
+            });
+            g.count += 1;
         }
 
         egui_extras::TableBuilder::new(ui)
@@ -40,14 +50,14 @@ impl FolderView {
             .striped(true)
             .body(|body| {
                 body.rows(28.0, grouped.len(), |i, mut row| {
-                    let (chip, n) = grouped.get_index(i).unwrap();
+                    let (chip, g) = grouped.get_index(i).unwrap();
                     let info = if let Some(info) = assets.chip(chip.id) {
                         info
                     } else {
                         return;
                     };
                     row.col(|ui| {
-                        ui.label(format!("{}x", n));
+                        ui.label(format!("{}x", g.count));
                     });
                     row.col(|ui| {
                         ui.image(
