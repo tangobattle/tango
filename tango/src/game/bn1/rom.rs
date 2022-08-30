@@ -102,7 +102,9 @@ impl Assets {
                                 .into_iter()
                                 .flat_map(|part| {
                                     match part {
-                                        rom::text::Part::Literal(c) => charset[c],
+                                        rom::text::Part::Literal(c) => {
+                                            charset.get(c).unwrap_or(&"�")
+                                        }
                                         _ => "",
                                     }
                                     .chars()
