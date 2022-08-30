@@ -11,6 +11,9 @@ cleanup
 # Create directory structure.
 mkdir Tango.app{,/Contents{,/{MacOS,Resources}}}
 
+# Generate an appropriate Info.plist.
+"$(dirname "${BASH_SOURCE[0]}")/generate_info_plist.py" >Tango.app/Contents/Info.plist
+
 # Create icon.
 mkdir Tango.iconset
 sips -z 16 16 tango/src/icon.png --out Tango.iconset/icon_16x16.png
@@ -25,9 +28,6 @@ sips -z 512 512 tango/src/icon.png --out Tango.iconset/icon_512x512.png
 sips -z 1024 1024 tango/src/icon.png --out Tango.iconset/icon_512x512@2x.png
 iconutil -c icns Tango.iconset --output Tango.app/Contents/Resources/Tango.icns
 rm -rf Tango.iconset
-
-# Generate an appropriate Info.plist.
-"$(dirname "${BASH_SOURCE[0]}")/generate_info_plist.py" >Tango.app/Contents/Info.plist
 
 # Build macOS binaries.
 cargo build --bin tango --target=aarch64-apple-darwin --release
