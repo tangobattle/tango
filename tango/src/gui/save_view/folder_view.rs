@@ -1,4 +1,16 @@
-use crate::{game, gui, rom, save};
+use fluent_templates::Loader;
+
+use crate::{game, gui, i18n, rom, save};
+
+pub struct State {
+    grouped: bool,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self { grouped: true }
+    }
+}
 
 pub struct FolderView {}
 
@@ -19,6 +31,7 @@ impl FolderView {
             (gui::save_view::CachedAssetType, usize),
             egui::TextureHandle,
         >,
+        state: &mut State,
     ) {
         struct GroupedChip {
             count: usize,
@@ -43,8 +56,14 @@ impl FolderView {
             }
         }
 
-        let group = true;
-        let items = if group {
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut state.grouped,
+                i18n::LOCALES.lookup(lang, "save-group").unwrap(),
+            );
+        });
+
+        let items = if state.grouped {
             let mut grouped = indexmap::IndexMap::new();
             for (i, chip) in chips.iter().enumerate() {
                 let g = grouped.entry(chip).or_insert(GroupedChip {
@@ -91,10 +110,13 @@ impl FolderView {
                 .collect::<Vec<_>>()
         };
 
-        egui_extras::TableBuilder::new(ui)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(egui_extras::Size::exact(30.0))
-            .column(egui_extras::Size::exact(28.0))
+        let mut tb = egui_extras::TableBuilder::new(ui)
+            .cell_layout(egui::Layout::left_to_right(egui::Align::Center));
+        if state.grouped {
+            tb = tb.column(egui_extras::Size::exact(30.0));
+        }
+
+        tb.column(egui_extras::Size::exact(28.0))
             .column(egui_extras::Size::remainder())
             .column(egui_extras::Size::exact(28.0))
             .column(egui_extras::Size::exact(30.0))
@@ -107,9 +129,11 @@ impl FolderView {
                     } else {
                         return;
                     };
-                    row.col(|ui| {
-                        ui.label(format!("{}x", g.count));
-                    });
+                    if state.grouped {
+                        row.col(|ui| {
+                            ui.label(format!("{}x", g.count));
+                        });
+                    }
                     row.col(|ui| {
                         ui.image(
                             texture_cache

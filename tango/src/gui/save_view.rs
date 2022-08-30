@@ -1,6 +1,30 @@
-use crate::{game, gui, rom, save};
-
 mod folder_view;
+
+use fluent_templates::Loader;
+
+use crate::{game, gui, i18n, rom, save};
+
+#[derive(PartialEq)]
+enum Tab {
+    Folder,
+}
+
+pub struct State {
+    tab: Tab,
+    folder_view: folder_view::State,
+    texture_cache:
+        std::collections::HashMap<(gui::save_view::CachedAssetType, usize), egui::TextureHandle>,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            tab: Tab::Folder,
+            folder_view: folder_view::State::new(),
+            texture_cache: std::collections::HashMap::new(),
+        }
+    }
+}
 
 pub struct SaveView {
     folder_view: folder_view::FolderView,
@@ -27,26 +51,39 @@ impl SaveView {
         game: &'static (dyn game::Game + Send + Sync),
         save: &Box<dyn save::Save + Send + Sync>,
         assets: &Box<dyn rom::Assets + Send + Sync>,
-        texture_cache: &mut std::collections::HashMap<
-            (CachedAssetType, usize),
-            egui::TextureHandle,
-        >,
+        state: &mut State,
     ) {
+        let chips_view = save.view_chips();
+
         ui.horizontal(|ui| {
-            ui.selectable_label(true, "TODO");
-            ui.selectable_label(false, "TODO 2");
+            if chips_view.is_some() {
+                if ui
+                    .selectable_label(
+                        state.tab == Tab::Folder,
+                        i18n::LOCALES.lookup(lang, "save.folder").unwrap(),
+                    )
+                    .clicked()
+                {
+                    state.tab = Tab::Folder;
+                }
+            }
         });
 
-        if let Some(chips_view) = save.view_chips() {
-            self.folder_view.show(
-                ui,
-                font_families,
-                lang,
-                game,
-                &chips_view,
-                assets,
-                texture_cache,
-            );
+        match state.tab {
+            Tab::Folder => {
+                if let Some(chips_view) = chips_view {
+                    self.folder_view.show(
+                        ui,
+                        font_families,
+                        lang,
+                        game,
+                        &chips_view,
+                        assets,
+                        &mut state.texture_cache,
+                        &mut state.folder_view,
+                    );
+                }
+            }
         }
     }
 }
