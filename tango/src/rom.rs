@@ -1,3 +1,5 @@
+pub mod text;
+
 use byteorder::{ByteOrder, ReadBytesExt};
 
 #[derive(Clone, Debug)]

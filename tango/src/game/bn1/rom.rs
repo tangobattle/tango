@@ -28,6 +28,11 @@ pub static AREJ_00: Offsets = Offsets {
     chip_icon_palette_pointer:      0x08015e40,
 };
 
+lazy_static! {
+    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
+        rom::text::ParseOptions::new(0xe5, 0xe7).with_command(0xe8, 0);
+}
+
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
     chips: [rom::Chip; 240],
@@ -82,28 +87,27 @@ impl Assets {
                     let buf = &rom[offset..offset + 0x1c];
                     rom::Chip {
                         name: {
-                            // TODO: This parser is _extremely_ shitty.
                             let pointer = offsets.chip_names_pointer & !0x08000000;
                             let offset =
                                 (byteorder::LittleEndian::read_u32(&rom[pointer..pointer + 4])
                                     & !0x08000000) as usize;
-                            let mut inner_offset = byteorder::LittleEndian::read_u16(
-                                &rom[offset + i * 2..offset + (i + 1) * 2],
-                            ) as usize;
-                            let next_inner_offset = byteorder::LittleEndian::read_u16(
-                                &rom[offset + (i + 1) * 2..offset + (i + 2) * 2],
-                            ) as usize;
 
-                            let mut s = String::new();
-                            while inner_offset < rom.len() && inner_offset < next_inner_offset {
-                                let c = rom[offset + inner_offset];
-                                if c == 0xe7 {
-                                    break;
-                                }
-                                s.extend(charset[c as usize].chars());
-                                inner_offset += 1;
+                            if let Ok(parts) =
+                                rom::text::parse_entry(&rom[offset..], i, &TEXT_PARSE_OPTIONS)
+                            {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::Literal(c) => charset[c],
+                                            _ => "",
+                                        }
+                                        .chars()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                "???".to_string()
                             }
-                            s
                         },
                         icon: {
                             let offset = (byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4])
