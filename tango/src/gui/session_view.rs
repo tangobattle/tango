@@ -5,6 +5,19 @@ struct VBuf {
     texture: egui::TextureHandle,
 }
 
+impl VBuf {
+    fn new(ctx: &egui::Context, width: usize, height: usize) -> Self {
+        VBuf {
+            image: egui::ColorImage::new([width, height], egui::Color32::BLACK),
+            texture: ctx.load_texture(
+                "vbuf",
+                egui::ColorImage::new([width, height], egui::Color32::BLACK),
+                egui::TextureFilter::Nearest,
+            ),
+        }
+    }
+}
+
 pub struct SessionView {
     vbuf: Option<VBuf>,
 }
@@ -30,21 +43,18 @@ impl SessionView {
             mgba::gba::SCREEN_HEIGHT as usize,
         ));
 
-        let make_vbuf = || {
+        let vbuf = if !self
+            .vbuf
+            .as_ref()
+            .map(|vbuf| vbuf.texture.size() == [vbuf_width, vbuf_height])
+            .unwrap_or(false)
+        {
             log::info!("vbuf reallocation: ({}, {})", vbuf_width, vbuf_height);
-            VBuf {
-                image: egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
-                texture: ui.ctx().load_texture(
-                    "vbuf",
-                    egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
-                    egui::TextureFilter::Nearest,
-                ),
-            }
+            self.vbuf
+                .insert(VBuf::new(ui.ctx(), vbuf_width, vbuf_height))
+        } else {
+            self.vbuf.as_mut().unwrap()
         };
-        let vbuf = self.vbuf.get_or_insert_with(make_vbuf);
-        if vbuf.texture.size() != [vbuf_width, vbuf_height] {
-            *vbuf = make_vbuf();
-        }
 
         video_filter.apply(
             &session.lock_vbuf(),
