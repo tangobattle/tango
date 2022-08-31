@@ -2,11 +2,12 @@ pub mod text;
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum ChipClass {
     Standard,
     Mega,
     Giga,
+    ProgramAdvance,
 }
 
 #[derive(Clone, Debug)]
@@ -17,7 +18,7 @@ pub struct Chip {
     pub element: usize,
     pub class: ChipClass,
     pub dark: bool,
-    pub mb: u32,
+    pub mb: u8,
     pub damage: u32,
 }
 
@@ -28,9 +29,18 @@ pub trait Assets {
 
 pub fn bgr555_to_rgba(c: u16) -> image::Rgba<u8> {
     image::Rgba([
-        (((c & 0b11111) * 0xff) / 0b11111) as u8,
-        ((((c >> 5) & 0b11111) * 0xff) / 0b11111) as u8,
-        ((((c >> 10) & 0b11111) * 0xff) / 0b11111) as u8,
+        {
+            let r = c & 0b11111;
+            (r << 3 | r >> 2) as u8
+        },
+        {
+            let g = (c >> 5) & 0b11111;
+            (g << 3 | g >> 2) as u8
+        },
+        {
+            let b = (c >> 10) & 0b11111;
+            (b << 3 | b >> 2) as u8
+        },
         0xff,
     ])
 }

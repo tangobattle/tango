@@ -51,8 +51,7 @@ pub struct Selection {
     pub rom: Vec<u8>,
     pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
-    texture_cache:
-        std::collections::HashMap<(gui::save_view::CachedAssetType, usize), egui::TextureHandle>,
+    save_view_state: gui::save_view::State,
 }
 
 impl Selection {
@@ -67,7 +66,7 @@ impl Selection {
             rom,
             assets,
             save,
-            texture_cache: std::collections::HashMap::new(),
+            save_view_state: gui::save_view::State::new(),
         }
     }
 }
@@ -1292,12 +1291,13 @@ impl MainView {
                     if let Some(assets) = selection.assets.as_ref() {
                         self.save_view.show(
                             ui,
+                            &mut state.clipboard,
                             font_families,
                             &config.language,
                             selection.game,
                             &selection.save.save,
                             assets,
-                            &mut selection.texture_cache,
+                            &mut selection.save_view_state,
                         );
                     }
                 }

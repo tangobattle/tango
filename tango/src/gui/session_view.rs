@@ -1,8 +1,21 @@
 use crate::{gui, input, session, video};
 
 struct VBuf {
-    buf: Vec<u8>,
+    image: egui::ColorImage,
     texture: egui::TextureHandle,
+}
+
+impl VBuf {
+    fn new(ctx: &egui::Context, width: usize, height: usize) -> Self {
+        VBuf {
+            image: egui::ColorImage::new([width, height], egui::Color32::BLACK),
+            texture: ctx.load_texture(
+                "vbuf",
+                egui::ColorImage::new([width, height], egui::Color32::BLACK),
+                egui::TextureFilter::Nearest,
+            ),
+        }
+    }
 }
 
 pub struct SessionView {
@@ -30,35 +43,30 @@ impl SessionView {
             mgba::gba::SCREEN_HEIGHT as usize,
         ));
 
-        let make_vbuf = || {
+        let vbuf = if !self
+            .vbuf
+            .as_ref()
+            .map(|vbuf| vbuf.texture.size() == [vbuf_width, vbuf_height])
+            .unwrap_or(false)
+        {
             log::info!("vbuf reallocation: ({}, {})", vbuf_width, vbuf_height);
-            VBuf {
-                buf: vec![0u8; vbuf_width * vbuf_height * 4],
-                texture: ui.ctx().load_texture(
-                    "vbuf",
-                    egui::ColorImage::new([vbuf_width, vbuf_height], egui::Color32::BLACK),
-                    egui::TextureFilter::Nearest,
-                ),
-            }
+            self.vbuf
+                .insert(VBuf::new(ui.ctx(), vbuf_width, vbuf_height))
+        } else {
+            self.vbuf.as_mut().unwrap()
         };
-        let vbuf = self.vbuf.get_or_insert_with(make_vbuf);
-        if vbuf.texture.size() != [vbuf_width, vbuf_height] {
-            *vbuf = make_vbuf();
-        }
 
         video_filter.apply(
             &session.lock_vbuf(),
-            &mut vbuf.buf,
+            bytemuck::cast_slice_mut(&mut vbuf.image.pixels[..]),
             (
                 mgba::gba::SCREEN_WIDTH as usize,
                 mgba::gba::SCREEN_HEIGHT as usize,
             ),
         );
 
-        vbuf.texture.set(
-            egui::ColorImage::from_rgba_unmultiplied([vbuf_width, vbuf_height], &vbuf.buf),
-            egui::TextureFilter::Nearest,
-        );
+        vbuf.texture
+            .set(vbuf.image.clone(), egui::TextureFilter::Nearest);
 
         let mut scaling_factor = std::cmp::max_by(
             std::cmp::min_by(

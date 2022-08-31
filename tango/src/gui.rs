@@ -32,6 +32,7 @@ pub struct State {
     main_view: std::sync::Arc<parking_lot::Mutex<main_view::State>>,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
+    clipboard: arboard::Clipboard,
     drpc: discord_rpc_client::Client,
 }
 
@@ -70,6 +71,7 @@ impl State {
             steal_input: None,
             show_settings: None,
             show_escape_window: None,
+            clipboard: arboard::Clipboard::new().unwrap(),
             drpc,
         }
     }
