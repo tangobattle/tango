@@ -35,7 +35,7 @@ lazy_static! {
 
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
-    chips: [rom::Chip; 325],
+    chips: [rom::Chip; 315],
 }
 
 impl Assets {
@@ -86,38 +86,38 @@ impl Assets {
                         .unwrap()
                 }
             },
-            chips: (0..325)
+            chips: (0..315)
                 .map(|i| {
-                    let mut id = i;
-                    let mut script_pointer_offset = offsets.chip_names_pointers;
-                    if (i >= 0x100) {
-                      script_pointer_offset += 4;
-                      id -= 100;
-                    }
-                    let buf = &mapper.get(offsets.chip_data)[id * 0x20..(id + 1) * 0x20];
-
+                    let buf = &mapper.get(offsets.chip_data)[i * 0x20..(i + 1) * 0x20];
                     rom::Chip {
-                        name: if let Ok(parts) = rom::text::parse_entry(
-                            &mapper.get(byteorder::LittleEndian::read_u32(
-                                &mapper.get(script_pointer_offset)[..4],
-                            )),
-                            i,
-                            &TEXT_PARSE_OPTIONS,
-                        ) {
-                            parts
-                                .into_iter()
-                                .flat_map(|part| {
-                                    match part {
-                                        rom::text::Part::Literal(c) => {
-                                            charset.get(c).unwrap_or(&"�")
+                        name: {
+                            let (i, pointer) = if i < 0x100 {
+                                (i, offsets.chip_names_pointers)
+                            } else {
+                                (i - 0x100, offsets.chip_names_pointers + 4)
+                            };
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(pointer)[..4],
+                                )),
+                                i,
+                                &TEXT_PARSE_OPTIONS,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::Literal(c) => {
+                                                charset.get(c).unwrap_or(&"�")
+                                            }
+                                            _ => "",
                                         }
-                                        _ => "",
-                                    }
-                                    .chars()
-                                })
-                                .collect::<String>()
-                        } else {
-                            "???".to_string()
+                                        .chars()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                "???".to_string()
+                            }
                         },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
