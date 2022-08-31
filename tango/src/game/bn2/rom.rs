@@ -129,7 +129,7 @@ impl Assets {
                             .unwrap(),
                             &chip_icon_palette,
                         ),
-                        codes: buf[0x00..0x06].iter().filter(|&code| *code != 0xff).cloned().collect(),
+                        codes: buf[0x00..0x06].iter().cloned().filter(|code| *code != 0xff).collect(),
                         element: buf[0x06] as usize,
                         class: rom::ChipClass::Standard,
                         dark: false,
