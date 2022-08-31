@@ -133,7 +133,7 @@ impl Assets {
                         element: buf[0x06] as usize,
                         class: rom::ChipClass::Standard,
                         dark: false,
-                        mb: byteorder::LittleEndian::read_u16(&buf[0x0a..0x0a + 2]) as u32,
+                        mb: byteorder::LittleEndian::read_u16(&buf[0x0a..0x0a + 2]) as u8,
                         damage: byteorder::LittleEndian::read_u16(&buf[0x0c..0x0c + 2]) as u32,
                     }
                 })
