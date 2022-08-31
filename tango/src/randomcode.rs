@@ -446,7 +446,9 @@ lazy_static! {
                         "man",
                         "megalegs",
                         "meme",
+                        "milk",
                         "minna",
+                        "moi",
                         "mojo",
                         "occurroico",
                         "omega",
@@ -647,7 +649,40 @@ lazy_static! {
                         "zyanai",
                     ]
                 }
-            )
+            ),
+            // (
+            //     "es",
+            //     Choices {
+            //         starts: &[
+            //             "bassado",
+            //             "hay",
+            //             "hombre",
+            //             "jugadorzero",
+            //             "mi",
+            //             "orgullosamente",
+            //             "princessa",
+            //             "reskek",
+            //             "serenito",
+            //             "sospechoso",
+            //             "usando",
+            //         ],
+            //         middles: &[
+            //             "alguien", "bn3", "es", "estillo", "jueves", "roca", "mandalo", "mi",
+            //             "pride", "ribbita",
+            //         ],
+            //         ends: &[
+            //             "adios",
+            //             "brazil",
+            //             "chiposcuro",
+            //             "detras",
+            //             "ejecutable",
+            //             "ejecucao",
+            //             "facha",
+            //             "meta",
+            //             "vainilla",
+            //         ],
+            //     }
+            // )
         ]);
 }
 
