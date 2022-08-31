@@ -1291,6 +1291,7 @@ impl MainView {
                     if let Some(assets) = selection.assets.as_ref() {
                         self.save_view.show(
                             ui,
+                            &mut state.clipboard,
                             font_families,
                             &config.language,
                             selection.game,

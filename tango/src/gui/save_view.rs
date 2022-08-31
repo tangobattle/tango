@@ -46,6 +46,7 @@ impl SaveView {
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
+        clipboard: &mut arboard::Clipboard,
         font_families: &gui::FontFamilies,
         lang: &unic_langid::LanguageIdentifier,
         game: &'static (dyn game::Game + Send + Sync),
@@ -74,6 +75,7 @@ impl SaveView {
                 if let Some(chips_view) = chips_view {
                     self.folder_view.show(
                         ui,
+                        clipboard,
                         font_families,
                         lang,
                         game,

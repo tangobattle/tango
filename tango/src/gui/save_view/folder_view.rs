@@ -22,6 +22,7 @@ impl FolderView {
     pub fn show<'a>(
         &mut self,
         ui: &mut egui::Ui,
+        clipboard: &mut arboard::Clipboard,
         font_families: &gui::FontFamilies,
         lang: &unic_langid::LanguageIdentifier,
         game: &'static (dyn game::Game + Send + Sync),
@@ -55,13 +56,6 @@ impl FolderView {
                 chips.splice(regular_chip_index..regular_chip_index + 1, spliced);
             }
         }
-
-        ui.horizontal(|ui| {
-            ui.checkbox(
-                &mut state.grouped,
-                i18n::LOCALES.lookup(lang, "save-group").unwrap(),
-            );
-        });
 
         let items = if state.grouped {
             let mut grouped = indexmap::IndexMap::new();
@@ -110,6 +104,47 @@ impl FolderView {
                 .collect::<Vec<_>>()
         };
 
+        ui.horizontal(|ui| {
+            ui.checkbox(
+                &mut state.grouped,
+                i18n::LOCALES.lookup(lang, "save-group").unwrap(),
+            );
+            if ui
+                .button(format!(
+                    "📋 {}",
+                    i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
+                ))
+                .clicked()
+            {
+                let _ = clipboard.set_text(
+                    items
+                        .iter()
+                        .map(|(chip, g)| {
+                            let mut buf = String::new();
+                            if state.grouped {
+                                buf.push_str(&format!("{}\t", g.count));
+                            }
+                            let info = assets.chip(chip.id);
+                            buf.push_str(&format!(
+                                "{}\t{}\t",
+                                info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                chips_view.chip_codes()[chip.code] as char
+                            ));
+                            if g.is_regular {
+                                buf.push_str("[REG]");
+                            }
+                            for _ in 0..g.tag_count {
+                                buf.push_str("[TAG]");
+                            }
+                            buf.push('\n');
+                            buf
+                        })
+                        .collect::<Vec<_>>()
+                        .join(""),
+                );
+            }
+        });
+
         let mut tb = egui_extras::TableBuilder::new(ui)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center));
         if state.grouped {
@@ -124,17 +159,19 @@ impl FolderView {
             .body(|body| {
                 body.rows(28.0, items.len(), |i, mut row| {
                     let (chip, g) = &items[i];
-                    let info = if let Some(info) = assets.chip(chip.id) {
-                        info
-                    } else {
-                        return;
-                    };
+                    let info = assets.chip(chip.id);
                     if state.grouped {
                         row.col(|ui| {
                             ui.label(format!("{}x", g.count));
                         });
                     }
                     row.col(|ui| {
+                        let icon = if let Some(icon) = info.map(|info| &info.icon) {
+                            icon
+                        } else {
+                            return;
+                        };
+
                         ui.image(
                             texture_cache
                                 .entry((gui::save_view::CachedAssetType::ChipIcon, chip.id))
@@ -143,7 +180,7 @@ impl FolderView {
                                         format!("chip {}", chip.id),
                                         egui::ColorImage::from_rgba_unmultiplied(
                                             [14, 14],
-                                            &image::imageops::crop_imm(&info.icon, 1, 1, 14, 14)
+                                            &image::imageops::crop_imm(icon, 1, 1, 14, 14)
                                                 .to_image(),
                                         ),
                                         egui::TextureFilter::Nearest,
@@ -158,8 +195,10 @@ impl FolderView {
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 0.0;
                                 ui.label(
-                                    egui::RichText::new(&info.name)
-                                        .family(font_families.for_language(&game.language())),
+                                    egui::RichText::new(
+                                        info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                    )
+                                    .family(font_families.for_language(&game.language())),
                                 );
                                 ui.label(format!(
                                     " {}",
@@ -175,33 +214,41 @@ impl FolderView {
                         });
                     });
                     row.col(|ui| {
-                        if let Some(icon) = assets.element_icon(info.element) {
-                            ui.image(
-                                texture_cache
-                                    .entry((
-                                        gui::save_view::CachedAssetType::ElementIcon,
-                                        info.element,
-                                    ))
-                                    .or_insert_with(|| {
-                                        ui.ctx().load_texture(
-                                            format!("element {}", info.element),
-                                            egui::ColorImage::from_rgba_unmultiplied(
-                                                [14, 14],
-                                                &image::imageops::crop_imm(icon, 1, 1, 14, 14)
-                                                    .to_image(),
-                                            ),
-                                            egui::TextureFilter::Nearest,
-                                        )
-                                    })
-                                    .id(),
-                                egui::Vec2::new(28.0, 28.0),
-                            );
-                        }
+                        let element = if let Some(element) = info.map(|info| info.element) {
+                            element
+                        } else {
+                            return;
+                        };
+
+                        let icon = if let Some(icon) = assets.element_icon(element) {
+                            icon
+                        } else {
+                            return;
+                        };
+
+                        ui.image(
+                            texture_cache
+                                .entry((gui::save_view::CachedAssetType::ElementIcon, element))
+                                .or_insert_with(|| {
+                                    ui.ctx().load_texture(
+                                        format!("element {}", element),
+                                        egui::ColorImage::from_rgba_unmultiplied(
+                                            [14, 14],
+                                            &image::imageops::crop_imm(icon, 1, 1, 14, 14)
+                                                .to_image(),
+                                        ),
+                                        egui::TextureFilter::Nearest,
+                                    )
+                                })
+                                .id(),
+                            egui::Vec2::new(28.0, 28.0),
+                        );
                     });
                     row.col(|ui| {
+                        let damage = info.map(|info| info.damage).unwrap_or(0);
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if info.damage > 0 {
-                                ui.label(format!("{}", info.damage));
+                            if damage > 0 {
+                                ui.label(format!("{}", damage));
                             }
                         });
                     });
