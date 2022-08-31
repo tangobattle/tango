@@ -129,11 +129,11 @@ impl Assets {
                             .unwrap(),
                             &chip_icon_palette,
                         ),
-                        codes: buf[0x00..0x06].iter().cloned().collect(),
+                        codes: buf[0x00..0x06].iter().filter(|&code| *code != 0xff).cloned().collect(),
                         element: buf[0x06] as usize,
                         class: rom::ChipClass::Standard,
                         dark: false,
-                        mb: byteorder::LittleEndian::read_u16(&buf[0x0a..0x0a + 2]) as u8,
+                        mb: buf[0x0a],
                         damage: byteorder::LittleEndian::read_u16(&buf[0x0c..0x0c + 2]) as u32,
                     }
                 })
