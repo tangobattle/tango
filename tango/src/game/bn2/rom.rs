@@ -14,18 +14,18 @@ pub struct Offsets {
 pub static AE2E_00: Offsets = Offsets {
     chip_data:                      0x0800e450,
     chip_names_pointers:            0x0800b528,
+    chip_icon_palette_pointer:      0x0800b890,
     element_icons_pointer:          0x08025fe0,
     element_icon_palette_pointer:   0x08005388,
-    chip_icon_palette_pointer:      0x08025fe0,
 };
 
 #[rustfmt::skip]
 pub static AE2J_00: Offsets = Offsets {
     chip_data:                      0x0800e430,
     chip_names_pointers:            0x0800b51c,
-    element_icons_pointer:          0x0800b884,
+    chip_icon_palette_pointer:      0x0800b884,
+    element_icons_pointer:          0x08025f8c,
     element_icon_palette_pointer:   0x08005384,
-    chip_icon_palette_pointer:      0x08025f8c,
 };
 
 lazy_static! {
