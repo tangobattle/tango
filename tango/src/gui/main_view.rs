@@ -768,12 +768,19 @@ impl MainView {
                 }
             });
 
-            ui.with_layout(
-                egui::Layout::top_down_justified(egui::Align::Center),
-                |ui| {
-                    egui::ComboBox::from_id_source("patch-select-combobox").show_ui(ui, |ui| {});
-                },
-            );
+            ui.horizontal_top(|ui| {
+                const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
+                egui::ComboBox::from_id_source("patch-select-combobox")
+                    .width(
+                        ui.available_width()
+                            - ui.spacing().item_spacing.x
+                            - PATCH_VERSION_COMBOBOX_WIDTH,
+                    )
+                    .show_ui(ui, |ui| {});
+                egui::ComboBox::from_id_source("patch-version-select-combobox")
+                    .width(PATCH_VERSION_COMBOBOX_WIDTH - ui.spacing().item_spacing.x * 2.0)
+                    .show_ui(ui, |ui| {});
+            });
         });
         egui::TopBottomPanel::bottom("main-bottom-panel").show(ctx, |ui| {
             ui.vertical(|ui| {
