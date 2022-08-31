@@ -48,28 +48,22 @@ impl Assets {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
-            &mapper.get(
-                (byteorder::LittleEndian::read_u32(
-                    &mapper.get(offsets.chip_icon_palette_pointer)[..4],
-                )),
-            )[..32],
+            &mapper.get(byteorder::LittleEndian::read_u32(
+                &mapper.get(offsets.chip_icon_palette_pointer)[..4],
+            ))[..32],
         );
 
         Self {
             element_icons: {
                 let palette = rom::read_palette(
-                    &mapper.get(
-                        (byteorder::LittleEndian::read_u32(
-                            &mapper.get(offsets.element_icon_palette_pointer)[..4],
-                        )),
-                    )[..32],
+                    &mapper.get(byteorder::LittleEndian::read_u32(
+                        &mapper.get(offsets.element_icon_palette_pointer)[..4],
+                    ))[..32],
                 );
                 {
-                    let buf = mapper.get(
-                        (byteorder::LittleEndian::read_u32(
-                            &mapper.get(offsets.element_icons_pointer)[..4],
-                        )),
-                    );
+                    let buf = mapper.get(byteorder::LittleEndian::read_u32(
+                        &mapper.get(offsets.element_icons_pointer)[..4],
+                    ));
                     (0..5)
                         .map(|i| {
                             rom::apply_palette(
@@ -129,7 +123,11 @@ impl Assets {
                             .unwrap(),
                             &chip_icon_palette,
                         ),
-                        codes: buf[0x00..0x06].iter().cloned().filter(|code| *code != 0xff).collect(),
+                        codes: buf[0x00..0x06]
+                            .iter()
+                            .cloned()
+                            .filter(|code| *code != 0xff)
+                            .collect(),
                         element: buf[0x06] as usize,
                         class: rom::ChipClass::Standard,
                         dark: false,
