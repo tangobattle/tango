@@ -1,4 +1,5 @@
 mod hooks;
+mod rom;
 mod save;
 
 use crate::game;
@@ -49,6 +50,19 @@ impl game::Game for EXE6GImpl {
         }
         Ok(Box::new(save))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::BR5J_00,
+            &rom::JA_CHARSET,
+            rom,
+            wram,
+        )))
+    }
 }
 
 struct EXE6FImpl;
@@ -94,6 +108,19 @@ impl game::Game for EXE6FImpl {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::BR6J_00,
+            &rom::JA_CHARSET,
+            rom,
+            wram,
+        )))
     }
 }
 
@@ -141,6 +168,19 @@ impl game::Game for BN6GImpl {
         }
         Ok(Box::new(save))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::BR5E_00,
+            &rom::EN_CHARSET,
+            rom,
+            wram,
+        )))
+    }
 }
 
 struct BN6FImpl;
@@ -186,5 +226,18 @@ impl game::Game for BN6FImpl {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::BR6E_00,
+            &rom::EN_CHARSET,
+            rom,
+            wram,
+        )))
     }
 }

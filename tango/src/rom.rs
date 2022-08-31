@@ -2,11 +2,12 @@ pub mod text;
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum ChipClass {
     Standard,
     Mega,
     Giga,
+    ProgramAdvance,
 }
 
 #[derive(Clone, Debug)]
@@ -17,7 +18,7 @@ pub struct Chip {
     pub element: usize,
     pub class: ChipClass,
     pub dark: bool,
-    pub mb: u32,
+    pub mb: u8,
     pub damage: u32,
 }
 
