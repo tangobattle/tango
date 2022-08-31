@@ -35,7 +35,7 @@ lazy_static! {
 
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
-    chips: [rom::Chip; 315],
+    chips: [rom::Chip; 304],
 }
 
 impl Assets {
@@ -80,7 +80,7 @@ impl Assets {
                         .unwrap()
                 }
             },
-            chips: (0..315)
+            chips: (0..304)
                 .map(|i| {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x20..(i + 1) * 0x20];
                     rom::Chip {
