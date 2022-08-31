@@ -769,17 +769,38 @@ impl MainView {
             });
 
             ui.horizontal_top(|ui| {
+                let mut selection = main_view.selection.lock();
+                let patches = state.patches_scanner.read();
+
                 const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
-                egui::ComboBox::from_id_source("patch-select-combobox")
-                    .width(
-                        ui.available_width()
-                            - ui.spacing().item_spacing.x
-                            - PATCH_VERSION_COMBOBOX_WIDTH,
-                    )
-                    .show_ui(ui, |ui| {});
-                egui::ComboBox::from_id_source("patch-version-select-combobox")
-                    .width(PATCH_VERSION_COMBOBOX_WIDTH - ui.spacing().item_spacing.x * 2.0)
-                    .show_ui(ui, |ui| {});
+                ui.add_enabled_ui(selection.is_some(), |ui| {
+                    egui::ComboBox::from_id_source("patch-select-combobox")
+                        .width(
+                            ui.available_width()
+                                - ui.spacing().item_spacing.x
+                                - PATCH_VERSION_COMBOBOX_WIDTH,
+                        )
+                        .show_ui(ui, |ui| {
+                            let selection = if let Some(selection) = selection.as_mut() {
+                                selection
+                            } else {
+                                return;
+                            };
+                            for (name, info) in patches.iter() {
+                                if !info
+                                    .versions
+                                    .iter()
+                                    .any(|(_, v)| v.supported_games.contains(&selection.game))
+                                {
+                                    continue;
+                                }
+                                ui.selectable_label(false, name);
+                            }
+                        });
+                    egui::ComboBox::from_id_source("patch-version-select-combobox")
+                        .width(PATCH_VERSION_COMBOBOX_WIDTH - ui.spacing().item_spacing.x * 2.0)
+                        .show_ui(ui, |ui| {});
+                });
             });
         });
         egui::TopBottomPanel::bottom("main-bottom-panel").show(ctx, |ui| {
