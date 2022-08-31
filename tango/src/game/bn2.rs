@@ -1,4 +1,5 @@
 mod hooks;
+mod rom;
 mod save;
 
 use crate::game;
@@ -40,6 +41,19 @@ impl game::Game for EXE2Impl {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        save: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::AE2J_00,
+            &rom::JA_CHARSET,
+            rom,
+            save,
+        )))
+    }
 }
 
 pub struct BN2Impl;
@@ -76,5 +90,18 @@ impl game::Game for BN2Impl {
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        save: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::AE2E_00,
+            &rom::EN_CHARSET,
+            rom,
+            save,
+        )))
     }
 }
