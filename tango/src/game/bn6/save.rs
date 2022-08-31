@@ -89,9 +89,25 @@ impl Save {
                 Variant::Falzar => 0x18,
             }
     }
+
+    fn current_navi(&self) -> u8 {
+        self.buf[0x1b81]
+    }
+
+    fn navi_stats_offset(&self, id: u8) -> usize {
+        (if self.game_info().unwrap().region == Region::JP {
+            0x478c
+        } else {
+            0x47cc
+        }) + 0x64 * if id == 0 { 0 } else { 1 }
+    }
 }
 
 impl save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -104,5 +120,67 @@ impl save::Save for Save {
             MASK_OFFSET,
         );
         buf
+    }
+}
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8] {
+        &b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[..]
+    }
+
+    fn num_folders(&self) -> usize {
+        self.save.buf[0x1c09] as usize
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        self.save.buf[self.save.navi_stats_offset(self.save.current_navi()) + 0x2d] as usize
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        true
+    }
+
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        let idx = self.save.buf
+            [self.save.navi_stats_offset(self.save.current_navi()) + 0x2e + folder_index];
+        if idx == 0 {
+            None
+        } else {
+            Some(idx as usize)
+        }
+    }
+
+    fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]> {
+        let idx1 = self.save.buf[self.save.navi_stats_offset(self.save.current_navi())
+            + 0x56
+            + folder_index * 2
+            + 0x00];
+        let idx2 = self.save.buf[self.save.navi_stats_offset(self.save.current_navi())
+            + 0x56
+            + folder_index * 2
+            + 0x01];
+        if idx1 == 0xff || idx2 == 0xff {
+            None
+        } else {
+            Some([idx1 as usize, idx2 as usize])
+        }
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index > 3 || chip_index > 30 {
+            return None;
+        }
+
+        let offset = 0x2178 + folder_index * (30 * 2) + chip_index * 2;
+        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
+
+        Some(save::Chip {
+            id: (raw & 0x1ff) as usize,
+            code: (raw >> 9) as usize,
+        })
     }
 }

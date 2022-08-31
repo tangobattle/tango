@@ -77,8 +77,8 @@ lazy_static! {
 }
 
 pub struct Assets {
-    element_icons: [image::RgbaImage; 5],
-    chips: [rom::Chip; 240],
+    element_icons: [image::RgbaImage; 11],
+    chips: [rom::Chip; 411],
 }
 
 impl Assets {
@@ -107,7 +107,7 @@ impl Assets {
                     let buf = mapper.get(byteorder::LittleEndian::read_u32(
                         &mapper.get(offsets.element_icons_pointer)[..4],
                     ));
-                    (0..5)
+                    (0..11)
                         .map(|i| {
                             rom::apply_palette(
                                 rom::read_merged_tiles(
@@ -123,7 +123,7 @@ impl Assets {
                         .unwrap()
                 }
             },
-            chips: (0..240)
+            chips: (0..411)
                 .map(|i| {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {
