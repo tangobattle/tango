@@ -105,6 +105,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         false
     }
 
+    fn chips_have_mb(&self) -> bool {
+        false
+    }
+
     fn regular_chip_index(&self, _folder_index: usize) -> Option<usize> {
         None
     }

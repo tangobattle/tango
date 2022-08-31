@@ -144,6 +144,9 @@ pub trait ChipsView<'a> {
     fn num_folders(&self) -> usize;
     fn equipped_folder_index(&self) -> usize;
     fn regular_chip_is_in_place(&self) -> bool;
+    fn chips_have_mb(&self) -> bool {
+        true
+    }
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize>;
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]>;
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<Chip>;

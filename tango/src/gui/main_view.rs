@@ -605,14 +605,8 @@ impl MainView {
             }
         }
 
-        egui::TopBottomPanel::top("main-top-panel")
-            .frame(egui::Frame {
-                inner_margin: egui::style::Margin::symmetric(8.0, 2.0),
-                rounding: egui::Rounding::none(),
-                fill: ctx.style().visuals.window_fill(),
-                ..Default::default()
-            })
-            .show(ctx, |ui| {
+        egui::TopBottomPanel::top("main-top-panel").show(ctx, |ui| {
+            ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if ui
@@ -653,7 +647,134 @@ impl MainView {
                         }
                     });
                 });
+
+                if ui
+                    .horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.add({
+                                let button = egui::Button::new(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "select-save.select-button")
+                                        .unwrap(),
+                                );
+
+                                if main_view.show_save_select.is_some() {
+                                    button.fill(ui.ctx().style().visuals.selection.bg_fill)
+                                } else {
+                                    button
+                                }
+                            }) | ui
+                                .vertical_centered_justified(|ui| {
+                                    let mut layouter =
+                                        |ui: &egui::Ui, _: &str, _wrap_width: f32| {
+                                            let mut layout_job = egui::text::LayoutJob::default();
+                                            if let Some(selection) = &*main_view.selection.lock() {
+                                                let (family, variant) =
+                                                    selection.game.family_and_variant();
+                                                layout_job.append(
+                                                    &format!(
+                                                        "{}",
+                                                        selection
+                                                            .save
+                                                            .path
+                                                            .strip_prefix(&config.saves_path())
+                                                            .unwrap_or(
+                                                                selection.save.path.as_path()
+                                                            )
+                                                            .display()
+                                                    ),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Body)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                                layout_job.append(
+                                                    &i18n::LOCALES
+                                                        .lookup(
+                                                            &config.language,
+                                                            &format!(
+                                                                "games.{}-{}",
+                                                                family, variant
+                                                            ),
+                                                        )
+                                                        .unwrap(),
+                                                    5.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Small)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                            } else {
+                                                layout_job.append(
+                                                    &i18n::LOCALES
+                                                        .lookup(
+                                                            &config.language,
+                                                            "select-save.no-save-selected",
+                                                        )
+                                                        .unwrap(),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Small)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                            }
+                                            ui.fonts().layout_job(layout_job)
+                                        };
+                                    ui.add(
+                                        egui::TextEdit::singleline(&mut String::new())
+                                            .layouter(&mut layouter),
+                                    )
+                                })
+                                .inner
+                        })
+                        .inner
+                    })
+                    .inner
+                    .clicked()
+                {
+                    main_view.show_save_select = if main_view.show_save_select.is_none() {
+                        rayon::spawn({
+                            let roms_scanner = state.roms_scanner.clone();
+                            let saves_scanner = state.saves_scanner.clone();
+                            let roms_path = config.roms_path();
+                            let saves_path = config.saves_path();
+                            move || {
+                                roms_scanner.rescan(move || game::scan_roms(&roms_path));
+                                saves_scanner.rescan(move || save::scan_saves(&saves_path));
+                            }
+                        });
+                        Some(save_select_window::State::new(
+                            main_view.selection.lock().as_ref().map(|selection| {
+                                (selection.game, Some(selection.save.path.to_path_buf()))
+                            }),
+                        ))
+                    } else {
+                        None
+                    };
+                }
             });
+
+            ui.with_layout(
+                egui::Layout::top_down_justified(egui::Align::Center),
+                |ui| {
+                    egui::ComboBox::from_id_source("patch-select-combobox").show_ui(ui, |ui| {});
+                },
+            );
+        });
         egui::TopBottomPanel::bottom("main-bottom-panel").show(ctx, |ui| {
             ui.vertical(|ui| {
                 {
@@ -1160,151 +1281,19 @@ impl MainView {
             });
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.vertical(|ui| {
-                if ui
-                    .horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.add({
-                                let button = egui::Button::new(
-                                    i18n::LOCALES
-                                        .lookup(&config.language, "select-save.select-button")
-                                        .unwrap(),
-                                );
-
-                                if main_view.show_save_select.is_some() {
-                                    button.fill(ui.ctx().style().visuals.selection.bg_fill)
-                                } else {
-                                    button
-                                }
-                            }) | ui
-                                .vertical_centered_justified(|ui| {
-                                    let mut layouter =
-                                        |ui: &egui::Ui, _: &str, _wrap_width: f32| {
-                                            let mut layout_job = egui::text::LayoutJob::default();
-                                            if let Some(selection) = &*main_view.selection.lock() {
-                                                let (family, variant) =
-                                                    selection.game.family_and_variant();
-                                                layout_job.append(
-                                                    &format!(
-                                                        "{}",
-                                                        selection
-                                                            .save
-                                                            .path
-                                                            .strip_prefix(&config.saves_path())
-                                                            .unwrap_or(
-                                                                selection.save.path.as_path()
-                                                            )
-                                                            .display()
-                                                    ),
-                                                    0.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Body)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
-                                                layout_job.append(
-                                                    &i18n::LOCALES
-                                                        .lookup(
-                                                            &config.language,
-                                                            &format!(
-                                                                "games.{}-{}",
-                                                                family, variant
-                                                            ),
-                                                        )
-                                                        .unwrap(),
-                                                    5.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Small)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
-                                            } else {
-                                                layout_job.append(
-                                                    &i18n::LOCALES
-                                                        .lookup(
-                                                            &config.language,
-                                                            "select-save.no-save-selected",
-                                                        )
-                                                        .unwrap(),
-                                                    0.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Small)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
-                                            }
-                                            ui.fonts().layout_job(layout_job)
-                                        };
-                                    ui.add(
-                                        egui::TextEdit::singleline(&mut String::new())
-                                            .layouter(&mut layouter),
-                                    )
-                                })
-                                .inner
-                        })
-                        .inner
-                    })
-                    .inner
-                    .clicked()
-                {
-                    main_view.show_save_select = if main_view.show_save_select.is_none() {
-                        rayon::spawn({
-                            let roms_scanner = state.roms_scanner.clone();
-                            let saves_scanner = state.saves_scanner.clone();
-                            let roms_path = config.roms_path();
-                            let saves_path = config.saves_path();
-                            move || {
-                                roms_scanner.rescan(move || game::scan_roms(&roms_path));
-                                saves_scanner.rescan(move || save::scan_saves(&saves_path));
-                            }
-                        });
-                        Some(save_select_window::State::new(
-                            main_view.selection.lock().as_ref().map(|selection| {
-                                (selection.game, Some(selection.save.path.to_path_buf()))
-                            }),
-                        ))
-                    } else {
-                        None
-                    };
-                }
-            });
-
-            ui.with_layout(
-                egui::Layout::top_down_justified(egui::Align::Center),
-                |ui| {
-                    egui::ComboBox::from_id_source("patch-select-combobox").show_ui(ui, |ui| {});
-                },
-            );
-
-            ui.separator();
-
-            {
-                let mut selection = main_view.selection.lock();
-                if let Some(selection) = &mut *selection {
-                    if let Some(assets) = selection.assets.as_ref() {
-                        self.save_view.show(
-                            ui,
-                            &mut state.clipboard,
-                            font_families,
-                            &config.language,
-                            selection.game,
-                            &selection.save.save,
-                            assets,
-                            &mut selection.save_view_state,
-                        );
-                    }
+            let mut selection = main_view.selection.lock();
+            if let Some(selection) = &mut *selection {
+                if let Some(assets) = selection.assets.as_ref() {
+                    self.save_view.show(
+                        ui,
+                        &mut state.clipboard,
+                        font_families,
+                        &config.language,
+                        selection.game,
+                        &selection.save.save,
+                        assets,
+                        &mut selection.save_view_state,
+                    );
                 }
             }
         });
