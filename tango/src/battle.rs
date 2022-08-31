@@ -152,78 +152,86 @@ impl Match {
 
     pub async fn run(&self, mut receiver: net::Receiver) -> anyhow::Result<()> {
         let mut last_round_number = 0;
-        loop {
-            match receiver.receive().await? {
-                net::protocol::Packet::Ping(ping) => {
-                    self.sender.lock().await.send_pong(ping.ts).await?;
+        let mut ping_timer = tokio::time::interval(net::PING_INTERVAL);
+        'l: loop {
+            tokio::select! {
+                _ = ping_timer.tick() => {
+                    self.sender.lock().await.send_ping(std::time::SystemTime::now()).await?;
                 }
-                net::protocol::Packet::Pong(_pong) => {
-                    // TODO
-                }
-                net::protocol::Packet::Input(input) => {
-                    // We need to wait for the next round to start to avoid dropping inputs on the floor.
-                    if input.round_number != last_round_number {
-                        let round_number =
-                            if let Some(number) = self.round_started_rx.lock().await.recv().await {
-                                number
-                            } else {
-                                break;
-                            };
-                        assert!(round_number == input.round_number);
-                        last_round_number = input.round_number;
-                    }
-
-                    // We need to wait for the first state to be committed before we can add remote input.
-                    //
-                    // This is because we don't know what tick to add the input at, and the input queue has not been filled up with delay frames yet.
-                    let first_state_committed_rx = {
-                        let mut round_state = self.round_state.lock().await;
-
-                        if input.round_number != round_state.number {
-                            log::error!(
-                                "round number mismatch, dropping input: this is probably bad!"
-                            );
-                            continue;
+                p = receiver.receive() => {
+                    match p? {
+                        net::protocol::Packet::Ping(ping) => {
+                            self.sender.lock().await.send_pong(ping.ts).await?;
                         }
-
-                        let round = match &mut round_state.round {
-                            None => {
-                                log::info!("no round in progress, dropping input");
-                                continue;
+                        net::protocol::Packet::Pong(_pong) => {
+                            // TODO
+                        }
+                        net::protocol::Packet::Input(input) => {
+                            // We need to wait for the next round to start to avoid dropping inputs on the floor.
+                            if input.round_number != last_round_number {
+                                let round_number =
+                                    if let Some(number) = self.round_started_rx.lock().await.recv().await {
+                                        number
+                                    } else {
+                                        break 'l;
+                                    };
+                                assert!(round_number == input.round_number);
+                                last_round_number = input.round_number;
                             }
-                            Some(b) => b,
-                        };
-                        round.first_state_committed_rx.take()
-                    };
-                    if let Some(first_state_committed_rx) = first_state_committed_rx {
-                        first_state_committed_rx.await.unwrap();
-                    }
 
-                    let mut round_state = self.round_state.lock().await;
-                    if input.round_number != round_state.number {
-                        log::error!("round number mismatch, dropping input: this is probably bad!");
-                        continue;
-                    }
+                            // We need to wait for the first state to be committed before we can add remote input.
+                            //
+                            // This is because we don't know what tick to add the input at, and the input queue has not been filled up with delay frames yet.
+                            let first_state_committed_rx = {
+                                let mut round_state = self.round_state.lock().await;
 
-                    let round = match &mut round_state.round {
-                        None => {
-                            log::info!("no round in progress, dropping input");
-                            continue;
+                                if input.round_number != round_state.number {
+                                    log::error!(
+                                        "round number mismatch, dropping input: this is probably bad!"
+                                    );
+                                    continue 'l;
+                                }
+
+                                let round = match &mut round_state.round {
+                                    None => {
+                                        log::info!("no round in progress, dropping input");
+                                        continue 'l;
+                                    }
+                                    Some(b) => b,
+                                };
+                                round.first_state_committed_rx.take()
+                            };
+                            if let Some(first_state_committed_rx) = first_state_committed_rx {
+                                first_state_committed_rx.await.unwrap();
+                            }
+
+                            let mut round_state = self.round_state.lock().await;
+                            if input.round_number != round_state.number {
+                                log::error!("round number mismatch, dropping input: this is probably bad!");
+                                continue 'l;
+                            }
+
+                            let round = match &mut round_state.round {
+                                None => {
+                                    log::info!("no round in progress, dropping input");
+                                    continue 'l;
+                                }
+                                Some(b) => b,
+                            };
+
+                            if !round.iq.can_add_remote_input() {
+                                anyhow::bail!("remote overflowed our input buffer");
+                            }
+
+                            round.add_remote_input(lockstep::PartialInput {
+                                local_tick: input.local_tick,
+                                remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
+                                joyflags: input.joyflags as u16,
+                            });
                         }
-                        Some(b) => b,
-                    };
-
-                    if !round.iq.can_add_remote_input() {
-                        anyhow::bail!("remote overflowed our input buffer");
+                        p => anyhow::bail!("unknown packet: {:?}", p),
                     }
-
-                    round.add_remote_input(lockstep::PartialInput {
-                        local_tick: input.local_tick,
-                        remote_tick: (input.local_tick as i64 + input.tick_diff as i64) as u32,
-                        joyflags: input.joyflags as u16,
-                    });
                 }
-                p => anyhow::bail!("unknown packet: {:?}", p),
             }
         }
 

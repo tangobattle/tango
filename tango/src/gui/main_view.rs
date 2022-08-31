@@ -326,8 +326,7 @@ async fn run_connection_task(
                         });
 
                     let mut remote_chunks = vec![];
-                    const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
-                    let mut ping_timer = tokio::time::interval(PING_INTERVAL);
+                    let mut ping_timer = tokio::time::interval(net::PING_INTERVAL);
                     'l: loop {
                         tokio::select! {
                             _ = ping_timer.tick() => {
