@@ -58,6 +58,7 @@ impl EscapeWindow {
                         let mut main_view = main_view.lock();
                         main_view.session = None;
                         // Current save file needs to be reloaded from disk.
+                        // TODO: Maybe we even need to rescan saves if region lock status changed? (e.g. EXE4 -> BN4)
                         if let Some(selection) = main_view.selection.lock().as_mut() {
                             let _ = selection.reload_save();
                         }
