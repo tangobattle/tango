@@ -9,8 +9,8 @@ use super::save_select_window;
 
 pub struct State {
     pub session: Option<session::Session>,
+    pub selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     link_code: String,
-    selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
     show_patches: Option<gui::patches_window::State>,
@@ -68,6 +68,12 @@ impl Selection {
             save,
             save_view_state: gui::save_view::State::new(),
         }
+    }
+
+    pub fn reload_save(&mut self) -> anyhow::Result<()> {
+        let raw = std::fs::read(&self.save.path)?;
+        self.save.save = self.game.parse_save(&raw)?;
+        Ok(())
     }
 }
 

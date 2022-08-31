@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n};
+use crate::{gui, i18n, save};
 
 pub struct State {}
 
@@ -57,6 +57,10 @@ impl EscapeWindow {
                     {
                         let mut main_view = main_view.lock();
                         main_view.session = None;
+                        // Current save file needs to be reloaded from disk.
+                        if let Some(selection) = main_view.selection.lock().as_mut() {
+                            let _ = selection.reload_save();
+                        }
                         *show_escape_window = None;
                     }
                 });
