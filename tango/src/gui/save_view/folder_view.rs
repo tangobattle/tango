@@ -206,10 +206,26 @@ impl FolderView {
                                 ));
                             });
                             if g.is_regular {
-                                ui.label("REG");
+                                egui::Frame::none()
+                                    .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
+                                    .rounding(egui::Rounding::same(2.0))
+                                    .fill(egui::Color32::from_rgb(0xff, 0x42, 0xa5))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            egui::RichText::new("REG").color(egui::Color32::WHITE),
+                                        );
+                                    });
                             }
                             for _ in 0..g.tag_count {
-                                ui.label("TAG");
+                                egui::Frame::none()
+                                    .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
+                                    .rounding(egui::Rounding::same(2.0))
+                                    .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            egui::RichText::new("TAG").color(egui::Color32::WHITE),
+                                        );
+                                    });
                             }
                         });
                     });
