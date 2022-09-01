@@ -48,93 +48,101 @@ impl SaveSelectWindow {
             let roms = roms_scanner.read();
             let saves = saves_scanner.read();
 
-            let games = game::sorted_all_games(language);
-            if let Some((game, _)) = show.as_mut().unwrap().selection {
-                let (family, variant) = game.family_and_variant();
-                ui.heading(
-                    i18n::LOCALES
-                        .lookup(language, &format!("games.{}-{}", family, variant))
-                        .unwrap(),
-                );
-            }
+            ui.vertical(|ui| {
+                let games = game::sorted_all_games(language);
+                if let Some((game, _)) = show.as_mut().unwrap().selection {
+                    let (family, variant) = game.family_and_variant();
+                    ui.label(
+                        i18n::LOCALES
+                            .lookup(language, &format!("games.{}-{}", family, variant))
+                            .unwrap(),
+                    );
+                }
 
-            ui.group(|ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                        if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
-                            if ui
-                                .selectable_label(
-                                    false,
-                                    format!(
-                                        "⬅️ {}",
-                                        i18n::LOCALES
-                                            .lookup(language, "select-save.return-to-games-list")
-                                            .unwrap()
-                                    ),
-                                )
-                                .clicked()
-                            {
-                                show.as_mut().unwrap().selection = None;
-                            }
+                ui.group(|ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                            if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
+                                if ui
+                                    .selectable_label(
+                                        false,
+                                        format!(
+                                            "⬅️ {}",
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    language,
+                                                    "select-save.return-to-games-list"
+                                                )
+                                                .unwrap()
+                                        ),
+                                    )
+                                    .clicked()
+                                {
+                                    show.as_mut().unwrap().selection = None;
+                                }
 
-                            if let Some(saves) = saves.get(&game) {
-                                for save in saves {
+                                if let Some(saves) = saves.get(&game) {
+                                    for save in saves {
+                                        if ui
+                                            .selectable_label(
+                                                selection
+                                                    .as_ref()
+                                                    .map(|selection| {
+                                                        selection.save.path.as_path()
+                                                            == save.path.as_path()
+                                                    })
+                                                    .unwrap_or(false),
+                                                format!(
+                                                    "{}",
+                                                    save.path
+                                                        .as_path()
+                                                        .strip_prefix(saves_path)
+                                                        .unwrap_or(save.path.as_path())
+                                                        .display()
+                                                ),
+                                            )
+                                            .clicked()
+                                        {
+                                            *show = None;
+                                            let rom = roms.get(&game).unwrap().clone();
+                                            *selection = Some(gui::main_view::Selection::new(
+                                                game,
+                                                save.clone(),
+                                                None,
+                                                rom,
+                                            ));
+                                        }
+                                    }
+                                }
+                            } else {
+                                for (available, game) in games
+                                    .iter()
+                                    .filter(|g| roms.contains_key(*g))
+                                    .map(|g| (true, g))
+                                    .chain(
+                                        games
+                                            .iter()
+                                            .filter(|g| !roms.contains_key(*g))
+                                            .map(|g| (false, g)),
+                                    )
+                                {
+                                    let (family, variant) = game.family_and_variant();
+                                    let text = i18n::LOCALES
+                                        .lookup(language, &format!("games.{}-{}", family, variant))
+                                        .unwrap();
+
                                     if ui
-                                        .selectable_label(
-                                            selection
-                                                .as_ref()
-                                                .map(|selection| {
-                                                    selection.save.path.as_path()
-                                                        == save.path.as_path()
-                                                })
-                                                .unwrap_or(false),
-                                            format!(
-                                                "{}",
-                                                save.path
-                                                    .as_path()
-                                                    .strip_prefix(saves_path)
-                                                    .unwrap_or(save.path.as_path())
-                                                    .display()
-                                            ),
+                                        .add_enabled(
+                                            available,
+                                            egui::SelectableLabel::new(false, text),
                                         )
                                         .clicked()
                                     {
-                                        *show = None;
-                                        let rom = roms.get(&game).unwrap().clone();
-                                        *selection = Some(gui::main_view::Selection::new(
-                                            game,
-                                            save.clone(),
-                                            None,
-                                            rom,
-                                        ));
+                                        show.as_mut().unwrap().selection = Some((*game, None));
                                     }
                                 }
                             }
-                        } else {
-                            for (available, game) in games
-                                .iter()
-                                .filter(|g| roms.contains_key(*g))
-                                .map(|g| (true, g))
-                                .chain(
-                                    games
-                                        .iter()
-                                        .filter(|g| !roms.contains_key(*g))
-                                        .map(|g| (false, g)),
-                                )
-                            {
-                                let (family, variant) = game.family_and_variant();
-                                let text = i18n::LOCALES
-                                    .lookup(language, &format!("games.{}-{}", family, variant))
-                                    .unwrap();
-
-                                if ui
-                                    .add_enabled(available, egui::SelectableLabel::new(false, text))
-                                    .clicked()
-                                {
-                                    show.as_mut().unwrap().selection = Some((*game, None));
-                                }
-                            }
-                        }
+                        });
                     });
                 });
             });
