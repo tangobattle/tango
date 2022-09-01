@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Cleanup.
 function cleanup {
-    rm -rf Tango.iconset TAngo.app
+    rm -rf Tango.iconset Tango.app
 }
 trap cleanup EXIT
 cleanup
@@ -12,7 +12,7 @@ cleanup
 mkdir Tango.app{,/Contents{,/{MacOS,Resources}}}
 
 # Generate an appropriate Info.plist.
-"$(dirname "${BASH_SOURCE[0]}")/generate_info_plist.py" >Tango.app/Contents/Info.plist
+"$(dirname "${BASH_SOURCE[0]}")/macos/generate_info_plist.py" >Tango.app/Contents/Info.plist
 
 # Create icon.
 mkdir Tango.iconset
@@ -35,4 +35,4 @@ cargo build --bin tango --target=x86_64-apple-darwin --release
 lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -output Tango.app/Contents/MacOS/tango
 
 # Build zip.
-zip -r Tango.zip Tango.app
+zip -r "target/tango-$(python3 -c "import toml; print(toml.load(open('tango/Cargo.toml'))['package']['version'])", end='')-macos.zip" Tango.app
