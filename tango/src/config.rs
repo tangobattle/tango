@@ -11,6 +11,12 @@ pub enum Theme {
     Dark,
 }
 
+impl Default for Theme {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
 fn serialize_language_identifier<S>(
     v: &unic_langid::LanguageIdentifier,
     serializer: S,
@@ -32,6 +38,7 @@ where
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+#[serde(default)]
 pub struct Config {
     pub nickname: Option<String>,
     pub theme: Theme,
@@ -53,6 +60,29 @@ pub struct Config {
     pub default_match_type: u8,
     pub data_path: std::path::PathBuf,
     pub full_screen: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            nickname: None,
+            theme: Theme::System,
+            show_debug_overlay: Default::default(),
+            language: i18n::FALLBACK_LANG.parse().unwrap(),
+            max_queue_length: 1200,
+            video_filter: "".to_string(),
+            max_scale: 0,
+            ui_scale_percent: 100,
+            input_mapping: Default::default(),
+            matchmaking_endpoint: "".to_string(),
+            replaycollector_endpoint: "https://replaycollector.tangobattle.com".to_string(),
+            patch_repo: "".to_string(),
+            input_delay: 2,
+            default_match_type: 1,
+            data_path: "".into(),
+            full_screen: false,
+        }
+    }
 }
 
 pub fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
@@ -79,24 +109,11 @@ impl Config {
             .join(DATA_DIR_NAME);
 
         Ok(Self {
-            nickname: None,
-            theme: Theme::System,
-            show_debug_overlay: false,
             language: sys_locale::get_locale()
                 .unwrap_or(i18n::FALLBACK_LANG.to_string())
                 .parse()?,
-            max_queue_length: 1200,
-            video_filter: "".to_string(),
-            max_scale: 0,
-            ui_scale_percent: 100,
-            input_mapping: input::Mapping::default(),
-            matchmaking_endpoint: "".to_string(),
-            replaycollector_endpoint: "https://replaycollector.tangobattle.com".to_string(),
-            patch_repo: "".to_string(),
-            input_delay: 2,
-            default_match_type: 1,
             data_path: tango_data_dir,
-            full_screen: false,
+            ..Default::default()
         })
     }
 
