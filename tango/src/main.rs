@@ -25,6 +25,7 @@ mod stats;
 mod video;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use fluent_templates::Loader;
 use glow::HasContext;
 
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
@@ -46,10 +47,13 @@ fn main() -> Result<(), anyhow::Error> {
         git_version::git_version!()
     );
 
+    let config = config::Config::load_or_create()?;
+    config.ensure_dirs()?;
+
     let project_dirs = config::get_project_dirs().unwrap();
 
     if std::env::var(TANGO_CHILD_ENV_VAR).unwrap_or_default() == "1" {
-        return child_main();
+        return child_main(config);
     }
 
     let log_filename = format!(
@@ -66,7 +70,7 @@ fn main() -> Result<(), anyhow::Error> {
     let log_path = logs_dir.join(log_filename);
     log::info!("logging to: {}", log_path.display());
 
-    let log_file = std::fs::File::create(log_path)?;
+    let log_file = std::fs::File::create(&log_path)?;
 
     let status = std::process::Command::new(std::env::current_exe()?)
         .args(
@@ -79,6 +83,26 @@ fn main() -> Result<(), anyhow::Error> {
         .spawn()?
         .wait()?;
 
+    if !status.success() {
+        native_dialog::MessageDialog::new()
+            .set_title("Tango")
+            .set_text(
+                &i18n::LOCALES
+                    .lookup_with_args(
+                        &config.language,
+                        "crash",
+                        &std::collections::HashMap::from([(
+                            "path",
+                            format!("{}", log_path.display()).into(),
+                        )]),
+                    )
+                    .unwrap(),
+            )
+            .set_type(native_dialog::MessageType::Error)
+            .show_alert()
+            .unwrap();
+    }
+
     if let Some(code) = status.code() {
         std::process::exit(code);
     }
@@ -86,15 +110,12 @@ fn main() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-fn child_main() -> Result<(), anyhow::Error> {
+fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
 
     mgba::log::init();
-
-    let config = config::Config::load_or_create()?;
-    config.ensure_dirs()?;
 
     let handle = rt.handle().clone();
 
