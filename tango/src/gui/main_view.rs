@@ -48,24 +48,27 @@ enum ConnectionState {
 
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
-    pub rom: Vec<u8>,
     pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
+    pub rom: Vec<u8>,
+    pub patch: Option<(String, semver::Version)>,
     save_view_state: gui::save_view::State,
 }
 
 impl Selection {
     pub fn new(
         game: &'static (dyn game::Game + Send + Sync),
-        rom: Vec<u8>,
         save: save::ScannedSave,
+        patch: Option<(String, semver::Version)>,
+        rom: Vec<u8>,
     ) -> Self {
         let assets = game.load_rom_assets(&rom, save.save.as_raw_wram()).ok();
         Self {
             game,
-            rom,
             assets,
             save,
+            patch,
+            rom,
             save_view_state: gui::save_view::State::new(),
         }
     }
@@ -775,6 +778,12 @@ impl MainView {
                 const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
                 ui.add_enabled_ui(selection.is_some(), |ui| {
                     egui::ComboBox::from_id_source("patch-select-combobox")
+                        .selected_text(
+                            selection
+                                .as_ref()
+                                .and_then(|s| s.patch.as_ref().map(|(name, _)| name.as_str()))
+                                .unwrap_or(""),
+                        )
                         .width(
                             ui.available_width()
                                 - ui.spacing().item_spacing.x
@@ -794,7 +803,65 @@ impl MainView {
                                 {
                                     continue;
                                 }
-                                ui.selectable_label(false, name);
+                                if ui
+                                    .selectable_label(
+                                        selection.patch.as_ref().map(|(name, _)| name)
+                                            == Some(name),
+                                        name,
+                                    )
+                                    .clicked()
+                                {
+                                    let rom = {
+                                        let roms = state.roms_scanner.read();
+                                        roms.get(&selection.game).unwrap().clone()
+                                    };
+                                    let (rom_code, revision) =
+                                        selection.game.rom_code_and_revision();
+                                    let version = info.versions.keys().max().unwrap().clone();
+
+                                    let bps = match std::fs::read(
+                                        config
+                                            .patches_path()
+                                            .join(name)
+                                            .join(format!("v{}", version))
+                                            .join(format!(
+                                                "{}_{:02}.bps",
+                                                std::str::from_utf8(rom_code).unwrap(),
+                                                revision
+                                            )),
+                                    ) {
+                                        Ok(bps) => bps,
+                                        Err(e) => {
+                                            log::error!(
+                                                "failed to load patch {} to {:?}: {:?}",
+                                                name,
+                                                (rom_code, revision),
+                                                e
+                                            );
+                                            return;
+                                        }
+                                    };
+
+                                    let rom = match patch::bps::apply(&rom, &bps) {
+                                        Ok(r) => r.to_vec(),
+                                        Err(e) => {
+                                            log::error!(
+                                                "failed to apply patch {} to {:?}: {:?}",
+                                                name,
+                                                (rom_code, revision),
+                                                e
+                                            );
+                                            return;
+                                        }
+                                    };
+
+                                    *selection = gui::main_view::Selection::new(
+                                        selection.game.clone(),
+                                        selection.save.clone(),
+                                        Some((name.clone(), version)),
+                                        rom,
+                                    );
+                                }
                             }
                         });
                     egui::ComboBox::from_id_source("patch-version-select-combobox")

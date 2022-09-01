@@ -103,8 +103,9 @@ impl SaveSelectWindow {
                                         let rom = roms.get(&game).unwrap().clone();
                                         *selection = Some(gui::main_view::Selection::new(
                                             game,
-                                            rom,
                                             save.clone(),
+                                            None,
+                                            rom,
                                         ));
                                     }
                                 }

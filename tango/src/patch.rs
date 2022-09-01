@@ -1,3 +1,5 @@
+pub mod bps;
+
 use crate::game;
 
 #[derive(serde::Deserialize)]
