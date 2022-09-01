@@ -710,16 +710,21 @@ impl MainView {
                         .horizontal(|ui| {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.add({
-                                    let button = egui::Button::new(
+                                    let text = egui::RichText::new(
                                         i18n::LOCALES
                                             .lookup(&config.language, "select-save.select-button")
                                             .unwrap(),
                                     );
 
                                     if main_view.show_save_select.is_some() {
-                                        button.fill(ui.ctx().style().visuals.selection.bg_fill)
+                                        egui::Button::new(
+                                            text.color(
+                                                ui.ctx().style().visuals.selection.stroke.color,
+                                            ),
+                                        )
+                                        .fill(ui.ctx().style().visuals.selection.bg_fill)
                                     } else {
-                                        button
+                                        egui::Button::new(text)
                                     }
                                 }) | ui
                                     .vertical_centered_justified(|ui| {
