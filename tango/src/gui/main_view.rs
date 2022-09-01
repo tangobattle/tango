@@ -225,7 +225,6 @@ impl Lobby {
         } else {
             anyhow::bail!("no sender?")
         };
-        log::info!("settings: {:?}", settings);
         sender.send_settings(settings).await?;
         Ok(())
     }
