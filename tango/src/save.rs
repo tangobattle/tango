@@ -74,7 +74,7 @@ pub fn scan_saves(
                 .components()
                 .map(|c| c.as_os_str().to_os_string())
                 .collect::<Vec<_>>();
-            (components.len(), components)
+            (-(components.len() as isize), components)
         });
     }
 
