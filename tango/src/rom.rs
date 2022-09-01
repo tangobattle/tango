@@ -127,18 +127,20 @@ pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Option<PalettedImage> {
     Some(merge_tiles(&tiles, cols))
 }
 
-pub fn unlz77(mut r: &[u8]) -> Option<Vec<u8>> {
+pub fn unlz77(mut r: &[u8]) -> std::io::Result<Vec<u8>> {
     let mut out = vec![];
 
-    // Yes that's right, it's big endian here!
-    let header = r.read_u32::<byteorder::BigEndian>().ok()?;
+    let header = r.read_u32::<byteorder::LittleEndian>()?;
     if (header & 0xff) != 0x10 {
-        return None;
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "invalid header",
+        ));
     }
 
     let n = (header >> 8) as usize;
     while out.len() < n {
-        let ref_ = r.read_u8().ok()?;
+        let ref_ = r.read_u8()?;
 
         for i in 0..8 {
             if out.len() >= n {
@@ -146,11 +148,12 @@ pub fn unlz77(mut r: &[u8]) -> Option<Vec<u8>> {
             }
 
             if (ref_ & (0x80 >> i)) == 0 {
-                out.push(r.read_u8().ok()?);
+                out.push(r.read_u8()?);
                 continue;
             }
 
-            let info = r.read_u16::<byteorder::LittleEndian>().ok()?;
+            // Yes that's right, it's big endian here!
+            let info = r.read_u16::<byteorder::BigEndian>()?;
 
             let m = info >> 12;
             let offset = info & 0x0fff;
@@ -162,7 +165,7 @@ pub fn unlz77(mut r: &[u8]) -> Option<Vec<u8>> {
     }
 
     out.truncate(n);
-    Some(out)
+    Ok(out)
 }
 
 pub struct MemoryMapper<'a> {

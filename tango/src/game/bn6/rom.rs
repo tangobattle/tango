@@ -25,8 +25,8 @@ pub static BR5J_00: Offsets = Offsets {
     element_icon_palette_pointer:   0x081226e4,
     element_icons_pointer:          0x081226dc,
     modcard_data:                   0x08144778,
-    modcard_names_pointer:          0x88130fe0,
-    modcard_details_names_pointer:  0x88130fec,
+    modcard_names_pointer:          0x08130fe0,
+    modcard_details_names_pointer:  0x08130fec,
 };
 
 #[rustfmt::skip]
@@ -39,8 +39,8 @@ pub static BR6J_00: Offsets = Offsets {
     element_icon_palette_pointer:   0x081213c4,
     element_icons_pointer:          0x081213bc,
     modcard_data:                   0x081429b0,
-    modcard_names_pointer:          0x8812f218,
-    modcard_details_names_pointer:  0x8812f224,
+    modcard_names_pointer:          0x0812f218,
+    modcard_details_names_pointer:  0x0812f224,
 };
 
 #[rustfmt::skip]
@@ -200,9 +200,9 @@ impl Assets {
                 Some(
                     (0..118)
                         .map(|i| {
-                            let buf = &rom[offsets.modcard_data as usize..];
+                            let buf = mapper.get(offsets.modcard_data);
                             let buf =
-                                &rom[byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2])
+                                &buf[byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2])
                                     as usize
                                     ..byteorder::LittleEndian::read_u16(
                                         &buf[(i + 1) * 2..(i + 2) * 2],

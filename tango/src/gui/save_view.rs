@@ -1,5 +1,5 @@
 mod folder_view;
-mod modcards45_view;
+mod modcards56_view;
 
 use fluent_templates::Loader;
 
@@ -8,11 +8,13 @@ use crate::{game, gui, i18n, rom, save};
 #[derive(PartialEq)]
 enum Tab {
     Folder,
+    Modcards,
 }
 
 pub struct State {
     tab: Tab,
     folder_view: folder_view::State,
+    modcards56_view: modcards56_view::State,
     texture_cache:
         std::collections::HashMap<(gui::save_view::CachedAssetType, usize), egui::TextureHandle>,
 }
@@ -22,6 +24,7 @@ impl State {
         Self {
             tab: Tab::Folder,
             folder_view: folder_view::State::new(),
+            modcards56_view: modcards56_view::State::new(),
             texture_cache: std::collections::HashMap::new(),
         }
     }
@@ -29,6 +32,7 @@ impl State {
 
 pub struct SaveView {
     folder_view: folder_view::FolderView,
+    modcards56_view: modcards56_view::Modcards56View,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -41,6 +45,7 @@ impl SaveView {
     pub fn new() -> Self {
         Self {
             folder_view: folder_view::FolderView::new(),
+            modcards56_view: modcards56_view::Modcards56View::new(),
         }
     }
 
@@ -56,6 +61,7 @@ impl SaveView {
         state: &mut State,
     ) {
         let chips_view = save.view_chips();
+        let modcards56_view = save.view_modcards56();
 
         ui.horizontal(|ui| {
             if chips_view.is_some() {
@@ -67,6 +73,17 @@ impl SaveView {
                     .clicked()
                 {
                     state.tab = Tab::Folder;
+                }
+            }
+            if modcards56_view.is_some() {
+                if ui
+                    .selectable_label(
+                        state.tab == Tab::Modcards,
+                        i18n::LOCALES.lookup(lang, "save.modcards").unwrap(),
+                    )
+                    .clicked()
+                {
+                    state.tab = Tab::Modcards;
                 }
             }
         });
@@ -84,6 +101,20 @@ impl SaveView {
                         assets,
                         &mut state.texture_cache,
                         &mut state.folder_view,
+                    );
+                }
+            }
+            Tab::Modcards => {
+                if let Some(modcards56_view) = modcards56_view {
+                    self.modcards56_view.show(
+                        ui,
+                        clipboard,
+                        font_families,
+                        lang,
+                        game,
+                        &modcards56_view,
+                        assets,
+                        &mut state.modcards56_view,
                     );
                 }
             }
