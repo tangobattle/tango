@@ -699,6 +699,11 @@ impl MainView {
                                     None
                                 };
                             }
+
+                            ui.selectable_label(main_view.show_patches.is_some(), "📽️")
+                                .on_hover_text_at_pointer(
+                                    i18n::LOCALES.lookup(&config.language, "replays").unwrap(),
+                                );
                         });
                     });
 
