@@ -709,9 +709,7 @@ impl MainView {
                                             |ui: &egui::Ui, _: &str, _wrap_width: f32| {
                                                 let mut layout_job =
                                                     egui::text::LayoutJob::default();
-                                                if let Some(selection) =
-                                                    &*main_view.selection.lock()
-                                                {
+                                                if let Some(selection) = selection {
                                                     let (family, variant) =
                                                         selection.game.family_and_variant();
                                                     layout_job.append(
@@ -800,11 +798,11 @@ impl MainView {
                                     saves_scanner.rescan(move || save::scan_saves(&saves_path));
                                 }
                             });
-                            Some(save_select_window::State::new(
-                                main_view.selection.lock().as_ref().map(|selection| {
+                            Some(save_select_window::State::new(selection.as_ref().map(
+                                |selection| {
                                     (selection.game, Some(selection.save.path.to_path_buf()))
-                                }),
-                            ))
+                                },
+                            )))
                         } else {
                             None
                         };
@@ -812,7 +810,6 @@ impl MainView {
                 });
 
                 ui.horizontal_top(|ui| {
-                    let mut selection = main_view.selection.lock();
                     let patches = state.patches_scanner.read();
 
                     let mut supported_patches = std::collections::BTreeMap::new();
