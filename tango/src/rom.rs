@@ -41,7 +41,7 @@ pub struct Modcard56 {
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
-    fn modcard56(&self, id: usize) -> Option<&Modcard56> {
+    fn modcard56(&self, _id: usize) -> Option<&Modcard56> {
         None
     }
 }
