@@ -66,7 +66,7 @@ fn get_config_path() -> Result<std::path::PathBuf, anyhow::Error> {
         .join("config.json"))
 }
 
-const DATA_DIR_NAME: &str = "Tango";
+const DATA_DIR_NAME: &str = "Tango Testing";
 
 impl Config {
     pub fn system_defaults() -> Result<Self, anyhow::Error> {
