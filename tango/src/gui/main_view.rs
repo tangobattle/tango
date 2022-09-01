@@ -1304,11 +1304,14 @@ impl MainView {
                                                             )
                                                             .width(94.0)
                                                             .selected_text(
-                                                                if let Some(_) = game.as_ref() {
-                                                                    format!(
-                                                                        "{:?}",
-                                                                        lobby.match_type
-                                                                    )
+                                                                if let Some(game) = game.as_ref() {
+                                                                    i18n::LOCALES.lookup(&config.language,
+                                                                        &format!(
+                                                                            "game-{}.match-type-{}-{}",
+                                                                            game.family_and_variant().0,
+                                                                            lobby.match_type.0,
+                                                                            lobby.match_type.1
+                                                                        )).unwrap()
                                                                 } else {
                                                                     "".to_string()
                                                                 },
@@ -1331,10 +1334,13 @@ impl MainView {
                                                                                     typ as u8,
                                                                                     subtype as u8,
                                                                                 ),
-                                                                                format!(
-                                                                                    "{:?}",
-                                                                                    (typ, subtype)
-                                                                                ),
+                                                                                i18n::LOCALES.lookup(&config.language,
+                                                                                    &format!(
+                                                                                        "game-{}.match-type-{}-{}",
+                                                                                        game.family_and_variant().0,
+                                                                                        typ,
+                                                                                        subtype
+                                                                                    )).unwrap(),
                                                                             );
                                                                         }
                                                                         config.default_match_type =
@@ -1357,17 +1363,18 @@ impl MainView {
                                                     });
                                                     row.col(|ui| {
                                                         ui.label(
-                                                            if let Some(_) = lobby
+                                                            if let Some(game_info) = lobby
                                                                 .remote_settings
                                                                 .game_info
                                                                 .as_ref()
                                                             {
-                                                                format!(
-                                                                    "{:?}",
-                                                                    lobby
-                                                                        .remote_settings
-                                                                        .match_type
-                                                                )
+                                                                i18n::LOCALES.lookup(&config.language,
+                                                                    &format!(
+                                                                        "game-{}.match-type-{}-{}",
+                                                                        game_info.family_and_variant.0,
+                                                                        lobby.remote_settings.match_type.0,
+                                                                        lobby.remote_settings.match_type.1,
+                                                                    )).unwrap()
                                                             } else {
                                                                 "".to_string()
                                                             },
