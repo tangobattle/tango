@@ -166,7 +166,12 @@ impl Lobby {
                 let (family, variant) = selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
-                    patch: None,
+                    patch: selection.patch.as_ref().map(|(name, version)| {
+                        net::protocol::PatchInfo {
+                            name: name.clone(),
+                            version: version.to_string(),
+                        }
+                    }),
                 }
             }),
             available_games: vec![], // TODO
@@ -570,7 +575,9 @@ impl MainView {
             let mut selection = main_view.selection.lock();
             let selection = &mut *selection;
 
-            let initial_game = selection.as_ref().map(|selection| selection.game);
+            let initial = selection
+                .as_ref()
+                .map(|selection| (selection.game, selection.patch.clone()));
 
             self.save_select_window.show(
                 ctx,
@@ -583,7 +590,10 @@ impl MainView {
             );
 
             (
-                selection.as_ref().map(|selection| selection.game) != initial_game,
+                selection
+                    .as_ref()
+                    .map(|selection| (selection.game, selection.patch.clone()))
+                    != initial,
                 selection.is_some(),
             )
         };
