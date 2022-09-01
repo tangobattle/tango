@@ -12,6 +12,7 @@ mod save_view;
 mod session_view;
 mod settings_window;
 mod steal_input_window;
+mod warning;
 
 type ROMsScanner =
     scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>>;
