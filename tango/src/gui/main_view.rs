@@ -93,6 +93,8 @@ struct Lobby {
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
     local_negotiated_state: Option<(net::protocol::NegotiatedState, Vec<u8>)>,
+    roms_scanner: gui::ROMsScanner,
+    patches_scanner: gui::PatchesScanner,
 }
 
 #[derive(PartialEq)]
@@ -160,6 +162,39 @@ impl Lobby {
         Ok(())
     }
 
+    fn make_available_games(&self) -> Vec<net::protocol::GameInfo> {
+        let roms = self.roms_scanner.read();
+        let patches = self.patches_scanner.read();
+
+        roms.iter()
+            .map(|(game, _)| {
+                let (family, variant) = game.family_and_variant();
+                net::protocol::GameInfo {
+                    family_and_variant: (family.to_string(), variant),
+                    patch: None,
+                }
+            })
+            .chain(patches.iter().flat_map(|(patch, info)| {
+                info.versions.iter().flat_map(|(v, vinfo)| {
+                    vinfo.supported_games.iter().flat_map(|game| {
+                        let (family, variant) = game.family_and_variant();
+                        if roms.contains_key(game) {
+                            vec![net::protocol::GameInfo {
+                                family_and_variant: (family.to_string(), variant),
+                                patch: Some(net::protocol::PatchInfo {
+                                    name: patch.clone(),
+                                    version: v.to_string(),
+                                }),
+                            }]
+                        } else {
+                            vec![]
+                        }
+                    })
+                })
+            }))
+            .collect()
+    }
+
     fn make_local_settings(&self) -> net::protocol::Settings {
         net::protocol::Settings {
             nickname: self.nickname.clone(),
@@ -176,7 +211,7 @@ impl Lobby {
                     }),
                 }
             }),
-            available_games: vec![], // TODO
+            available_games: self.make_available_games(),
             reveal_setup: self.reveal_setup,
         }
     }
@@ -190,6 +225,7 @@ impl Lobby {
         } else {
             anyhow::bail!("no sender?")
         };
+        log::info!("settings: {:?}", settings);
         sender.send_settings(settings).await?;
         Ok(())
     }
@@ -264,6 +300,7 @@ async fn run_connection_task(
     main_view: std::sync::Arc<parking_lot::Mutex<State>>,
     selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     roms_scanner: gui::ROMsScanner,
+    patches_scanner: gui::PatchesScanner,
     matchmaking_addr: String,
     link_code: String,
     max_queue_length: usize,
@@ -321,6 +358,8 @@ async fn run_connection_task(
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
                         local_negotiated_state: None,
+                        roms_scanner: roms_scanner.clone(),
+                        patches_scanner: patches_scanner.clone(),
                     }));
                     {
                         let mut lobby = lobby.lock().await;
@@ -1283,6 +1322,7 @@ impl MainView {
                                     state.main_view.clone(),
                                     main_view.selection.clone(),
                                     state.roms_scanner.clone(),
+                                    state.patches_scanner.clone(),
                                     if !config.matchmaking_endpoint.is_empty() {
                                         config.matchmaking_endpoint.clone()
                                     } else {
