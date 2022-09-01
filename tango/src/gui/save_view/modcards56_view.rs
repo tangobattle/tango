@@ -60,7 +60,7 @@ impl Modcards56View {
                     row.col(|ui| {
                         ui.vertical(|ui| {
                             for effect in effects {
-                                if !effect.is_ability {
+                                if effect.is_ability {
                                     continue;
                                 }
 
@@ -71,7 +71,7 @@ impl Modcards56View {
                     row.col(|ui| {
                         ui.vertical(|ui| {
                             for effect in effects {
-                                if effect.is_ability {
+                                if !effect.is_ability {
                                     continue;
                                 }
 
