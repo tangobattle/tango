@@ -412,12 +412,14 @@ async fn run_connection_task(
                                         let mut lobby = lobby.lock().await;
                                         if let Ok(d) = std::time::SystemTime::now().duration_since(pong.ts) {
                                             lobby.latencies.mark(d);
+                                            egui_ctx.request_repaint();
                                         }
                                     },
                                     net::protocol::Packet::Settings(settings) => {
                                         let mut lobby = lobby.lock().await;
                                         let patches = patches_scanner.read();
                                         lobby.set_remote_settings(settings, &patches);
+                                        egui_ctx.request_repaint();
                                     },
                                     net::protocol::Packet::Commit(commit) => {
                                         let mut lobby = lobby.lock().await;
