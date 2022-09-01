@@ -34,11 +34,13 @@ impl Modcards56View {
         egui_extras::TableBuilder::new(ui)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(egui_extras::Size::remainder())
+            .column(egui_extras::Size::exact(100.0))
+            .column(egui_extras::Size::exact(100.0))
             .striped(true)
             .body(|body| {
                 body.rows(28.0, items.len(), |i, mut row| {
+                    let item = &items[i];
                     row.col(|ui| {
-                        let item = &items[i];
                         ui.label(
                             if let Some(modcard) =
                                 item.as_ref().and_then(|item| assets.modcard56(item.id))
@@ -48,6 +50,34 @@ impl Modcards56View {
                                 ""
                             },
                         );
+                    });
+                    let effects = item
+                        .as_ref()
+                        .and_then(|item| assets.modcard56(item.id))
+                        .map(|info| info.effects.as_slice())
+                        .unwrap_or(&[][..]);
+
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            for effect in effects {
+                                if !effect.is_ability {
+                                    continue;
+                                }
+
+                                ui.label(format!("{} {}", effect.name, effect.is_debuff));
+                            }
+                        });
+                    });
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            for effect in effects {
+                                if effect.is_ability {
+                                    continue;
+                                }
+
+                                ui.label(format!("{} {}", effect.name, effect.is_debuff));
+                            }
+                        });
                     });
                 });
             });

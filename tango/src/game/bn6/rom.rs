@@ -200,6 +200,13 @@ impl Assets {
                 Some(
                     (0..118)
                         .map(|i| {
+                            if i == 0 {
+                                return rom::Modcard56 {
+                                    name: "".to_string(),
+                                    mb: 0,
+                                    effects: vec![],
+                                };
+                            }
                             let buf = mapper.get(offsets.modcard_data);
                             let buf =
                                 &buf[byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2])
@@ -233,7 +240,41 @@ impl Assets {
                                     }
                                 },
                                 mb: buf[1],
-                                effects: vec![], // TODO
+                                effects: buf[3..]
+                                    .chunks(3)
+                                    .map(|chunk| rom::Modcard56Effect {
+                                        id: chunk[0],
+                                        name: {
+                                            if let Ok(parts) = rom::text::parse_entry(
+                                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                                    &mapper
+                                                        .get(offsets.modcard_details_names_pointer)
+                                                        [..4],
+                                                )),
+                                                chunk[0] as usize,
+                                                &TEXT_PARSE_OPTIONS,
+                                            ) {
+                                                parts
+                                                    .into_iter()
+                                                    .flat_map(|part| {
+                                                        match part {
+                                                            rom::text::Part::Literal(c) => {
+                                                                charset.get(c).unwrap_or(&"�")
+                                                            }
+                                                            _ => "",
+                                                        }
+                                                        .chars()
+                                                    })
+                                                    .collect::<String>()
+                                            } else {
+                                                "???".to_string()
+                                            }
+                                        },
+                                        parameter: chunk[1],
+                                        is_debuff: chunk[2] == 1,
+                                        is_ability: chunk[0] > 0x15,
+                                    })
+                                    .collect::<Vec<_>>(),
                             }
                         })
                         .collect::<Vec<_>>()
