@@ -1406,8 +1406,15 @@ impl MainView {
                                 submit(&main_view);
                             }
 
-                            let resp = ui.add_enabled(!error_window_open, egui::Button::new("🎲"));
-                            if resp.clicked() {
+                            if ui
+                                .add_enabled(!error_window_open, egui::Button::new("🎲"))
+                                .on_hover_text(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "main.random")
+                                        .unwrap(),
+                                )
+                                .clicked()
+                            {
                                 main_view.link_code =
                                     randomcode::generate(config.language.language.as_str());
                                 let _ = state.clipboard.set_text(main_view.link_code.clone());

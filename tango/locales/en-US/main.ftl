@@ -2,6 +2,7 @@ main =
     .play = Play
     .fight = Fight!
     .stop = Stop
+    .random = Generate random code
     .ready = I'm ready!
     .link-code = Link code
     .no-game = None
