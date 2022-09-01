@@ -3,7 +3,9 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{audio, config, game, gui, i18n, input, net, patch, rom, save, session, stats};
+use crate::{
+    audio, config, game, gui, i18n, input, net, patch, randomcode, rom, save, session, stats,
+};
 
 use super::save_select_window;
 
@@ -1402,6 +1404,13 @@ impl MainView {
                                 .clicked()
                             {
                                 submit(&main_view);
+                            }
+
+                            let resp = ui.add_enabled(!error_window_open, egui::Button::new("🎲"));
+                            if resp.clicked() {
+                                main_view.link_code =
+                                    randomcode::generate(config.language.language.as_str());
+                                let _ = state.clipboard.set_text(main_view.link_code.clone());
                             }
                         }
 
