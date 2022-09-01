@@ -112,15 +112,16 @@ impl Modcards56View {
                     |i, mut row| {
                         let (modcard, effects) = &items[i];
                         row.col(|ui| {
-                            if let Some(modcard) = modcard
-                                .as_ref()
-                                .and_then(|modcard| assets.modcard56(modcard.id))
-                            {
+                            if let Some((modcard, enabled)) = modcard.as_ref().and_then(|modcard| {
+                                assets.modcard56(modcard.id).map(|m| (m, modcard.enabled))
+                            }) {
+                                let mut text = egui::RichText::new(&modcard.name)
+                                    .family(font_families.for_language(&game.language()));
+                                if !enabled {
+                                    text = text.strikethrough();
+                                }
                                 ui.vertical(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(&modcard.name)
-                                            .family(font_families.for_language(&game.language())),
-                                    );
+                                    ui.label(text);
                                     ui.small(format!("{}MB", modcard.mb));
                                 });
                             }
