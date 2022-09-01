@@ -1582,8 +1582,7 @@ impl MainView {
                                 )
                                 .clicked()
                             {
-                                main_view.link_code =
-                                    randomcode::generate(config.language.language.as_str());
+                                main_view.link_code = randomcode::generate(&config.language);
                                 let _ = state.clipboard.set_text(main_view.link_code.clone());
                             }
                         }

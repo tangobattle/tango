@@ -686,24 +686,25 @@ lazy_static! {
         ]);
 }
 
-pub fn generate(mut lang: &str) -> String {
+pub fn generate(lang: &unic_langid::LanguageIdentifier) -> String {
     let mut thread_rng = rand::thread_rng();
 
-    if CHOICES.contains_key(&lang) {
-        lang = "en";
+    let mut lang_code = lang.language.as_str();
+    if CHOICES.contains_key(&lang_code) {
+        lang_code = "en";
     }
 
     if thread_rng.gen_range(0..5) <= 0 {
         let mut output = [&""];
         reservoir_sampling::unweighted::core::l(
-            CHOICES.keys().filter(|v| **v != lang),
+            CHOICES.keys().filter(|v| **v != lang_code),
             &mut output[..],
             &mut thread_rng,
         );
-        lang = *output.first().unwrap();
+        lang_code = *output.first().unwrap();
     }
 
-    let choices = CHOICES.get(lang).unwrap();
+    let choices = CHOICES.get(lang_code).unwrap();
     format!(
         "{}-{}-{}",
         choices.starts[thread_rng.gen_range(0..choices.starts.len())],
