@@ -97,7 +97,7 @@ pub fn merge_tiles(tiles: &[PalettedImage], cols: usize) -> PalettedImage {
     for (i, tile) in tiles.iter().enumerate() {
         let x = i % cols;
         let y = i / cols;
-        image::imageops::overlay(
+        image::imageops::replace(
             &mut img,
             tile,
             (x * TILE_WIDTH) as i64,
