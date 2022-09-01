@@ -175,9 +175,9 @@ pub trait Modcards56View<'a> {
 pub struct NavicustPart {
     pub id: usize,
     pub variant: usize,
-    pub col: usize,
-    pub row: usize,
-    pub rot: usize,
+    pub col: u8,
+    pub row: u8,
+    pub rot: u8,
     pub compressed: bool,
 }
 

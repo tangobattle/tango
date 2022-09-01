@@ -108,6 +108,10 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
+        Some(Box::new(NavicustView { save: self }))
+    }
+
     fn view_modcards56(&self) -> Option<Box<dyn save::Modcards56View + '_>> {
         if self.game_info().unwrap().region == Region::JP {
             Some(Box::new(Modcards56View { save: self }))
@@ -179,7 +183,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
-        if folder_index > 3 || chip_index > 30 {
+        if folder_index >= 3 || chip_index >= 30 {
             return None;
         }
 
@@ -203,13 +207,62 @@ impl<'a> save::Modcards56View<'a> for Modcards56View<'a> {
     }
 
     fn modcard(&self, slot: usize) -> Option<save::Modcard56> {
-        if slot > self.count() {
+        if slot >= self.count() {
             return None;
         }
         let raw = self.save.buf[0x6620 + slot];
         Some(save::Modcard56 {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
+        })
+    }
+}
+
+pub struct NavicustView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::NavicustView<'a> for NavicustView<'a> {
+    fn width(&self) -> usize {
+        7
+    }
+
+    fn height(&self) -> usize {
+        7
+    }
+
+    fn command_line(&self) -> usize {
+        3
+    }
+
+    fn has_out_of_bounds(&self) -> bool {
+        true
+    }
+
+    fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
+        if i >= 25 {
+            return None;
+        }
+
+        let ncp_offset = if self.save.game_info().unwrap().region == Region::JP {
+            0x4150
+        } else {
+            0x4190
+        };
+
+        let buf = &self.save.buf[ncp_offset + i * 8..ncp_offset + (i + 1) * 8];
+        let raw = buf[0];
+        if raw == 0 {
+            return None;
+        }
+
+        Some(save::NavicustPart {
+            id: (raw / 4) as usize,
+            variant: (raw % 4) as usize,
+            col: buf[0x3],
+            row: buf[0x4],
+            rot: buf[0x5],
+            compressed: buf[0x6] != 0,
         })
     }
 }
