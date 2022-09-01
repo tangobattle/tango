@@ -40,6 +40,17 @@ impl PatchesWindow {
         .show(ctx, |ui| {
             let state = show.as_mut().unwrap();
 
+            ui.horizontal_top(|ui| {
+                if ui
+                    .button(i18n::LOCALES.lookup(language, "patches.update").unwrap())
+                    .clicked()
+                {
+                    // TODO
+                }
+            });
+
+            ui.separator();
+
             let patches = patches_scanner.read();
             ui.horizontal_top(|ui| {
                 egui::ScrollArea::vertical()

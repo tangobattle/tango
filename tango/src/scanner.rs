@@ -1,6 +1,6 @@
 struct Inner<T> {
     items: T,
-    last_rescan_time: std::time::Instant,
+    scanning: bool,
 }
 
 pub struct Scanner<T> {
@@ -23,7 +23,7 @@ where
         Self {
             inner: std::sync::Arc::new(parking_lot::RwLock::new(Inner {
                 items: T::default(),
-                last_rescan_time: std::time::Instant::now(),
+                scanning: false,
             })),
         }
     }
@@ -32,20 +32,23 @@ where
         parking_lot::RwLockReadGuard::map(self.inner.read(), |g| &g.items)
     }
 
+    pub fn is_scanning(&self) -> bool {
+        self.inner.read().scanning
+    }
+
     pub fn rescan(&self, scan: impl Fn() -> T) {
-        if self.inner.is_locked_exclusive() {
-            return;
+        {
+            let mut inner = self.inner.write();
+            if inner.scanning {
+                return;
+            }
+            inner.scanning = true;
         }
 
         let items = scan();
-        let last_rescan_time = std::time::Instant::now();
 
         let mut inner = self.inner.write();
-        if inner.last_rescan_time > last_rescan_time {
-            return;
-        }
-
         inner.items = items;
-        inner.last_rescan_time = last_rescan_time;
+        inner.scanning = false;
     }
 }
