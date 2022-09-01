@@ -4,11 +4,17 @@ use crate::{game, gui, i18n, rom, save};
 
 pub struct State {
     grouped: bool,
+    chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
+    element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
 }
 
 impl State {
     pub fn new() -> Self {
-        Self { grouped: true }
+        Self {
+            grouped: true,
+            chip_icon_texture_cache: std::collections::HashMap::new(),
+            element_icon_texture_cache: std::collections::HashMap::new(),
+        }
     }
 }
 
@@ -28,10 +34,6 @@ impl FolderView {
         game: &'static (dyn game::Game + Send + Sync),
         chips_view: &Box<dyn save::ChipsView<'a> + 'a>,
         assets: &Box<dyn rom::Assets + Send + Sync>,
-        texture_cache: &mut std::collections::HashMap<
-            (gui::save_view::CachedAssetType, usize),
-            egui::TextureHandle,
-        >,
         state: &mut State,
     ) {
         struct GroupedChip {
@@ -175,8 +177,9 @@ impl FolderView {
                     };
 
                     ui.image(
-                        texture_cache
-                            .entry((gui::save_view::CachedAssetType::ChipIcon, chip.id))
+                        state
+                            .chip_icon_texture_cache
+                            .entry(chip.id)
                             .or_insert_with(|| {
                                 ui.ctx().load_texture(
                                     format!("chip {}", chip.id),
@@ -241,8 +244,9 @@ impl FolderView {
                     };
 
                     ui.image(
-                        texture_cache
-                            .entry((gui::save_view::CachedAssetType::ElementIcon, element))
+                        state
+                            .element_icon_texture_cache
+                            .entry(element)
                             .or_insert_with(|| {
                                 ui.ctx().load_texture(
                                     format!("element {}", element),

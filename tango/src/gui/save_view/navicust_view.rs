@@ -100,31 +100,29 @@ impl NavicustView {
             })
             .collect::<Vec<_>>();
 
-        ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                ui.set_width(NCP_CHIP_WIDTH);
-                for (info, color) in items.iter().filter(|(info, _)| info.is_solid) {
-                    show_part_name(
-                        ui,
-                        egui::RichText::new(&info.name)
-                            .family(font_families.for_language(&game.language())),
-                        true,
-                        color,
-                    );
-                }
-            });
-            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                ui.set_width(NCP_CHIP_WIDTH);
-                for (info, color) in items.iter().filter(|(info, _)| !info.is_solid) {
-                    show_part_name(
-                        ui,
-                        egui::RichText::new(&info.name)
-                            .family(font_families.for_language(&game.language())),
-                        true,
-                        color,
-                    );
-                }
-            });
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+            ui.set_width(NCP_CHIP_WIDTH);
+            for (info, color) in items.iter().filter(|(info, _)| info.is_solid) {
+                show_part_name(
+                    ui,
+                    egui::RichText::new(&info.name)
+                        .family(font_families.for_language(&game.language())),
+                    true,
+                    color,
+                );
+            }
+        });
+        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+            ui.set_width(NCP_CHIP_WIDTH);
+            for (info, color) in items.iter().filter(|(info, _)| !info.is_solid) {
+                show_part_name(
+                    ui,
+                    egui::RichText::new(&info.name)
+                        .family(font_families.for_language(&game.language())),
+                    true,
+                    color,
+                );
+            }
         });
     }
 }

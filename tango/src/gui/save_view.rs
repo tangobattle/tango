@@ -18,8 +18,6 @@ pub struct State {
     navicust_view: navicust_view::State,
     folder_view: folder_view::State,
     modcards56_view: modcards56_view::State,
-    texture_cache:
-        std::collections::HashMap<(gui::save_view::CachedAssetType, usize), egui::TextureHandle>,
 }
 
 impl State {
@@ -29,7 +27,6 @@ impl State {
             navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
             modcards56_view: modcards56_view::State::new(),
-            texture_cache: std::collections::HashMap::new(),
         }
     }
 }
@@ -38,12 +35,6 @@ pub struct SaveView {
     navicust_view: navicust_view::NavicustView,
     folder_view: folder_view::FolderView,
     modcards56_view: modcards56_view::Modcards56View,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum CachedAssetType {
-    ChipIcon,
-    ElementIcon,
 }
 
 impl SaveView {
@@ -133,7 +124,6 @@ impl SaveView {
                         game,
                         &chips_view,
                         assets,
-                        &mut state.texture_cache,
                         &mut state.folder_view,
                     );
                 }
