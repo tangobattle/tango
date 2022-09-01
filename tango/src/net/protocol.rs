@@ -93,7 +93,8 @@ pub struct Settings {
     pub nickname: String,
     pub match_type: (u8, u8),
     pub game_info: Option<GameInfo>,
-    pub available_games: Vec<GameInfo>,
+    pub available_games: Vec<(String, u8)>,
+    pub available_patches: Vec<(String, Vec<semver::Version>)>,
     pub reveal_setup: bool,
 }
 

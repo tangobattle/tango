@@ -172,40 +172,10 @@ impl Lobby {
         Ok(())
     }
 
-    fn make_available_games(&self) -> Vec<net::protocol::GameInfo> {
+    fn make_local_settings(&self) -> net::protocol::Settings {
         let roms = self.roms_scanner.read();
         let patches = self.patches_scanner.read();
 
-        roms.iter()
-            .map(|(game, _)| {
-                let (family, variant) = game.family_and_variant();
-                net::protocol::GameInfo {
-                    family_and_variant: (family.to_string(), variant),
-                    patch: None,
-                }
-            })
-            .chain(patches.iter().flat_map(|(patch, info)| {
-                info.versions.iter().flat_map(|(v, vinfo)| {
-                    vinfo.supported_games.iter().flat_map(|game| {
-                        let (family, variant) = game.family_and_variant();
-                        if roms.contains_key(game) {
-                            vec![net::protocol::GameInfo {
-                                family_and_variant: (family.to_string(), variant),
-                                patch: Some(net::protocol::PatchInfo {
-                                    name: patch.clone(),
-                                    version: v.clone(),
-                                }),
-                            }]
-                        } else {
-                            vec![]
-                        }
-                    })
-                })
-            }))
-            .collect()
-    }
-
-    fn make_local_settings(&self) -> net::protocol::Settings {
         net::protocol::Settings {
             nickname: self.nickname.clone(),
             match_type: self.match_type,
@@ -221,7 +191,17 @@ impl Lobby {
                     }),
                 }
             }),
-            available_games: self.make_available_games(),
+            available_games: roms
+                .keys()
+                .map(|g| {
+                    let (family, variant) = g.family_and_variant();
+                    (family.to_string(), variant)
+                })
+                .collect(),
+            available_patches: patches
+                .iter()
+                .map(|(p, info)| (p.clone(), info.versions.keys().cloned().collect()))
+                .collect(),
             reveal_setup: self.reveal_setup,
         }
     }
