@@ -3,7 +3,7 @@ mod save;
 
 use crate::game;
 
-const MATCH_TYPES: &[usize] = &[3, 1];
+const MATCH_TYPES: &[usize] = &[4, 1];
 
 struct EXE3WImpl;
 pub const EXE3W: &'static (dyn game::Game + Send + Sync) = &EXE3WImpl {};

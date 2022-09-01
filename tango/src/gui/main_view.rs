@@ -1302,7 +1302,7 @@ impl MainView {
                                                                 "start-match-type-combobox",
                                                                 "",
                                                             )
-                                                            .width(94.0)
+                                                            .width(150.0)
                                                             .selected_text(
                                                                 if let Some(game) = game.as_ref() {
                                                                     i18n::LOCALES.lookup(&config.language,
