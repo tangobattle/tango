@@ -62,9 +62,15 @@ pub fn parse_entry(
     let next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;
     parse(
         if next_offset > offset && next_offset <= buf.len() {
-            &buf[offset..next_offset]
+            &buf.get(offset..next_offset).ok_or(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "could not read entry",
+            ))?
         } else {
-            &buf[offset..]
+            &buf.get(offset..).ok_or(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "could not read entry",
+            ))?
         },
         &options,
     )
