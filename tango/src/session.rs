@@ -41,6 +41,7 @@ impl Session {
         handle: tokio::runtime::Handle,
         audio_binder: audio::LateBinder,
         link_code: String,
+        netplay_compatibility: String,
         local_settings: net::protocol::Settings,
         local_game: &'static (dyn game::Game + Send + Sync),
         local_rom: &[u8],
@@ -97,6 +98,7 @@ impl Session {
         *match_.try_lock().unwrap() = Some({
             let inner_match = battle::Match::new(
                 link_code,
+                netplay_compatibility,
                 local_rom.to_vec(),
                 local_game,
                 local_settings,

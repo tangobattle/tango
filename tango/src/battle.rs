@@ -49,6 +49,7 @@ pub struct Match {
     shadow: std::sync::Arc<parking_lot::Mutex<shadow::Shadow>>,
     rom: Vec<u8>,
     link_code: String,
+    netplay_compatiblity: String,
     local_game: &'static (dyn game::Game + Send + Sync),
     local_settings: net::protocol::Settings,
     remote_game: &'static (dyn game::Game + Send + Sync),
@@ -71,6 +72,7 @@ pub struct Match {
 impl Match {
     pub fn new(
         link_code: String,
+        netplay_compatiblity: String,
         rom: Vec<u8>,
         local_game: &'static (dyn game::Game + Send + Sync),
         local_settings: net::protocol::Settings,
@@ -106,6 +108,7 @@ impl Match {
                 rng.clone(),
             )?)),
             link_code,
+            netplay_compatiblity,
             local_game,
             local_settings,
             remote_game,
@@ -274,7 +277,7 @@ impl Match {
                     ))
                     .expect("format time"),
                 self.link_code,
-                self.local_game.family_and_variant().0,
+                self.netplay_compatiblity,
                 self.remote_settings.nickname,
                 round_state.number,
                 local_player_index + 1

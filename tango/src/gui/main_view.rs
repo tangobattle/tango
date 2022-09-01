@@ -99,7 +99,7 @@ struct Lobby {
 
 #[derive(PartialEq)]
 struct SimplifiedSettings {
-    netplay_compatiblity: Option<String>,
+    netplay_compatibility: Option<String>,
     match_type: (u8, u8),
 }
 
@@ -109,7 +109,7 @@ impl SimplifiedSettings {
         patches: &std::collections::BTreeMap<String, patch::Patch>,
     ) -> Self {
         Self {
-            netplay_compatiblity: settings.game_info.as_ref().and_then(|g| {
+            netplay_compatibility: settings.game_info.as_ref().and_then(|g| {
                 if let Some(patch) = g.patch.as_ref() {
                     patches.get(&patch.name).and_then(|p| {
                         p.versions
@@ -489,8 +489,8 @@ async fn run_connection_task(
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
-                    let (local_game, local_rom) = if let Some(selection) = selection.lock().as_ref() {
-                        (selection.game, selection.rom.clone())
+                    let (local_game, local_rom, patch) = if let Some(selection) = selection.lock().as_ref() {
+                        (selection.game, selection.rom.clone(), selection.patch.clone())
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
                     };
@@ -525,6 +525,16 @@ async fn run_connection_task(
                         handle,
                         audio_binder,
                         link_code,
+                        patch
+                            .and_then(|(patch_name, patch_version)| {
+                                patches_scanner
+                                    .read()
+                                    .get(&patch_name)
+                                    .and_then(|p| p.versions.get(&patch_version))
+                                    .as_ref()
+                                    .map(|v| v.netplay_compatibility.clone())
+                            })
+                            .unwrap_or(local_game.family_and_variant().0.to_owned()),
                         local_settings,
                         local_game,
                         &local_rom,
