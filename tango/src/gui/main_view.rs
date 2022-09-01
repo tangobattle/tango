@@ -361,12 +361,21 @@ async fn run_connection_task(
                     let mut receiver = net::Receiver::new(dc_rx);
                     net::negotiate(&mut sender, &mut receiver).await?;
 
+                    let default_match_type = {
+                        let config = config.read();
+                        config.default_match_type
+                    };
+
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         attention_requested: false,
                         sender: Some(sender),
                         selection: selection.clone(),
                         nickname,
-                        match_type: (0, 0), // TODO
+                        match_type: (if selection.lock().as_ref().map(|selection| (default_match_type as usize) < selection.game.match_types().len()).unwrap_or(false) {
+                            default_match_type
+                        } else {
+                            0
+                        }, 0),
                         reveal_setup: false,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
@@ -1030,6 +1039,22 @@ impl MainView {
             {
                 handle.block_on(async {
                     let mut lobby = lobby.lock().await;
+                    lobby.match_type = (
+                        if main_view
+                            .selection
+                            .lock()
+                            .as_ref()
+                            .map(|selection| {
+                                (lobby.match_type.0 as usize) < selection.game.match_types().len()
+                            })
+                            .unwrap_or(false)
+                        {
+                            lobby.match_type.0
+                        } else {
+                            0
+                        },
+                        0,
+                    );
                     let settings = lobby.make_local_settings();
                     let _ = lobby.send_settings(settings).await;
                     let patches = state.patches_scanner.read();
@@ -1223,61 +1248,86 @@ impl MainView {
                                                         );
                                                     });
                                                     row.col(|ui| {
-                                                        egui::ComboBox::new(
-                                                            "start-match-type-combobox",
-                                                            "",
-                                                        )
-                                                        .width(94.0)
-                                                        .selected_text(format!(
-                                                            "{:?}",
-                                                            lobby.match_type
-                                                        ))
-                                                        .show_ui(ui, |ui| {
-                                                            let game = lobby
-                                                                .selection
-                                                                .lock()
-                                                                .as_ref()
-                                                                .map(|selection| selection.game);
-                                                            if let Some(game) = game {
-                                                                let mut match_type =
-                                                                    lobby.match_type;
-                                                                for (typ, subtype_count) in game
-                                                                    .match_types()
-                                                                    .iter()
-                                                                    .enumerate()
-                                                                {
-                                                                    for subtype in 0..*subtype_count
+                                                        let game = lobby
+                                                            .selection
+                                                            .lock()
+                                                            .as_ref()
+                                                            .map(|selection| selection.game);
+                                                        ui.add_enabled_ui(game.is_some(), |ui| {
+                                                            egui::ComboBox::new(
+                                                                "start-match-type-combobox",
+                                                                "",
+                                                            )
+                                                            .width(94.0)
+                                                            .selected_text(
+                                                                if let Some(_) = game.as_ref() {
+                                                                    format!(
+                                                                        "{:?}",
+                                                                        lobby.match_type
+                                                                    )
+                                                                } else {
+                                                                    "".to_string()
+                                                                },
+                                                            )
+                                                            .show_ui(ui, |ui| {
+                                                                if let Some(game) = game {
+                                                                    let mut match_type =
+                                                                        lobby.match_type;
+                                                                    for (typ, subtype_count) in game
+                                                                        .match_types()
+                                                                        .iter()
+                                                                        .enumerate()
                                                                     {
-                                                                        ui.selectable_value(
-                                                                            &mut match_type,
-                                                                            (
-                                                                                typ as u8,
-                                                                                subtype as u8,
-                                                                            ),
-                                                                            format!(
-                                                                                "{:?}",
-                                                                                (typ, subtype)
-                                                                            ),
-                                                                        );
+                                                                        for subtype in
+                                                                            0..*subtype_count
+                                                                        {
+                                                                            ui.selectable_value(
+                                                                                &mut match_type,
+                                                                                (
+                                                                                    typ as u8,
+                                                                                    subtype as u8,
+                                                                                ),
+                                                                                format!(
+                                                                                    "{:?}",
+                                                                                    (typ, subtype)
+                                                                                ),
+                                                                            );
+                                                                        }
+                                                                        config.default_match_type =
+                                                                            match_type.0;
+                                                                    }
+                                                                    if match_type
+                                                                        != lobby.match_type
+                                                                    {
+                                                                        handle.block_on(async {
+                                                                            let _ = lobby
+                                                                                .set_match_type(
+                                                                                    match_type,
+                                                                                )
+                                                                                .await;
+                                                                        });
                                                                     }
                                                                 }
-                                                                if match_type != lobby.match_type {
-                                                                    handle.block_on(async {
-                                                                        let _ = lobby
-                                                                            .set_match_type(
-                                                                                match_type,
-                                                                            )
-                                                                            .await;
-                                                                    });
-                                                                }
-                                                            }
+                                                            });
                                                         });
                                                     });
                                                     row.col(|ui| {
-                                                        ui.label(format!(
-                                                            "{:?}",
-                                                            lobby.remote_settings.match_type
-                                                        ));
+                                                        ui.label(
+                                                            if let Some(_) = lobby
+                                                                .remote_settings
+                                                                .game_info
+                                                                .as_ref()
+                                                            {
+                                                                format!(
+                                                                    "{:?}",
+                                                                    lobby
+                                                                        .remote_settings
+                                                                        .match_type
+                                                                )
+                                                            } else {
+                                                                "".to_string()
+                                                            },
+                                                        );
                                                     });
                                                 });
 
