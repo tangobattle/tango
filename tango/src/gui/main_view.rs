@@ -744,7 +744,7 @@ impl MainView {
                                                             .lookup(
                                                                 &config.language,
                                                                 &format!(
-                                                                    "games.{}-{}",
+                                                                    "game-{}.variant-{}",
                                                                     family, variant
                                                                 ),
                                                             )
@@ -1233,10 +1233,7 @@ impl MainView {
                                                                 i18n::LOCALES
                                                                     .lookup(
                                                                         &config.language,
-                                                                        &format!(
-                                                                            "games.{}",
-                                                                            family
-                                                                        ),
+                                                                        &format!("game-{}", family),
                                                                     )
                                                                     .unwrap()
                                                             } else {
@@ -1268,7 +1265,7 @@ impl MainView {
                                                             i18n::LOCALES
                                                                 .lookup(
                                                                     &config.language,
-                                                                    &format!("games.{}", family),
+                                                                    &format!("game-{}", family),
                                                                 )
                                                                 .unwrap()
                                                         } else {

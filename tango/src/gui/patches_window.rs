@@ -227,7 +227,7 @@ impl PatchesWindow {
                                                             .lookup(
                                                                 language,
                                                                 &format!(
-                                                                    "games.{}-{}",
+                                                                    "game-{}.variant-{}",
                                                                     family, variant
                                                                 ),
                                                             )

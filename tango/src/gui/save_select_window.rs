@@ -83,7 +83,7 @@ impl SaveSelectWindow {
                                             i18n::LOCALES
                                                 .lookup(
                                                     language,
-                                                    &format!("games.{}-{}", family, variant),
+                                                    &format!("game-{}.variant-{}", family, variant),
                                                 )
                                                 .unwrap(),
                                         );
@@ -163,7 +163,10 @@ impl SaveSelectWindow {
                                 {
                                     let (family, variant) = game.family_and_variant();
                                     let text = i18n::LOCALES
-                                        .lookup(language, &format!("games.{}-{}", family, variant))
+                                        .lookup(
+                                            language,
+                                            &format!("game-{}.variant-{}", family, variant),
+                                        )
                                         .unwrap();
 
                                     if ui
