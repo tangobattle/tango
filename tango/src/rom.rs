@@ -22,9 +22,28 @@ pub struct Chip {
     pub damage: u32,
 }
 
+#[derive(Clone, Debug)]
+pub struct Modcard56Effect {
+    pub id: u8,
+    pub name: String,
+    pub parameter: u8,
+    pub is_ability: bool,
+    pub is_debuff: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Modcard56 {
+    pub name: String,
+    pub mb: u8,
+    pub effects: Vec<Modcard56Effect>,
+}
+
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
+    fn modcard56(&self, id: usize) -> Option<&Modcard56> {
+        None
+    }
 }
 
 pub fn bgr555_to_rgba(c: u16) -> image::Rgba<u8> {

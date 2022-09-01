@@ -1,4 +1,5 @@
 mod folder_view;
+mod modcards45_view;
 
 use fluent_templates::Loader;
 

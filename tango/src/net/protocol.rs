@@ -79,7 +79,7 @@ pub struct Pong {
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
 pub struct PatchInfo {
     pub name: String,
-    pub version: String,
+    pub version: semver::Version,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]

@@ -104,6 +104,10 @@ where
     fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
     }
+
+    fn view_modcards56(&self) -> Option<Box<dyn Modcards56View + '_>> {
+        None
+    }
 }
 
 impl Clone for Box<dyn Save + Send + Sync> {
@@ -150,4 +154,15 @@ pub trait ChipsView<'a> {
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize>;
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]>;
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<Chip>;
+}
+
+#[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
+pub struct Modcard56 {
+    pub id: usize,
+    pub enabled: bool,
+}
+
+pub trait Modcards56View<'a> {
+    fn count(&self) -> usize;
+    fn modcard(&self, slot: usize) -> Option<Modcard56>;
 }

@@ -108,6 +108,14 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_modcards56(&self) -> Option<Box<dyn save::Modcards56View + '_>> {
+        if self.game_info().unwrap().region == Region::JP {
+            Some(Box::new(Modcards56View { save: self }))
+        } else {
+            None
+        }
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -181,6 +189,27 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,
             code: (raw >> 9) as usize,
+        })
+    }
+}
+
+pub struct Modcards56View<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::Modcards56View<'a> for Modcards56View<'a> {
+    fn count(&self) -> usize {
+        self.save.buf[0x65f0] as usize
+    }
+
+    fn modcard(&self, slot: usize) -> Option<save::Modcard56> {
+        if slot > self.count() {
+            return None;
+        }
+        let raw = self.save.buf[0x6620 + slot];
+        Some(save::Modcard56 {
+            id: (raw & 0x7f) as usize,
+            enabled: raw >> 7 == 0,
         })
     }
 }

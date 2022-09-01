@@ -112,9 +112,8 @@ impl SimplifiedSettings {
             netplay_compatiblity: settings.game_info.as_ref().and_then(|g| {
                 if let Some(patch) = g.patch.as_ref() {
                     patches.get(&patch.name).and_then(|p| {
-                        semver::Version::parse(&patch.version)
-                            .ok()
-                            .and_then(|v| p.versions.get(&v))
+                        p.versions
+                            .get(&patch.version)
                             .map(|vinfo| vinfo.netplay_compatibility.clone())
                     })
                 } else {
@@ -194,7 +193,7 @@ impl Lobby {
                                 family_and_variant: (family.to_string(), variant),
                                 patch: Some(net::protocol::PatchInfo {
                                     name: patch.clone(),
-                                    version: v.to_string(),
+                                    version: v.clone(),
                                 }),
                             }]
                         } else {
@@ -217,7 +216,7 @@ impl Lobby {
                     patch: selection.patch.as_ref().map(|(name, version)| {
                         net::protocol::PatchInfo {
                             name: name.clone(),
-                            version: version.to_string(),
+                            version: version.clone(),
                         }
                     }),
                 }

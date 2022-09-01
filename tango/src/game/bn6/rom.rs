@@ -79,6 +79,7 @@ lazy_static! {
 pub struct Assets {
     element_icons: [image::RgbaImage; 11],
     chips: [rom::Chip; 411],
+    modcards56: Option<[rom::Modcard56; 118]>,
 }
 
 impl Assets {
@@ -195,6 +196,53 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
+            modcards56: if offsets.modcard_data != 0 {
+                Some(
+                    (0..118)
+                        .map(|i| {
+                            let buf = &rom[offsets.modcard_data as usize..];
+                            let buf =
+                                &rom[byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2])
+                                    as usize
+                                    ..byteorder::LittleEndian::read_u16(
+                                        &buf[(i + 1) * 2..(i + 2) * 2],
+                                    ) as usize];
+                            rom::Modcard56 {
+                                name: {
+                                    if let Ok(parts) = rom::text::parse_entry(
+                                        &mapper.get(byteorder::LittleEndian::read_u32(
+                                            &mapper.get(offsets.modcard_names_pointer)[..4],
+                                        )),
+                                        i,
+                                        &TEXT_PARSE_OPTIONS,
+                                    ) {
+                                        parts
+                                            .into_iter()
+                                            .flat_map(|part| {
+                                                match part {
+                                                    rom::text::Part::Literal(c) => {
+                                                        charset.get(c).unwrap_or(&"�")
+                                                    }
+                                                    _ => "",
+                                                }
+                                                .chars()
+                                            })
+                                            .collect::<String>()
+                                    } else {
+                                        "???".to_string()
+                                    }
+                                },
+                                mb: buf[1],
+                                effects: vec![], // TODO
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .unwrap(),
+                )
+            } else {
+                None
+            },
         }
     }
 }
@@ -206,6 +254,12 @@ impl rom::Assets for Assets {
 
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
+    }
+
+    fn modcard56(&self, id: usize) -> Option<&rom::Modcard56> {
+        self.modcards56
+            .as_ref()
+            .and_then(|modcards56| modcards56.get(id))
     }
 }
 
