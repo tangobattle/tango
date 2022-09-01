@@ -6,6 +6,7 @@ main =
     .ready = I'm ready!
     .link-code = Link code
     .no-game = None
+    .no-patch = None
     .you = You
 
 main-details =
@@ -22,5 +23,3 @@ select-save = Select save
     .select-button = Select
     .no-save-selected = No save selected
     .return-to-games-list = Return to games list
-
-select-patch = Select patch
