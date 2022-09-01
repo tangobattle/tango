@@ -118,7 +118,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
-        if folder_index >= 0 || chip_index >= 30 {
+        if folder_index >= 1 || chip_index >= 30 {
             return None;
         }
 

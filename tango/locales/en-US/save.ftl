@@ -1,4 +1,5 @@
 save =
+    .navicust = Navicust
     .folder = Folder
     .modcards = Modcards
 
