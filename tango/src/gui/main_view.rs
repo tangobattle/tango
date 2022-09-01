@@ -866,6 +866,14 @@ impl MainView {
                         });
                     egui::ComboBox::from_id_source("patch-version-select-combobox")
                         .width(PATCH_VERSION_COMBOBOX_WIDTH - ui.spacing().item_spacing.x * 2.0)
+                        .selected_text(
+                            selection
+                                .as_ref()
+                                .and_then(|s| {
+                                    s.patch.as_ref().map(|(_, version)| version.to_string())
+                                })
+                                .unwrap_or("".to_string()),
+                        )
                         .show_ui(ui, |ui| {});
                 });
             });

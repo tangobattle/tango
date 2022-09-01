@@ -42,7 +42,7 @@ pub struct Patch {
 
 lazy_static! {
     static ref PATCH_FILENAME_REGEX: regex::Regex =
-        regex::Regex::new(r"(\S{4})_(\d{2}).bps").unwrap();
+        regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
 }
 
 pub fn scan(
