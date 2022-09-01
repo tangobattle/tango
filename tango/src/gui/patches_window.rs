@@ -41,12 +41,14 @@ impl PatchesWindow {
             let state = show.as_mut().unwrap();
 
             ui.horizontal_top(|ui| {
-                if ui
-                    .button(i18n::LOCALES.lookup(language, "patches.update").unwrap())
-                    .clicked()
-                {
-                    // TODO
-                }
+                ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {
+                    if ui
+                        .button(i18n::LOCALES.lookup(language, "patches.update").unwrap())
+                        .clicked()
+                    {
+                        // TODO
+                    }
+                });
             });
 
             ui.separator();
