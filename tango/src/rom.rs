@@ -38,10 +38,40 @@ pub struct Modcard56 {
     pub effects: Vec<Modcard56Effect>,
 }
 
+#[derive(Clone, Debug)]
+pub enum NavicustPartColor {
+    White,
+    Yellow,
+    Pink,
+    Red,
+    Blue,
+    Green,
+    Orange,
+    Purple,
+    Gray,
+}
+
+pub type NavicustBitmap = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
+
+#[derive(Clone, Debug)]
+pub struct NavicustPart {
+    pub name: String,
+    pub color: Option<NavicustPartColor>,
+    pub is_solid: bool,
+    pub compressed_bitmap: NavicustBitmap,
+    pub uncompressed_bitmap: NavicustBitmap,
+}
+
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
-    fn modcard56(&self, _id: usize) -> Option<&Modcard56> {
+    fn modcard56(&self, id: usize) -> Option<&Modcard56> {
+        let _ = id;
+        None
+    }
+    fn navicust_part(&self, id: usize, variant: usize) -> Option<&NavicustPart> {
+        let _ = id;
+        let _ = variant;
         None
     }
 }

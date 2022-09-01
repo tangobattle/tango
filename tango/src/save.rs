@@ -108,6 +108,10 @@ where
     fn view_modcards56(&self) -> Option<Box<dyn Modcards56View + '_>> {
         None
     }
+
+    fn view_navicust(&self) -> Option<Box<dyn NavicustView + '_>> {
+        None
+    }
 }
 
 impl Clone for Box<dyn Save + Send + Sync> {
@@ -165,4 +169,25 @@ pub struct Modcard56 {
 pub trait Modcards56View<'a> {
     fn count(&self) -> usize;
     fn modcard(&self, slot: usize) -> Option<Modcard56>;
+}
+
+#[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
+pub struct NavicustPart {
+    pub id: usize,
+    pub variant: usize,
+    pub col: usize,
+    pub row: usize,
+    pub rot: usize,
+    pub compressed: bool,
+}
+
+pub trait NavicustView<'a> {
+    fn count(&self) -> usize {
+        25
+    }
+    fn width(&self) -> usize;
+    fn height(&self) -> usize;
+    fn command_line(&self) -> usize;
+    fn has_out_of_bounds(&self) -> bool;
+    fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
 }
