@@ -105,10 +105,6 @@ impl FolderView {
         };
 
         ui.horizontal(|ui| {
-            ui.checkbox(
-                &mut state.grouped,
-                i18n::LOCALES.lookup(lang, "save-group").unwrap(),
-            );
             if ui
                 .button(format!(
                     "📋 {}",
@@ -136,13 +132,16 @@ impl FolderView {
                             for _ in 0..g.tag_count {
                                 buf.push_str("[TAG]");
                             }
-                            buf.push('\n');
                             buf
                         })
                         .collect::<Vec<_>>()
-                        .join(""),
+                        .join("\n"),
                 );
             }
+            ui.checkbox(
+                &mut state.grouped,
+                i18n::LOCALES.lookup(lang, "save-group").unwrap(),
+            );
         });
 
         let mut tb = egui_extras::TableBuilder::new(ui)

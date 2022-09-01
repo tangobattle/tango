@@ -44,7 +44,7 @@ impl Modcards56View {
         game: &'static (dyn game::Game + Send + Sync),
         modcards56_view: &Box<dyn save::Modcards56View<'a> + 'a>,
         assets: &Box<dyn rom::Assets + Send + Sync>,
-        state: &mut State,
+        _state: &mut State,
     ) {
         let items = (0..modcards56_view.count())
             .map(|slot| {
@@ -57,6 +57,43 @@ impl Modcards56View {
                 (modcard, effects)
             })
             .collect::<Vec<_>>();
+
+        ui.horizontal(|ui| {
+            if ui
+                .button(format!(
+                    "📋 {}",
+                    i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
+                ))
+                .clicked()
+            {
+                let _ = clipboard.set_text(
+                    items
+                        .iter()
+                        .flat_map(|(modcard, _)| {
+                            let modcard = if let Some(modcard) = modcard.as_ref() {
+                                modcard
+                            } else {
+                                return vec![];
+                            };
+
+                            if !modcard.enabled {
+                                return vec![];
+                            }
+
+                            let modcard = if let Some(modcard) = assets.modcard56(modcard.id) {
+                                modcard
+                            } else {
+                                return vec![];
+                            };
+
+                            vec![format!("{}\t{}", modcard.name, modcard.mb)]
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+        });
+
         egui_extras::TableBuilder::new(ui)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(egui_extras::Size::remainder())
