@@ -7,8 +7,8 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
-        Self { selection: None }
+    pub fn new(selection: Option<String>) -> Self {
+        Self { selection }
     }
 }
 

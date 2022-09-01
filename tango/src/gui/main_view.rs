@@ -689,7 +689,12 @@ impl MainView {
                                             });
                                         }
                                     });
-                                    Some(gui::patches_window::State::new())
+                                    Some(gui::patches_window::State::new(
+                                        selection
+                                            .as_ref()
+                                            .and_then(|s| s.patch.as_ref())
+                                            .map(|(n, _)| n.to_string()),
+                                    ))
                                 } else {
                                     None
                                 };
@@ -946,6 +951,12 @@ impl MainView {
                                             }
                                         };
 
+                                        if let Some(show_patches) = main_view.show_patches.as_mut()
+                                        {
+                                            *show_patches = gui::patches_window::State::new(Some(
+                                                (*name).clone(),
+                                            ));
+                                        }
                                         *selection = gui::main_view::Selection::new(
                                             selection.game.clone(),
                                             selection.save.clone(),
