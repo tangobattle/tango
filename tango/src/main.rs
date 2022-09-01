@@ -35,6 +35,8 @@ enum UserEvent {
 }
 
 fn main() -> Result<(), anyhow::Error> {
+    std::env::set_var("RUST_BACKTRACE", "1");
+
     env_logger::Builder::from_default_env()
         .filter(Some("tango"), log::LevelFilter::Info)
         .filter(Some("datachannel"), log::LevelFilter::Info)
