@@ -23,3 +23,4 @@ select-save = Select save
     .select-button = Select
     .no-save-selected = No save selected
     .return-to-games-list = Return to games list
+    .open-folder = Open folder

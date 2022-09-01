@@ -50,14 +50,49 @@ impl SaveSelectWindow {
 
             ui.vertical(|ui| {
                 let games = game::sorted_all_games(language);
-                if let Some((game, _)) = show.as_mut().unwrap().selection {
-                    let (family, variant) = game.family_and_variant();
-                    ui.label(
-                        i18n::LOCALES
-                            .lookup(language, &format!("games.{}-{}", family, variant))
-                            .unwrap(),
-                    );
-                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    if ui
+                        .button(
+                            i18n::LOCALES
+                                .lookup(language, "select-save.open-folder")
+                                .unwrap(),
+                        )
+                        .clicked()
+                    {
+                        let _ = open::that(
+                            if let Some(path) = selection
+                                .as_ref()
+                                .and_then(|selection| selection.save.path.parent())
+                            {
+                                path
+                            } else {
+                                saves_path
+                            },
+                        );
+                    }
+
+                    if let Some((game, _)) = show.as_mut().unwrap().selection {
+                        let (family, variant) = game.family_and_variant();
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::left_to_right(egui::Align::Max)
+                                        .with_main_wrap(true),
+                                    |ui| {
+                                        ui.label(
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    language,
+                                                    &format!("games.{}-{}", family, variant),
+                                                )
+                                                .unwrap(),
+                                        );
+                                    },
+                                );
+                            });
+                        });
+                    }
+                });
 
                 ui.group(|ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
