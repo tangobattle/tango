@@ -1962,12 +1962,21 @@ impl MainView {
             let mut selection = main_view.selection.lock();
             if let Some(selection) = &mut *selection {
                 if let Some(assets) = selection.assets.as_ref() {
+                    let game_language = selection.game.language();
                     self.save_view.show(
                         ui,
                         &mut state.clipboard,
                         font_families,
                         &config.language,
-                        selection.game,
+                        if let Some((_, _, metadata)) = selection.patch.as_ref() {
+                            if let Some(language) = metadata.saveedit_overrides.language.as_ref() {
+                                language
+                            } else {
+                                &game_language
+                            }
+                        } else {
+                            &game_language
+                        },
                         &selection.save.save,
                         assets,
                         &mut selection.save_view_state,

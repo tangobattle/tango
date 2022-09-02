@@ -1,5 +1,7 @@
 pub mod bps;
 
+use serde::Deserialize;
+
 use crate::game;
 
 #[derive(serde::Deserialize)]
@@ -16,9 +18,26 @@ struct PatchMetadata {
     pub source: Option<String>,
 }
 
+fn deserialize_option_language_identifier<'de, D>(
+    deserializer: D,
+) -> Result<Option<unic_langid::LanguageIdentifier>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    if let Some(buf) = Option::<String>::deserialize(deserializer)? {
+        buf.parse()
+            .map(|v| Some(v))
+            .map_err(serde::de::Error::custom)
+    } else {
+        Ok(None)
+    }
+}
+
 #[derive(serde::Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct SaveeditOverrides {
+    #[serde(deserialize_with = "deserialize_option_language_identifier")]
+    pub language: Option<unic_langid::LanguageIdentifier>,
     pub charset: Option<Vec<String>>,
 }
 
