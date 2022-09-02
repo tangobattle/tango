@@ -45,6 +45,14 @@ lazy_static! {
         regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
 }
 
+pub fn update(
+    url: &String,
+    path: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, Patch>, anyhow::Error> {
+    let repo = git2::Repository::init(path)?;
+    Ok(scan(path)?)
+}
+
 pub fn scan(
     path: &std::path::Path,
 ) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
