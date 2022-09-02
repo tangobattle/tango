@@ -1635,28 +1635,48 @@ impl MainView {
                                         cancellation_token: cancellation_token.clone(),
                                     });
 
-                                handle.spawn(run_connection_task(
-                                    state.config.clone(),
-                                    handle.clone(),
-                                    ctx.clone(),
-                                    state.audio_binder.clone(),
-                                    state.emu_tps_counter.clone(),
-                                    state.main_view.clone(),
-                                    main_view.selection.clone(),
-                                    state.roms_scanner.clone(),
-                                    state.patches_scanner.clone(),
-                                    if !config.matchmaking_endpoint.is_empty() {
+                                handle.spawn({
+                                    let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
                                         config.matchmaking_endpoint.clone()
                                     } else {
                                         config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-                                    },
-                                    main_view.link_code.clone(),
-                                    config.nickname.clone().unwrap_or_else(|| "".to_string()),
-                                    config.patches_path(),
-                                    config.replays_path(),
-                                    main_view.connection_task.clone(),
-                                    cancellation_token,
-                                ));
+                                    };
+                                    let link_code = main_view.link_code.clone();
+                                    let nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                                    let patches_path = config.patches_path();
+                                    let replays_path = config.replays_path();
+                                    let config = state.config.clone();
+                                    let handle = handle.clone();
+                                    let ctx = ctx.clone();
+                                    let audio_binder = state.audio_binder.clone();
+                                    let tps_counter = state.emu_tps_counter.clone();
+                                    let selection = main_view.selection.clone();
+                                    let connection_task = main_view.connection_task.clone();
+                                    let main_view = state.main_view.clone();
+                                    let roms_scanner = state.roms_scanner.clone();
+                                    let patches_scanner = state.patches_scanner.clone();
+                                    async move {
+                                        run_connection_task(
+                                            config,
+                                            handle,
+                                            ctx.clone(),
+                                            audio_binder,
+                                            tps_counter,
+                                            main_view,
+                                            selection,
+                                            roms_scanner,
+                                            patches_scanner,
+                                            matchmaking_endpoint,
+                                            link_code,
+                                            nickname,
+                                            patches_path,
+                                            replays_path,
+                                            connection_task,
+                                            cancellation_token
+                                        ).await;
+                                        ctx.request_repaint();
+                                    }
+                                });
                             } else if let Some(selection) = &*main_view.selection.lock() {
                                 let audio_binder = state.audio_binder.clone();
                                 let save_path = selection.save.path.clone();
