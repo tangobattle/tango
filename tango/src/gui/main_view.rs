@@ -89,6 +89,7 @@ struct Lobby {
     nickname: String,
     match_type: (u8, u8),
     reveal_setup: bool,
+    remote_rom: Option<Vec<u8>>,
     remote_settings: net::protocol::Settings,
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
@@ -324,10 +325,61 @@ impl Lobby {
     fn set_remote_settings(
         &mut self,
         settings: net::protocol::Settings,
+        patches_path: &std::path::Path,
         roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
         patches: &std::collections::BTreeMap<String, patch::Patch>,
     ) {
         let old_reveal_setup = self.remote_settings.reveal_setup;
+        self.remote_rom = settings.game_info.as_ref().and_then(|gi| {
+            game::find_by_family_and_variant(&gi.family_and_variant.0, gi.family_and_variant.1)
+                .and_then(|game| {
+                    roms.get(&game).and_then(|rom| {
+                        if let Some(pi) = gi.patch.as_ref() {
+                            let (rom_code, revision) = game.rom_code_and_revision();
+
+                            let bps = match std::fs::read(
+                                patches_path
+                                    .join(&pi.name)
+                                    .join(format!("v{}", pi.version))
+                                    .join(format!(
+                                        "{}_{:02}.bps",
+                                        std::str::from_utf8(rom_code).unwrap(),
+                                        revision
+                                    )),
+                            ) {
+                                Ok(bps) => bps,
+                                Err(e) => {
+                                    log::error!(
+                                        "failed to load patch {} to {:?}: {:?}",
+                                        pi.name,
+                                        (rom_code, revision),
+                                        e
+                                    );
+                                    return None;
+                                }
+                            };
+
+                            let rom = match patch::bps::apply(&rom, &bps) {
+                                Ok(r) => r.to_vec(),
+                                Err(e) => {
+                                    log::error!(
+                                        "failed to apply patch {} to {:?}: {:?}",
+                                        pi.name,
+                                        (rom_code, revision),
+                                        e
+                                    );
+                                    return None;
+                                }
+                            };
+
+                            Some(rom)
+                        } else {
+                            Some(rom.clone())
+                        }
+                    })
+                })
+        });
+
         self.remote_settings = settings;
         if !are_settings_compatible(
             &self.make_local_settings(),
@@ -374,6 +426,7 @@ async fn run_connection_task(
     matchmaking_addr: String,
     link_code: String,
     nickname: String,
+    patches_path: std::path::PathBuf,
     replays_path: std::path::PathBuf,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     cancellation_token: tokio_util::sync::CancellationToken,
@@ -432,6 +485,7 @@ async fn run_connection_task(
                             0
                         }, 0),
                         reveal_setup: false,
+                        remote_rom: None,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
@@ -475,7 +529,7 @@ async fn run_connection_task(
                                         let mut lobby = lobby.lock().await;
                                         let roms = roms_scanner.read();
                                         let patches = patches_scanner.read();
-                                        lobby.set_remote_settings(settings, &roms, &patches);
+                                        lobby.set_remote_settings(settings, &patches_path, &roms, &patches);
                                         egui_ctx.request_repaint();
                                     },
                                     net::protocol::Packet::Commit(commit) => {
@@ -503,7 +557,7 @@ async fn run_connection_task(
 
                     log::info!("ending lobby");
 
-                    let (mut sender, match_type, local_settings, remote_settings, remote_commitment, local_negotiated_state) = {
+                    let (mut sender, match_type, local_settings, mut remote_rom, remote_settings, remote_commitment, local_negotiated_state) = {
                         let mut lobby = lobby.lock().await;
                         let local_settings = lobby.make_local_settings();
                         let sender = if let Some(sender) = lobby.sender.take() {
@@ -511,7 +565,13 @@ async fn run_connection_task(
                         } else {
                             anyhow::bail!("no sender?");
                         };
-                        (sender, lobby.match_type, local_settings, lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take())
+                        (sender, lobby.match_type, local_settings, lobby.remote_rom.clone(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take())
+                    };
+
+                    let remote_rom = if let Some(remote_rom) = remote_rom.take() {
+                        remote_rom
+                    } else {
+                        anyhow::bail!("missing shadow rom");
                     };
 
                     let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = local_negotiated_state {
@@ -581,15 +641,6 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let remote_rom = {
-                        let roms = roms_scanner.read();
-                        if let Some(remote_rom) = roms.get(&remote_game).cloned() {
-                            remote_rom
-                        } else {
-                            anyhow::bail!("missing shadow rom");
-                        }
-                    };
-
                     sender.send_start_match().await?;
                     match receiver.receive().await? {
                         net::protocol::Packet::StartMatch(_) => {},
@@ -606,7 +657,7 @@ async fn run_connection_task(
                             link_code,
                             patch
                                 .and_then(|(patch_name, patch_version)| {
-                                    patches_scanner
+                                    patches_scanner // TODO: Avoid having to read the patches scanner here.
                                         .read()
                                         .get(&patch_name)
                                         .and_then(|p| p.versions.get(&patch_version))
@@ -1606,6 +1657,7 @@ impl MainView {
                                     },
                                     main_view.link_code.clone(),
                                     config.nickname.clone().unwrap_or_else(|| "".to_string()),
+                                    config.patches_path(),
                                     config.replays_path(),
                                     main_view.connection_task.clone(),
                                     cancellation_token,
