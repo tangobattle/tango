@@ -214,6 +214,32 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         emu_tps_counter.clone(),
     );
 
+    rayon::spawn({
+        let config = state.config.clone();
+        let patches_scanner = state.patches_scanner.clone();
+        move || loop {
+            let (repo_url, patches_path) = {
+                let config = config.read();
+                (
+                    if !config.patch_repo.is_empty() {
+                        config.patch_repo.clone()
+                    } else {
+                        config::DEFAULT_PATCH_REPO.to_owned()
+                    },
+                    config.patches_path().to_path_buf(),
+                )
+            };
+            patches_scanner.rescan(move || match patch::update(&repo_url, &patches_path) {
+                Ok(patches) => Some(patches),
+                Err(e) => {
+                    log::error!("failed to update patches: {:?}", e);
+                    return None;
+                }
+            });
+            std::thread::sleep(std::time::Duration::from_secs(30 * 60));
+        }
+    });
+
     egui_glow.egui_ctx.set_request_repaint_callback({
         let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
         move || {

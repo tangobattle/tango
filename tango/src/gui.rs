@@ -25,9 +25,9 @@ type PatchesScanner = scanner::Scanner<std::collections::BTreeMap<String, patch:
 pub struct State {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub steal_input: Option<steal_input_window::State>,
-    roms_scanner: ROMsScanner,
-    saves_scanner: SavesScanner,
-    patches_scanner: PatchesScanner,
+    pub roms_scanner: ROMsScanner,
+    pub saves_scanner: SavesScanner,
+    pub patches_scanner: PatchesScanner,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
