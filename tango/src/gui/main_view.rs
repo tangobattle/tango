@@ -629,8 +629,12 @@ impl MainView {
             state.patches_scanner.clone(),
         );
 
-        self.replays_window
-            .show(ctx, &mut main_view.show_replays, &config.language);
+        self.replays_window.show(
+            ctx,
+            &mut main_view.show_replays,
+            &config.language,
+            &config.replays_path(),
+        );
 
         let (selection_changed, has_selection) = {
             let mut selection = main_view.selection.lock();
@@ -704,7 +708,7 @@ impl MainView {
                                 .clicked()
                             {
                                 main_view.show_replays = if main_view.show_replays.is_none() {
-                                    Some(gui::replays_window::State::new())
+                                    Some(gui::replays_window::State::new(&config.replays_path()))
                                 } else {
                                     None
                                 };

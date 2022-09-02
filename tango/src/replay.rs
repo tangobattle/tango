@@ -15,18 +15,18 @@ pub struct Writer {
 const HEADER: &[u8] = b"TOOT";
 const VERSION: u8 = 0x11;
 
+pub type Metadata = tango_protos::replay::ReplayMetadata;
+
 pub struct Replay {
     pub is_complete: bool,
-    pub metadata: tango_protos::replay::ReplayMetadata,
+    pub metadata: Metadata,
     pub local_player_index: u8,
     pub local_state: Option<mgba::state::State>,
     pub remote_state: Option<mgba::state::State>,
     pub input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
 }
 
-pub fn read_metadata(
-    r: &mut impl std::io::Read,
-) -> Result<tango_protos::replay::ReplayMetadata, std::io::Error> {
+pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Error> {
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
     if &header != HEADER {
