@@ -81,6 +81,9 @@ git2 = { version = "0.15", default_features = false, features = [
     "https",
     "vendored-libgit2",
 ] }
+chrono = "0.4"
+chrono_locale = "0.1"
+
 
 [build-dependencies]
 embed-resource = "1.7"

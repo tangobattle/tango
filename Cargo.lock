@@ -643,6 +643,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chrono_locale"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cbf42d590cf2cd03df7910ef6e1cd46039ca566d0547341a3f9b6bfd9e3c491"
+dependencies = [
+ "chrono",
+ "lazy_static",
+ "num-integer",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "walkdir",
+]
+
+[[package]]
 name = "cipher"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4972,6 +4987,8 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "bytes 1.1.0",
+ "chrono",
+ "chrono_locale",
  "clap 3.1.8",
  "cpal",
  "crc32fast",

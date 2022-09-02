@@ -1,3 +1,4 @@
+use chrono_locale::LocaleDate;
 use fluent_templates::Loader;
 
 use crate::{game, gui, i18n, replay, scanner};
@@ -144,10 +145,8 @@ impl ReplaysWindow {
                                         state.selection.as_ref() == Some(path),
                                         format!(
                                             "{}",
-                                            path.as_path()
-                                                .strip_prefix(replays_path)
-                                                .unwrap_or(path.as_path())
-                                                .display()
+                                            chrono::DateTime::<chrono::Local>::from(ts)
+                                                .formatl("%c", &language.to_string())
                                         ),
                                     )
                                     .clicked()
