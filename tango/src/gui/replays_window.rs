@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{i18n, replay, scanner};
+use crate::{game, gui, i18n, replay, scanner};
 
 pub struct State {
     replays_scanner:
@@ -69,6 +69,7 @@ impl ReplaysWindow {
         ctx: &egui::Context,
         show: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
+        patches_scanner: gui::PatchesScanner,
         replays_path: &std::path::PathBuf,
     ) {
         let mut show_window = show.is_some();
@@ -100,6 +101,43 @@ impl ReplaysWindow {
                     .show(ui, |ui| {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                             for (path, metadata) in replays.iter().rev() {
+                                let ts = if let Some(ts) = std::time::UNIX_EPOCH
+                                    .checked_add(std::time::Duration::from_millis(metadata.ts))
+                                {
+                                    ts
+                                } else {
+                                    continue;
+                                };
+
+                                let local_side = if let Some(side) = metadata.local_side.as_ref() {
+                                    side
+                                } else {
+                                    continue;
+                                };
+
+                                let remote_side = if let Some(side) = metadata.remote_side.as_ref()
+                                {
+                                    side
+                                } else {
+                                    continue;
+                                };
+
+                                let local_game =
+                                    local_side.game_info.as_ref().and_then(|game_info| {
+                                        game::find_by_family_and_variant(
+                                            game_info.rom_family.as_str(),
+                                            game_info.rom_variant as u8,
+                                        )
+                                    });
+
+                                let remote_game =
+                                    remote_side.game_info.as_ref().and_then(|game_info| {
+                                        game::find_by_family_and_variant(
+                                            game_info.rom_family.as_str(),
+                                            game_info.rom_variant as u8,
+                                        )
+                                    });
+
                                 if ui
                                     .selectable_label(
                                         state.selection.as_ref() == Some(path),

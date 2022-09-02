@@ -635,6 +635,7 @@ impl MainView {
             ctx,
             &mut main_view.show_replays,
             &config.language,
+            state.patches_scanner.clone(),
             &config.replays_path(),
         );
 
