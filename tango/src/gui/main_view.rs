@@ -59,7 +59,7 @@ pub struct Selection {
     pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     pub save: save::ScannedSave,
     pub rom: Vec<u8>,
-    pub patch: Option<(String, semver::Version)>,
+    pub patch: Option<(String, semver::Version, patch::Version)>,
     save_view_state: gui::save_view::State,
 }
 
@@ -67,7 +67,7 @@ impl Selection {
     pub fn new(
         game: &'static (dyn game::Game + Send + Sync),
         save: save::ScannedSave,
-        patch: Option<(String, semver::Version)>,
+        patch: Option<(String, semver::Version, patch::Version)>,
         rom: Vec<u8>,
     ) -> Self {
         let assets = game.load_rom_assets(&rom, save.save.as_raw_wram()).ok();
@@ -263,7 +263,7 @@ impl Lobby {
                 let (family, variant) = selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
-                    patch: selection.patch.as_ref().map(|(name, version)| {
+                    patch: selection.patch.as_ref().map(|(name, version, _)| {
                         net::protocol::PatchInfo {
                             name: name.clone(),
                             version: version.clone(),
@@ -661,7 +661,7 @@ async fn run_connection_task(
                             audio_binder,
                             link_code,
                             patch
-                                .and_then(|(patch_name, patch_version)| {
+                                .and_then(|(patch_name, patch_version, _)| {
                                     patches_scanner // TODO: Avoid having to read the patches scanner here.
                                         .read()
                                         .get(&patch_name)
@@ -798,9 +798,15 @@ impl MainView {
             let mut selection = main_view.selection.lock();
             let selection = &mut *selection;
 
-            let initial = selection
-                .as_ref()
-                .map(|selection| (selection.game, selection.patch.clone()));
+            let initial = selection.as_ref().map(|selection| {
+                (
+                    selection.game,
+                    selection
+                        .patch
+                        .as_ref()
+                        .map(|(name, version, _)| (name.clone(), version.clone())),
+                )
+            });
 
             self.save_select_window.show(
                 ctx,
@@ -851,7 +857,7 @@ impl MainView {
                                         selection
                                             .as_ref()
                                             .and_then(|s| s.patch.as_ref())
-                                            .map(|(n, _)| n.to_string()),
+                                            .map(|(n, _, _)| n.to_string()),
                                     ))
                                 } else {
                                     None
@@ -1052,7 +1058,7 @@ impl MainView {
                                     selection
                                         .as_ref()
                                         .and_then(|s| {
-                                            s.patch.as_ref().map(|(name, _)| name.as_str())
+                                            s.patch.as_ref().map(|(name, _, _)| name.as_str())
                                         })
                                         .unwrap_or(
                                             &i18n::LOCALES
@@ -1097,7 +1103,7 @@ impl MainView {
                                     {
                                         if ui
                                             .selectable_label(
-                                                selection.patch.as_ref().map(|(name, _)| name)
+                                                selection.patch.as_ref().map(|(name, _, _)| name)
                                                     == Some(*name),
                                                 *name,
                                             )
@@ -1110,6 +1116,18 @@ impl MainView {
                                             let (rom_code, revision) =
                                                 selection.game.rom_code_and_revision();
                                             let version = *supported_versions.first().unwrap();
+
+                                            let version_metadata = if let Some(version_metadata) = {
+                                                let patches = state.patches_scanner.read();
+                                                patches
+                                                    .get(*name)
+                                                    .and_then(|p| p.versions.get(version))
+                                                    .cloned()
+                                            } {
+                                                version_metadata
+                                            } else {
+                                                return;
+                                            };
 
                                             let bps = match std::fs::read(
                                                 config
@@ -1157,7 +1175,11 @@ impl MainView {
                                             *selection = gui::main_view::Selection::new(
                                                 selection.game.clone(),
                                                 selection.save.clone(),
-                                                Some(((*name).clone(), version.clone())),
+                                                Some((
+                                                    (*name).clone(),
+                                                    version.clone(),
+                                                    version_metadata,
+                                                )),
                                                 rom,
                                             );
                                         }
@@ -1183,7 +1205,7 @@ impl MainView {
                                                 .and_then(|s| {
                                                     s.patch
                                                         .as_ref()
-                                                        .map(|(_, version)| version.to_string())
+                                                        .map(|(_, version, _)| version.to_string())
                                                 })
                                                 .unwrap_or("".to_string()),
                                         )
@@ -1227,6 +1249,22 @@ impl MainView {
                                                     let (rom_code, revision) =
                                                         selection.game.rom_code_and_revision();
 
+                                                    let version_metadata =
+                                                        if let Some(version_metadata) = {
+                                                            let patches =
+                                                                state.patches_scanner.read();
+                                                            patches
+                                                                .get(&patch.0)
+                                                                .and_then(|p| {
+                                                                    p.versions.get(version)
+                                                                })
+                                                                .cloned()
+                                                        } {
+                                                            version_metadata
+                                                        } else {
+                                                            return;
+                                                        };
+
                                                     let bps = match std::fs::read(
                                                         config
                                                             .patches_path()
@@ -1267,7 +1305,11 @@ impl MainView {
                                                     *selection = gui::main_view::Selection::new(
                                                         selection.game.clone(),
                                                         selection.save.clone(),
-                                                        Some((patch.0.clone(), (*version).clone())),
+                                                        Some((
+                                                            patch.0.clone(),
+                                                            (*version).clone(),
+                                                            version_metadata,
+                                                        )),
                                                         rom,
                                                     );
                                                 }
@@ -1281,10 +1323,15 @@ impl MainView {
             });
 
             (
-                selection
-                    .as_ref()
-                    .map(|selection| (selection.game, selection.patch.clone()))
-                    != initial,
+                selection.as_ref().map(|selection| {
+                    (
+                        selection.game,
+                        selection
+                            .patch
+                            .as_ref()
+                            .map(|(name, version, _)| (name.clone(), version.clone())),
+                    )
+                }) != initial,
                 selection.is_some(),
             )
         };

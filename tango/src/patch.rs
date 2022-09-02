@@ -16,15 +16,22 @@ struct PatchMetadata {
     pub source: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct SaveeditOverrides {
+    pub charset: Option<Vec<String>>,
+}
+
 #[derive(serde::Deserialize)]
 struct VersionMetadata {
-    pub saveedit_overrides: Option<toml::value::Table>,
+    #[serde(default)]
+    pub saveedit_overrides: SaveeditOverrides,
     pub netplay_compatibility: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Version {
-    pub saveedit_overrides: Option<toml::value::Table>,
+    pub saveedit_overrides: SaveeditOverrides,
     pub netplay_compatibility: String,
     pub supported_games: std::collections::HashSet<&'static (dyn game::Game + Send + Sync)>,
 }
