@@ -774,6 +774,21 @@ impl MainView {
         );
 
         let (selection_changed, has_selection) = {
+            let is_ready = main_view
+                .connection_task
+                .blocking_lock()
+                .as_ref()
+                .map(|task| match task {
+                    ConnectionTask::InProgress { state, .. } => match state {
+                        ConnectionState::InLobby(lobby) => {
+                            lobby.blocking_lock().local_negotiated_state.is_some()
+                        }
+                        _ => false,
+                    },
+                    _ => false,
+                })
+                .unwrap_or(false);
+
             let mut selection = main_view.selection.lock();
             let selection = &mut *selection;
 
@@ -852,21 +867,6 @@ impl MainView {
                             }
                         });
                     });
-
-                    let is_ready = main_view
-                        .connection_task
-                        .blocking_lock()
-                        .as_ref()
-                        .map(|task| match task {
-                            ConnectionTask::InProgress { state, .. } => match state {
-                                ConnectionState::InLobby(lobby) => {
-                                    lobby.blocking_lock().local_negotiated_state.is_some()
-                                }
-                                _ => false,
-                            },
-                            _ => false,
-                        })
-                        .unwrap_or(false);
 
                     ui.add_enabled_ui(!is_ready, |ui| {
                         if ui
