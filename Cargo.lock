@@ -2921,6 +2921,7 @@ dependencies = [
  "bindgen 0.57.0",
  "cmake",
  "libc",
+ "libz-sys",
  "shell-words",
 ]
 

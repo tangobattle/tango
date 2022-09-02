@@ -7,6 +7,7 @@ pub enum ChipClass {
     Standard,
     Mega,
     Giga,
+    None,
     ProgramAdvance,
 }
 

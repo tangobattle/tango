@@ -1,4 +1,5 @@
 mod hooks;
+mod rom;
 mod save;
 
 use crate::game;
@@ -39,5 +40,18 @@ impl game::Game for EXE45Impl {
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        Ok(Box::new(rom::Assets::new(
+            &rom::BR4J,
+            &rom::CHARSET,
+            rom,
+            wram,
+        )))
     }
 }

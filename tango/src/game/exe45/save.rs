@@ -65,9 +65,17 @@ impl Save {
             .sum::<u32>()
             + 0x38
     }
+
+    pub fn current_navi(&self) -> u8 {
+        self.buf[0x4ad1]
+    }
 }
 
 impl save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -77,5 +85,49 @@ impl save::Save for Save {
         buf[..SRAM_SIZE].copy_from_slice(&self.buf);
         save::mask_save(&mut buf[..SRAM_SIZE], MASK_OFFSET);
         buf
+    }
+}
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8] {
+        &b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[..]
+    }
+
+    fn num_folders(&self) -> usize {
+        1
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        0
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        false
+    }
+
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        None
+    }
+
+    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<[usize; 2]> {
+        None
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index >= 1 || chip_index >= 30 {
+            return None;
+        }
+
+        let offset = 0x7500 + self.save.current_navi() as usize * (30 * 2) + chip_index * 2;
+        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
+
+        Some(save::Chip {
+            id: (raw & 0x1ff) as usize,
+            code: (raw >> 9) as usize,
+        })
     }
 }

@@ -183,7 +183,7 @@ impl Assets {
                             rom::ChipClass::Standard,
                             rom::ChipClass::Mega,
                             rom::ChipClass::Giga,
-                            rom::ChipClass::Standard, // Not strictly correct...
+                            rom::ChipClass::None,
                             rom::ChipClass::ProgramAdvance,
                         ][buf[0x07] as usize],
                         dark: false,

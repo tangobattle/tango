@@ -878,7 +878,8 @@ impl MainView {
                         if ui
                             .horizontal(|ui| {
                                 ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    egui::Layout::right_to_left(egui::Align::Center)
+                                        .with_cross_justify(true),
                                     |ui| {
                                         ui.add({
                                             let text = egui::RichText::new(
@@ -979,6 +980,7 @@ impl MainView {
                                                     };
                                                 ui.add(
                                                     egui::TextEdit::singleline(&mut String::new())
+                                                        .margin(egui::Vec2::new(4.0, 4.0))
                                                         .layouter(&mut layouter),
                                                 )
                                             })
@@ -1856,6 +1858,7 @@ impl MainView {
                         let input_resp = ui.add_enabled(
                             cancellation_token.is_none() && !error_window_open,
                             egui::TextEdit::singleline(&mut main_view.link_code)
+                                .margin(egui::Vec2::new(4.0, 4.0))
                                 .hint_text(
                                     i18n::LOCALES
                                         .lookup(&config.language, "main.link-code")
