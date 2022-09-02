@@ -180,6 +180,8 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     #[cfg(feature = "cpal")]
     let (_audio_device, _stream) = {
+        log::info!("using cpal audio");
+
         use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
         let audio_device = cpal::default_host()
@@ -202,6 +204,8 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     #[cfg(not(feature = "cpal"))]
     let _audio_device = {
+        log::info!("using sdl2 audio");
+
         let audio_device = audio::sdl2::open_stream(
             &audio,
             &sdl2::audio::AudioSpecDesired {
