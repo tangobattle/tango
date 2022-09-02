@@ -1,7 +1,19 @@
 use cpal::traits::DeviceTrait;
 
 pub trait Stream {
-    fn fill(&mut self, buf: &mut [i16]) -> usize;
+    fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize;
+}
+
+impl sdl2::audio::AudioCallback for dyn Stream + Send {
+    type Channel = i16;
+
+    fn callback(&mut self, buf: &mut [i16]) {
+        let frame_count = self.fill(bytemuck::cast_slice_mut(buf));
+        for x in &mut buf[frame_count * NUM_CHANNELS..] {
+            use sdl2::audio::AudioFormatNum;
+            *x = Self::Channel::SILENCE;
+        }
+    }
 }
 
 pub fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
@@ -42,7 +54,9 @@ pub fn open_stream(
                     if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
-                    let n = stream.fill(&mut buf[..data.len() / channels as usize * NUM_CHANNELS]);
+                    let n = stream.fill(bytemuck::cast_slice_mut(
+                        &mut buf[..data.len() / channels as usize * NUM_CHANNELS],
+                    ));
                     realign_samples(&mut buf, channels);
                     for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = (std::num::Wrapping(*y as u16) + std::num::Wrapping(32768)).0;
@@ -59,7 +73,9 @@ pub fn open_stream(
                     if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
-                    let n = stream.fill(&mut buf[..data.len() / channels as usize * NUM_CHANNELS]);
+                    let n = stream.fill(bytemuck::cast_slice_mut(
+                        &mut buf[..data.len() / channels as usize * NUM_CHANNELS],
+                    ));
                     realign_samples(&mut buf, channels);
                     for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = *y;
@@ -76,7 +92,9 @@ pub fn open_stream(
                     if data.len() * 2 > buf.len() {
                         buf = vec![0i16; data.len() * 2];
                     }
-                    let n = stream.fill(&mut buf[..data.len() / channels as usize * NUM_CHANNELS]);
+                    let n = stream.fill(bytemuck::cast_slice_mut(
+                        &mut buf[..data.len() / channels as usize * NUM_CHANNELS],
+                    ));
                     realign_samples(&mut buf, channels);
                     for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = *y as f32 / 32768.0;
@@ -108,7 +126,7 @@ fn realign_samples(buf: &mut [i16], channels: u16) {
     for i in (1..(buf.len() / channels as usize)).rev() {
         let src = i * 2;
         let dest = i * channels as usize;
-        let mut tmp = [0i16; 2];
+        let mut tmp = [0i16; NUM_CHANNELS];
         tmp.copy_from_slice(&buf[src..src + 2]);
         buf[src..src + 2].copy_from_slice(&[0, 0]);
         buf[dest..dest + 2].copy_from_slice(&tmp);
@@ -166,13 +184,13 @@ impl LateBinder {
 }
 
 impl Stream for LateBinder {
-    fn fill(&mut self, buf: &mut [i16]) -> usize {
+    fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
         let mut stream = self.stream.lock();
         let stream = if let Some(stream) = &mut *stream {
             stream
         } else {
             for v in buf.iter_mut() {
-                *v = 0;
+                *v = [0, 0];
             }
             return buf.len() / 2;
         };
@@ -197,8 +215,9 @@ impl MGBAStream {
 }
 
 impl Stream for MGBAStream {
-    fn fill(&mut self, buf: &mut [i16]) -> usize {
-        let frame_count = (buf.len() / NUM_CHANNELS) as i32;
+    fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize {
+        let frame_count = buf.len();
+        let linear_buf = bytemuck::cast_slice_mut(buf);
 
         let mut audio_guard = self.handle.lock_audio();
 
@@ -218,11 +237,11 @@ impl Stream for MGBAStream {
                 clock_rate as f64,
                 self.sample_rate.0 as f64 * faux_clock as f64,
             );
-            let mut available = left.samples_avail();
+            let mut available = left.samples_avail() as usize;
             if available > frame_count {
                 available = frame_count;
             }
-            left.read_samples(buf, available, true);
+            left.read_samples(linear_buf, available as i32, true);
             available
         };
 
@@ -231,7 +250,7 @@ impl Stream for MGBAStream {
             clock_rate as f64,
             self.sample_rate.0 as f64 * faux_clock as f64,
         );
-        right.read_samples(&mut buf[1..], available, true);
+        right.read_samples(&mut linear_buf[1..], available as i32, true);
 
         available as usize
     }
