@@ -132,14 +132,6 @@ impl ReplaysWindow {
                                         )
                                     });
 
-                                let remote_game =
-                                    remote_side.game_info.as_ref().and_then(|game_info| {
-                                        game::find_by_family_and_variant(
-                                            game_info.rom_family.as_str(),
-                                            game_info.rom_variant as u8,
-                                        )
-                                    });
-
                                 if ui
                                     .selectable_label(
                                         state.selection.as_ref() == Some(path),
