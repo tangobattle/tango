@@ -24,7 +24,6 @@ mod shadow;
 mod stats;
 mod video;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fluent_templates::Loader;
 use glow::HasContext;
 
@@ -178,33 +177,45 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let mut gui = gui::Gui::new(&egui_glow.egui_ctx);
 
     let audio_binder = audio::LateBinder::new(48000);
-    let audio_device = audio::sdl2::open_stream(
-        &audio,
-        &sdl2::audio::AudioSpecDesired {
-            freq: Some(48000),
-            channels: Some(audio::NUM_CHANNELS as u8),
-            samples: Some(512),
-        },
-        audio_binder.clone(),
-    )
-    .unwrap();
-    log::info!("audio spec: {:?}", audio_device.spec());
-    audio_device.resume();
 
-    // let audio_device = cpal::default_host()
-    //     .default_output_device()
-    //     .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-    // log::info!(
-    //     "supported audio output configs: {:?}",
-    //     audio_device.supported_output_configs()?.collect::<Vec<_>>()
-    // );
-    // let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
-    // log::info!("selected audio config: {:?}", audio_supported_config);
+    #[cfg(feature = "cpal")]
+    let (_audio_device, _stream) = {
+        use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-    // let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
-    // let stream =
-    //     audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
-    // stream.play()?;
+        let audio_device = cpal::default_host()
+            .default_output_device()
+            .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
+        log::info!(
+            "supported audio output configs: {:?}",
+            audio_device.supported_output_configs()?.collect::<Vec<_>>()
+        );
+        let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
+        log::info!("selected audio config: {:?}", audio_supported_config);
+
+        let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
+        let stream =
+            audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
+        stream.play()?;
+
+        (audio_device, stream)
+    };
+
+    #[cfg(not(feature = "cpal"))]
+    let _audio_device = {
+        let audio_device = audio::sdl2::open_stream(
+            &audio,
+            &sdl2::audio::AudioSpecDesired {
+                freq: Some(48000),
+                channels: Some(audio::NUM_CHANNELS as u8),
+                samples: Some(512),
+            },
+            audio_binder.clone(),
+        )
+        .unwrap();
+        log::info!("audio spec: {:?}", audio_device.spec());
+        audio_device.resume();
+        audio_device
+    };
 
     let fps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(30)));
     let emu_tps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(10)));

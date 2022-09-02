@@ -1,3 +1,4 @@
+#[cfg(feature = "cpal")]
 pub mod cpal;
 pub mod sdl2;
 

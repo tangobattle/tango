@@ -5,6 +5,9 @@ edition = "2021"
 license = "AGPL-3.0-or-later"
 default-run = "tango"
 
+[features]
+cpal = ["dep:cpal"]
+
 [dependencies]
 anyhow = "1.0"
 env_logger = "0.9.0"
@@ -50,7 +53,7 @@ egui = { version = "0.19", features = [] }
 glow = "0.11"
 egui_glow = { version = "0.19", features = ["winit", "clipboard", "links"] }
 glutin = { version = "0.29", features = ["serde"] }
-cpal = "0.13"
+cpal = { version = "0.13", optional = true }
 fluent-bundle = "0.15"
 fluent-templates = "0.8"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
