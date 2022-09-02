@@ -1263,7 +1263,7 @@ impl MainView {
                                                                 i18n::LOCALES
                                                                     .lookup(
                                                                         &config.language,
-                                                                        &format!("game-{}", family),
+                                                                        &format!("game-{}", family), // TODO: Show patch
                                                                     )
                                                                     .unwrap()
                                                             } else {
@@ -1295,7 +1295,7 @@ impl MainView {
                                                             i18n::LOCALES
                                                                 .lookup(
                                                                     &config.language,
-                                                                    &format!("game-{}", family),
+                                                                    &format!("game-{}", family), // TODO: Show patch
                                                                 )
                                                                 .unwrap()
                                                         } else {
