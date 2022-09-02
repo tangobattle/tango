@@ -97,32 +97,57 @@ struct Lobby {
     patches_scanner: gui::PatchesScanner,
 }
 
-#[derive(PartialEq)]
-struct SimplifiedSettings {
-    netplay_compatibility: Option<String>,
-    match_type: (u8, u8),
-}
+fn are_settings_compatible(
+    local_settings: &net::protocol::Settings,
+    remote_settings: &net::protocol::Settings,
+    roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
+    patches: &std::collections::BTreeMap<String, patch::Patch>,
+) -> bool {
+    #[derive(PartialEq)]
+    struct SimplifiedSettings {
+        netplay_compatibility: Option<String>,
+        match_type: (u8, u8),
+    }
 
-impl SimplifiedSettings {
-    fn new(
-        settings: &net::protocol::Settings,
-        patches: &std::collections::BTreeMap<String, patch::Patch>,
-    ) -> Self {
-        Self {
-            netplay_compatibility: settings.game_info.as_ref().and_then(|g| {
-                if let Some(patch) = g.patch.as_ref() {
-                    patches.get(&patch.name).and_then(|p| {
-                        p.versions
-                            .get(&patch.version)
-                            .map(|vinfo| vinfo.netplay_compatibility.clone())
-                    })
-                } else {
-                    Some(g.family_and_variant.0.clone())
-                }
-            }),
-            match_type: settings.match_type,
+    impl SimplifiedSettings {
+        fn new(
+            settings: &net::protocol::Settings,
+            roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
+            patches: &std::collections::BTreeMap<String, patch::Patch>,
+        ) -> Self {
+            Self {
+                netplay_compatibility: settings.game_info.as_ref().and_then(|g| {
+                    if game::find_by_family_and_variant(
+                        g.family_and_variant.0.as_str(),
+                        g.family_and_variant.1,
+                    )
+                    .map(|g| roms.contains_key(&g))
+                    .unwrap_or(false)
+                    {
+                        if let Some(patch) = g.patch.as_ref() {
+                            patches.get(&patch.name).and_then(|p| {
+                                p.versions
+                                    .get(&patch.version)
+                                    .map(|vinfo| vinfo.netplay_compatibility.clone())
+                            })
+                        } else {
+                            Some(g.family_and_variant.0.clone())
+                        }
+                    } else {
+                        None
+                    }
+                }),
+                match_type: settings.match_type,
+            }
         }
     }
+
+    let local_simplified_settings = SimplifiedSettings::new(&local_settings, roms, patches);
+    let remote_simplified_settings = SimplifiedSettings::new(&remote_settings, roms, patches);
+
+    local_simplified_settings.netplay_compatibility.is_some()
+        && remote_simplified_settings.netplay_compatibility.is_some()
+        && local_simplified_settings == remote_simplified_settings
 }
 
 fn make_commitment(buf: &[u8]) -> [u8; 16] {
@@ -251,13 +276,17 @@ impl Lobby {
     fn set_remote_settings(
         &mut self,
         settings: net::protocol::Settings,
+        roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
         patches: &std::collections::BTreeMap<String, patch::Patch>,
     ) {
         let old_reveal_setup = self.remote_settings.reveal_setup;
         self.remote_settings = settings;
-        if SimplifiedSettings::new(&self.make_local_settings(), &patches)
-            != SimplifiedSettings::new(&self.remote_settings, &patches)
-            || (old_reveal_setup && !self.remote_settings.reveal_setup)
+        if !are_settings_compatible(
+            &self.make_local_settings(),
+            &self.remote_settings,
+            &roms,
+            &patches,
+        ) || (old_reveal_setup && !self.remote_settings.reveal_setup)
         {
             self.local_negotiated_state = None;
         }
@@ -396,8 +425,9 @@ async fn run_connection_task(
                                     },
                                     net::protocol::Packet::Settings(settings) => {
                                         let mut lobby = lobby.lock().await;
+                                        let roms = roms_scanner.read();
                                         let patches = patches_scanner.read();
-                                        lobby.set_remote_settings(settings, &patches);
+                                        lobby.set_remote_settings(settings, &roms, &patches);
                                         egui_ctx.request_repaint();
                                     },
                                     net::protocol::Packet::Commit(commit) => {
@@ -1173,10 +1203,14 @@ impl MainView {
                     );
                     let settings = lobby.make_local_settings();
                     let _ = lobby.send_settings(settings).await;
+                    let roms = state.roms_scanner.read();
                     let patches = state.patches_scanner.read();
-                    if SimplifiedSettings::new(&lobby.make_local_settings(), &patches)
-                        != SimplifiedSettings::new(&lobby.remote_settings, &patches)
-                    {
+                    if !are_settings_compatible(
+                        &lobby.make_local_settings(),
+                        &lobby.remote_settings,
+                        &roms,
+                        &patches,
+                    ) {
                         lobby.remote_commitment = None;
                     }
                 });
@@ -1651,15 +1685,14 @@ impl MainView {
                             let mut ready =
                                 lobby.local_negotiated_state.is_some() || lobby.sender.is_none();
                             let was_ready = ready;
+                            let roms = state.roms_scanner.read();
                             let patches = state.patches_scanner.read();
                             ui.add_enabled(
                                 has_selection
-                                    && lobby.remote_settings.game_info.is_some()
-                                    && SimplifiedSettings::new(
+                                    && are_settings_compatible(
                                         &lobby.make_local_settings(),
-                                        &patches,
-                                    ) == SimplifiedSettings::new(
                                         &lobby.remote_settings,
+                                        &roms,
                                         &patches,
                                     )
                                     && lobby.sender.is_some(),
