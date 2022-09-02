@@ -47,7 +47,7 @@ impl State {
 
                         replays.insert(path.to_path_buf(), metadata);
                     }
-                    replays
+                    Some(replays)
                 })
             }
         });

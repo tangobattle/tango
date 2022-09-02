@@ -308,10 +308,12 @@ impl SettingsWindow {
                                     let saves_path = config.saves_path();
                                     let patches_path = config.patches_path();
                                     move || {
-                                        roms_scanner.rescan(move || game::scan_roms(&roms_path));
-                                        saves_scanner.rescan(move || save::scan_saves(&saves_path));
+                                        roms_scanner
+                                            .rescan(move || Some(game::scan_roms(&roms_path)));
+                                        saves_scanner
+                                            .rescan(move || Some(save::scan_saves(&saves_path)));
                                         patches_scanner.rescan(move || {
-                                            patch::scan(&patches_path).unwrap_or_default()
+                                            Some(patch::scan(&patches_path).unwrap_or_default())
                                         });
                                     }
                                 });

@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n};
+use crate::{game, gui, i18n, patch};
 
 pub struct State {
     selection: Option<String>,
@@ -24,6 +24,7 @@ impl PatchesWindow {
         ctx: &egui::Context,
         show: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
+        repo_url: &str,
         patches_path: &std::path::Path,
         patches_scanner: gui::PatchesScanner,
     ) {
@@ -46,7 +47,22 @@ impl PatchesWindow {
                         .button(i18n::LOCALES.lookup(language, "patches.update").unwrap())
                         .clicked()
                     {
-                        // TODO
+                        rayon::spawn({
+                            let patches_scanner = patches_scanner.clone();
+                            let repo_url = repo_url.to_owned();
+                            let patches_path = patches_path.to_path_buf();
+                            move || {
+                                patches_scanner.rescan(move || {
+                                    match patch::update(&repo_url, &patches_path) {
+                                        Ok(patches) => Some(patches),
+                                        Err(e) => {
+                                            log::error!("failed to update patches: {:?}", e);
+                                            return None;
+                                        }
+                                    }
+                                });
+                            }
+                        });
                     }
                 });
             });

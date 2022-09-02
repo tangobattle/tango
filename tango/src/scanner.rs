@@ -36,7 +36,7 @@ where
         self.inner.read().scanning
     }
 
-    pub fn rescan(&self, scan: impl Fn() -> T) {
+    pub fn rescan(&self, scan: impl Fn() -> Option<T>) {
         {
             let mut inner = self.inner.write();
             if inner.scanning {
@@ -48,7 +48,9 @@ where
         let items = scan();
 
         let mut inner = self.inner.write();
-        inner.items = items;
+        if let Some(items) = items {
+            inner.items = items;
+        }
         inner.scanning = false;
     }
 }

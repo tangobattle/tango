@@ -705,6 +705,11 @@ impl MainView {
             ctx,
             &mut main_view.show_patches,
             &config.language,
+            if !config.patch_repo.is_empty() {
+                config.patch_repo.as_str()
+            } else {
+                config::DEFAULT_PATCH_REPO
+            },
             &config.patches_path(),
             state.patches_scanner.clone(),
         );
@@ -767,7 +772,7 @@ impl MainView {
                                         let patches_path = config.patches_path();
                                         move || {
                                             patches_scanner.rescan(move || {
-                                                patch::scan(&patches_path).unwrap_or_default()
+                                                Some(patch::scan(&patches_path).unwrap_or_default())
                                             });
                                         }
                                     });
@@ -936,8 +941,10 @@ impl MainView {
                                     let roms_path = config.roms_path();
                                     let saves_path = config.saves_path();
                                     move || {
-                                        roms_scanner.rescan(move || game::scan_roms(&roms_path));
-                                        saves_scanner.rescan(move || save::scan_saves(&saves_path));
+                                        roms_scanner
+                                            .rescan(move || Some(game::scan_roms(&roms_path)));
+                                        saves_scanner
+                                            .rescan(move || Some(save::scan_saves(&saves_path)));
                                     }
                                 });
                                 Some(gui::save_select_window::State::new(selection.as_ref().map(
