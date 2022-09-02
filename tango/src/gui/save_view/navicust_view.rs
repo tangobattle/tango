@@ -101,6 +101,48 @@ impl NavicustView {
             .collect::<Vec<_>>();
 
         ui.horizontal(|ui| {
+            if ui
+                .button(format!(
+                    "📋 {}",
+                    i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
+                ))
+                .clicked()
+            {
+                let solid_parts = items
+                    .iter()
+                    .filter(|(info, _)| info.is_solid)
+                    .map(|(info, _)| info.name.clone())
+                    .collect::<Vec<_>>();
+
+                let plus_parts = items
+                    .iter()
+                    .filter(|(info, _)| info.is_solid)
+                    .map(|(info, _)| info.name.clone())
+                    .collect::<Vec<_>>();
+
+                let _ = clipboard.set_text(
+                    itertools::Itertools::zip_longest(
+                        items
+                            .iter()
+                            .filter(|(info, _)| info.is_solid)
+                            .map(|(info, _)| info.name.as_str()),
+                        items
+                            .iter()
+                            .filter(|(info, _)| info.is_solid)
+                            .map(|(info, _)| info.name.as_str()),
+                    )
+                    .map(|v| match v {
+                        itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
+                        itertools::EitherOrBoth::Left(l) => format!("{}\t", l),
+                        itertools::EitherOrBoth::Right(r) => format!("\t{}", r),
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+                );
+            }
+        });
+
+        ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                 ui.set_width(NCP_CHIP_WIDTH);
                 for (info, color) in items.iter().filter(|(info, _)| info.is_solid) {
