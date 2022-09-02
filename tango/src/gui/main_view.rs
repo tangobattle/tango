@@ -296,7 +296,6 @@ async fn run_connection_task(
     patches_scanner: gui::PatchesScanner,
     matchmaking_addr: String,
     link_code: String,
-    max_queue_length: usize,
     nickname: String,
     replays_path: std::path::PathBuf,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
@@ -521,39 +520,42 @@ async fn run_connection_task(
 
                     log::info!("starting session");
                     let is_offerer = peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer;
-                    main_view.lock().session = Some(session::Session::new_pvp(
-                        handle,
-                        audio_binder,
-                        link_code,
-                        patch
-                            .and_then(|(patch_name, patch_version)| {
-                                patches_scanner
-                                    .read()
-                                    .get(&patch_name)
-                                    .and_then(|p| p.versions.get(&patch_version))
-                                    .as_ref()
-                                    .map(|v| v.netplay_compatibility.clone())
-                            })
-                            .unwrap_or(local_game.family_and_variant().0.to_owned()),
-                        local_settings,
-                        local_game,
-                        &local_rom,
-                        &local_negotiated_state.save_data,
-                        remote_settings,
-                        remote_game,
-                        &remote_rom,
-                        &remote_negotiated_state.save_data,
-                        emu_tps_counter.clone(),
-                        sender,
-                        receiver,
-                        peer_conn,
-                        is_offerer,
-                        replays_path,
-                        match_type,
-                        config.read().input_delay,
-                        rng_seed,
-                        max_queue_length,
-                    )?);
+                    {
+                        let config = config.read();
+                        main_view.lock().session = Some(session::Session::new_pvp(
+                            handle,
+                            audio_binder,
+                            link_code,
+                            patch
+                                .and_then(|(patch_name, patch_version)| {
+                                    patches_scanner
+                                        .read()
+                                        .get(&patch_name)
+                                        .and_then(|p| p.versions.get(&patch_version))
+                                        .as_ref()
+                                        .map(|v| v.netplay_compatibility.clone())
+                                })
+                                .unwrap_or(local_game.family_and_variant().0.to_owned()),
+                            local_settings,
+                            local_game,
+                            &local_rom,
+                            &local_negotiated_state.save_data,
+                            remote_settings,
+                            remote_game,
+                            &remote_rom,
+                            &remote_negotiated_state.save_data,
+                            emu_tps_counter.clone(),
+                            sender,
+                            receiver,
+                            peer_conn,
+                            is_offerer,
+                            replays_path,
+                            match_type,
+                            config.input_delay,
+                            rng_seed,
+                            config.max_queue_length as usize,
+                        )?);
+                    }
                     egui_ctx.request_repaint();
                     *connection_task.lock().await = None;
 
@@ -1475,7 +1477,6 @@ impl MainView {
                                         config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
                                     },
                                     main_view.link_code.clone(),
-                                    config.max_queue_length as usize,
                                     config.nickname.clone().unwrap_or_else(|| "".to_string()),
                                     config.replays_path(),
                                     main_view.connection_task.clone(),
