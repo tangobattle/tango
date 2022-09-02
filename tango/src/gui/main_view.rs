@@ -7,6 +7,12 @@ use crate::{
     audio, config, game, gui, i18n, input, net, patch, randomcode, rom, save, session, stats,
 };
 
+// Locking order:
+// - connection task
+// - lobby
+// - selection
+// Don't mess this up or you will be sad.
+
 pub struct State {
     pub session: Option<session::Session>,
     pub selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
