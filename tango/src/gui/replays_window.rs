@@ -70,6 +70,7 @@ impl ReplaysWindow {
         show: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
         patches_scanner: gui::PatchesScanner,
+        roms_scanner: gui::ROMsScanner,
         replays_path: &std::path::PathBuf,
     ) {
         let mut show_window = show.is_some();
