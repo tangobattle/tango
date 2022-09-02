@@ -122,6 +122,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let handle = rt.handle().clone();
 
     let sdl = sdl2::init().unwrap();
+    let audio = sdl.audio().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
     let event_loop = glutin::event_loop::EventLoopBuilder::with_user_event().build();
@@ -176,20 +177,34 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
     let mut gui = gui::Gui::new(&egui_glow.egui_ctx);
 
-    let audio_device = cpal::default_host()
-        .default_output_device()
-        .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-    log::info!(
-        "supported audio output configs: {:?}",
-        audio_device.supported_output_configs()?.collect::<Vec<_>>()
-    );
-    let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
-    log::info!("selected audio config: {:?}", audio_supported_config);
+    let audio_binder = audio::LateBinder::new(48000);
+    let audio_device = audio::sdl2::open_stream(
+        &audio,
+        &sdl2::audio::AudioSpecDesired {
+            freq: Some(48000),
+            channels: Some(audio::NUM_CHANNELS as u8),
+            samples: Some(512),
+        },
+        audio_binder.clone(),
+    )
+    .unwrap();
+    log::info!("audio spec: {:?}", audio_device.spec());
+    audio_device.resume();
 
-    let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
-    let stream =
-        audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
-    stream.play()?;
+    // let audio_device = cpal::default_host()
+    //     .default_output_device()
+    //     .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
+    // log::info!(
+    //     "supported audio output configs: {:?}",
+    //     audio_device.supported_output_configs()?.collect::<Vec<_>>()
+    // );
+    // let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
+    // log::info!("selected audio config: {:?}", audio_supported_config);
+
+    // let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
+    // let stream =
+    //     audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
+    // stream.play()?;
 
     let fps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(30)));
     let emu_tps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(10)));
