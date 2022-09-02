@@ -103,6 +103,64 @@ fn are_settings_compatible(
     roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) -> bool {
+    if !local_settings
+        .game_info
+        .as_ref()
+        .map(|gi| {
+            remote_settings
+                .available_games
+                .iter()
+                .any(|g| g == &gi.family_and_variant)
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    if !remote_settings
+        .game_info
+        .as_ref()
+        .map(|gi| {
+            local_settings
+                .available_games
+                .iter()
+                .any(|g| g == &gi.family_and_variant)
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    if !local_settings
+        .game_info
+        .as_ref()
+        .and_then(|gi| gi.patch.as_ref())
+        .map(|pi| {
+            remote_settings
+                .available_patches
+                .iter()
+                .any(|(pn, pvs)| pn == &pi.name && pvs.contains(&pi.version))
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
+    if !remote_settings
+        .game_info
+        .as_ref()
+        .and_then(|gi| gi.patch.as_ref())
+        .map(|pi| {
+            local_settings
+                .available_patches
+                .iter()
+                .any(|(pn, pvs)| pn == &pi.name && pvs.contains(&pi.version))
+        })
+        .unwrap_or(false)
+    {
+        return false;
+    }
+
     #[derive(PartialEq)]
     struct SimplifiedSettings {
         netplay_compatibility: Option<String>,
