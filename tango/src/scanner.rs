@@ -29,7 +29,7 @@ where
     }
 
     pub fn read(&self) -> parking_lot::MappedRwLockReadGuard<'_, T> {
-        parking_lot::RwLockReadGuard::map(self.inner.read(), |g| &g.items)
+        parking_lot::RwLockReadGuard::map(self.inner.read_recursive(), |g| &g.items)
     }
 
     pub fn is_scanning(&self) -> bool {

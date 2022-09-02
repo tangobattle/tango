@@ -326,9 +326,10 @@ impl Lobby {
         &mut self,
         settings: net::protocol::Settings,
         patches_path: &std::path::Path,
-        roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
-        patches: &std::collections::BTreeMap<String, patch::Patch>,
     ) {
+        let roms = self.roms_scanner.read();
+        let patches = self.patches_scanner.read();
+
         let old_reveal_setup = self.remote_settings.reveal_setup;
         self.remote_rom = settings.game_info.as_ref().and_then(|gi| {
             game::find_by_family_and_variant(&gi.family_and_variant.0, gi.family_and_variant.1)
@@ -527,9 +528,7 @@ async fn run_connection_task(
                                     },
                                     net::protocol::Packet::Settings(settings) => {
                                         let mut lobby = lobby.lock().await;
-                                        let roms = roms_scanner.read();
-                                        let patches = patches_scanner.read();
-                                        lobby.set_remote_settings(settings, &patches_path, &roms, &patches);
+                                        lobby.set_remote_settings(settings, &patches_path);
                                         egui_ctx.request_repaint();
                                     },
                                     net::protocol::Packet::Commit(commit) => {
@@ -1308,15 +1307,11 @@ impl MainView {
                         0,
                     );
                     let settings = lobby.make_local_settings();
-                    let _ = lobby.send_settings(settings).await;
+                    let _ = lobby.send_settings(settings.clone()).await;
                     let roms = state.roms_scanner.read();
                     let patches = state.patches_scanner.read();
-                    if !are_settings_compatible(
-                        &lobby.make_local_settings(),
-                        &lobby.remote_settings,
-                        &roms,
-                        &patches,
-                    ) {
+                    if !are_settings_compatible(&settings, &lobby.remote_settings, &roms, &patches)
+                    {
                         lobby.remote_commitment = None;
                     }
                 });
@@ -1825,7 +1820,7 @@ impl MainView {
                                         if let Some(save_data) = save_data {
                                             let _ = lobby.commit(&save_data).await;
                                         }
-                                    } else if !ready {
+                                    } else if was_ready && !ready {
                                         let _ = lobby.uncommit().await;
                                     }
                                 });
