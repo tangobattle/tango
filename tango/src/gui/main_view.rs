@@ -7,8 +7,6 @@ use crate::{
     audio, config, game, gui, i18n, input, net, patch, randomcode, rom, save, session, stats,
 };
 
-use super::save_select_window;
-
 pub struct State {
     pub session: Option<session::Session>,
     pub selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
@@ -16,6 +14,7 @@ pub struct State {
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_window::State>,
     show_patches: Option<gui::patches_window::State>,
+    show_replays: Option<gui::replays_window::State>,
 }
 
 impl State {
@@ -27,6 +26,7 @@ impl State {
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
             show_patches: None,
+            show_replays: None,
         }
     }
 }
@@ -580,6 +580,7 @@ pub struct MainView {
     session_view: gui::session_view::SessionView,
     save_select_window: gui::save_select_window::SaveSelectWindow,
     patches_window: gui::patches_window::PatchesWindow,
+    replays_window: gui::replays_window::ReplaysWindow,
     save_view: gui::save_view::SaveView,
 }
 
@@ -589,6 +590,7 @@ impl MainView {
             session_view: gui::session_view::SessionView::new(),
             save_select_window: gui::save_select_window::SaveSelectWindow::new(),
             patches_window: gui::patches_window::PatchesWindow::new(),
+            replays_window: gui::replays_window::ReplaysWindow::new(),
             save_view: gui::save_view::SaveView::new(),
         }
     }
@@ -626,6 +628,9 @@ impl MainView {
             &config.patches_path(),
             state.patches_scanner.clone(),
         );
+
+        self.replays_window
+            .show(ctx, &mut main_view.show_replays, &config.language);
 
         let (selection_changed, has_selection) = {
             let mut selection = main_view.selection.lock();
@@ -691,10 +696,19 @@ impl MainView {
                                 };
                             }
 
-                            ui.selectable_label(main_view.show_patches.is_some(), "📽️")
+                            if ui
+                                .selectable_label(main_view.show_replays.is_some(), "📽️")
                                 .on_hover_text_at_pointer(
                                     i18n::LOCALES.lookup(&config.language, "replays").unwrap(),
-                                );
+                                )
+                                .clicked()
+                            {
+                                main_view.show_replays = if main_view.show_replays.is_none() {
+                                    Some(gui::replays_window::State::new())
+                                } else {
+                                    None
+                                };
+                            }
                         });
                     });
 
@@ -813,7 +827,7 @@ impl MainView {
                                     saves_scanner.rescan(move || save::scan_saves(&saves_path));
                                 }
                             });
-                            Some(save_select_window::State::new(selection.as_ref().map(
+                            Some(gui::save_select_window::State::new(selection.as_ref().map(
                                 |selection| {
                                     (selection.game, Some(selection.save.path.to_path_buf()))
                                 },

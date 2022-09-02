@@ -32,7 +32,7 @@ impl PatchesWindow {
             "🩹 {}",
             i18n::LOCALES.lookup(language, "patches").unwrap()
         ))
-        .id(egui::Id::new("patch-window"))
+        .id(egui::Id::new("patches-window"))
         .resizable(true)
         .min_width(400.0)
         .default_width(600.0)

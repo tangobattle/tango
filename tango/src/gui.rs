@@ -7,6 +7,7 @@ mod debug_window;
 mod escape_window;
 mod main_view;
 mod patches_window;
+mod replays_window;
 mod save_select_window;
 mod save_view;
 mod session_view;
