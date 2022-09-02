@@ -311,8 +311,10 @@ impl Match {
         }
 
         let hooks = self.local_game.hooks();
-        let local_family_and_variant = self.local_game.family_and_variant();
-        let remote_family_and_variant = self.remote_game.family_and_variant();
+
+        let local_game_settings = self.local_settings.game_info.as_ref().unwrap();
+        let remote_game_settings = self.remote_settings.game_info.as_ref().unwrap();
+
         round_state.round = Some(Round {
             hooks,
             number: round_state.number,
@@ -340,18 +342,32 @@ impl Match {
                     local_side: Some(tango_protos::replay::replay_metadata::Side {
                         nickname: self.local_settings.nickname.clone(),
                         game_info: Some(tango_protos::replay::replay_metadata::GameInfo {
-                            rom_family: local_family_and_variant.0.to_string(),
-                            rom_variant: local_family_and_variant.1 as u32,
-                            patch: None, // TODO
+                            rom_family: local_game_settings.family_and_variant.0.to_string(),
+                            rom_variant: local_game_settings.family_and_variant.1 as u32,
+                            patch: if let Some(patch) = local_game_settings.patch.as_ref() {
+                                Some(tango_protos::replay::replay_metadata::game_info::Patch {
+                                    name: patch.name.clone(),
+                                    version: patch.version.to_string(),
+                                })
+                            } else {
+                                None
+                            },
                         }),
                         reveal_setup: self.local_settings.reveal_setup,
                     }),
                     remote_side: Some(tango_protos::replay::replay_metadata::Side {
                         nickname: self.remote_settings.nickname.clone(),
                         game_info: Some(tango_protos::replay::replay_metadata::GameInfo {
-                            rom_family: remote_family_and_variant.0.to_string(),
-                            rom_variant: remote_family_and_variant.1 as u32,
-                            patch: None, // TODO
+                            rom_family: remote_game_settings.family_and_variant.0.to_string(),
+                            rom_variant: remote_game_settings.family_and_variant.1 as u32,
+                            patch: if let Some(patch) = remote_game_settings.patch.as_ref() {
+                                Some(tango_protos::replay::replay_metadata::game_info::Patch {
+                                    name: patch.name.clone(),
+                                    version: patch.version.to_string(),
+                                })
+                            } else {
+                                None
+                            },
                         }),
                         reveal_setup: self.remote_settings.reveal_setup,
                     }),
