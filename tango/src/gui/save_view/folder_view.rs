@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, rom, save};
+use crate::{gui, i18n, rom, save};
 
 pub struct State {
     grouped: bool,
@@ -31,7 +31,7 @@ impl FolderView {
         clipboard: &mut arboard::Clipboard,
         font_families: &gui::FontFamilies,
         lang: &unic_langid::LanguageIdentifier,
-        game: &'static (dyn game::Game + Send + Sync),
+        game_lang: &unic_langid::LanguageIdentifier,
         chips_view: &Box<dyn save::ChipsView<'a> + 'a>,
         assets: &Box<dyn rom::Assets + Send + Sync>,
         state: &mut State,
@@ -202,7 +202,7 @@ impl FolderView {
                                 egui::RichText::new(
                                     info.map(|info| info.name.as_str()).unwrap_or("???"),
                                 )
-                                .family(font_families.for_language(&game.language())),
+                                .family(font_families.for_language(game_lang)),
                             );
                             ui.label(format!(" {}", chips_view.chip_codes()[chip.code] as char));
                         });

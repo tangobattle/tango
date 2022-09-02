@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, rom, save};
+use crate::{gui, i18n, rom, save};
 
 pub struct State {}
 
@@ -83,7 +83,7 @@ impl NavicustView {
         clipboard: &mut arboard::Clipboard,
         font_families: &gui::FontFamilies,
         lang: &unic_langid::LanguageIdentifier,
-        game: &'static (dyn game::Game + Send + Sync),
+        game_lang: &unic_langid::LanguageIdentifier,
         navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
         assets: &Box<dyn rom::Assets + Send + Sync>,
         _state: &mut State,
@@ -108,18 +108,6 @@ impl NavicustView {
                 ))
                 .clicked()
             {
-                let solid_parts = items
-                    .iter()
-                    .filter(|(info, _)| info.is_solid)
-                    .map(|(info, _)| info.name.clone())
-                    .collect::<Vec<_>>();
-
-                let plus_parts = items
-                    .iter()
-                    .filter(|(info, _)| info.is_solid)
-                    .map(|(info, _)| info.name.clone())
-                    .collect::<Vec<_>>();
-
                 let _ = clipboard.set_text(
                     itertools::Itertools::zip_longest(
                         items
@@ -149,7 +137,7 @@ impl NavicustView {
                     show_part_name(
                         ui,
                         egui::RichText::new(&info.name)
-                            .family(font_families.for_language(&game.language())),
+                            .family(font_families.for_language(game_lang)),
                         true,
                         color,
                     );
@@ -161,7 +149,7 @@ impl NavicustView {
                     show_part_name(
                         ui,
                         egui::RichText::new(&info.name)
-                            .family(font_families.for_language(&game.language())),
+                            .family(font_families.for_language(game_lang)),
                         true,
                         color,
                     );

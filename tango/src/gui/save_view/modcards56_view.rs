@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, rom, save};
+use crate::{gui, i18n, rom, save};
 
 pub struct State {}
 
@@ -41,7 +41,7 @@ impl Modcards56View {
         clipboard: &mut arboard::Clipboard,
         font_families: &gui::FontFamilies,
         lang: &unic_langid::LanguageIdentifier,
-        game: &'static (dyn game::Game + Send + Sync),
+        game_lang: &unic_langid::LanguageIdentifier,
         modcards56_view: &Box<dyn save::Modcards56View<'a> + 'a>,
         assets: &Box<dyn rom::Assets + Send + Sync>,
         _state: &mut State,
@@ -116,7 +116,7 @@ impl Modcards56View {
                                 assets.modcard56(modcard.id).map(|m| (m, modcard.enabled))
                             }) {
                                 let mut text = egui::RichText::new(&modcard.name)
-                                    .family(font_families.for_language(&game.language()));
+                                    .family(font_families.for_language(game_lang));
                                 if !enabled {
                                     text = text.strikethrough();
                                 }
@@ -139,9 +139,8 @@ impl Modcards56View {
 
                                             show_effect(
                                                 ui,
-                                                egui::RichText::new(&effect.name).family(
-                                                    font_families.for_language(&game.language()),
-                                                ),
+                                                egui::RichText::new(&effect.name)
+                                                    .family(font_families.for_language(game_lang)),
                                                 modcard
                                                     .as_ref()
                                                     .map(|modcard| modcard.enabled)
@@ -165,9 +164,8 @@ impl Modcards56View {
 
                                             show_effect(
                                                 ui,
-                                                egui::RichText::new(&effect.name).family(
-                                                    font_families.for_language(&game.language()),
-                                                ),
+                                                egui::RichText::new(&effect.name)
+                                                    .family(font_families.for_language(game_lang)),
                                                 modcard
                                                     .as_ref()
                                                     .map(|modcard| modcard.enabled)
