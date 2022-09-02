@@ -183,11 +183,12 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         "supported audio output configs: {:?}",
         audio_device.supported_output_configs()?.collect::<Vec<_>>()
     );
-    let audio_supported_config = audio::get_supported_config(&audio_device)?;
+    let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
     log::info!("selected audio config: {:?}", audio_supported_config);
 
-    let audio_binder = audio::LateBinder::new(audio_supported_config.clone());
-    let stream = audio::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
+    let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
+    let stream =
+        audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
     stream.play()?;
 
     let fps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(30)));

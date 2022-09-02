@@ -147,7 +147,7 @@ impl Session {
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            audio_binder.supported_config().sample_rate(),
+            audio_binder.sample_rate(),
         ))))?;
 
         let vbuf = Arc::new(Mutex::new(vec![
@@ -218,7 +218,7 @@ impl Session {
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            audio_binder.supported_config().sample_rate(),
+            audio_binder.sample_rate(),
         ))))?;
 
         let vbuf = Arc::new(Mutex::new(vec![
@@ -295,7 +295,7 @@ impl Session {
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
-            audio_binder.supported_config().sample_rate(),
+            audio_binder.sample_rate(),
         ))))?;
 
         thread.handle().run_on_core(move |mut core| {
