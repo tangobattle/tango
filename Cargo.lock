@@ -2920,6 +2920,7 @@ version = "0.1.0"
 dependencies = [
  "bindgen 0.57.0",
  "cmake",
+ "libc",
  "shell-words",
 ]
 

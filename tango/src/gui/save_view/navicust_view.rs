@@ -128,7 +128,7 @@ impl NavicustView {
                             .map(|(info, _)| info.name.as_str()),
                         items
                             .iter()
-                            .filter(|(info, _)| info.is_solid)
+                            .filter(|(info, _)| !info.is_solid)
                             .map(|(info, _)| info.name.as_str()),
                     )
                     .map(|v| match v {
