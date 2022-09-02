@@ -2,7 +2,7 @@ mod hooks;
 mod rom;
 mod save;
 
-use crate::game;
+use crate::{game, patch};
 
 const MATCH_TYPES: &[usize] = &[1, 1];
 
@@ -46,10 +46,19 @@ impl game::Game for EXE45Impl {
         &self,
         rom: &[u8],
         wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
         Ok(Box::new(rom::Assets::new(
             &rom::BR4J,
-            &rom::CHARSET,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::CHARSET),
             rom,
             wram,
         )))

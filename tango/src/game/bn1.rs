@@ -2,7 +2,7 @@ mod hooks;
 mod rom;
 mod save;
 
-use crate::game;
+use crate::{game, patch};
 
 const MATCH_TYPES: &[usize] = &[1];
 
@@ -54,10 +54,19 @@ impl game::Game for EXE1Impl {
         &self,
         rom: &[u8],
         wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
         Ok(Box::new(rom::Assets::new(
             &rom::AREJ_00,
-            &rom::JA_CHARSET,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::JA_CHARSET),
             rom,
             wram,
         )))
@@ -112,10 +121,19 @@ impl game::Game for BN1Impl {
         &self,
         rom: &[u8],
         wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
         Ok(Box::new(rom::Assets::new(
             &rom::AREE_00,
-            &rom::EN_CHARSET,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::EN_CHARSET),
             rom,
             wram,
         )))
