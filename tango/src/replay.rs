@@ -17,6 +17,7 @@ const VERSION: u8 = 0x11;
 
 pub type Metadata = tango_protos::replay::ReplayMetadata;
 
+#[derive(Clone)]
 pub struct Replay {
     pub is_complete: bool,
     pub metadata: Metadata,

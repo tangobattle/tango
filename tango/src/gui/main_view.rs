@@ -786,6 +786,9 @@ impl MainView {
             state.patches_scanner.clone(),
             state.roms_scanner.clone(),
             &config.replays_path(),
+            state.audio_binder.clone(),
+            state.emu_tps_counter.clone(),
+            state.main_view.clone(),
         );
 
         let (selection_changed, has_selection) = {

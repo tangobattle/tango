@@ -1,7 +1,7 @@
 use chrono_locale::LocaleDate;
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, patch, replay, rom, save, scanner};
+use crate::{audio, game, gui, i18n, patch, replay, rom, save, scanner, session, stats};
 
 struct Selection {
     path: std::path::PathBuf,
@@ -91,6 +91,9 @@ impl ReplaysWindow {
         patches_scanner: gui::PatchesScanner,
         roms_scanner: gui::ROMsScanner,
         replays_path: &std::path::Path,
+        audio_binder: audio::LateBinder,
+        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+        main_view: std::sync::Arc<parking_lot::Mutex<gui::main_view::State>>,
     ) {
         let mut show_window = show.is_some();
         egui::Window::new(format!(
@@ -399,15 +402,36 @@ impl ReplaysWindow {
                                         i18n::LOCALES.lookup(language, "replays.play").unwrap()
                                     ))
                                     .clicked()
-                                {}
+                                {
+                                    rayon::spawn({
+                                        let ctx = ctx.clone();
+                                        let audio_binder = audio_binder.clone();
+                                        let rom = selection.rom.clone();
+                                        let emu_tps_counter = emu_tps_counter.clone();
+                                        let replay = selection.replay.clone();
 
-                                if ui
-                                    .button(format!(
-                                        "💾 {}",
-                                        i18n::LOCALES.lookup(language, "replays.export").unwrap()
-                                    ))
-                                    .clicked()
-                                {}
+                                        move || {
+                                            main_view.lock().session = Some(
+                                                session::Session::new_replayer(
+                                                    audio_binder,
+                                                    &rom,
+                                                    emu_tps_counter,
+                                                    &replay,
+                                                )
+                                                .unwrap(),
+                                            ); // TODO: Don't unwrap maybe
+                                            ctx.request_repaint();
+                                        }
+                                    });
+                                }
+
+                                // if ui
+                                //     .button(format!(
+                                //         "💾 {}",
+                                //         i18n::LOCALES.lookup(language, "replays.export").unwrap()
+                                //     ))
+                                //     .clicked()
+                                // {}
 
                                 ui.with_layout(
                                     egui::Layout::top_down_justified(egui::Align::Min),

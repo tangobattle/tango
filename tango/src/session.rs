@@ -247,7 +247,7 @@ impl Session {
         audio_binder: audio::LateBinder,
         rom: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
-        replay: replay::Replay,
+        replay: &replay::Replay,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -294,8 +294,9 @@ impl Session {
             audio_binder.sample_rate(),
         ))))?;
 
+        let local_state = replay.local_state.clone();
         thread.handle().run_on_core(move |mut core| {
-            core.load_state(replay.local_state.as_ref().unwrap())
+            core.load_state(local_state.as_ref().unwrap())
                 .expect("load state");
         });
         thread.handle().unpause();
