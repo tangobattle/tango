@@ -733,7 +733,7 @@ impl SettingsWindow {
                             ui.label("Game support: ");
 
                             ui.hyperlink_to("weenie", "https://github.com/bigfarts");
-                            ui.label(" (BN)");
+                            ui.label(" (BN1-6)");
 
                             ui.label(", ");
 
@@ -748,6 +748,14 @@ impl SettingsWindow {
                         ui.horizontal_wrapped(|ui| {
                             ui.spacing_mut().item_spacing.x = 0.0;
                             ui.label("Odds and ends: ");
+
+                            ui.hyperlink_to("zachristmas", "https://github.com/zachristmas");
+
+                            ui.label(", ");
+
+                            ui.hyperlink_to("Akatsuki", "https://github.com/Akatsuki");
+
+                            ui.label(", ");
 
                             ui.hyperlink_to("sailormoon", "https://github.com/sailormoon");
 
