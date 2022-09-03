@@ -648,15 +648,6 @@ async fn run_connection_task(
                         anyhow::bail!("attempted to start match in invalid state");
                     };
 
-                    let remote_game = if let Some(game) = remote_settings.game_info.as_ref().and_then(|gi| {
-                        let (family, variant) = &gi.family_and_variant;
-                        game::find_by_family_and_variant(family, *variant)
-                    }) {
-                        game
-                    } else {
-                        anyhow::bail!("attempted to start match in invalid state");
-                    };
-
                     sender.send_start_match().await?;
                     match receiver.receive().await? {
                         net::protocol::Packet::StartMatch(_) => {},

@@ -31,7 +31,7 @@ pub struct PvP {
 }
 
 pub struct SinglePlayer {
-    completion_tx: oneshot::Sender<()>,
+    _completion_tx: oneshot::Sender<()>,
 }
 
 pub enum Mode {
@@ -78,8 +78,6 @@ impl Session {
             .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
-
-        let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
@@ -246,7 +244,9 @@ impl Session {
             _audio_binding: audio_binding,
             thread,
             joyflags,
-            mode: Mode::SinglePlayer(SinglePlayer { completion_tx }),
+            mode: Mode::SinglePlayer(SinglePlayer {
+                _completion_tx: completion_tx,
+            }),
             completion_rx,
         })
     }

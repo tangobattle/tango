@@ -4,7 +4,7 @@ mod navicust_view;
 
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, rom, save};
+use crate::{gui, i18n, rom, save};
 
 #[derive(PartialEq, Clone)]
 enum Tab {

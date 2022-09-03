@@ -79,10 +79,12 @@ impl Save {
         })
     }
 
+    #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
     }
 
+    #[allow(dead_code)]
     pub fn compute_checksum(&self) -> u32 {
         compute_raw_checksum(&self.buf) + checksum_start_for_variant(self.game_info.variant)
     }

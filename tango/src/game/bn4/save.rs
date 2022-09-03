@@ -104,7 +104,7 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
-        let mut buf: [u8; SRAM_SIZE] = buf
+        let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
@@ -122,12 +122,14 @@ impl Save {
         })
     }
 
+    #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(
             &self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
         )
     }
 
+    #[allow(dead_code)]
     pub fn compute_checksum(&self) -> u32 {
         compute_raw_checksum(&self.buf[self.shift..], self.shift)
             + checksum_start_for_variant(self.game_info.variant)

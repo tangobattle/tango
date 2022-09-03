@@ -55,6 +55,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Er
 }
 
 impl Replay {
+    #[allow(dead_code)]
     pub fn into_remote(mut self) -> Self {
         let remote_state = self.remote_state.take();
         self.remote_state = self.local_state;

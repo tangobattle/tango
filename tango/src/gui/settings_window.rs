@@ -570,10 +570,10 @@ impl SettingsWindow {
             });
     }
 
-    fn show_audio_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
+    fn show_audio_tab(&mut self, ui: &mut egui::Ui, _config: &mut config::Config) {
         egui::Grid::new("settings-window-audio-grid")
             .num_columns(2)
-            .show(ui, |ui| {});
+            .show(ui, |_ui| {});
     }
 
     fn show_netplay_tab(&mut self, ui: &mut egui::Ui, config: &mut config::Config) {
