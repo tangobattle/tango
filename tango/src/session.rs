@@ -30,8 +30,12 @@ pub struct PvP {
     cancellation_token: tokio_util::sync::CancellationToken,
 }
 
+pub struct SinglePlayer {
+    completion_tx: oneshot::Sender<()>,
+}
+
 pub enum Mode {
-    SinglePlayer,
+    SinglePlayer(SinglePlayer),
     PvP(PvP),
     Replayer,
 }
@@ -205,7 +209,7 @@ impl Session {
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
-        let (_, completion_rx) = oneshot::channel();
+        let (completion_tx, completion_rx) = oneshot::channel();
 
         let thread = mgba::thread::Thread::new(core);
 
@@ -242,7 +246,7 @@ impl Session {
             _audio_binding: audio_binding,
             thread,
             joyflags,
-            mode: Mode::SinglePlayer,
+            mode: Mode::SinglePlayer(SinglePlayer { completion_tx }),
             completion_rx,
         })
     }

@@ -116,19 +116,22 @@ impl SessionView {
             };
         }
 
-        // If we're in single-player mode, allow speedup.
-        if let session::Mode::SinglePlayer = session.mode() {
-            session.set_fps(
-                if input_mapping
-                    .speed_up
-                    .iter()
-                    .any(|c| c.is_active(&input_state))
-                {
-                    session::EXPECTED_FPS * 3.0
-                } else {
-                    session::EXPECTED_FPS
-                },
-            );
+        // If we're in single-player or replayer mode, allow speedup.
+        match session.mode() {
+            session::Mode::SinglePlayer(_) | session::Mode::Replayer => {
+                session.set_fps(
+                    if input_mapping
+                        .speed_up
+                        .iter()
+                        .any(|c| c.is_active(&input_state))
+                    {
+                        session::EXPECTED_FPS * 3.0
+                    } else {
+                        session::EXPECTED_FPS
+                    },
+                );
+            }
+            _ => {}
         }
 
         // If we've crashed, log the error and panic.
