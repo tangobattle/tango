@@ -1278,7 +1278,7 @@ impl PlayPane {
                                                     .lookup(&config.language, "main.fight")
                                                     .unwrap()
                                             )
-                                        }).size(24.0)),
+                                        })),
                                     )
                                     .clicked()
                                 {
@@ -1300,7 +1300,7 @@ impl PlayPane {
                                 }
 
                                 if ui
-                                    .add_enabled(!error_window_open, egui::Button::new(egui::RichText::new("🎲").size(24.0)))
+                                    .add_enabled(!error_window_open, egui::Button::new(egui::RichText::new("🎲")))
                                     .on_hover_text(
                                         i18n::LOCALES
                                             .lookup(&config.language, "main.random")
@@ -1358,7 +1358,6 @@ impl PlayPane {
                             let input_resp = ui.add_enabled(
                                 cancellation_token.is_none() && !error_window_open,
                                 egui::TextEdit::singleline(&mut state.link_code)
-                                    .margin(egui::Vec2::new(4.0, 4.0))
                                     .hint_text(
                                         i18n::LOCALES
                                             .lookup(&config.language, "main.link-code")
@@ -1458,8 +1457,7 @@ impl PlayPane {
                                                     "select-save.select-button",
                                                 )
                                                 .unwrap(),
-                                        )
-                                        .size(24.0);
+                                        );
 
                                         if state.show_save_select.is_some() {
                                             egui::Button::new(text.color(
@@ -1548,7 +1546,6 @@ impl PlayPane {
                                                 };
                                             ui.add(
                                                 egui::TextEdit::singleline(&mut String::new())
-                                                    .margin(egui::Vec2::new(4.0, 4.0))
                                                     .layouter(&mut layouter),
                                             )
                                         })
