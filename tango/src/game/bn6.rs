@@ -54,14 +54,13 @@ impl game::Game for EXE6GImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
                 variant: save::Variant::Gregar,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn load_rom_assets(
@@ -135,14 +134,13 @@ impl game::Game for EXE6FImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
                 variant: save::Variant::Falzar,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn load_rom_assets(
@@ -216,14 +214,13 @@ impl game::Game for BN6GImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
                 variant: save::Variant::Gregar,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn load_rom_assets(
@@ -297,14 +294,13 @@ impl game::Game for BN6FImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
                 variant: save::Variant::Falzar,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn load_rom_assets(

@@ -38,16 +38,14 @@ impl game::Game for EXE45Impl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::new(data)?;
-        Ok(Box::new(save))
+        Ok(Box::new(save::Save::new(data)?))
     }
 
     fn save_from_wram(
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(data)?;
-        Ok(Box::new(save))
+        Ok(Box::new(save::Save::from_wram(data)?))
     }
 
     fn load_rom_assets(

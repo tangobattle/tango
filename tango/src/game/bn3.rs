@@ -37,13 +37,12 @@ impl game::Game for EXE3WImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 variant: save::Variant::White,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn parse_save(
@@ -94,13 +93,12 @@ impl game::Game for EXE3BImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 variant: save::Variant::Blue,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn parse_save(
@@ -151,13 +149,12 @@ impl game::Game for BN3WImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 variant: save::Variant::White,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn parse_save(
@@ -208,13 +205,12 @@ impl game::Game for BN3BImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 variant: save::Variant::Blue,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn parse_save(

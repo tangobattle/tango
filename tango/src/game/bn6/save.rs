@@ -77,12 +77,13 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
-        let mut buf: [u8; SRAM_SIZE] = buf
-            .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
-        save::mask_save(&mut buf[..], MASK_OFFSET);
-        Ok(Self { buf, game_info })
+        Ok(Self {
+            buf: buf
+                .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
+                .and_then(|buf| buf.try_into().ok())
+                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+            game_info,
+        })
     }
 
     pub fn game_info(&self) -> &GameInfo {

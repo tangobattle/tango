@@ -58,12 +58,12 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8]) -> Result<Self, anyhow::Error> {
-        let mut buf: [u8; SRAM_SIZE] = buf
-            .get(..SRAM_SIZE)
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
-        save::mask_save(&mut buf[..], MASK_OFFSET);
-        Ok(Self { buf })
+        Ok(Self {
+            buf: buf
+                .get(..SRAM_SIZE)
+                .and_then(|buf| buf.try_into().ok())
+                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+        })
     }
 
     pub fn current_navi(&self) -> u8 {

@@ -53,14 +53,13 @@ impl game::Game for EXE5BImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
                 variant: save::Variant::Protoman,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }
 
@@ -112,14 +111,13 @@ impl game::Game for EXE5CImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
                 variant: save::Variant::Colonel,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }
 
@@ -171,14 +169,13 @@ impl game::Game for BN5PImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
                 variant: save::Variant::Protoman,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }
 
@@ -230,13 +227,12 @@ impl game::Game for BN5CImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
                 variant: save::Variant::Colonel,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }

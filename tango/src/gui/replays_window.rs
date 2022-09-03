@@ -1,12 +1,18 @@
 use chrono_locale::LocaleDate;
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, replay, scanner};
+use crate::{game, gui, i18n, replay, save, scanner};
+
+struct Selection {
+    path: std::path::PathBuf,
+    replay: replay::Replay,
+    save: Box<dyn save::Save + Send + Sync>,
+}
 
 pub struct State {
     replays_scanner:
         scanner::Scanner<std::collections::BTreeMap<std::path::PathBuf, replay::Metadata>>,
-    selection: Option<std::path::PathBuf>,
+    selection: Option<Selection>,
 }
 
 impl State {
@@ -124,17 +130,21 @@ impl ReplaysWindow {
                                     continue;
                                 };
 
-                                let local_game =
+                                let local_game = if let Some(game) =
                                     local_side.game_info.as_ref().and_then(|game_info| {
                                         game::find_by_family_and_variant(
                                             game_info.rom_family.as_str(),
                                             game_info.rom_variant as u8,
                                         )
-                                    });
+                                    }) {
+                                    game
+                                } else {
+                                    continue;
+                                };
 
                                 if ui
                                     .selectable_label(
-                                        state.selection.as_ref() == Some(path),
+                                        state.selection.as_ref().map(|s| &s.path) == Some(path),
                                         format!(
                                             "{}",
                                             chrono::DateTime::<chrono::Local>::from(ts)
@@ -143,7 +153,54 @@ impl ReplaysWindow {
                                     )
                                     .clicked()
                                 {
-                                    state.selection = Some(path.clone());
+                                    let mut f = match std::fs::File::open(&path) {
+                                        Ok(f) => f,
+                                        Err(e) => {
+                                            log::error!(
+                                                "failed to load replay {}: {:?}",
+                                                path.display(),
+                                                e
+                                            );
+                                            continue;
+                                        }
+                                    };
+
+                                    let replay = match replay::Replay::decode(&mut f) {
+                                        Ok(replay) => replay,
+                                        Err(e) => {
+                                            log::error!(
+                                                "failed to load replay {}: {:?}",
+                                                path.display(),
+                                                e
+                                            );
+                                            continue;
+                                        }
+                                    };
+
+                                    let save_state =
+                                        if let Some(save_state) = replay.local_state.as_ref() {
+                                            save_state
+                                        } else {
+                                            continue;
+                                        };
+
+                                    let save = match local_game.save_from_wram(save_state.wram()) {
+                                        Ok(save) => save,
+                                        Err(e) => {
+                                            log::error!(
+                                                "failed to load replay {}: {:?}",
+                                                path.display(),
+                                                e
+                                            );
+                                            continue;
+                                        }
+                                    };
+
+                                    state.selection = Some(Selection {
+                                        path: path.clone(),
+                                        replay,
+                                        save,
+                                    });
                                 }
                             }
                         });

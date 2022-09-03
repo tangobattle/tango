@@ -53,13 +53,12 @@ impl game::Game for EXE1Impl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn load_rom_assets(
@@ -132,13 +131,12 @@ impl game::Game for BN1Impl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 
     fn load_rom_assets(

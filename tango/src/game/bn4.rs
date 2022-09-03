@@ -51,14 +51,13 @@ impl game::Game for EXE4RSImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
                 variant: save::Variant::RedSun,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }
 
@@ -108,14 +107,13 @@ impl game::Game for EXE4BMImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::JP,
                 variant: save::Variant::BlueMoon,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }
 
@@ -165,14 +163,13 @@ impl game::Game for BN4RSImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
                 variant: save::Variant::RedSun,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }
 
@@ -222,13 +219,12 @@ impl game::Game for BN4BMImpl {
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
-        let save = save::Save::from_wram(
+        Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
                 region: save::Region::US,
                 variant: save::Variant::BlueMoon,
             },
-        )?;
-        Ok(Box::new(save))
+        )?))
     }
 }

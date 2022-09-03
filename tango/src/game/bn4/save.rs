@@ -109,8 +109,6 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        save::mask_save(&mut buf[..], MASK_OFFSET);
-
         let shift =
             byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
