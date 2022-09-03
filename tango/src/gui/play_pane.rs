@@ -252,6 +252,48 @@ impl Lobby {
         Ok(())
     }
 
+    async fn set_local_selection(
+        &mut self,
+        selection: &Option<gui::Selection>,
+    ) -> Result<(), anyhow::Error> {
+        self.send_settings(net::protocol::Settings {
+            game_info: selection.as_ref().map(|selection| {
+                let (family, variant) = selection.game.family_and_variant();
+                net::protocol::GameInfo {
+                    family_and_variant: (family.to_string(), variant),
+                    patch: selection.patch.as_ref().map(|(name, version, _)| {
+                        net::protocol::PatchInfo {
+                            name: name.clone(),
+                            version: version.clone(),
+                        }
+                    }),
+                }
+            }),
+            ..self.make_local_settings()
+        })
+        .await?;
+        self.selection = if let Some(selection) = selection.as_ref() {
+            Some(LobbySelection {
+                game: selection.game,
+                save: selection.save.save.clone(),
+                rom: selection.rom.clone(),
+                patch: selection.patch.clone(),
+            })
+        } else {
+            None
+        };
+        Ok(())
+    }
+
+    fn can_ready(&self) -> bool {
+        are_settings_compatible(
+            &self.make_local_settings(),
+            &self.remote_settings,
+            &self.roms_scanner.read(),
+            &self.patches_scanner.read(),
+        )
+    }
+
     fn set_remote_settings(
         &mut self,
         settings: net::protocol::Settings,
@@ -312,13 +354,7 @@ impl Lobby {
         });
 
         self.remote_settings = settings;
-        if !are_settings_compatible(
-            &self.make_local_settings(),
-            &self.remote_settings,
-            &roms,
-            &patches,
-        ) || (old_reveal_setup && !self.remote_settings.reveal_setup)
-        {
+        if !self.can_ready() || (old_reveal_setup && !self.remote_settings.reveal_setup) {
             self.local_negotiated_state = None;
         }
     }
@@ -1111,7 +1147,6 @@ impl PlayPane {
                     )
                 })
             {
-                // Handle changes in a different thread.
                 handle.block_on(async {
                     let mut lobby = lobby.lock().await;
                     lobby.match_type = (
@@ -1128,21 +1163,9 @@ impl PlayPane {
                         },
                         0,
                     );
-                    lobby.selection = if let Some(selection) = selection.as_ref() {
-                        Some(LobbySelection {
-                            game: selection.game,
-                            save: selection.save.save.clone(),
-                            rom: selection.rom.clone(),
-                            patch: selection.patch.clone(),
-                        })
-                    } else {
-                        None
-                    };
 
-                    let settings = lobby.make_local_settings();
-                    let _ = lobby.send_settings(settings.clone()).await;
-                    if !are_settings_compatible(&settings, &lobby.remote_settings, &roms, &patches)
-                    {
+                    let _ = lobby.set_local_selection(&selection);
+                    if !lobby.can_ready() {
                         lobby.remote_commitment = None;
                     }
                 });
