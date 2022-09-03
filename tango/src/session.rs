@@ -360,6 +360,10 @@ impl Session {
         self.vbuf.lock()
     }
 
+    pub fn thread_handle(&self) -> mgba::thread::Handle {
+        self.thread.handle()
+    }
+
     pub fn set_joyflags(&self, joyflags: u32) {
         self.joyflags
             .store(joyflags, std::sync::atomic::Ordering::Relaxed);
