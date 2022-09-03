@@ -80,13 +80,14 @@ native-dialog = { version = "0.6", features = [
     "windows_dpi_awareness",
     "windows_visual_styles",
 ] }
-git2 = { version = "0.15", default_features = false, features = [
+git2 = { version = "0.15", default-features = false, features = [
     "https",
     "vendored-libgit2",
 ] }
 chrono = "0.4"
 chrono_locale = "0.1"
 itertools = "0.10"
+reqwest = { version = "0.11", features = ["stream"] }
 
 [build-dependencies]
 embed-resource = "1.7"

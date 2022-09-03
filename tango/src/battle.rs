@@ -1,5 +1,6 @@
 use rand::Rng;
 
+use crate::config;
 use crate::game;
 use crate::lockstep;
 use crate::net;
@@ -52,7 +53,6 @@ pub struct Match {
     netplay_compatiblity: String,
     local_game: &'static (dyn game::Game + Send + Sync),
     local_settings: net::protocol::Settings,
-    remote_game: &'static (dyn game::Game + Send + Sync),
     remote_settings: net::protocol::Settings,
     sender: std::sync::Arc<tokio::sync::Mutex<net::Sender>>,
     _peer_conn: datachannel_wrapper::PeerConnection,
@@ -60,8 +60,7 @@ pub struct Match {
     cancellation_token: tokio_util::sync::CancellationToken,
     replays_path: std::path::PathBuf,
     match_type: (u8, u8),
-    input_delay: u32,
-    max_queue_length: usize,
+    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     is_offerer: bool,
     round_state: tokio::sync::Mutex<RoundState>,
     primary_thread_handle: mgba::thread::Handle,
@@ -71,12 +70,12 @@ pub struct Match {
 
 impl Match {
     pub fn new(
+        config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         link_code: String,
         netplay_compatiblity: String,
         rom: Vec<u8>,
         local_game: &'static (dyn game::Game + Send + Sync),
         local_settings: net::protocol::Settings,
-        remote_game: &'static (dyn game::Game + Send + Sync),
         remote_settings: net::protocol::Settings,
         cancellation_token: tokio_util::sync::CancellationToken,
         sender: net::Sender,
@@ -88,8 +87,6 @@ impl Match {
         remote_save: &[u8],
         replays_path: std::path::PathBuf,
         match_type: (u8, u8),
-        input_delay: u32,
-        max_queue_length: usize,
     ) -> anyhow::Result<std::sync::Arc<Self>> {
         let (round_started_tx, round_started_rx) = tokio::sync::mpsc::channel(1);
         let did_polite_win_last_round = rng.gen::<bool>();
@@ -111,7 +108,6 @@ impl Match {
             netplay_compatiblity,
             local_game,
             local_settings,
-            remote_game,
             remote_settings,
             rom,
             sender: std::sync::Arc::new(tokio::sync::Mutex::new(sender)),
@@ -120,8 +116,7 @@ impl Match {
             cancellation_token,
             replays_path,
             match_type,
-            input_delay,
-            max_queue_length,
+            config,
             round_state: tokio::sync::Mutex::new(RoundState {
                 number: 0,
                 round: None,
@@ -295,12 +290,17 @@ impl Match {
         let (first_state_committed_local_packet, first_state_committed_rx) =
             tokio::sync::oneshot::channel();
 
-        let mut iq = lockstep::PairQueue::new(self.max_queue_length, self.input_delay);
-        log::info!("filling {} ticks of input delay", self.input_delay,);
+        let (input_delay, max_queue_length) = {
+            let config = self.config.read();
+            (config.input_delay, config.max_queue_length)
+        };
+
+        let mut iq = lockstep::PairQueue::new(max_queue_length as usize, input_delay);
+        log::info!("filling {} ticks of input delay", input_delay);
 
         {
             let mut sender = self.sender.lock().await;
-            for i in 0..self.input_delay {
+            for i in 0..input_delay {
                 iq.add_local_input(lockstep::PartialInput {
                     local_tick: i,
                     remote_tick: 0,
@@ -316,6 +316,7 @@ impl Match {
         let remote_game_settings = self.remote_settings.game_info.as_ref().unwrap();
 
         round_state.round = Some(Round {
+            config: self.config.clone(),
             hooks,
             number: round_state.number,
             local_player_index,
@@ -331,6 +332,7 @@ impl Match {
             first_state_committed_local_packet: Some(first_state_committed_local_packet),
             first_state_committed_rx: Some(first_state_committed_rx),
             committed_state: None,
+            replay_filename,
             replay_writer: Some(replay::Writer::new(
                 Box::new(replay_file),
                 tango_protos::replay::ReplayMetadata {
@@ -387,6 +389,7 @@ impl Match {
 }
 
 pub struct Round {
+    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     hooks: &'static (dyn game::Hooks + Send + Sync),
     number: u8,
     local_player_index: u8,
@@ -397,6 +400,7 @@ pub struct Round {
     first_state_committed_local_packet: Option<tokio::sync::oneshot::Sender<()>>,
     first_state_committed_rx: Option<tokio::sync::oneshot::Receiver<()>>,
     committed_state: Option<CommittedState>,
+    replay_filename: std::path::PathBuf,
     replay_writer: Option<replay::Writer>,
     replayer: replayer::Fastforwarder,
     primary_thread_handle: mgba::thread::Handle,
@@ -600,6 +604,39 @@ impl Round {
                 round_result.tick,
                 self.current_tick
             );
+
+            // Need to submit replay to replay collector.
+            let replaycollector_endpoint = self.config.read().replaycollector_endpoint.clone();
+            if !replaycollector_endpoint.is_empty() {
+                tokio::spawn({
+                    let replay_path = self.replay_filename.clone();
+                    async move {
+                        let replay_path2 = replay_path.clone();
+                        if let Err(e) = (move || async move {
+                            let client = reqwest::Client::new();
+                            let replay_file = tokio::fs::File::open(&replay_path2).await?;
+
+                            client
+                                .post(replaycollector_endpoint)
+                                .header("Content-Type", "application/x-tango-replay")
+                                .body(replay_file)
+                                .send()
+                                .await?
+                                .error_for_status()?;
+
+                            Ok::<(), anyhow::Error>(())
+                        })()
+                        .await
+                        {
+                            log::error!(
+                                "failed to submit replay {}: {:?}",
+                                replay_path.display(),
+                                e
+                            );
+                        }
+                    }
+                });
+            }
         }
 
         Ok(Some(match round_result.result {

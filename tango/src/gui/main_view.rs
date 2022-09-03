@@ -664,8 +664,8 @@ async fn run_connection_task(
                     log::info!("starting session");
                     let is_offerer = peer_conn.local_description().unwrap().sdp_type == datachannel_wrapper::SdpType::Offer;
                     {
-                        let config = config.read();
                         main_view.lock().session = Some(session::Session::new_pvp(
+                            config.clone(),
                             handle,
                             audio_binder,
                             link_code,
@@ -684,7 +684,6 @@ async fn run_connection_task(
                             &local_rom,
                             &local_negotiated_state.save_data,
                             remote_settings,
-                            remote_game,
                             &remote_rom,
                             &remote_negotiated_state.save_data,
                             emu_tps_counter.clone(),
@@ -694,9 +693,7 @@ async fn run_connection_task(
                             is_offerer,
                             replays_path,
                             match_type,
-                            config.input_delay,
                             rng_seed,
-                            config.max_queue_length as usize,
                         )?);
                     }
                     egui_ctx.request_repaint();

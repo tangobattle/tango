@@ -1,4 +1,4 @@
-use crate::{audio, battle, game, net, replay, replayer, stats};
+use crate::{audio, battle, config, game, net, replay, replayer, stats};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -38,6 +38,7 @@ pub enum Mode {
 #[allow(dead_code)] // TODO
 impl Session {
     pub fn new_pvp(
+        config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         handle: tokio::runtime::Handle,
         audio_binder: audio::LateBinder,
         link_code: String,
@@ -47,7 +48,6 @@ impl Session {
         local_rom: &[u8],
         local_save: &[u8],
         remote_settings: net::protocol::Settings,
-        remote_game: &'static (dyn game::Game + Send + Sync),
         remote_rom: &[u8],
         remote_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -57,9 +57,7 @@ impl Session {
         is_offerer: bool,
         replays_path: std::path::PathBuf,
         match_type: (u8, u8),
-        input_delay: u32,
         rng_seed: [u8; 16],
-        max_queue_length: usize,
     ) -> Result<Self, anyhow::Error> {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
@@ -97,12 +95,12 @@ impl Session {
         let match_ = match_.clone();
         *match_.try_lock().unwrap() = Some({
             let inner_match = battle::Match::new(
+                config,
                 link_code,
                 netplay_compatibility,
                 local_rom.to_vec(),
                 local_game,
                 local_settings,
-                remote_game,
                 remote_settings,
                 cancellation_token.clone(),
                 sender,
@@ -114,8 +112,6 @@ impl Session {
                 remote_save,
                 replays_path,
                 match_type,
-                input_delay,
-                max_queue_length,
             )
             .expect("new match");
 
