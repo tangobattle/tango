@@ -1386,7 +1386,7 @@ impl MainView {
                     let connection_task = main_view.connection_task.blocking_lock();
                     if let Some(ConnectionTask::InProgress {
                         state: connection_state,
-                        ..
+                        cancellation_token,
                     }) = &*connection_task
                     {
                         match connection_state {
@@ -1450,19 +1450,36 @@ impl MainView {
                                                 header.col(|_ui| {});
                                                 header.col(|ui| {
                                                     ui.horizontal(|ui| {
-                                                        ui.strong(
-                                                            i18n::LOCALES
-                                                                .lookup(
-                                                                    &config.language,
-                                                                    "main.you",
-                                                                )
-                                                                .unwrap(),
-                                                        );
-                                                        if lobby.local_negotiated_state.is_some()
-                                                            || lobby.sender.is_none()
-                                                        {
-                                                            ui.label("✅");
-                                                        }
+                                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                                            if ui.button(egui::RichText::new(format!(
+                                                                "🚶 {}",
+                                                                i18n::LOCALES
+                                                                    .lookup(&config.language, "main.leave")
+                                                                    .unwrap()
+                                                            ))).clicked()
+                                                            {
+                                                                cancellation_token.cancel();
+                                                            }
+
+                                                            ui.horizontal_top(|ui| {
+                                                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                                                                    ui.set_width(ui.available_width());
+                                                                    ui.strong(
+                                                                        i18n::LOCALES
+                                                                            .lookup(
+                                                                                &config.language,
+                                                                                "main.you",
+                                                                            )
+                                                                            .unwrap(),
+                                                                    );
+                                                                    if lobby.local_negotiated_state.is_some()
+                                                                        || lobby.sender.is_none()
+                                                                    {
+                                                                        ui.label("✅");
+                                                                    }
+                                                                });
+                                                            });
+                                                        });
                                                     });
                                                 });
                                                 header.col(|ui| {
@@ -1809,22 +1826,7 @@ impl MainView {
                             }
                         }
 
-                        if let Some(cancellation_token) = &cancellation_token {
-                            if ui
-                                .add_enabled(
-                                    !error_window_open,
-                                    egui::Button::new(egui::RichText::new(format!(
-                                        "⏹️ {}",
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "main.stop")
-                                            .unwrap()
-                                    )).size(24.0)),
-                                )
-                                .clicked()
-                            {
-                                cancellation_token.cancel();
-                            }
-                        } else {
+                        if cancellation_token.is_none() {
                             if ui
                                 .add_enabled(
                                     !error_window_open

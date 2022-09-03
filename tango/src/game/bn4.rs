@@ -73,7 +73,7 @@ impl game::Game for EXE4BMImpl {
     }
 
     fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::B4BJ_01
+        &hooks::B4BJ_00
     }
 
     fn parse_save(
