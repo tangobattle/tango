@@ -3,7 +3,7 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{audio, config, game, gui, i18n, net, patch, randomcode, rom, save, session, stats};
+use crate::{audio, config, game, gui, i18n, net, patch, randomcode, save, session, stats};
 
 struct LobbySelection {
     pub game: &'static (dyn game::Game + Send + Sync),
@@ -332,7 +332,6 @@ impl Lobby {
         patches_path: &std::path::Path,
     ) {
         let roms = self.roms_scanner.read();
-        let patches = self.patches_scanner.read();
 
         let old_reveal_setup = self.remote_settings.reveal_setup;
         self.remote_rom = settings.game_info.as_ref().and_then(|gi| {
@@ -1013,7 +1012,8 @@ impl PlayPane {
                                                         });
                                                         row.col(|ui| {
                                                             ui.label(
-                                                                if let Some(selection) = selection.as_ref()
+                                                                if let Some(selection) = lobby
+                                                                    .selection.as_ref()
                                                                 {
                                                                     let (family, _) = selection
                                                                         .game

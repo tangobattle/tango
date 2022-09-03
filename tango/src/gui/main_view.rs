@@ -1,11 +1,6 @@
 use fluent_templates::Loader;
-use rand::RngCore;
-use sha3::digest::{ExtendableOutput, Update};
-use subtle::ConstantTimeEq;
 
-use crate::{
-    audio, config, game, gui, i18n, input, net, patch, randomcode, rom, save, session, stats,
-};
+use crate::{audio, config, gui, i18n, patch, session, stats};
 
 pub struct State {
     tab: Tab,

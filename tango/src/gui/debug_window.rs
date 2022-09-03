@@ -1,4 +1,4 @@
-use crate::{config, gui, session, stats};
+use crate::{config, session, stats};
 
 pub struct DebugWindow {}
 
