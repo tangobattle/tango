@@ -137,6 +137,13 @@ impl ReplaysWindow {
                                     continue;
                                 };
 
+                                let remote_side = if let Some(side) = metadata.remote_side.as_ref()
+                                {
+                                    side
+                                } else {
+                                    continue;
+                                };
+
                                 let game_info =
                                     if let Some(game_info) = local_side.game_info.as_ref() {
                                         game_info
@@ -153,14 +160,72 @@ impl ReplaysWindow {
                                     continue;
                                 };
 
+                                let mut layout_job = egui::text::LayoutJob::default();
+                                layout_job.append(
+                                    &chrono::DateTime::<chrono::Local>::from(ts)
+                                        .formatl("%c", &language.to_string())
+                                        .to_string(),
+                                    0.0,
+                                    egui::TextFormat::simple(
+                                        ui.style()
+                                            .text_styles
+                                            .get(&egui::TextStyle::Body)
+                                            .unwrap()
+                                            .clone(),
+                                        ui.visuals().text_color(),
+                                    ),
+                                );
+                                layout_job.append(
+                                    "\n",
+                                    0.0,
+                                    egui::TextFormat::simple(
+                                        ui.style()
+                                            .text_styles
+                                            .get(&egui::TextStyle::Body)
+                                            .unwrap()
+                                            .clone(),
+                                        ui.visuals().text_color(),
+                                    ),
+                                );
+                                layout_job.append(
+                                    &i18n::LOCALES
+                                        .lookup_with_args(
+                                            language,
+                                            "replay-subtitle",
+                                            &std::collections::HashMap::from([
+                                                (
+                                                    "game_family",
+                                                    i18n::LOCALES
+                                                        .lookup(
+                                                            language,
+                                                            &format!(
+                                                                "game-{}.short",
+                                                                game.family_and_variant().0
+                                                            ),
+                                                        )
+                                                        .unwrap()
+                                                        .into(),
+                                                ),
+                                                ("link_code", metadata.link_code.clone().into()),
+                                                ("nickname", remote_side.nickname.clone().into()),
+                                            ]),
+                                        )
+                                        .unwrap(),
+                                    0.0,
+                                    egui::TextFormat::simple(
+                                        ui.style()
+                                            .text_styles
+                                            .get(&egui::TextStyle::Small)
+                                            .unwrap()
+                                            .clone(),
+                                        ui.visuals().text_color(),
+                                    ),
+                                );
+
                                 if ui
                                     .selectable_label(
                                         state.selection.as_ref().map(|s| &s.path) == Some(path),
-                                        format!(
-                                            "{}",
-                                            chrono::DateTime::<chrono::Local>::from(ts)
-                                                .formatl("%c", &language.to_string())
-                                        ),
+                                        layout_job,
                                     )
                                     .clicked()
                                 {
