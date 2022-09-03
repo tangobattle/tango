@@ -10,7 +10,7 @@ struct Selection {
     save: Box<dyn save::Save + Send + Sync>,
     rom: Vec<u8>,
     patch: Option<(String, semver::Version, patch::Version)>,
-    assets: Box<dyn rom::Assets + Send + Sync>,
+    assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     save_view: gui::save_view::State,
 }
 
@@ -293,10 +293,10 @@ impl ReplaysWindow {
                                             })
                                             .unwrap_or_default(),
                                     ) {
-                                        Ok(assets) => assets,
+                                        Ok(assets) => Some(assets),
                                         Err(e) => {
                                             log::error!("failed to load assets: {:?}", e);
-                                            continue;
+                                            None
                                         }
                                     };
 
@@ -326,27 +326,29 @@ impl ReplaysWindow {
                             return;
                         };
 
-                        let game_language = selection.game.language();
-                        self.save_view.show(
-                            ui,
-                            clipboard,
-                            font_families,
-                            language,
-                            if let Some((_, _, metadata)) = selection.patch.as_ref() {
-                                if let Some(language) =
-                                    metadata.saveedit_overrides.language.as_ref()
-                                {
-                                    language
+                        if let Some(assets) = selection.assets.as_ref() {
+                            let game_language = selection.game.language();
+                            self.save_view.show(
+                                ui,
+                                clipboard,
+                                font_families,
+                                language,
+                                if let Some((_, _, metadata)) = selection.patch.as_ref() {
+                                    if let Some(language) =
+                                        metadata.saveedit_overrides.language.as_ref()
+                                    {
+                                        language
+                                    } else {
+                                        &game_language
+                                    }
                                 } else {
                                     &game_language
-                                }
-                            } else {
-                                &game_language
-                            },
-                            &selection.save,
-                            &selection.assets,
-                            &mut selection.save_view,
-                        );
+                                },
+                                &selection.save,
+                                &assets,
+                                &mut selection.save_view,
+                            );
+                        }
                     });
             });
         });
