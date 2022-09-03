@@ -901,7 +901,8 @@ impl MainView {
                                                         "select-save.select-button",
                                                     )
                                                     .unwrap(),
-                                            );
+                                            )
+                                            .size(24.0);
 
                                             if main_view.show_save_select.is_some() {
                                                 egui::Button::new(text.color(
@@ -1812,12 +1813,12 @@ impl MainView {
                             if ui
                                 .add_enabled(
                                     !error_window_open,
-                                    egui::Button::new(format!(
+                                    egui::Button::new(egui::RichText::new(format!(
                                         "⏹️ {}",
                                         i18n::LOCALES
                                             .lookup(&config.language, "main.stop")
                                             .unwrap()
-                                    )),
+                                    )).size(24.0)),
                                 )
                                 .clicked()
                             {
@@ -1828,7 +1829,7 @@ impl MainView {
                                 .add_enabled(
                                     !error_window_open
                                         && (!main_view.link_code.is_empty() || has_selection),
-                                    egui::Button::new(if main_view.link_code.is_empty() {
+                                    egui::Button::new(egui::RichText::new(if main_view.link_code.is_empty() {
                                         format!(
                                             "▶️ {}",
                                             i18n::LOCALES
@@ -1842,7 +1843,7 @@ impl MainView {
                                                 .lookup(&config.language, "main.fight")
                                                 .unwrap()
                                         )
-                                    }),
+                                    }).size(24.0)),
                                 )
                                 .clicked()
                             {
@@ -1850,7 +1851,7 @@ impl MainView {
                             }
 
                             if ui
-                                .add_enabled(!error_window_open, egui::Button::new("🎲"))
+                                .add_enabled(!error_window_open, egui::Button::new(egui::RichText::new("🎲").size(24.0)))
                                 .on_hover_text(
                                     i18n::LOCALES
                                         .lookup(&config.language, "main.random")
