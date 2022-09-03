@@ -229,7 +229,7 @@ impl ReplaysWindow {
                                             .get(&egui::TextStyle::Small)
                                             .unwrap()
                                             .clone(),
-                                        ui.visuals().text_color(),
+                                        text_color,
                                     ),
                                 );
 
