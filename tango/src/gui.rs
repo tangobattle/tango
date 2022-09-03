@@ -209,7 +209,7 @@ impl Gui {
             ),
             (
                 egui::TextStyle::Button,
-                egui::FontId::new(18.0, egui::FontFamily::Proportional),
+                egui::FontId::new(20.0, egui::FontFamily::Proportional),
             ),
             (
                 egui::TextStyle::Small,
