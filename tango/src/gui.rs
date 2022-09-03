@@ -1,4 +1,4 @@
-use crate::{audio, config, game, input, patch, save, scanner, stats};
+use crate::{audio, config, game, input, patch, rom, save, scanner, session, stats};
 use std::str::FromStr;
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
@@ -6,8 +6,9 @@ const DISCORD_APP_ID: u64 = 974089681333534750;
 mod debug_window;
 mod escape_window;
 mod main_view;
-mod patches_window;
-mod replays_window;
+mod patches_pane;
+mod play_pane;
+mod replays_pane;
 mod save_select_window;
 mod save_view;
 mod session_view;
@@ -22,8 +23,53 @@ type SavesScanner = scanner::Scanner<
 >;
 type PatchesScanner = scanner::Scanner<std::collections::BTreeMap<String, patch::Patch>>;
 
+pub struct Selection {
+    pub game: &'static (dyn game::Game + Send + Sync),
+    pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
+    pub save: save::ScannedSave,
+    pub rom: Vec<u8>,
+    pub patch: Option<(String, semver::Version, patch::Version)>,
+    pub save_view_state: save_view::State,
+}
+
+impl Selection {
+    pub fn new(
+        game: &'static (dyn game::Game + Send + Sync),
+        save: save::ScannedSave,
+        patch: Option<(String, semver::Version, patch::Version)>,
+        rom: Vec<u8>,
+    ) -> Self {
+        let assets = game
+            .load_rom_assets(
+                &rom,
+                save.save.as_raw_wram(),
+                &patch
+                    .as_ref()
+                    .map(|(_, _, metadata)| metadata.saveedit_overrides.clone())
+                    .unwrap_or_else(|| Default::default()),
+            )
+            .ok();
+        Self {
+            game,
+            assets,
+            save,
+            patch,
+            rom,
+            save_view_state: save_view::State::new(),
+        }
+    }
+
+    pub fn reload_save(&mut self) -> anyhow::Result<()> {
+        let raw = std::fs::read(&self.save.path)?;
+        self.save.save = self.game.parse_save(&raw)?;
+        Ok(())
+    }
+}
+
 pub struct State {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+    pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+    pub selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
     pub steal_input: Option<steal_input_window::State>,
     pub roms_scanner: ROMsScanner,
     pub saves_scanner: SavesScanner,
@@ -31,7 +77,7 @@ pub struct State {
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    main_view: std::sync::Arc<parking_lot::Mutex<main_view::State>>,
+    main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
     clipboard: arboard::Clipboard,
@@ -63,10 +109,12 @@ impl State {
 
         Self {
             config,
+            session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             roms_scanner,
             saves_scanner,
             patches_scanner,
-            main_view: std::sync::Arc::new(parking_lot::Mutex::new(main_view::State::new())),
+            main_view: main_view::State::new(),
             audio_binder,
             fps_counter,
             emu_tps_counter,
@@ -114,6 +162,7 @@ impl FontFamilies {
 pub struct Gui {
     main_view: main_view::MainView,
     settings_window: settings_window::SettingsWindow,
+    session_view: session_view::SessionView,
     debug_window: debug_window::DebugWindow,
     steal_input_window: steal_input_window::StealInputWindow,
     escape_window: escape_window::EscapeWindow,
@@ -175,6 +224,7 @@ impl Gui {
             steal_input_window: steal_input_window::StealInputWindow::new(),
             debug_window: debug_window::DebugWindow::new(),
             settings_window: settings_window::SettingsWindow::new(font_families.clone()),
+            session_view: session_view::SessionView::new(),
             escape_window: escape_window::EscapeWindow::new(),
             font_data: std::collections::BTreeMap::from([
                 (
@@ -231,10 +281,10 @@ impl Gui {
         state: &mut State,
     ) {
         {
-            let mut main_view = state.main_view.lock();
-            if let Some(session) = main_view.session.as_ref() {
-                if session.completed() {
-                    main_view.session = None;
+            let mut session = state.session.lock();
+            if let Some(s) = session.as_ref() {
+                if s.completed() {
+                    *session = None;
                 }
             }
         }
@@ -307,7 +357,14 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
-        self.debug_window.show(ctx, config, handle.clone(), state);
+        self.debug_window.show(
+            ctx,
+            config,
+            handle.clone(),
+            state.session.clone(),
+            state.fps_counter.clone(),
+            state.emu_tps_counter.clone(),
+        );
         self.settings_window.show(
             ctx,
             &mut state.show_settings,
@@ -322,19 +379,41 @@ impl Gui {
             .show(ctx, &config.language, &mut state.steal_input);
         self.escape_window.show(
             ctx,
-            state.main_view.clone(),
+            state.session.clone(),
+            state.selection.clone(),
             &mut state.show_escape_window,
             &config.language,
             &mut state.show_settings,
         );
-        self.main_view.show(
-            ctx,
-            &self.font_families,
-            config,
-            handle.clone(),
-            window,
-            input_state,
-            state,
-        );
+        if let Some(session) = state.session.lock().as_ref() {
+            self.session_view.show(
+                ctx,
+                input_state,
+                &config.input_mapping,
+                session,
+                &config.video_filter,
+                config.max_scale,
+                &mut state.show_escape_window,
+            );
+        } else {
+            self.main_view.show(
+                ctx,
+                &self.font_families,
+                config,
+                handle.clone(),
+                window,
+                input_state,
+                &mut state.show_settings,
+                &mut state.show_escape_window,
+                &mut state.clipboard,
+                state.audio_binder.clone(),
+                state.roms_scanner.clone(),
+                state.patches_scanner.clone(),
+                state.emu_tps_counter.clone(),
+                state.session.clone(),
+                state.selection.clone(),
+                &mut state.main_view,
+            );
+        }
     }
 }

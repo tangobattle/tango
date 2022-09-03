@@ -1,4 +1,4 @@
-use crate::{config, gui, session};
+use crate::{config, gui, session, stats};
 
 pub struct DebugWindow {}
 
@@ -12,7 +12,9 @@ impl DebugWindow {
         ctx: &egui::Context,
         config: &mut config::Config,
         handle: tokio::runtime::Handle,
-        state: &mut gui::State,
+        session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+        fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) {
         egui::Window::new("")
             .id(egui::Id::new("debug-window"))
@@ -27,13 +29,13 @@ impl DebugWindow {
                         ui.label(
                             egui::RichText::new(format!(
                                 "{:3.02}",
-                                1.0 / state.fps_counter.lock().mean_duration().as_secs_f32()
+                                1.0 / fps_counter.lock().mean_duration().as_secs_f32()
                             ))
                             .family(egui::FontFamily::Monospace),
                         );
                         ui.end_row();
 
-                        if let Some(session) = state.main_view.lock().session.as_ref() {
+                        if let Some(session) = session.lock().as_ref() {
                             let tps_adjustment = if let session::Mode::PvP(pvp) = session.mode() {
                                 handle.block_on(async {
                                     if let Some(match_) = &*pvp.match_.lock().await {
@@ -89,11 +91,7 @@ impl DebugWindow {
                             ui.label(
                                 egui::RichText::new(format!(
                                     "{:3.02} ({:+1.02})",
-                                    1.0 / state
-                                        .emu_tps_counter
-                                        .lock()
-                                        .mean_duration()
-                                        .as_secs_f32(),
+                                    1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
                                     tps_adjustment
                                 ))
                                 .family(egui::FontFamily::Monospace),

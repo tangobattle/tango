@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{gui, i18n};
+use crate::{gui, i18n, session};
 
 pub struct State {}
 
@@ -20,7 +20,8 @@ impl EscapeWindow {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        main_view: std::sync::Arc<parking_lot::Mutex<gui::main_view::State>>,
+        session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+        selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
         show_escape_window: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
         show_settings: &mut Option<gui::settings_window::State>,
@@ -55,11 +56,10 @@ impl EscapeWindow {
                         )
                         .clicked()
                     {
-                        let mut main_view = main_view.lock();
-                        main_view.session = None;
+                        *session.lock() = None;
                         // Current save file needs to be reloaded from disk.
                         // TODO: Maybe we even need to rescan saves if region lock status changed? (e.g. EXE4 -> BN4)
-                        if let Some(selection) = main_view.selection.lock().as_mut() {
+                        if let Some(selection) = selection.lock().as_mut() {
                             let _ = selection.reload_save();
                         }
                         *show_escape_window = None;

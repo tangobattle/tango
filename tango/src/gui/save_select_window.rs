@@ -31,7 +31,7 @@ impl SaveSelectWindow {
         &mut self,
         ctx: &egui::Context,
         show: &mut Option<State>,
-        selection: &mut Option<gui::main_view::Selection>,
+        selection: &mut Option<gui::Selection>,
         language: &unic_langid::LanguageIdentifier,
         saves_path: &std::path::Path,
         roms_scanner: gui::ROMsScanner,
@@ -140,7 +140,7 @@ impl SaveSelectWindow {
                                         {
                                             *show = None;
                                             let rom = roms.get(&game).unwrap().clone();
-                                            *selection = Some(gui::main_view::Selection::new(
+                                            *selection = Some(gui::Selection::new(
                                                 game,
                                                 save.clone(),
                                                 None,
