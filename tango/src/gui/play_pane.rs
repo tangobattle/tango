@@ -276,6 +276,19 @@ impl Lobby {
             return Ok(());
         }
 
+        let match_type = (
+            if selection
+                .as_ref()
+                .map(|selection| (self.match_type.0 as usize) < selection.game.match_types().len())
+                .unwrap_or(false)
+            {
+                self.match_type.0
+            } else {
+                0
+            },
+            0,
+        );
+
         self.send_settings(net::protocol::Settings {
             game_info: selection.as_ref().map(|selection| {
                 let (family, variant) = selection.game.family_and_variant();
@@ -289,6 +302,7 @@ impl Lobby {
                     }),
                 }
             }),
+            match_type,
             ..self.make_local_settings()
         })
         .await?;
@@ -302,18 +316,10 @@ impl Lobby {
         } else {
             None
         };
-        self.match_type = (
-            if selection
-                .as_ref()
-                .map(|selection| (self.match_type.0 as usize) < selection.game.match_types().len())
-                .unwrap_or(false)
-            {
-                self.match_type.0
-            } else {
-                0
-            },
-            0,
-        );
+        self.match_type = match_type;
+        if !self.can_ready() {
+            self.remote_commitment = None;
+        }
         Ok(())
     }
 
@@ -1854,26 +1860,7 @@ impl PlayPane {
                 {
                     handle.block_on(async {
                         let mut lobby = lobby.lock().await;
-                        lobby.match_type = (
-                            if selection
-                                .as_ref()
-                                .map(|selection| {
-                                    (lobby.match_type.0 as usize)
-                                        < selection.game.match_types().len()
-                                })
-                                .unwrap_or(false)
-                            {
-                                lobby.match_type.0
-                            } else {
-                                0
-                            },
-                            0,
-                        );
-
-                        let _ = lobby.set_local_selection(&selection);
-                        if !lobby.can_ready() {
-                            lobby.remote_commitment = None;
-                        }
+                        let _ = lobby.set_local_selection(&selection).await;
                     });
                 }
 
