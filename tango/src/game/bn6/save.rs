@@ -79,7 +79,7 @@ impl Save {
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
         Ok(Self {
             buf: buf
-                .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
+                .get(..SRAM_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(anyhow::anyhow!("save is wrong size"))?,
             game_info,

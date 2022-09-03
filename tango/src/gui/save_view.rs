@@ -57,92 +57,94 @@ impl SaveView {
         assets: &Box<dyn rom::Assets + Send + Sync>,
         state: &mut State,
     ) {
-        let navicust_view = save.view_navicust();
-        let chips_view = save.view_chips();
-        let modcards56_view = save.view_modcards56();
+        ui.vertical(|ui| {
+            let navicust_view = save.view_navicust();
+            let chips_view = save.view_chips();
+            let modcards56_view = save.view_modcards56();
 
-        let mut available_tabs = vec![];
-        if navicust_view.is_some() {
-            available_tabs.push(Tab::Navicust);
-        }
-        if chips_view.is_some() {
-            available_tabs.push(Tab::Folder);
-        }
-        if modcards56_view.is_some() {
-            available_tabs.push(Tab::Modcards);
-        }
+            let mut available_tabs = vec![];
+            if navicust_view.is_some() {
+                available_tabs.push(Tab::Navicust);
+            }
+            if chips_view.is_some() {
+                available_tabs.push(Tab::Folder);
+            }
+            if modcards56_view.is_some() {
+                available_tabs.push(Tab::Modcards);
+            }
 
-        ui.horizontal(|ui| {
-            for tab in available_tabs.iter() {
-                if ui
-                    .selectable_label(
-                        state.tab.as_ref() == Some(tab),
-                        i18n::LOCALES
-                            .lookup(
-                                lang,
-                                match tab {
-                                    Tab::Navicust => "save.navicust",
-                                    Tab::Folder => "save.folder",
-                                    Tab::Modcards => "save.modcards",
-                                },
-                            )
-                            .unwrap(),
-                    )
-                    .clicked()
-                {
-                    state.tab = Some(tab.clone());
+            ui.horizontal(|ui| {
+                for tab in available_tabs.iter() {
+                    if ui
+                        .selectable_label(
+                            state.tab.as_ref() == Some(tab),
+                            i18n::LOCALES
+                                .lookup(
+                                    lang,
+                                    match tab {
+                                        Tab::Navicust => "save.navicust",
+                                        Tab::Folder => "save.folder",
+                                        Tab::Modcards => "save.modcards",
+                                    },
+                                )
+                                .unwrap(),
+                        )
+                        .clicked()
+                    {
+                        state.tab = Some(tab.clone());
+                    }
                 }
+            });
+
+            if state.tab.is_none() {
+                state.tab = available_tabs.first().cloned();
+            }
+
+            match state.tab {
+                Some(Tab::Navicust) => {
+                    if let Some(navicust_view) = navicust_view {
+                        self.navicust_view.show(
+                            ui,
+                            clipboard,
+                            font_families,
+                            lang,
+                            game_lang,
+                            &navicust_view,
+                            assets,
+                            &mut state.navicust_view,
+                        );
+                    }
+                }
+                Some(Tab::Folder) => {
+                    if let Some(chips_view) = chips_view {
+                        self.folder_view.show(
+                            ui,
+                            clipboard,
+                            font_families,
+                            lang,
+                            game_lang,
+                            &chips_view,
+                            assets,
+                            &mut state.folder_view,
+                        );
+                    }
+                }
+                Some(Tab::Modcards) => {
+                    if let Some(modcards56_view) = modcards56_view {
+                        self.modcards56_view.show(
+                            ui,
+                            clipboard,
+                            font_families,
+                            lang,
+                            game_lang,
+                            &modcards56_view,
+                            assets,
+                            &mut state.modcards56_view,
+                        );
+                    }
+                }
+                None => {}
             }
         });
-
-        if state.tab.is_none() {
-            state.tab = available_tabs.first().cloned();
-        }
-
-        match state.tab {
-            Some(Tab::Navicust) => {
-                if let Some(navicust_view) = navicust_view {
-                    self.navicust_view.show(
-                        ui,
-                        clipboard,
-                        font_families,
-                        lang,
-                        game_lang,
-                        &navicust_view,
-                        assets,
-                        &mut state.navicust_view,
-                    );
-                }
-            }
-            Some(Tab::Folder) => {
-                if let Some(chips_view) = chips_view {
-                    self.folder_view.show(
-                        ui,
-                        clipboard,
-                        font_families,
-                        lang,
-                        game_lang,
-                        &chips_view,
-                        assets,
-                        &mut state.folder_view,
-                    );
-                }
-            }
-            Some(Tab::Modcards) => {
-                if let Some(modcards56_view) = modcards56_view {
-                    self.modcards56_view.show(
-                        ui,
-                        clipboard,
-                        font_families,
-                        lang,
-                        game_lang,
-                        &modcards56_view,
-                        assets,
-                        &mut state.modcards56_view,
-                    );
-                }
-            }
-            None => {}
-        }
     }
 }

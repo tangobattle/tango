@@ -1,12 +1,17 @@
 use chrono_locale::LocaleDate;
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, replay, save, scanner};
+use crate::{game, gui, i18n, patch, replay, rom, save, scanner};
 
 struct Selection {
     path: std::path::PathBuf,
+    game: &'static (dyn game::Game + Send + Sync),
     replay: replay::Replay,
     save: Box<dyn save::Save + Send + Sync>,
+    rom: Vec<u8>,
+    patch: Option<(String, semver::Version, patch::Version)>,
+    assets: Box<dyn rom::Assets + Send + Sync>,
+    save_view: gui::save_view::State,
 }
 
 pub struct State {
@@ -64,18 +69,25 @@ impl State {
     }
 }
 
-pub struct ReplaysWindow {}
+pub struct ReplaysWindow {
+    save_view: gui::save_view::SaveView,
+}
 
 impl ReplaysWindow {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            save_view: gui::save_view::SaveView::new(),
+        }
     }
 
     pub fn show(
         &mut self,
         ctx: &egui::Context,
+        clipboard: &mut arboard::Clipboard,
+        font_families: &gui::FontFamilies,
         show: &mut Option<State>,
         language: &unic_langid::LanguageIdentifier,
+        patches_path: &std::path::Path,
         patches_scanner: gui::PatchesScanner,
         roms_scanner: gui::ROMsScanner,
         replays_path: &std::path::PathBuf,
@@ -100,6 +112,8 @@ impl ReplaysWindow {
                 return;
             }
 
+            let roms = roms_scanner.read();
+            let patches = patches_scanner.read();
             let replays = state.replays_scanner.read();
             ui.horizontal_top(|ui| {
                 egui::ScrollArea::vertical()
@@ -123,20 +137,17 @@ impl ReplaysWindow {
                                     continue;
                                 };
 
-                                let remote_side = if let Some(side) = metadata.remote_side.as_ref()
-                                {
-                                    side
-                                } else {
-                                    continue;
-                                };
+                                let game_info =
+                                    if let Some(game_info) = local_side.game_info.as_ref() {
+                                        game_info
+                                    } else {
+                                        continue;
+                                    };
 
-                                let local_game = if let Some(game) =
-                                    local_side.game_info.as_ref().and_then(|game_info| {
-                                        game::find_by_family_and_variant(
-                                            game_info.rom_family.as_str(),
-                                            game_info.rom_variant as u8,
-                                        )
-                                    }) {
+                                let game = if let Some(game) = game::find_by_family_and_variant(
+                                    game_info.rom_family.as_str(),
+                                    game_info.rom_variant as u8,
+                                ) {
                                     game
                                 } else {
                                     continue;
@@ -184,7 +195,7 @@ impl ReplaysWindow {
                                             continue;
                                         };
 
-                                    let save = match local_game.save_from_wram(save_state.wram()) {
+                                    let save = match game.save_from_wram(save_state.wram()) {
                                         Ok(save) => save,
                                         Err(e) => {
                                             log::error!(
@@ -196,14 +207,146 @@ impl ReplaysWindow {
                                         }
                                     };
 
+                                    let mut rom = if let Some(rom) = roms.get(&game) {
+                                        rom.clone()
+                                    } else {
+                                        continue;
+                                    };
+
+                                    let patch = if let Some(patch_info) = game_info.patch.as_ref() {
+                                        let patch =
+                                            if let Some(patch) = patches.get(&patch_info.name) {
+                                                patch
+                                            } else {
+                                                continue;
+                                            };
+
+                                        let version = if let Ok(version) =
+                                            semver::Version::parse(&patch_info.version)
+                                        {
+                                            version
+                                        } else {
+                                            continue;
+                                        };
+
+                                        let version_meta = if let Some(version_meta) =
+                                            patch.versions.get(&version)
+                                        {
+                                            version_meta
+                                        } else {
+                                            continue;
+                                        };
+
+                                        let (rom_code, revision) = game.rom_code_and_revision();
+
+                                        let bps = match std::fs::read(
+                                            patches_path
+                                                .join(&patch_info.name)
+                                                .join(format!("v{}", version))
+                                                .join(format!(
+                                                    "{}_{:02}.bps",
+                                                    std::str::from_utf8(rom_code).unwrap(),
+                                                    revision
+                                                )),
+                                        ) {
+                                            Ok(bps) => bps,
+                                            Err(e) => {
+                                                log::error!(
+                                                    "failed to load patch {} to {:?}: {:?}",
+                                                    patch_info.name,
+                                                    (rom_code, revision),
+                                                    e
+                                                );
+                                                continue;
+                                            }
+                                        };
+
+                                        rom = match patch::bps::apply(&rom, &bps) {
+                                            Ok(r) => r.to_vec(),
+                                            Err(e) => {
+                                                log::error!(
+                                                    "failed to apply patch {} to {:?}: {:?}",
+                                                    patch_info.name,
+                                                    (rom_code, revision),
+                                                    e
+                                                );
+                                                continue;
+                                            }
+                                        };
+
+                                        Some((
+                                            patch_info.name.clone(),
+                                            version,
+                                            version_meta.clone(),
+                                        ))
+                                    } else {
+                                        None
+                                    };
+
+                                    let assets = match game.load_rom_assets(
+                                        &rom,
+                                        save_state.wram(),
+                                        &patch
+                                            .as_ref()
+                                            .map(|(_, _, metadata)| {
+                                                metadata.saveedit_overrides.clone()
+                                            })
+                                            .unwrap_or_default(),
+                                    ) {
+                                        Ok(assets) => assets,
+                                        Err(e) => {
+                                            log::error!("failed to load assets: {:?}", e);
+                                            continue;
+                                        }
+                                    };
+
                                     state.selection = Some(Selection {
                                         path: path.clone(),
+                                        game,
                                         replay,
                                         save,
+                                        rom,
+                                        patch,
+                                        assets,
+                                        save_view: gui::save_view::State::new(),
                                     });
                                 }
                             }
                         });
+                    });
+
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .id_source("replays-window-info")
+                    .vscroll(false)
+                    .show(ui, |ui| {
+                        let selection = if let Some(selection) = state.selection.as_mut() {
+                            selection
+                        } else {
+                            return;
+                        };
+
+                        let game_language = selection.game.language();
+                        self.save_view.show(
+                            ui,
+                            clipboard,
+                            font_families,
+                            language,
+                            if let Some((_, _, metadata)) = selection.patch.as_ref() {
+                                if let Some(language) =
+                                    metadata.saveedit_overrides.language.as_ref()
+                                {
+                                    language
+                                } else {
+                                    &game_language
+                                }
+                            } else {
+                                &game_language
+                            },
+                            &selection.save,
+                            &selection.assets,
+                            &mut selection.save_view,
+                        );
                     });
             });
         });

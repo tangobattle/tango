@@ -778,8 +778,11 @@ impl MainView {
 
         self.replays_window.show(
             ctx,
+            &mut state.clipboard,
+            &font_families,
             &mut main_view.show_replays,
             &config.language,
+            &config.patches_path(),
             state.patches_scanner.clone(),
             state.roms_scanner.clone(),
             &config.replays_path(),
