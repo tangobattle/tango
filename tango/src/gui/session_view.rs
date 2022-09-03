@@ -137,11 +137,31 @@ impl SessionView {
         // If we've crashed, log the error and panic.
         if let Some(thread_handle) = session.has_crashed() {
             // HACK: No better way to lock the core.
-            let audio_guard = thread_handle.lock_audio();
+            let mut audio_guard = thread_handle.lock_audio();
+            let core = audio_guard.core_mut();
             panic!(
-                "mgba thread crashed!\nlr = {:08x}, pc = {:08x}",
-                audio_guard.core().gba().cpu().gpr(14),
-                audio_guard.core().gba().cpu().thumb_pc()
+                r#"mgba thread crashed @ thumb pc = {:08x}!
+ r0 = {:08x},  r1 = {:08x},  r2 = {:08x},  r3 = {:08x},
+ r4 = {:08x},  r5 = {:08x},  r6 = {:08x},  r7 = {:08x},
+ r8 = {:08x},  r9 = {:08x}, r10 = {:08x}, r11 = {:08x},
+r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x}"#,
+                core.as_ref().gba().cpu().thumb_pc(),
+                core.as_ref().gba().cpu().gpr(0),
+                core.as_ref().gba().cpu().gpr(1),
+                core.as_ref().gba().cpu().gpr(2),
+                core.as_ref().gba().cpu().gpr(3),
+                core.as_ref().gba().cpu().gpr(4),
+                core.as_ref().gba().cpu().gpr(5),
+                core.as_ref().gba().cpu().gpr(6),
+                core.as_ref().gba().cpu().gpr(7),
+                core.as_ref().gba().cpu().gpr(8),
+                core.as_ref().gba().cpu().gpr(9),
+                core.as_ref().gba().cpu().gpr(10),
+                core.as_ref().gba().cpu().gpr(11),
+                core.as_ref().gba().cpu().gpr(12),
+                core.as_ref().gba().cpu().gpr(13),
+                core.as_ref().gba().cpu().gpr(14),
+                core.as_ref().gba().cpu().gpr(15),
             );
         }
 
