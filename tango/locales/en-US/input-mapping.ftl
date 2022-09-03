@@ -12,6 +12,7 @@ input-button =
     .r = R
     .start = START
     .select = SELECT
+    .speed-up = Speed up
 
 physical-input-buttons =
     .dpup = DPad ⬆

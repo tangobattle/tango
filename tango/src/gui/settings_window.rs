@@ -448,6 +448,9 @@ impl SettingsWindow {
                 add_row("input-button.select", |input_mapping| {
                     &mut input_mapping.select
                 });
+                add_row("input-button.speed-up", |input_mapping| {
+                    &mut input_mapping.speed_up
+                });
             });
     }
 
