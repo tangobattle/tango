@@ -60,12 +60,11 @@ impl MainView {
         config: &mut config::Config,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
-        input_state: &input::State,
         show_settings: &mut Option<gui::settings_window::State>,
-        show_escape_window: &mut Option<gui::escape_window::State>,
         clipboard: &mut arboard::Clipboard,
         audio_binder: audio::LateBinder,
         roms_scanner: gui::ROMsScanner,
+        saves_scanner: gui::SavesScanner,
         patches_scanner: gui::PatchesScanner,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
@@ -133,7 +132,19 @@ impl MainView {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| match state.tab {
-            Tab::Play => {}
+            Tab::Play => {
+                self.play_pane.show(
+                    ui,
+                    selection.clone(),
+                    &font_families,
+                    clipboard,
+                    &config,
+                    roms_scanner.clone(),
+                    saves_scanner.clone(),
+                    patches_scanner.clone(),
+                    &mut state.play_pane,
+                );
+            }
             Tab::Replays => {
                 self.replays_pane.show(
                     ui,

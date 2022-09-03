@@ -52,6 +52,7 @@ impl SettingsWindow {
             i18n::LOCALES.lookup(&config.language, "settings").unwrap()
         ))
         .open(&mut show_settings_bool)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .id(egui::Id::new("settings-window"))
         .show(ctx, |ui| {
             ui.vertical(|ui| {
