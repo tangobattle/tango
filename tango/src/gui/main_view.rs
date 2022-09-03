@@ -52,6 +52,7 @@ impl MainView {
         ctx: &egui::Context,
         font_families: &gui::FontFamilies,
         config: &mut config::Config,
+        config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         handle: tokio::runtime::Handle,
         window: &glutin::window::Window,
         show_settings: &mut Option<gui::settings_window::State>,
@@ -130,14 +131,18 @@ impl MainView {
                 self.play_pane.show(
                     ui,
                     handle.clone(),
-                    selection.clone(),
                     &font_families,
                     window,
                     clipboard,
                     config,
+                    config_arc,
                     roms_scanner.clone(),
                     saves_scanner.clone(),
                     patches_scanner.clone(),
+                    audio_binder.clone(),
+                    session.clone(),
+                    selection.clone(),
+                    emu_tps_counter.clone(),
                     &mut state.play_pane,
                 );
             }

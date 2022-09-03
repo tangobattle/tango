@@ -400,6 +400,7 @@ impl Gui {
                 ctx,
                 &self.font_families,
                 config,
+                state.config.clone(),
                 handle.clone(),
                 window,
                 &mut state.show_settings,

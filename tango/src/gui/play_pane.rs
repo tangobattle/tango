@@ -256,6 +256,26 @@ impl Lobby {
         &mut self,
         selection: &Option<gui::Selection>,
     ) -> Result<(), anyhow::Error> {
+        if selection.as_ref().map(|selection| {
+            (
+                selection.game,
+                selection
+                    .patch
+                    .as_ref()
+                    .map(|(name, version, _)| (name.clone(), version.clone())),
+            )
+        }) == self.selection.as_ref().map(|selection| {
+            (
+                selection.game,
+                selection
+                    .patch
+                    .as_ref()
+                    .map(|(name, version, _)| (name.clone(), version.clone())),
+            )
+        }) {
+            return Ok(());
+        }
+
         self.send_settings(net::protocol::Settings {
             game_info: selection.as_ref().map(|selection| {
                 let (family, variant) = selection.game.family_and_variant();
@@ -282,6 +302,18 @@ impl Lobby {
         } else {
             None
         };
+        self.match_type = (
+            if selection
+                .as_ref()
+                .map(|selection| (self.match_type.0 as usize) < selection.game.match_types().len())
+                .unwrap_or(false)
+            {
+                self.match_type.0
+            } else {
+                0
+            },
+            0,
+        );
         Ok(())
     }
 
@@ -387,7 +419,6 @@ async fn run_connection_task(
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
     roms_scanner: gui::ROMsScanner,
     patches_scanner: gui::PatchesScanner,
     matchmaking_addr: String,
@@ -441,33 +472,21 @@ async fn run_connection_task(
                         config.default_match_type
                     };
 
-                    let lobby = {
-                        let selection = selection.lock();
-                        std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
-                            attention_requested: false,
-                            sender: Some(sender),
-                            selection: selection.as_ref().map(|selection| LobbySelection {
-                                game: selection.game,
-                                save: selection.save.save.clone(),
-                                rom: selection.rom.clone(),
-                                patch: selection.patch.clone(),
-                            }),
-                            nickname,
-                            match_type: (if selection.as_ref().map(|selection| (default_match_type as usize) < selection.game.match_types().len()).unwrap_or(false) {
-                                default_match_type
-                            } else {
-                                0
-                            }, 0),
-                            reveal_setup: false,
-                            remote_rom: None,
-                            remote_settings: net::protocol::Settings::default(),
-                            remote_commitment: None,
-                            latencies: stats::DeltaCounter::new(10),
-                            local_negotiated_state: None,
-                            roms_scanner: roms_scanner.clone(),
-                            patches_scanner: patches_scanner.clone(),
-                        }))
-                    };
+                    let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
+                        attention_requested: false,
+                        sender: Some(sender),
+                        selection: None,
+                        nickname,
+                        match_type: (default_match_type, 0),
+                        reveal_setup: false,
+                        remote_rom: None,
+                        remote_settings: net::protocol::Settings::default(),
+                        remote_commitment: None,
+                        latencies: stats::DeltaCounter::new(10),
+                        local_negotiated_state: None,
+                        roms_scanner: roms_scanner.clone(),
+                        patches_scanner: patches_scanner.clone(),
+                    }));
                     {
                         let mut lobby = lobby.lock().await;
                         let settings = lobby.make_local_settings();
@@ -707,25 +726,114 @@ impl PlayPane {
         }
     }
 
+    fn submit(
+        &mut self,
+        egui_ctx: &egui::Context,
+        handle: tokio::runtime::Handle,
+        link_code: &str,
+        config: &config::Config,
+        config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+        audio_binder: audio::LateBinder,
+        connection_task: &mut Option<ConnectionTask>,
+        connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
+        session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+        selection: &Option<gui::Selection>,
+        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+        roms_scanner: gui::ROMsScanner,
+        patches_scanner: gui::PatchesScanner,
+    ) {
+        let audio_binder = audio_binder.clone();
+        let egui_ctx = egui_ctx.clone();
+        let session = session.clone();
+        let emu_tps_counter = emu_tps_counter.clone();
+
+        if !link_code.is_empty() {
+            let cancellation_token = tokio_util::sync::CancellationToken::new();
+            *connection_task = Some(ConnectionTask::InProgress {
+                state: ConnectionState::Starting,
+                cancellation_token: cancellation_token.clone(),
+            });
+
+            handle.spawn({
+                let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
+                    config.matchmaking_endpoint.clone()
+                } else {
+                    config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+                };
+                let link_code = link_code.to_owned();
+                let nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                let patches_path = config.patches_path();
+                let replays_path = config.replays_path();
+                let config_arc = config_arc.clone();
+                let handle = handle.clone();
+                let connection_task_arc = connection_task_arc.clone();
+                let roms_scanner = roms_scanner.clone();
+                let patches_scanner = patches_scanner.clone();
+                async move {
+                    run_connection_task(
+                        config_arc,
+                        handle,
+                        egui_ctx.clone(),
+                        audio_binder,
+                        emu_tps_counter,
+                        session,
+                        roms_scanner,
+                        patches_scanner,
+                        matchmaking_endpoint,
+                        link_code,
+                        nickname,
+                        patches_path,
+                        replays_path,
+                        connection_task_arc,
+                        cancellation_token,
+                    )
+                    .await;
+                    egui_ctx.request_repaint();
+                }
+            });
+        } else if let Some(selection) = selection.as_ref() {
+            let save_path = selection.save.path.clone();
+            let rom = selection.rom.clone();
+
+            // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
+            rayon::spawn(move || {
+                *session.lock() = Some(
+                    session::Session::new_singleplayer(
+                        audio_binder,
+                        &rom,
+                        &save_path,
+                        emu_tps_counter,
+                    )
+                    .unwrap(),
+                ); // TODO: Don't unwrap maybe
+                egui_ctx.request_repaint();
+            });
+        }
+    }
+
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
         handle: tokio::runtime::Handle,
-        selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
         font_families: &gui::FontFamilies,
         window: &glutin::window::Window,
         clipboard: &mut arboard::Clipboard,
         config: &mut config::Config,
+        config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         roms_scanner: gui::ROMsScanner,
         saves_scanner: gui::SavesScanner,
         patches_scanner: gui::PatchesScanner,
+        audio_binder: audio::LateBinder,
+        session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+        selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
+        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         state: &mut State,
     ) {
+        let connection_task_arc = state.connection_task.clone();
         let mut connection_task = state.connection_task.blocking_lock();
         let mut selection = selection.lock();
 
         let roms = roms_scanner.read();
-        let saves = saves_scanner.read();
         let patches = patches_scanner.read();
 
         egui::TopBottomPanel::bottom("play-bottom-pane")
@@ -1103,9 +1211,6 @@ impl PlayPane {
 
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let submit = || {
-                                // TODO
-                            };
 
                             let (lobby, cancellation_token) = if let Some(connection_task) = connection_task.as_ref()
                             {
@@ -1173,7 +1278,21 @@ impl PlayPane {
                                     )
                                     .clicked()
                                 {
-                                    submit();
+                                    self.submit(
+                                        ui.ctx(),
+                                        handle.clone(),
+                                        &state.link_code,
+                                        &config,
+                                        config_arc.clone(),
+                                        audio_binder.clone(),
+                                        &mut *connection_task,
+                                        connection_task_arc.clone(),
+                                        session.clone(),
+                                        &selection,
+                                        emu_tps_counter.clone(),
+                                        roms_scanner.clone(),
+                                        patches_scanner.clone()
+                                    );
                                 }
 
                                 if ui
@@ -1273,7 +1392,21 @@ impl PlayPane {
                             }
 
                             if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
-                                submit();
+                                self.submit(
+                                    ui.ctx(),
+                                    handle.clone(),
+                                    &state.link_code,
+                                    &config,
+                                    config_arc.clone(),
+                                    audio_binder.clone(),
+                                    &mut *connection_task,
+                                    connection_task_arc.clone(),
+                                    session.clone(),
+                                    &selection,
+                                    emu_tps_counter.clone(),
+                                    roms_scanner.clone(),
+                                    patches_scanner.clone()
+                                );
                             }
                         });
                     });
@@ -1283,16 +1416,6 @@ impl PlayPane {
         egui::CentralPanel::default()
             .frame(egui::Frame::none())
             .show_inside(ui, |ui| {
-                let initial = selection.as_ref().map(|selection| {
-                    (
-                        selection.game,
-                        selection
-                            .patch
-                            .as_ref()
-                            .map(|(name, version, _)| (name.clone(), version.clone())),
-                    )
-                });
-
                 self.save_select_window.show(
                     ui.ctx(),
                     &mut state.show_save_select,
@@ -1731,41 +1854,29 @@ impl PlayPane {
                     ..
                 }) = connection_task.as_ref()
                 {
-                    if initial
-                        != selection.as_ref().map(|selection| {
-                            (
-                                selection.game,
-                                selection
-                                    .patch
-                                    .as_ref()
-                                    .map(|(name, version, _)| (name.clone(), version.clone())),
-                            )
-                        })
-                    {
-                        handle.block_on(async {
-                            let mut lobby = lobby.lock().await;
-                            lobby.match_type = (
-                                if selection
-                                    .as_ref()
-                                    .map(|selection| {
-                                        (lobby.match_type.0 as usize)
-                                            < selection.game.match_types().len()
-                                    })
-                                    .unwrap_or(false)
-                                {
-                                    lobby.match_type.0
-                                } else {
-                                    0
-                                },
-                                0,
-                            );
+                    handle.block_on(async {
+                        let mut lobby = lobby.lock().await;
+                        lobby.match_type = (
+                            if selection
+                                .as_ref()
+                                .map(|selection| {
+                                    (lobby.match_type.0 as usize)
+                                        < selection.game.match_types().len()
+                                })
+                                .unwrap_or(false)
+                            {
+                                lobby.match_type.0
+                            } else {
+                                0
+                            },
+                            0,
+                        );
 
-                            let _ = lobby.set_local_selection(&selection);
-                            if !lobby.can_ready() {
-                                lobby.remote_commitment = None;
-                            }
-                        });
-                    }
+                        let _ = lobby.set_local_selection(&selection);
+                        if !lobby.can_ready() {
+                            lobby.remote_commitment = None;
+                        }
+                    });
                 }
 
                 if let Some(selection) = selection.as_mut() {
