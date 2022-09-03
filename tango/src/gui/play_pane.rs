@@ -3,12 +3,19 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{audio, config, game, gui, i18n, net, patch, save, session, stats};
+use crate::{audio, config, game, gui, i18n, net, patch, rom, save, session, stats};
+
+struct LobbySelection {
+    pub game: &'static (dyn game::Game + Send + Sync),
+    pub save: Box<dyn save::Save + Send + Sync>,
+    pub rom: Vec<u8>,
+    pub patch: Option<(String, semver::Version, patch::Version)>,
+}
 
 struct Lobby {
     attention_requested: bool,
     sender: Option<net::Sender>,
-    selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
+    selection: Option<LobbySelection>,
     nickname: String,
     match_type: (u8, u8),
     reveal_setup: bool,
@@ -176,7 +183,7 @@ impl Lobby {
         net::protocol::Settings {
             nickname: self.nickname.clone(),
             match_type: self.match_type,
-            game_info: self.selection.lock().as_ref().map(|selection| {
+            game_info: self.selection.as_ref().map(|selection| {
                 let (family, variant) = selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
@@ -401,7 +408,7 @@ async fn run_connection_task(
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         attention_requested: false,
                         sender: Some(sender),
-                        selection: selection.clone(),
+                        selection: None,
                         nickname,
                         match_type: (if selection.lock().as_ref().map(|selection| (default_match_type as usize) < selection.game.match_types().len()).unwrap_or(false) {
                             default_match_type
@@ -571,14 +578,7 @@ async fn run_connection_task(
                             audio_binder,
                             link_code,
                             patch
-                                .and_then(|(patch_name, patch_version, _)| {
-                                    patches_scanner // TODO: Avoid having to read the patches scanner here.
-                                        .read()
-                                        .get(&patch_name)
-                                        .and_then(|p| p.versions.get(&patch_version))
-                                        .as_ref()
-                                        .map(|v| v.netplay_compatibility.clone())
-                                })
+                                .map(|(_, _, metadata)| metadata.netplay_compatibility.clone())
                                 .unwrap_or(local_game.family_and_variant().0.to_owned()),
                             local_settings,
                             local_game,
@@ -666,6 +666,7 @@ impl PlayPane {
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
+        handle: tokio::runtime::Handle,
         selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
         font_families: &gui::FontFamilies,
         clipboard: &mut arboard::Clipboard,
@@ -679,6 +680,7 @@ impl PlayPane {
         let saves = saves_scanner.read();
         let patches = patches_scanner.read();
 
+        let mut connection_task = state.connection_task.blocking_lock();
         let mut selection = selection.lock();
 
         let initial = selection.as_ref().map(|selection| {
@@ -701,9 +703,7 @@ impl PlayPane {
             saves_scanner.clone(),
         );
 
-        let is_ready = state
-            .connection_task
-            .blocking_lock()
+        let is_ready = connection_task
             .as_ref()
             .map(|task| match task {
                 ConnectionTask::InProgress { state, .. } => match state {
@@ -1094,6 +1094,60 @@ impl PlayPane {
                 );
             });
         });
+
+        if let Some(ConnectionTask::InProgress {
+            state: ConnectionState::InLobby(lobby),
+            ..
+        }) = connection_task.as_ref()
+        {
+            if initial
+                != selection.as_ref().map(|selection| {
+                    (
+                        selection.game,
+                        selection
+                            .patch
+                            .as_ref()
+                            .map(|(name, version, _)| (name.clone(), version.clone())),
+                    )
+                })
+            {
+                // Handle changes in a different thread.
+                handle.block_on(async {
+                    let mut lobby = lobby.lock().await;
+                    lobby.match_type = (
+                        if selection
+                            .as_ref()
+                            .map(|selection| {
+                                (lobby.match_type.0 as usize) < selection.game.match_types().len()
+                            })
+                            .unwrap_or(false)
+                        {
+                            lobby.match_type.0
+                        } else {
+                            0
+                        },
+                        0,
+                    );
+                    lobby.selection = if let Some(selection) = selection.as_ref() {
+                        Some(LobbySelection {
+                            game: selection.game,
+                            save: selection.save.save.clone(),
+                            rom: selection.rom.clone(),
+                            patch: selection.patch.clone(),
+                        })
+                    } else {
+                        None
+                    };
+
+                    let settings = lobby.make_local_settings();
+                    let _ = lobby.send_settings(settings.clone()).await;
+                    if !are_settings_compatible(&settings, &lobby.remote_settings, &roms, &patches)
+                    {
+                        lobby.remote_commitment = None;
+                    }
+                });
+            }
+        }
 
         if let Some(selection) = selection.as_mut() {
             if let Some(assets) = selection.assets.as_ref() {

@@ -135,6 +135,7 @@ impl MainView {
             Tab::Play => {
                 self.play_pane.show(
                     ui,
+                    handle.clone(),
                     selection.clone(),
                     &font_families,
                     clipboard,
