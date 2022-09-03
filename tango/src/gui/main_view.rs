@@ -1531,7 +1531,7 @@ impl MainView {
                                                                     if lobby.local_negotiated_state.is_some()
                                                                         || lobby.sender.is_none()
                                                                     {
-                                                                        ui.label("✅");
+                                                                        ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
                                                                     }
                                                                 });
                                                             });
@@ -1544,7 +1544,7 @@ impl MainView {
                                                             lobby.remote_settings.nickname.clone(),
                                                         );
                                                         if lobby.remote_commitment.is_some() {
-                                                            ui.label("✅");
+                                                            ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
                                                         }
                                                     });
                                                 });
