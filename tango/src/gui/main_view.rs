@@ -7,12 +7,6 @@ use crate::{
     audio, config, game, gui, i18n, input, net, patch, randomcode, rom, save, session, stats,
 };
 
-// Locking order:
-// - connection task
-// - lobby
-// - selection
-// Don't mess this up or you will be sad.
-
 pub struct State {
     tab: Tab,
     play_pane: gui::play_pane::State,
@@ -138,8 +132,9 @@ impl MainView {
                     handle.clone(),
                     selection.clone(),
                     &font_families,
+                    window,
                     clipboard,
-                    &config,
+                    config,
                     roms_scanner.clone(),
                     saves_scanner.clone(),
                     patches_scanner.clone(),
