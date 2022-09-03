@@ -90,7 +90,7 @@ impl ReplaysWindow {
         patches_path: &std::path::Path,
         patches_scanner: gui::PatchesScanner,
         roms_scanner: gui::ROMsScanner,
-        replays_path: &std::path::PathBuf,
+        replays_path: &std::path::Path,
     ) {
         let mut show_window = show.is_some();
         egui::Window::new(format!(
@@ -391,29 +391,70 @@ impl ReplaysWindow {
                             return;
                         };
 
-                        if let Some(assets) = selection.assets.as_ref() {
-                            let game_language = selection.game.language();
-                            self.save_view.show(
-                                ui,
-                                clipboard,
-                                font_families,
-                                language,
-                                if let Some((_, _, metadata)) = selection.patch.as_ref() {
-                                    if let Some(language) =
-                                        metadata.saveedit_overrides.language.as_ref()
-                                    {
-                                        language
+                        ui.vertical(|ui| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                if ui
+                                    .button(format!(
+                                        "▶️ {}",
+                                        i18n::LOCALES.lookup(language, "replays.play").unwrap()
+                                    ))
+                                    .clicked()
+                                {}
+
+                                if ui
+                                    .button(format!(
+                                        "💾 {}",
+                                        i18n::LOCALES.lookup(language, "replays.export").unwrap()
+                                    ))
+                                    .clicked()
+                                {}
+
+                                ui.with_layout(
+                                    egui::Layout::top_down_justified(egui::Align::Min),
+                                    |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.with_layout(
+                                                egui::Layout::left_to_right(egui::Align::Max)
+                                                    .with_main_wrap(true),
+                                                |ui| {
+                                                    ui.heading(&format!(
+                                                        "{}",
+                                                        selection
+                                                            .path
+                                                            .strip_prefix(replays_path)
+                                                            .unwrap_or(selection.path.as_path())
+                                                            .display()
+                                                    ));
+                                                },
+                                            );
+                                        });
+                                    },
+                                );
+                            });
+                            if let Some(assets) = selection.assets.as_ref() {
+                                let game_language = selection.game.language();
+                                self.save_view.show(
+                                    ui,
+                                    clipboard,
+                                    font_families,
+                                    language,
+                                    if let Some((_, _, metadata)) = selection.patch.as_ref() {
+                                        if let Some(language) =
+                                            metadata.saveedit_overrides.language.as_ref()
+                                        {
+                                            language
+                                        } else {
+                                            &game_language
+                                        }
                                     } else {
                                         &game_language
-                                    }
-                                } else {
-                                    &game_language
-                                },
-                                &selection.save,
-                                &assets,
-                                &mut selection.save_view,
-                            );
-                        }
+                                    },
+                                    &selection.save,
+                                    &assets,
+                                    &mut selection.save_view,
+                                );
+                            }
+                        });
                     });
             });
         });

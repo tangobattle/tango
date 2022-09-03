@@ -44,7 +44,10 @@ impl PatchesWindow {
             ui.horizontal_top(|ui| {
                 ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {
                     if ui
-                        .button(i18n::LOCALES.lookup(language, "patches.update").unwrap())
+                        .button(format!(
+                            "🔄 {}",
+                            i18n::LOCALES.lookup(language, "patches.update").unwrap()
+                        ))
                         .clicked()
                     {
                         rayon::spawn({
@@ -111,11 +114,12 @@ impl PatchesWindow {
                                     egui::Layout::right_to_left(egui::Align::Min),
                                     |ui| {
                                         if ui
-                                            .button(
+                                            .button(format!(
+                                                "📂 {}",
                                                 i18n::LOCALES
                                                     .lookup(language, "patches.open-folder")
                                                     .unwrap(),
-                                            )
+                                            ))
                                             .clicked()
                                         {
                                             let _ = open::that(&patch.path);

@@ -1396,12 +1396,12 @@ impl MainView {
                             ConnectionState::Starting => {
                                 ui.horizontal(|ui| {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                        if ui.button(egui::RichText::new(format!(
+                                        if ui.button(format!(
                                             "❎ {}",
                                             i18n::LOCALES
                                                 .lookup(&config.language, "main.cancel")
                                                 .unwrap()
-                                        ))).clicked()
+                                        )).clicked()
                                         {
                                             cancellation_token.cancel();
                                         }
@@ -1425,12 +1425,12 @@ impl MainView {
                             ConnectionState::Signaling => {
                                 ui.horizontal(|ui| {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                        if ui.button(egui::RichText::new(format!(
+                                        if ui.button(format!(
                                             "❎ {}",
                                             i18n::LOCALES
                                                 .lookup(&config.language, "main.cancel")
                                                 .unwrap()
-                                        ))).clicked()
+                                        )).clicked()
                                         {
                                             cancellation_token.cancel();
                                         }
@@ -1455,12 +1455,12 @@ impl MainView {
                             ConnectionState::Waiting => {
                                 ui.horizontal(|ui| {
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                        if ui.button(egui::RichText::new(format!(
+                                        if ui.button(format!(
                                             "❎ {}",
                                             i18n::LOCALES
                                                 .lookup(&config.language, "main.cancel")
                                                 .unwrap()
-                                        ))).clicked()
+                                        )).clicked()
                                         {
                                             cancellation_token.cancel();
                                         }
@@ -1504,12 +1504,12 @@ impl MainView {
                                                 header.col(|ui| {
                                                     ui.horizontal(|ui| {
                                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                                            if ui.button(egui::RichText::new(format!(
+                                                            if ui.button(format!(
                                                                 "🚶 {}",
                                                                 i18n::LOCALES
                                                                     .lookup(&config.language, "main.leave")
                                                                     .unwrap()
-                                                            ))).clicked()
+                                                            )).clicked()
                                                             {
                                                                 cancellation_token.cancel();
                                                             }
