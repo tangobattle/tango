@@ -12,7 +12,7 @@ pub enum Region {
     JP,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct GameInfo {
     pub region: Region,
 }
@@ -20,17 +20,25 @@ pub struct GameInfo {
 #[derive(Clone)]
 pub struct Save {
     buf: [u8; SRAM_SIZE],
+    game_info: GameInfo,
 }
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
-        let buf = buf
+        let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        let save = Self { buf };
-        save.game_info()?;
+        let game_info = match &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
+            b"ROCKMAN EXE 20010120" => GameInfo { region: Region::JP },
+            b"ROCKMAN EXE 20010727" => GameInfo { region: Region::US },
+            n => {
+                anyhow::bail!("unknown game name: {:02x?}", n);
+            }
+        };
+
+        let save = Self { buf, game_info };
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
@@ -44,14 +52,18 @@ impl Save {
         Ok(save)
     }
 
-    pub fn game_info(&self) -> Result<GameInfo, anyhow::Error> {
-        Ok(match &self.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
-            b"ROCKMAN EXE 20010120" => GameInfo { region: Region::JP },
-            b"ROCKMAN EXE 20010727" => GameInfo { region: Region::US },
-            n => {
-                anyhow::bail!("unknown game name: {:02x?}", n);
-            }
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+        Ok(Self {
+            buf: buf
+                .get(..SRAM_SIZE)
+                .and_then(|buf| buf.try_into().ok())
+                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+            game_info,
         })
+    }
+
+    pub fn game_info(&self) -> &GameInfo {
+        &self.game_info
     }
 
     pub fn checksum(&self) -> u32 {

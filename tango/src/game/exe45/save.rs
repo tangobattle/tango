@@ -7,14 +7,6 @@ const MASK_OFFSET: usize = 0x3c84;
 const GAME_NAME_OFFSET: usize = 0x4ba8;
 const CHECKSUM_OFFSET: usize = 0x4b88;
 
-fn mask(buf: &mut [u8]) {
-    let mask = byteorder::LittleEndian::read_u32(&buf[MASK_OFFSET..MASK_OFFSET + 4]);
-    for b in buf.iter_mut() {
-        *b = *b ^ (mask as u8);
-    }
-    byteorder::LittleEndian::write_u32(&mut buf[MASK_OFFSET..MASK_OFFSET + 4], mask);
-}
-
 #[derive(Clone)]
 pub struct Save {
     buf: [u8; SRAM_SIZE],
@@ -26,8 +18,7 @@ impl Save {
             .get(..SRAM_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
-
-        mask(&mut buf[..]);
+        save::mask_save(&mut buf[..], MASK_OFFSET);
 
         let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE4RO 040607" && n != b"ROCKMANEXE4RO 041217" {
@@ -64,6 +55,15 @@ impl Save {
             })
             .sum::<u32>()
             + 0x38
+    }
+
+    pub fn from_wram(buf: &[u8]) -> Result<Self, anyhow::Error> {
+        let mut buf: [u8; SRAM_SIZE] = buf
+            .get(..SRAM_SIZE)
+            .and_then(|buf| buf.try_into().ok())
+            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+        save::mask_save(&mut buf[..], MASK_OFFSET);
+        Ok(Self { buf })
     }
 
     pub fn current_navi(&self) -> u8 {

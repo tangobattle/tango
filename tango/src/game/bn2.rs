@@ -42,6 +42,14 @@ impl game::Game for EXE2Impl {
         Ok(Box::new(save))
     }
 
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(data)?;
+        Ok(Box::new(save))
+    }
+
     fn load_rom_assets(
         &self,
         rom: &[u8],
@@ -98,6 +106,14 @@ impl game::Game for BN2Impl {
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
+        Ok(Box::new(save))
+    }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(data)?;
         Ok(Box::new(save))
     }
 

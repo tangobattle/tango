@@ -39,14 +39,26 @@ impl game::Game for EXE1Impl {
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info().unwrap();
-        if game_info
-            != (save::GameInfo {
+        if save.game_info()
+            != &(save::GameInfo {
                 region: save::Region::JP,
             })
         {
-            anyhow::bail!("save is not compatible: got {:?}", game_info);
+            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
+        Ok(Box::new(save))
+    }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                region: save::Region::JP,
+            },
+        )?;
         Ok(Box::new(save))
     }
 
@@ -106,14 +118,26 @@ impl game::Game for BN1Impl {
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info().unwrap();
-        if game_info
-            != (save::GameInfo {
+        if save.game_info()
+            != &(save::GameInfo {
                 region: save::Region::US,
             })
         {
-            anyhow::bail!("save is not compatible: got {:?}", game_info);
+            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
+        Ok(Box::new(save))
+    }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                region: save::Region::US,
+            },
+        )?;
         Ok(Box::new(save))
     }
 

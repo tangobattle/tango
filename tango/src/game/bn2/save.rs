@@ -13,17 +13,11 @@ pub struct Save {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
-        let buf: [u8; SRAM_SIZE] = buf
-            .get(..SRAM_SIZE)
-            .and_then(|buf| buf.try_into().ok())
-            .ok_or(anyhow::anyhow!("save is wrong size"))?;
-
-        let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
+        let save = Save::from_wram(buf)?;
+        let n = &save.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE2 20011016" {
             anyhow::bail!("unknown game name: {:02x?}", n);
         }
-
-        let save = Self { buf };
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
@@ -35,6 +29,15 @@ impl Save {
         }
 
         Ok(save)
+    }
+
+    pub fn from_wram(buf: &[u8]) -> Result<Self, anyhow::Error> {
+        Ok(Self {
+            buf: buf
+                .get(..SRAM_SIZE)
+                .and_then(|buf| buf.try_into().ok())
+                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+        })
     }
 
     pub fn checksum(&self) -> u32 {

@@ -46,6 +46,20 @@ impl game::Game for EXE4RSImpl {
         }
         Ok(Box::new(save))
     }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                region: save::Region::JP,
+                variant: save::Variant::RedSun,
+            },
+        )?;
+        Ok(Box::new(save))
+    }
 }
 
 struct EXE4BMImpl;
@@ -87,6 +101,20 @@ impl game::Game for EXE4BMImpl {
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
+        Ok(Box::new(save))
+    }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                region: save::Region::JP,
+                variant: save::Variant::BlueMoon,
+            },
+        )?;
         Ok(Box::new(save))
     }
 }
@@ -132,6 +160,20 @@ impl game::Game for BN4RSImpl {
         }
         Ok(Box::new(save))
     }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                region: save::Region::US,
+                variant: save::Variant::RedSun,
+            },
+        )?;
+        Ok(Box::new(save))
+    }
 }
 
 struct BN4BMImpl;
@@ -173,6 +215,20 @@ impl game::Game for BN4BMImpl {
         {
             anyhow::bail!("save is not compatible: got {:?}", game_info);
         }
+        Ok(Box::new(save))
+    }
+
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                region: save::Region::US,
+                variant: save::Variant::BlueMoon,
+            },
+        )?;
         Ok(Box::new(save))
     }
 }

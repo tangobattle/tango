@@ -20,7 +20,7 @@ pub enum Variant {
     Colonel,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct GameInfo {
     pub region: Region,
     pub variant: Variant,
@@ -29,6 +29,7 @@ pub struct GameInfo {
 #[derive(Clone)]
 pub struct Save {
     buf: [u8; SRAM_SIZE],
+    game_info: GameInfo,
 }
 
 impl Save {
@@ -39,23 +40,7 @@ impl Save {
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let save = Self { buf };
-        save.game_info()?;
-
-        let computed_checksum = save.compute_checksum();
-        if save.checksum() != computed_checksum {
-            anyhow::bail!(
-                "checksum mismatch: expected {:08x}, got {:08x}",
-                save.checksum(),
-                computed_checksum
-            );
-        }
-
-        Ok(save)
-    }
-
-    pub fn game_info(&self) -> Result<GameInfo, anyhow::Error> {
-        Ok(match &self.buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
+        let game_info = match &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
             b"REXE5TOB 20041104 JP" => GameInfo {
                 region: Region::JP,
                 variant: Variant::Protoman,
@@ -75,7 +60,33 @@ impl Save {
             n => {
                 anyhow::bail!("unknown game name: {:02x?}", n);
             }
-        })
+        };
+
+        let save = Self { buf, game_info };
+
+        let computed_checksum = save.compute_checksum();
+        if save.checksum() != computed_checksum {
+            anyhow::bail!(
+                "checksum mismatch: expected {:08x}, got {:08x}",
+                save.checksum(),
+                computed_checksum
+            );
+        }
+
+        Ok(save)
+    }
+
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+        let mut buf: [u8; SRAM_SIZE] = buf
+            .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
+            .and_then(|buf| buf.try_into().ok())
+            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+        save::mask_save(&mut buf[..], MASK_OFFSET);
+        Ok(Self { buf, game_info })
+    }
+
+    pub fn game_info(&self) -> &GameInfo {
+        &self.game_info
     }
 
     pub fn checksum(&self) -> u32 {
@@ -84,7 +95,7 @@ impl Save {
 
     pub fn compute_checksum(&self) -> u32 {
         save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET)
-            + match self.game_info().unwrap().variant {
+            + match self.game_info.variant {
                 Variant::Protoman => 0x72,
                 Variant::Colonel => 0x18,
             }

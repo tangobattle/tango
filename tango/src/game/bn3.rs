@@ -33,18 +33,30 @@ impl game::Game for EXE3WImpl {
         &hooks::A6BJ_01
     }
 
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                variant: save::Variant::White,
+            },
+        )?;
+        Ok(Box::new(save))
+    }
+
     fn parse_save(
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info();
-        if *game_info
-            != (save::GameInfo {
+        if save.game_info()
+            != &(save::GameInfo {
                 variant: save::Variant::White,
             })
         {
-            anyhow::bail!("save is not compatible: got {:?}", game_info);
+            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
         Ok(Box::new(save))
     }
@@ -78,18 +90,30 @@ impl game::Game for EXE3BImpl {
         &hooks::A3XJ_01
     }
 
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                variant: save::Variant::Blue,
+            },
+        )?;
+        Ok(Box::new(save))
+    }
+
     fn parse_save(
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info();
-        if *game_info
-            != (save::GameInfo {
+        if save.game_info()
+            != &(save::GameInfo {
                 variant: save::Variant::Blue,
             })
         {
-            anyhow::bail!("save is not compatible: got {:?}", game_info);
+            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
         Ok(Box::new(save))
     }
@@ -123,18 +147,30 @@ impl game::Game for BN3WImpl {
         &hooks::A6BE_00
     }
 
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                variant: save::Variant::White,
+            },
+        )?;
+        Ok(Box::new(save))
+    }
+
     fn parse_save(
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info();
-        if *game_info
-            != (save::GameInfo {
+        if save.game_info()
+            != &(save::GameInfo {
                 variant: save::Variant::White,
             })
         {
-            anyhow::bail!("save is not compatible: got {:?}", game_info);
+            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
         Ok(Box::new(save))
     }
@@ -168,18 +204,30 @@ impl game::Game for BN3BImpl {
         &hooks::A3XE_00
     }
 
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+        let save = save::Save::from_wram(
+            data,
+            save::GameInfo {
+                variant: save::Variant::Blue,
+            },
+        )?;
+        Ok(Box::new(save))
+    }
+
     fn parse_save(
         &self,
         data: &[u8],
     ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
-        let game_info = save.game_info();
-        if *game_info
-            != (save::GameInfo {
+        if save.game_info()
+            != &(save::GameInfo {
                 variant: save::Variant::Blue,
             })
         {
-            anyhow::bail!("save is not compatible: got {:?}", game_info);
+            anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
         Ok(Box::new(save))
     }

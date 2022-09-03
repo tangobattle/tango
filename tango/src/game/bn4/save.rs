@@ -103,6 +103,27 @@ impl Save {
         Ok(save)
     }
 
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+        let mut buf: [u8; SRAM_SIZE] = buf
+            .get(..SRAM_SIZE)
+            .and_then(|buf| buf.try_into().ok())
+            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+
+        save::mask_save(&mut buf[..], MASK_OFFSET);
+
+        let shift =
+            byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
+        if shift > 0x1fc || (shift & 3) != 0 {
+            anyhow::bail!("invalid shift of {}", shift);
+        }
+
+        Ok(Self {
+            buf,
+            game_info,
+            shift,
+        })
+    }
+
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(
             &self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],

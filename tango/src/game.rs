@@ -169,6 +169,10 @@ where
     fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
+    fn save_from_wram(
+        &self,
+        data: &[u8],
+    ) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
     fn load_rom_assets(
         &self,
         _rom: &[u8],

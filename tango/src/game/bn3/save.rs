@@ -69,6 +69,16 @@ impl Save {
         Ok(save)
     }
 
+    pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
+        Ok(Self {
+            buf: buf
+                .get(..SRAM_SIZE)
+                .and_then(|buf| buf.try_into().ok())
+                .ok_or(anyhow::anyhow!("save is wrong size"))?,
+            game_info,
+        })
+    }
+
     pub fn checksum(&self) -> u32 {
         byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
     }
