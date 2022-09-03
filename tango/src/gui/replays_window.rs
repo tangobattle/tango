@@ -163,6 +163,14 @@ impl ReplaysWindow {
                                     continue;
                                 };
 
+                                let selected =
+                                    state.selection.as_ref().map(|s| &s.path) == Some(path);
+                                let text_color = if selected {
+                                    ui.ctx().style().visuals.selection.stroke.color
+                                } else {
+                                    ui.visuals().text_color()
+                                };
+
                                 let mut layout_job = egui::text::LayoutJob::default();
                                 layout_job.append(
                                     &chrono::DateTime::<chrono::Local>::from(ts)
@@ -175,7 +183,7 @@ impl ReplaysWindow {
                                             .get(&egui::TextStyle::Body)
                                             .unwrap()
                                             .clone(),
-                                        ui.visuals().text_color(),
+                                        text_color,
                                     ),
                                 );
                                 layout_job.append(
@@ -187,7 +195,7 @@ impl ReplaysWindow {
                                             .get(&egui::TextStyle::Body)
                                             .unwrap()
                                             .clone(),
-                                        ui.visuals().text_color(),
+                                        text_color,
                                     ),
                                 );
                                 layout_job.append(
@@ -225,13 +233,7 @@ impl ReplaysWindow {
                                     ),
                                 );
 
-                                if ui
-                                    .selectable_label(
-                                        state.selection.as_ref().map(|s| &s.path) == Some(path),
-                                        layout_job,
-                                    )
-                                    .clicked()
-                                {
+                                if ui.selectable_label(selected, layout_job).clicked() {
                                     let mut f = match std::fs::File::open(&path) {
                                         Ok(f) => f,
                                         Err(e) => {
