@@ -22,7 +22,7 @@ pub struct InnerState {
     dirty_state: Option<battle::CommittedState>,
     round_result: Option<RoundResult>,
     phase: RoundPhase,
-    on_round_ended: Box<dyn Fn() + Sync + Send>,
+    on_round_ended: Option<Box<dyn FnOnce() + Send>>,
     error: Option<anyhow::Error>,
 }
 
@@ -130,7 +130,9 @@ impl InnerState {
 
     pub fn set_round_ended(&mut self) {
         self.phase = RoundPhase::Ended;
-        (self.on_round_ended)();
+        if let Some(on_round_ended) = self.on_round_ended.take() {
+            on_round_ended();
+        }
     }
 
     pub fn is_round_ending(&self) -> bool {
@@ -201,7 +203,7 @@ impl State {
         local_player_index: u8,
         input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
         commit_tick: u32,
-        on_round_ended: Box<dyn Fn() + Sync + Send>,
+        on_round_ended: Box<dyn FnOnce() + Send>,
     ) -> State {
         let local_packet = input_pairs.first().map(|ip| lockstep::Packet {
             tick: ip.local.local_tick,
@@ -248,7 +250,7 @@ impl State {
                 round_result: None,
                 phase: RoundPhase::InProgress,
                 error: None,
-                on_round_ended,
+                on_round_ended: Some(on_round_ended),
             },
         ))))
     }
@@ -320,7 +322,7 @@ impl Fastforwarder {
             round_result: None,
             phase: RoundPhase::InProgress,
             error: None,
-            on_round_ended: Box::new(|| {}),
+            on_round_ended: Some(Box::new(|| {})),
         });
 
         loop {

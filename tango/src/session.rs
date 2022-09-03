@@ -10,17 +10,18 @@ pub struct Session {
     thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     mode: Mode,
-    completed: Arc<std::sync::atomic::AtomicBool>,
+    completion_rx: oneshot::Receiver<()>,
 }
 
 pub struct CompletionToken {
-    completed: Arc<std::sync::atomic::AtomicBool>,
+    tx: std::sync::Arc<parking_lot::Mutex<Option<oneshot::Sender<()>>>>,
 }
 
 impl CompletionToken {
     pub fn complete(&self) {
-        self.completed
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if let Some(tx) = self.tx.lock().take() {
+            let _ = tx.send(());
+        }
     }
 }
 
@@ -79,12 +80,15 @@ impl Session {
         let match_ = std::sync::Arc::new(tokio::sync::Mutex::new(None));
         let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
         let mut traps = hooks.common_traps();
+
+        let (completion_tx, completion_rx) = oneshot::channel();
+
         traps.extend(hooks.primary_traps(
             handle.clone(),
             joyflags.clone(),
             match_.clone(),
             CompletionToken {
-                completed: completed.clone(),
+                tx: std::sync::Arc::new(parking_lot::Mutex::new(Some(completion_tx))),
             },
         ));
         core.set_traps(traps);
@@ -171,7 +175,7 @@ impl Session {
                 match_,
                 cancellation_token,
             }),
-            completed,
+            completion_rx,
         })
     }
 
@@ -201,7 +205,7 @@ impl Session {
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
-        let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (_, completion_rx) = oneshot::channel();
 
         let thread = mgba::thread::Thread::new(core);
 
@@ -239,7 +243,7 @@ impl Session {
             thread,
             joyflags,
             mode: Mode::SinglePlayer,
-            completed,
+            completion_rx,
         })
     }
 
@@ -260,19 +264,15 @@ impl Session {
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
-        let completed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (completion_tx, completion_rx) = oneshot::channel();
 
         let input_pairs = replay.input_pairs.clone();
         let replayer_state = replayer::State::new(
             replay.local_player_index,
             input_pairs,
             0,
-            Box::new({
-                let completed = completed.clone();
-                move || {
-                    // TODO: This probably crashes maybe?
-                    completed.store(true, std::sync::atomic::Ordering::Relaxed);
-                }
+            Box::new(move || {
+                let _ = completion_tx.send(());
             }),
         );
         let mut traps = hooks.common_traps();
@@ -322,12 +322,15 @@ impl Session {
             thread,
             joyflags: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             mode: Mode::Replayer,
-            completed,
+            completion_rx,
         })
     }
 
     pub fn completed(&self) -> bool {
-        self.completed.load(std::sync::atomic::Ordering::Relaxed)
+        match self.completion_rx.try_recv() {
+            Err(oneshot::TryRecvError::Empty) => false,
+            _ => true,
+        }
     }
 
     pub fn mode(&self) -> &Mode {
