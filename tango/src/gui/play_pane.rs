@@ -829,7 +829,6 @@ impl PlayPane {
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         state: &mut State,
     ) {
-        let connection_task_arc = state.connection_task.clone();
         let mut connection_task = state.connection_task.blocking_lock();
         let mut selection = selection.lock();
 
@@ -841,11 +840,10 @@ impl PlayPane {
             .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
                     {
-                        let connection_task = state.connection_task.blocking_lock();
                         if let Some(ConnectionTask::InProgress {
                             state: connection_state,
                             cancellation_token,
-                        }) = &*connection_task
+                        }) = connection_task.as_ref()
                         {
                             match connection_state {
                                 ConnectionState::Starting => {
@@ -1286,7 +1284,7 @@ impl PlayPane {
                                         config_arc.clone(),
                                         audio_binder.clone(),
                                         &mut *connection_task,
-                                        connection_task_arc.clone(),
+                                        state.connection_task.clone(),
                                         session.clone(),
                                         &selection,
                                         emu_tps_counter.clone(),
@@ -1400,7 +1398,7 @@ impl PlayPane {
                                     config_arc.clone(),
                                     audio_binder.clone(),
                                     &mut *connection_task,
-                                    connection_task_arc.clone(),
+                                    state.connection_task.clone(),
                                     session.clone(),
                                     &selection,
                                     emu_tps_counter.clone(),
