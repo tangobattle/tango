@@ -8,6 +8,7 @@ main =
     .no-game = None
     .no-patch = None
     .you = You
+    .cancel = Cancel
 
 main-details =
     .game = Game
