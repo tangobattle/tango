@@ -549,6 +549,7 @@ async fn run_connection_task(
                                     net::protocol::Packet::Commit(commit) => {
                                         let mut lobby = lobby.lock().await;
                                         lobby.remote_commitment = Some(commit.commitment);
+                                        egui_ctx.request_repaint();
 
                                         if lobby.local_negotiated_state.is_some() {
                                             break 'l;
@@ -556,6 +557,7 @@ async fn run_connection_task(
                                     },
                                     net::protocol::Packet::Uncommit(_) => {
                                         lobby.lock().await.remote_commitment = None;
+                                        egui_ctx.request_repaint();
                                     },
                                     net::protocol::Packet::Chunk(chunk) => {
                                         remote_chunks.push(chunk.chunk);
