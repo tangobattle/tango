@@ -128,7 +128,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn equipped_folder_index(&self) -> usize {
-        self.save.buf[0x0dc2] as usize
+        self.save.buf[0x1882] as usize
     }
 
     fn regular_chip_is_in_place(&self) -> bool {
@@ -205,7 +205,7 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             col: buf[0x2],
             row: buf[0x3],
             rot: buf[0x4],
-            compressed: (buf[0x0310 + (raw >> 3) as usize] & (0x80 >> (raw >> 7))) != 0,
+            compressed: (self.save.buf[0x0310 + (raw >> 3) as usize] & (0x80 >> (raw >> 7))) != 0,
         })
     }
 }

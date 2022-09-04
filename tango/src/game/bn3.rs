@@ -1,7 +1,8 @@
 mod hooks;
+mod rom;
 mod save;
 
-use crate::game;
+use crate::{game, patch};
 
 const MATCH_TYPES: &[usize] = &[4, 1];
 
@@ -59,6 +60,28 @@ impl game::Game for EXE3WImpl {
         }
         Ok(Box::new(save))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::A6BJ_01,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::JA_CHARSET),
+            rom,
+            wram,
+        )))
+    }
 }
 
 struct EXE3BImpl;
@@ -114,6 +137,28 @@ impl game::Game for EXE3BImpl {
             anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::A3XJ_01,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::JA_CHARSET),
+            rom,
+            wram,
+        )))
     }
 }
 
@@ -171,6 +216,28 @@ impl game::Game for BN3WImpl {
         }
         Ok(Box::new(save))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::A6BE_00,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::EN_CHARSET),
+            rom,
+            wram,
+        )))
+    }
 }
 
 struct BN3BImpl;
@@ -226,5 +293,27 @@ impl game::Game for BN3BImpl {
             anyhow::bail!("save is not compatible: got {:?}", save.game_info());
         }
         Ok(Box::new(save))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::A3XE_00,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::EN_CHARSET),
+            rom,
+            wram,
+        )))
     }
 }
