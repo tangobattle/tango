@@ -28,9 +28,11 @@ pub static AREJ_00: Offsets = Offsets {
     chip_icon_palette_pointer:      0x08015e40,
 };
 
+const NEWLINE_COMMAND: u8 = 0xe8;
+
 lazy_static! {
     pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe5, 0xe7).with_command(0xe8, 0);
+        rom::text::ParseOptions::new(0xe5, 0xe7).with_command(NEWLINE_COMMAND, 0);
 }
 
 pub struct Assets {

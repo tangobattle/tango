@@ -58,7 +58,7 @@ pub static B4BE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099d8,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe9;
+const NEWLINE_COMMAND: u8 = 0xe8;
 const EREADER_COMMAND: u8 = 0xff;
 
 lazy_static! {

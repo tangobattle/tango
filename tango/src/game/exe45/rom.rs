@@ -25,9 +25,11 @@ pub static BR4J_00: Offsets = Offsets {
     emblem_icon_palette_pointers:   0x080219f4,
 };
 
+const NEWLINE_COMMAND: u8 = 0xe8;
+
 lazy_static! {
     pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe4, 0xe5).with_command(0xe8, 0);
+        rom::text::ParseOptions::new(0xe4, 0xe5).with_command(NEWLINE_COMMAND, 0);
 }
 
 pub struct Assets {
