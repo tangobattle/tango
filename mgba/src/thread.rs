@@ -129,6 +129,11 @@ impl Handle {
         unsafe { mgba_sys::mCoreThreadUnpause(&mut thread.raw) }
     }
 
+    pub fn is_paused(&self) -> bool {
+        let mut thread = self.thread.lock();
+        unsafe { mgba_sys::mCoreThreadIsPaused(&mut thread.raw) }
+    }
+
     pub fn run_on_core(&self, f: impl Fn(crate::core::CoreMutRef<'_>) + Send + Sync + 'static) {
         let mut thread = self.thread.lock();
         *thread.current_callback.borrow_mut() = Some(Box::new(f));

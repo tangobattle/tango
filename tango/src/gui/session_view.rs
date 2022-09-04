@@ -118,7 +118,7 @@ pub fn show(
     // If we're in single-player or replayer mode, allow speedup.
     match session.mode() {
         session::Mode::SinglePlayer(_) | session::Mode::Replayer => {
-            session.set_fps(
+            session.set_fps_target(
                 if input_mapping
                     .speed_up
                     .iter()

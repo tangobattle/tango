@@ -356,10 +356,30 @@ impl Session {
         &self.mode
     }
 
-    pub fn set_fps(&self, fps: f32) {
+    pub fn set_paused(&self, pause: bool) {
+        let handle = self.thread.handle();
+        if pause {
+            handle.pause();
+        } else {
+            handle.unpause();
+        }
+    }
+
+    pub fn is_paused(&self) -> bool {
+        let handle = self.thread.handle();
+        handle.is_paused()
+    }
+
+    pub fn set_fps_target(&self, fps: f32) {
         let handle = self.thread.handle();
         let audio_guard = handle.lock_audio();
         audio_guard.sync_mut().set_fps_target(fps);
+    }
+
+    pub fn fps_target(&self) -> f32 {
+        let handle = self.thread.handle();
+        let audio_guard = handle.lock_audio();
+        audio_guard.sync().fps_target()
     }
 
     pub fn has_crashed(&self) -> Option<mgba::thread::Handle> {
