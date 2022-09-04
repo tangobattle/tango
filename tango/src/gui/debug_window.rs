@@ -1,10 +1,28 @@
 use crate::{config, session, stats};
 
-pub struct DebugWindow {}
+mod memory_view_window;
+
+pub struct State {
+    memory_view_window: Option<memory_view_window::State>,
+}
+
+impl State {
+    pub fn new() -> Self {
+        Self {
+            memory_view_window: None,
+        }
+    }
+}
+
+pub struct DebugWindow {
+    memory_view_window: memory_view_window::MemoryViewWindow,
+}
 
 impl DebugWindow {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            memory_view_window: memory_view_window::MemoryViewWindow::new(),
+        }
     }
 
     pub fn show(
@@ -15,6 +33,7 @@ impl DebugWindow {
         session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+        state: &mut State,
     ) {
         egui::Window::new("")
             .id(egui::Id::new("debug-window"))
@@ -22,6 +41,14 @@ impl DebugWindow {
             .title_bar(false)
             .open(&mut config.show_debug_overlay)
             .show(ctx, |ui| {
+                if ui.button("Open memory viewer").clicked() {
+                    state.memory_view_window = if state.memory_view_window.is_none() {
+                        Some(memory_view_window::State::new())
+                    } else {
+                        None
+                    };
+                }
+
                 egui::Grid::new("debug-window-grid")
                     .num_columns(2)
                     .show(ui, |ui| {
@@ -100,5 +127,8 @@ impl DebugWindow {
                         }
                     });
             });
+
+        self.memory_view_window
+            .show(ctx, session.clone(), &mut state.memory_view_window);
     }
 }

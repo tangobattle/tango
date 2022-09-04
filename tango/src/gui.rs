@@ -80,6 +80,7 @@ pub struct State {
     main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
+    show_debug_window: Option<debug_window::State>,
     clipboard: arboard::Clipboard,
     drpc: discord_rpc_client::Client,
 }
@@ -121,6 +122,7 @@ impl State {
             steal_input: None,
             show_settings: None,
             show_escape_window: None,
+            show_debug_window: None,
             clipboard: arboard::Clipboard::new().unwrap(),
             drpc,
         }
@@ -357,14 +359,19 @@ impl Gui {
             config::Theme::Dark => self.themes.dark.clone(),
         });
 
-        self.debug_window.show(
-            ctx,
-            config,
-            handle.clone(),
-            state.session.clone(),
-            state.fps_counter.clone(),
-            state.emu_tps_counter.clone(),
-        );
+        if config.show_debug_overlay {
+            self.debug_window.show(
+                ctx,
+                config,
+                handle.clone(),
+                state.session.clone(),
+                state.fps_counter.clone(),
+                state.emu_tps_counter.clone(),
+                state
+                    .show_debug_window
+                    .get_or_insert_with(|| debug_window::State::new()),
+            );
+        }
         self.settings_window.show(
             ctx,
             &mut state.show_settings,

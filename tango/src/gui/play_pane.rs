@@ -1259,6 +1259,7 @@ impl PlayPane {
                                 }
                             }
 
+                            let mut submitted = false;
                             if cancellation_token.is_none() {
                                 if ui
                                     .add_enabled(
@@ -1282,21 +1283,7 @@ impl PlayPane {
                                     )
                                     .clicked()
                                 {
-                                    self.submit(
-                                        ui.ctx(),
-                                        handle.clone(),
-                                        &state.link_code,
-                                        &config,
-                                        config_arc.clone(),
-                                        audio_binder.clone(),
-                                        &mut *connection_task,
-                                        state.connection_task.clone(),
-                                        session.clone(),
-                                        &selection,
-                                        emu_tps_counter.clone(),
-                                        roms_scanner.clone(),
-                                        patches_scanner.clone()
-                                    );
+                                    submitted = true;
                                 }
 
                                 if ui
@@ -1395,6 +1382,10 @@ impl PlayPane {
                             }
 
                             if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
+                                submitted = true;
+                            }
+
+                            if submitted {
                                 self.submit(
                                     ui.ctx(),
                                     handle.clone(),
