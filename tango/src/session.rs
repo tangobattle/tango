@@ -269,14 +269,21 @@ impl Session {
         hooks.patch(core.as_mut());
 
         let (completion_tx, completion_rx) = oneshot::channel();
+        let completion_tx = std::sync::Arc::new(parking_lot::Mutex::new(Some(completion_tx)));
 
+        let replay_is_complete = replay.is_complete;
         let input_pairs = replay.input_pairs.clone();
         let replayer_state = replayer::State::new(
             replay.local_player_index,
             input_pairs,
             0,
-            Box::new(move || {
-                let _ = completion_tx.send(());
+            Box::new({
+                let completion_tx = completion_tx.clone();
+                move || {
+                    if let Some(tx) = completion_tx.lock().take() {
+                        let _ = tx.send(());
+                    }
+                }
             }),
         );
         let mut traps = hooks.common_traps();
@@ -313,10 +320,18 @@ impl Session {
         {
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
+            let completion_tx = completion_tx.clone();
+            let replayer_state = replayer_state.clone();
             thread.set_frame_callback(move |_core, video_buffer| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 emu_tps_counter.lock().mark();
+
+                if !replay_is_complete && replayer_state.lock_inner().input_pairs_left() == 0 {
+                    if let Some(tx) = completion_tx.lock().take() {
+                        let _ = tx.send(());
+                    }
+                }
             });
         }
 
