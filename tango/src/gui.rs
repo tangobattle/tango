@@ -10,7 +10,7 @@ mod patches_pane;
 mod play_pane;
 mod replay_dump_windows;
 mod replays_pane;
-mod save_select_window;
+mod save_select_view;
 mod save_view;
 mod session_view;
 mod settings_window;

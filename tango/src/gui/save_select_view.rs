@@ -21,7 +21,7 @@ impl State {
 }
 
 pub fn show(
-    ctx: &egui::Context,
+    ui: &mut egui::Ui,
     show: &mut Option<State>,
     selection: &mut Option<gui::Selection>,
     language: &unic_langid::LanguageIdentifier,
@@ -29,64 +29,58 @@ pub fn show(
     roms_scanner: gui::ROMsScanner,
     saves_scanner: gui::SavesScanner,
 ) {
-    let mut show_window = show.is_some();
-    egui::Window::new(format!(
-        "{}",
-        i18n::LOCALES.lookup(language, "select-save").unwrap()
-    ))
-    .id(egui::Id::new("select-save-window"))
-    .open(&mut show_window)
-    .show(ctx, |ui| {
-        let roms = roms_scanner.read();
-        let saves = saves_scanner.read();
+    let roms = roms_scanner.read();
+    let saves = saves_scanner.read();
 
-        ui.vertical(|ui| {
-            let games = game::sorted_all_games(language);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                if ui
-                    .button(
-                        i18n::LOCALES
-                            .lookup(language, "select-save.open-folder")
-                            .unwrap(),
-                    )
-                    .clicked()
-                {
-                    let _ = open::that(
-                        if let Some(path) = selection
-                            .as_ref()
-                            .and_then(|selection| selection.save.path.parent())
-                        {
-                            path
-                        } else {
-                            saves_path
-                        },
-                    );
-                }
+    ui.vertical(|ui| {
+        let games = game::sorted_all_games(language);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+            if ui
+                .button(
+                    i18n::LOCALES
+                        .lookup(language, "select-save.open-folder")
+                        .unwrap(),
+                )
+                .clicked()
+            {
+                let _ = open::that(
+                    if let Some(path) = selection
+                        .as_ref()
+                        .and_then(|selection| selection.save.path.parent())
+                    {
+                        path
+                    } else {
+                        saves_path
+                    },
+                );
+            }
 
-                if let Some((game, _)) = show.as_mut().unwrap().selection {
-                    let (family, variant) = game.family_and_variant();
-                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                        ui.horizontal(|ui| {
-                            ui.with_layout(
-                                egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
-                                |ui| {
-                                    ui.label(
-                                        i18n::LOCALES
-                                            .lookup(
-                                                language,
-                                                &format!("game-{}.variant-{}", family, variant),
-                                            )
-                                            .unwrap(),
-                                    );
-                                },
-                            );
-                        });
+            if let Some((game, _)) = show.as_mut().unwrap().selection {
+                let (family, variant) = game.family_and_variant();
+                ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(
+                            egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
+                            |ui| {
+                                ui.label(
+                                    i18n::LOCALES
+                                        .lookup(
+                                            language,
+                                            &format!("game-{}.variant-{}", family, variant),
+                                        )
+                                        .unwrap(),
+                                );
+                            },
+                        );
                     });
-                }
-            });
+                });
+            }
+        });
 
-            ui.group(|ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.group(|ui| {
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                         if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
                             if ui
@@ -167,11 +161,6 @@ pub fn show(
                         }
                     });
                 });
-            });
         });
     });
-
-    if !show_window {
-        *show = None;
-    }
 }

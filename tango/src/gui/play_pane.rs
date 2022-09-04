@@ -705,7 +705,7 @@ enum ConnectionState {
 pub struct State {
     link_code: String,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
-    show_save_select: Option<gui::save_select_window::State>,
+    show_save_select: Option<gui::save_select_view::State>,
 }
 
 impl State {
@@ -741,7 +741,8 @@ pub fn show(
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
 
-    egui::TopBottomPanel::bottom("play-bottom-pane")
+    if state.show_save_select.is_none() {
+        egui::TopBottomPanel::bottom("play-bottom-pane")
             .frame(egui::Frame::none())
             .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
@@ -1359,20 +1360,11 @@ pub fn show(
                     });
                 });
             });
+    }
 
     egui::CentralPanel::default()
         .frame(egui::Frame::none())
         .show_inside(ui, |ui| {
-            gui::save_select_window::show(
-                ui.ctx(),
-                &mut state.show_save_select,
-                &mut *selection,
-                &config.language,
-                &config.saves_path(),
-                roms_scanner.clone(),
-                saves_scanner.clone(),
-            );
-
             let is_ready = connection_task
                 .as_ref()
                 .map(|task| match task {
@@ -1506,7 +1498,7 @@ pub fn show(
                                 saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                             }
                         });
-                        Some(gui::save_select_window::State::new(selection.as_ref().map(
+                        Some(gui::save_select_view::State::new(selection.as_ref().map(
                             |selection| (selection.game, Some(selection.save.path.to_path_buf())),
                         )))
                     } else {
@@ -1515,302 +1507,316 @@ pub fn show(
                 }
             });
 
-            ui.horizontal_top(|ui| {
-                let patches = patches_scanner.read();
+            if state.show_save_select.is_some() {
+                gui::save_select_view::show(
+                    ui,
+                    &mut state.show_save_select,
+                    &mut *selection,
+                    &config.language,
+                    &config.saves_path(),
+                    roms_scanner.clone(),
+                    saves_scanner.clone(),
+                );
+            } else {
+                ui.horizontal_top(|ui| {
+                    let patches = patches_scanner.read();
 
-                let mut supported_patches = std::collections::BTreeMap::new();
-                {
-                    let selection = if let Some(selection) = selection.as_mut() {
-                        selection
-                    } else {
-                        return;
-                    };
-
-                    for (name, info) in patches.iter() {
-                        let mut supported_versions = info
-                            .versions
-                            .iter()
-                            .filter(|(_, v)| v.supported_games.contains(&selection.game))
-                            .map(|(v, _)| v)
-                            .collect::<Vec<_>>();
-                        supported_versions.sort();
-                        supported_versions.reverse();
-
-                        if supported_versions.is_empty() {
-                            continue;
-                        }
-
-                        supported_patches.insert(name, (info, supported_versions));
-                    }
-                }
-
-                const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
-                ui.add_enabled_ui(!is_ready && selection.is_some(), |ui| {
-                    egui::ComboBox::from_id_source("patch-select-combobox")
-                        .selected_text(
+                    let mut supported_patches = std::collections::BTreeMap::new();
+                    {
+                        let selection = if let Some(selection) = selection.as_mut() {
                             selection
-                                .as_ref()
-                                .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
-                                .unwrap_or(
-                                    &i18n::LOCALES
-                                        .lookup(&config.language, "play-no-patch")
-                                        .unwrap(),
-                                ),
-                        )
-                        .width(
-                            ui.available_width()
-                                - ui.spacing().item_spacing.x
-                                - PATCH_VERSION_COMBOBOX_WIDTH,
-                        )
-                        .show_ui(ui, |ui| {
-                            let selection = if let Some(selection) = selection.as_mut() {
-                                selection
-                            } else {
-                                return;
-                            };
-                            if ui
-                                .selectable_label(
-                                    selection.patch.is_none(),
-                                    &i18n::LOCALES
-                                        .lookup(&config.language, "play-no-patch")
-                                        .unwrap(),
-                                )
-                                .clicked()
-                            {
-                                *selection = gui::Selection::new(
-                                    selection.game.clone(),
-                                    selection.save.clone(),
-                                    None,
-                                    roms.get(&selection.game).unwrap().clone(),
-                                );
+                        } else {
+                            return;
+                        };
+
+                        for (name, info) in patches.iter() {
+                            let mut supported_versions = info
+                                .versions
+                                .iter()
+                                .filter(|(_, v)| v.supported_games.contains(&selection.game))
+                                .map(|(v, _)| v)
+                                .collect::<Vec<_>>();
+                            supported_versions.sort();
+                            supported_versions.reverse();
+
+                            if supported_versions.is_empty() {
+                                continue;
                             }
 
-                            for (name, (_, supported_versions)) in supported_patches.iter() {
+                            supported_patches.insert(name, (info, supported_versions));
+                        }
+                    }
+
+                    const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
+                    ui.add_enabled_ui(!is_ready && selection.is_some(), |ui| {
+                        egui::ComboBox::from_id_source("patch-select-combobox")
+                            .selected_text(
+                                selection
+                                    .as_ref()
+                                    .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
+                                    .unwrap_or(
+                                        &i18n::LOCALES
+                                            .lookup(&config.language, "play-no-patch")
+                                            .unwrap(),
+                                    ),
+                            )
+                            .width(
+                                ui.available_width()
+                                    - ui.spacing().item_spacing.x
+                                    - PATCH_VERSION_COMBOBOX_WIDTH,
+                            )
+                            .show_ui(ui, |ui| {
+                                let selection = if let Some(selection) = selection.as_mut() {
+                                    selection
+                                } else {
+                                    return;
+                                };
                                 if ui
                                     .selectable_label(
-                                        selection.patch.as_ref().map(|(name, _, _)| name)
-                                            == Some(*name),
-                                        *name,
+                                        selection.patch.is_none(),
+                                        &i18n::LOCALES
+                                            .lookup(&config.language, "play-no-patch")
+                                            .unwrap(),
                                     )
                                     .clicked()
                                 {
-                                    *patch_selection = Some(name.to_string());
-
-                                    let rom = roms.get(&selection.game).unwrap().clone();
-                                    let (rom_code, revision) =
-                                        selection.game.rom_code_and_revision();
-                                    let version = *supported_versions.first().unwrap();
-
-                                    let version_metadata = if let Some(version_metadata) = patches
-                                        .get(*name)
-                                        .and_then(|p| p.versions.get(version))
-                                        .cloned()
-                                    {
-                                        version_metadata
-                                    } else {
-                                        return;
-                                    };
-
-                                    let bps = match std::fs::read(
-                                        config
-                                            .patches_path()
-                                            .join(name)
-                                            .join(format!("v{}", version))
-                                            .join(format!(
-                                                "{}_{:02}.bps",
-                                                std::str::from_utf8(rom_code).unwrap(),
-                                                revision
-                                            )),
-                                    ) {
-                                        Ok(bps) => bps,
-                                        Err(e) => {
-                                            log::error!(
-                                                "failed to load patch {} to {:?}: {:?}",
-                                                name,
-                                                (rom_code, revision),
-                                                e
-                                            );
-                                            return;
-                                        }
-                                    };
-
-                                    let rom = match patch::bps::apply(&rom, &bps) {
-                                        Ok(r) => r.to_vec(),
-                                        Err(e) => {
-                                            log::error!(
-                                                "failed to apply patch {} to {:?}: {:?}",
-                                                name,
-                                                (rom_code, revision),
-                                                e
-                                            );
-                                            return;
-                                        }
-                                    };
-
                                     *selection = gui::Selection::new(
                                         selection.game.clone(),
                                         selection.save.clone(),
-                                        Some(((*name).clone(), version.clone(), version_metadata)),
-                                        rom,
+                                        None,
+                                        roms.get(&selection.game).unwrap().clone(),
                                     );
                                 }
-                            }
-                        });
-                    ui.add_enabled_ui(
-                        !is_ready
-                            && selection
-                                .as_ref()
-                                .and_then(|selection| selection.patch.as_ref())
-                                .and_then(|patch| supported_patches.get(&patch.0))
-                                .map(|(_, vs)| !vs.is_empty())
-                                .unwrap_or(false),
-                        |ui| {
-                            egui::ComboBox::from_id_source("patch-version-select-combobox")
-                                .width(
-                                    PATCH_VERSION_COMBOBOX_WIDTH
-                                        - ui.spacing().item_spacing.x * 2.0,
-                                )
-                                .selected_text(
-                                    selection
-                                        .as_ref()
-                                        .and_then(|s| {
-                                            s.patch
-                                                .as_ref()
-                                                .map(|(_, version, _)| version.to_string())
-                                        })
-                                        .unwrap_or("".to_string()),
-                                )
-                                .show_ui(ui, |ui| {
-                                    let selection = if let Some(selection) = selection.as_mut() {
-                                        selection
-                                    } else {
-                                        return;
-                                    };
 
-                                    let patch = if let Some(patch) = selection.patch.as_ref() {
-                                        patch.clone()
-                                    } else {
-                                        return;
-                                    };
-
-                                    let supported_versions = if let Some(supported_versions) =
-                                        supported_patches.get(&patch.0).map(|(_, vs)| vs)
+                                for (name, (_, supported_versions)) in supported_patches.iter() {
+                                    if ui
+                                        .selectable_label(
+                                            selection.patch.as_ref().map(|(name, _, _)| name)
+                                                == Some(*name),
+                                            *name,
+                                        )
+                                        .clicked()
                                     {
-                                        supported_versions
-                                    } else {
-                                        return;
-                                    };
+                                        *patch_selection = Some(name.to_string());
 
-                                    for version in supported_versions.iter() {
-                                        if ui
-                                            .selectable_label(
-                                                &patch.1 == *version,
-                                                version.to_string(),
-                                            )
-                                            .clicked()
+                                        let rom = roms.get(&selection.game).unwrap().clone();
+                                        let (rom_code, revision) =
+                                            selection.game.rom_code_and_revision();
+                                        let version = *supported_versions.first().unwrap();
+
+                                        let version_metadata = if let Some(version_metadata) = patches
+                                            .get(*name)
+                                            .and_then(|p| p.versions.get(version))
+                                            .cloned()
                                         {
-                                            let rom = roms.get(&selection.game).unwrap().clone();
-                                            let (rom_code, revision) =
-                                                selection.game.rom_code_and_revision();
+                                            version_metadata
+                                        } else {
+                                            return;
+                                        };
 
-                                            let version_metadata = if let Some(version_metadata) =
-                                                patches
-                                                    .get(&patch.0)
-                                                    .and_then(|p| p.versions.get(version))
-                                                    .cloned()
-                                            {
-                                                version_metadata
-                                            } else {
-                                                return;
-                                            };
-
-                                            let bps = match std::fs::read(
-                                                config
-                                                    .patches_path()
-                                                    .join(&patch.0)
-                                                    .join(format!("v{}", version))
-                                                    .join(format!(
-                                                        "{}_{:02}.bps",
-                                                        std::str::from_utf8(rom_code).unwrap(),
-                                                        revision
-                                                    )),
-                                            ) {
-                                                Ok(bps) => bps,
-                                                Err(e) => {
-                                                    log::error!(
-                                                        "failed to load patch {} to {:?}: {:?}",
-                                                        patch.0,
-                                                        (rom_code, revision),
-                                                        e
-                                                    );
-                                                    return;
-                                                }
-                                            };
-
-                                            let rom = match patch::bps::apply(&rom, &bps) {
-                                                Ok(r) => r.to_vec(),
-                                                Err(e) => {
-                                                    log::error!(
-                                                        "failed to apply patch {} to {:?}: {:?}",
-                                                        patch.0,
-                                                        (rom_code, revision),
-                                                        e
-                                                    );
-                                                    return;
-                                                }
-                                            };
-
-                                            *selection = gui::Selection::new(
-                                                selection.game.clone(),
-                                                selection.save.clone(),
-                                                Some((
-                                                    patch.0.clone(),
-                                                    (*version).clone(),
-                                                    version_metadata,
+                                        let bps = match std::fs::read(
+                                            config
+                                                .patches_path()
+                                                .join(name)
+                                                .join(format!("v{}", version))
+                                                .join(format!(
+                                                    "{}_{:02}.bps",
+                                                    std::str::from_utf8(rom_code).unwrap(),
+                                                    revision
                                                 )),
-                                                rom,
-                                            );
-                                        }
+                                        ) {
+                                            Ok(bps) => bps,
+                                            Err(e) => {
+                                                log::error!(
+                                                    "failed to load patch {} to {:?}: {:?}",
+                                                    name,
+                                                    (rom_code, revision),
+                                                    e
+                                                );
+                                                return;
+                                            }
+                                        };
+
+                                        let rom = match patch::bps::apply(&rom, &bps) {
+                                            Ok(r) => r.to_vec(),
+                                            Err(e) => {
+                                                log::error!(
+                                                    "failed to apply patch {} to {:?}: {:?}",
+                                                    name,
+                                                    (rom_code, revision),
+                                                    e
+                                                );
+                                                return;
+                                            }
+                                        };
+
+                                        *selection = gui::Selection::new(
+                                            selection.game.clone(),
+                                            selection.save.clone(),
+                                            Some(((*name).clone(), version.clone(), version_metadata)),
+                                            rom,
+                                        );
                                     }
-                                });
-                        },
-                    );
-                });
-            });
+                                }
+                            });
+                        ui.add_enabled_ui(
+                            !is_ready
+                                && selection
+                                    .as_ref()
+                                    .and_then(|selection| selection.patch.as_ref())
+                                    .and_then(|patch| supported_patches.get(&patch.0))
+                                    .map(|(_, vs)| !vs.is_empty())
+                                    .unwrap_or(false),
+                            |ui| {
+                                egui::ComboBox::from_id_source("patch-version-select-combobox")
+                                    .width(
+                                        PATCH_VERSION_COMBOBOX_WIDTH
+                                            - ui.spacing().item_spacing.x * 2.0,
+                                    )
+                                    .selected_text(
+                                        selection
+                                            .as_ref()
+                                            .and_then(|s| {
+                                                s.patch
+                                                    .as_ref()
+                                                    .map(|(_, version, _)| version.to_string())
+                                            })
+                                            .unwrap_or("".to_string()),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        let selection = if let Some(selection) = selection.as_mut() {
+                                            selection
+                                        } else {
+                                            return;
+                                        };
 
-            if let Some(ConnectionTask::InProgress {
-                state: ConnectionState::InLobby(lobby),
-                ..
-            }) = connection_task.as_ref()
-            {
-                handle.block_on(async {
-                    let mut lobby = lobby.lock().await;
-                    let _ = lobby.set_local_selection(&selection).await;
-                });
-            }
+                                        let patch = if let Some(patch) = selection.patch.as_ref() {
+                                            patch.clone()
+                                        } else {
+                                            return;
+                                        };
 
-            if let Some(selection) = selection.as_mut() {
-                if let Some(assets) = selection.assets.as_ref() {
-                    let game_language = selection.game.language();
-                    gui::save_view::show(
-                        ui,
-                        clipboard,
-                        font_families,
-                        &config.language,
-                        if let Some((_, _, metadata)) = selection.patch.as_ref() {
-                            if let Some(language) = metadata.saveedit_overrides.language.as_ref() {
-                                language
+                                        let supported_versions = if let Some(supported_versions) =
+                                            supported_patches.get(&patch.0).map(|(_, vs)| vs)
+                                        {
+                                            supported_versions
+                                        } else {
+                                            return;
+                                        };
+
+                                        for version in supported_versions.iter() {
+                                            if ui
+                                                .selectable_label(
+                                                    &patch.1 == *version,
+                                                    version.to_string(),
+                                                )
+                                                .clicked()
+                                            {
+                                                let rom = roms.get(&selection.game).unwrap().clone();
+                                                let (rom_code, revision) =
+                                                    selection.game.rom_code_and_revision();
+
+                                                let version_metadata = if let Some(version_metadata) =
+                                                    patches
+                                                        .get(&patch.0)
+                                                        .and_then(|p| p.versions.get(version))
+                                                        .cloned()
+                                                {
+                                                    version_metadata
+                                                } else {
+                                                    return;
+                                                };
+
+                                                let bps = match std::fs::read(
+                                                    config
+                                                        .patches_path()
+                                                        .join(&patch.0)
+                                                        .join(format!("v{}", version))
+                                                        .join(format!(
+                                                            "{}_{:02}.bps",
+                                                            std::str::from_utf8(rom_code).unwrap(),
+                                                            revision
+                                                        )),
+                                                ) {
+                                                    Ok(bps) => bps,
+                                                    Err(e) => {
+                                                        log::error!(
+                                                            "failed to load patch {} to {:?}: {:?}",
+                                                            patch.0,
+                                                            (rom_code, revision),
+                                                            e
+                                                        );
+                                                        return;
+                                                    }
+                                                };
+
+                                                let rom = match patch::bps::apply(&rom, &bps) {
+                                                    Ok(r) => r.to_vec(),
+                                                    Err(e) => {
+                                                        log::error!(
+                                                            "failed to apply patch {} to {:?}: {:?}",
+                                                            patch.0,
+                                                            (rom_code, revision),
+                                                            e
+                                                        );
+                                                        return;
+                                                    }
+                                                };
+
+                                                *selection = gui::Selection::new(
+                                                    selection.game.clone(),
+                                                    selection.save.clone(),
+                                                    Some((
+                                                        patch.0.clone(),
+                                                        (*version).clone(),
+                                                        version_metadata,
+                                                    )),
+                                                    rom,
+                                                );
+                                            }
+                                        }
+                                    });
+                            },
+                        );
+                    });
+                });
+
+                if let Some(selection) = selection.as_mut() {
+                    if let Some(assets) = selection.assets.as_ref() {
+                        let game_language = selection.game.language();
+                        gui::save_view::show(
+                            ui,
+                            clipboard,
+                            font_families,
+                            &config.language,
+                            if let Some((_, _, metadata)) = selection.patch.as_ref() {
+                                if let Some(language) =
+                                    metadata.saveedit_overrides.language.as_ref()
+                                {
+                                    language
+                                } else {
+                                    &game_language
+                                }
                             } else {
                                 &game_language
-                            }
-                        } else {
-                            &game_language
-                        },
-                        &selection.save.save,
-                        assets,
-                        &mut selection.save_view_state,
-                    );
+                            },
+                            &selection.save.save,
+                            assets,
+                            &mut selection.save_view_state,
+                        );
+                    }
                 }
             }
         });
+
+    if let Some(ConnectionTask::InProgress {
+        state: ConnectionState::InLobby(lobby),
+        ..
+    }) = connection_task.as_ref()
+    {
+        handle.block_on(async {
+            let mut lobby = lobby.lock().await;
+            let _ = lobby.set_local_selection(&selection).await;
+        });
+    }
 }
