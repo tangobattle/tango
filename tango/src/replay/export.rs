@@ -1,6 +1,5 @@
-use std::io::Write;
-
 use byteorder::ByteOrder;
+use tokio::io::AsyncWriteExt;
 
 use crate::{game, replay, replayer, video};
 
@@ -30,7 +29,7 @@ impl Default for Settings {
     }
 }
 
-pub fn export(
+pub async fn export(
     rom: &[u8],
     replay: &replay::Replay,
     output_path: &std::path::Path,
@@ -97,8 +96,9 @@ pub fn export(
     let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
 
     let video_output = tempfile::NamedTempFile::new()?;
-    let mut video_child = std::process::Command::new(&ffmpeg);
+    let mut video_child = tokio::process::Command::new(&ffmpeg);
     video_child
+        .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
         // Input args.
@@ -123,8 +123,9 @@ pub fn export(
     let mut video_child = video_child.spawn()?;
 
     let audio_output = tempfile::NamedTempFile::new()?;
-    let mut audio_child = std::process::Command::new(&ffmpeg);
+    let mut audio_child = tokio::process::Command::new(&ffmpeg);
     audio_child
+        .kill_on_drop(true)
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
         // Input args.
@@ -190,7 +191,8 @@ pub fn export(
             .stdin
             .as_mut()
             .unwrap()
-            .write_all(vbuf.as_slice())?;
+            .write_all(vbuf.as_slice())
+            .await?;
 
         let mut audio_bytes = vec![0u8; samples.len() * 2];
         byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
@@ -198,7 +200,8 @@ pub fn export(
             .stdin
             .as_mut()
             .unwrap()
-            .write_all(&audio_bytes)?;
+            .write_all(&audio_bytes)
+            .await?;
         progress_callback(
             total - replayer_state.lock_inner().input_pairs_left(),
             total,
@@ -206,12 +209,13 @@ pub fn export(
     }
 
     video_child.stdin = None;
-    video_child.wait()?;
+    video_child.wait().await?;
     audio_child.stdin = None;
-    audio_child.wait()?;
+    audio_child.wait().await?;
 
-    let mut mux_child = std::process::Command::new(&ffmpeg);
+    let mut mux_child = tokio::process::Command::new(&ffmpeg);
     mux_child
+        .kill_on_drop(true)
         .args(&["-y"])
         .args(&["-i"])
         .arg(video_output.path())
@@ -223,7 +227,7 @@ pub fn export(
     #[cfg(windows)]
     mux_child.creation_flags(CREATE_NO_WINDOW);
     let mut mux_child = mux_child.spawn()?;
-    mux_child.wait()?;
+    mux_child.wait().await?;
 
     Ok(())
 }
