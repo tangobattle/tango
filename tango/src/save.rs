@@ -209,6 +209,6 @@ pub trait NavicustView<'a> {
 }
 
 pub trait DarkAIView<'a> {
-    fn chip_use_count(&self, id: usize) -> u16;
-    fn secondary_chip_use_count(&self, id: usize) -> u16;
+    fn chip_use_count(&self, id: usize) -> Option<u16>;
+    fn secondary_chip_use_count(&self, id: usize) -> Option<u16>;
 }

@@ -2,7 +2,7 @@ pub mod text;
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
     Standard,
     Mega,

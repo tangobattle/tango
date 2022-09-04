@@ -135,7 +135,20 @@ pub fn show(
                     );
                 }
             }
-            Some(Tab::DarkAI) => {}
+            Some(Tab::DarkAI) => {
+                if let Some(dark_ai_view) = dark_ai_view {
+                    dark_ai_view::show(
+                        ui,
+                        clipboard,
+                        font_families,
+                        lang,
+                        game_lang,
+                        &dark_ai_view,
+                        assets,
+                        &mut state.dark_ai_view,
+                    );
+                }
+            }
             None => {}
         }
     });
