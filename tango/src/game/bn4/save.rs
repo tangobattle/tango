@@ -185,7 +185,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
         let idx = self.save.buf[self.save.shift + 0x214d + folder_index];
-        if idx == 0 {
+        if idx == 0xff {
             None
         } else {
             Some(idx as usize)

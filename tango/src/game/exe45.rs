@@ -60,7 +60,7 @@ impl game::Game for EXE45Impl {
             .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
 
         Ok(Box::new(rom::Assets::new(
-            &rom::BR4J,
+            &rom::BR4J_00,
             override_charset
                 .as_ref()
                 .map(|cs| cs.as_slice())

@@ -171,7 +171,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
         let idx = self.save.buf
             [self.save.navi_stats_offset(self.save.current_navi()) + 0x2e + folder_index];
-        if idx == 0 {
+        if idx == 0xff {
             None
         } else {
             Some(idx as usize)

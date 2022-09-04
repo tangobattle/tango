@@ -109,7 +109,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         false
     }
 
-    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+    fn regular_chip_index(&self, _folder_index: usize) -> Option<usize> {
         None
     }
 
