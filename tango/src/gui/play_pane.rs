@@ -782,7 +782,7 @@ impl PlayPane {
 
                                             ui.horizontal_top(|ui| {
                                                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                                                    ui.add(egui::Spinner::new().size(10.0));
+                                                    ui.spinner();
                                                     ui.label(
                                                         i18n::LOCALES
                                                             .lookup(
@@ -812,7 +812,7 @@ impl PlayPane {
                                             ui.horizontal_top(|ui| {
                                                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                                                     ui.set_width(ui.available_width());
-                                                    ui.add(egui::Spinner::new().size(10.0));
+                                                    ui.spinner();
                                                     ui.label(
                                                         i18n::LOCALES
                                                             .lookup(
@@ -842,7 +842,7 @@ impl PlayPane {
                                             ui.horizontal_top(|ui| {
                                                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
                                                     ui.set_width(ui.available_width());
-                                                    ui.add(egui::Spinner::new().size(10.0));
+                                                    ui.spinner();
                                                     ui.label(
                                                         i18n::LOCALES
                                                             .lookup(

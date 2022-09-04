@@ -99,7 +99,7 @@ impl ReplaysPane {
     ) {
         if state.replays_scanner.is_scanning() {
             ui.horizontal(|ui| {
-                ui.add(egui::Spinner::new().size(10.0));
+                ui.spinner();
                 ui.label(i18n::LOCALES.lookup(language, "replays.scanning").unwrap());
             });
             return;
