@@ -731,91 +731,6 @@ impl PlayPane {
         }
     }
 
-    fn submit(
-        &mut self,
-        egui_ctx: &egui::Context,
-        handle: tokio::runtime::Handle,
-        link_code: &str,
-        config: &config::Config,
-        config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-        audio_binder: audio::LateBinder,
-        connection_task: &mut Option<ConnectionTask>,
-        connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
-        session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-        selection: &Option<gui::Selection>,
-        emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-        roms_scanner: gui::ROMsScanner,
-        patches_scanner: gui::PatchesScanner,
-    ) {
-        let audio_binder = audio_binder.clone();
-        let egui_ctx = egui_ctx.clone();
-        let session = session.clone();
-        let emu_tps_counter = emu_tps_counter.clone();
-
-        if !link_code.is_empty() {
-            let cancellation_token = tokio_util::sync::CancellationToken::new();
-            *connection_task = Some(ConnectionTask::InProgress {
-                state: ConnectionState::Starting,
-                cancellation_token: cancellation_token.clone(),
-            });
-
-            handle.spawn({
-                let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
-                    config.matchmaking_endpoint.clone()
-                } else {
-                    config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-                };
-                let link_code = link_code.to_owned();
-                let nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
-                let patches_path = config.patches_path();
-                let replays_path = config.replays_path();
-                let config_arc = config_arc.clone();
-                let handle = handle.clone();
-                let connection_task_arc = connection_task_arc.clone();
-                let roms_scanner = roms_scanner.clone();
-                let patches_scanner = patches_scanner.clone();
-                async move {
-                    run_connection_task(
-                        config_arc,
-                        handle,
-                        egui_ctx.clone(),
-                        audio_binder,
-                        emu_tps_counter,
-                        session,
-                        roms_scanner,
-                        patches_scanner,
-                        matchmaking_endpoint,
-                        link_code,
-                        nickname,
-                        patches_path,
-                        replays_path,
-                        connection_task_arc,
-                        cancellation_token,
-                    )
-                    .await;
-                    egui_ctx.request_repaint();
-                }
-            });
-        } else if let Some(selection) = selection.as_ref() {
-            let save_path = selection.save.path.clone();
-            let rom = selection.rom.clone();
-
-            // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
-            rayon::spawn(move || {
-                *session.lock() = Some(
-                    session::Session::new_singleplayer(
-                        audio_binder,
-                        &rom,
-                        &save_path,
-                        emu_tps_counter,
-                    )
-                    .unwrap(),
-                ); // TODO: Don't unwrap maybe
-                egui_ctx.request_repaint();
-            });
-        }
-    }
-
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
@@ -1386,21 +1301,73 @@ impl PlayPane {
                             }
 
                             if submitted {
-                                self.submit(
-                                    ui.ctx(),
-                                    handle.clone(),
-                                    &state.link_code,
-                                    &config,
-                                    config_arc.clone(),
-                                    audio_binder.clone(),
-                                    &mut *connection_task,
-                                    state.connection_task.clone(),
-                                    session.clone(),
-                                    &selection,
-                                    emu_tps_counter.clone(),
-                                    roms_scanner.clone(),
-                                    patches_scanner.clone()
-                                );
+                                let audio_binder = audio_binder.clone();
+                                let egui_ctx = ui.ctx().clone();
+                                let session = session.clone();
+                                let emu_tps_counter = emu_tps_counter.clone();
+
+                                if !state.link_code.is_empty() {
+                                    let cancellation_token = tokio_util::sync::CancellationToken::new();
+                                    *connection_task = Some(ConnectionTask::InProgress {
+                                        state: ConnectionState::Starting,
+                                        cancellation_token: cancellation_token.clone(),
+                                    });
+
+                                    handle.spawn({
+                                        let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
+                                            config.matchmaking_endpoint.clone()
+                                        } else {
+                                            config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+                                        };
+                                        let link_code = state.link_code.to_owned();
+                                        let nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                                        let patches_path = config.patches_path();
+                                        let replays_path = config.replays_path();
+                                        let config_arc = config_arc.clone();
+                                        let handle = handle.clone();
+                                        let connection_task_arc = state.connection_task.clone();
+                                        let roms_scanner = roms_scanner.clone();
+                                        let patches_scanner = patches_scanner.clone();
+                                        async move {
+                                            run_connection_task(
+                                                config_arc,
+                                                handle,
+                                                egui_ctx.clone(),
+                                                audio_binder,
+                                                emu_tps_counter,
+                                                session,
+                                                roms_scanner,
+                                                patches_scanner,
+                                                matchmaking_endpoint,
+                                                link_code,
+                                                nickname,
+                                                patches_path,
+                                                replays_path,
+                                                connection_task_arc,
+                                                cancellation_token,
+                                            )
+                                            .await;
+                                            egui_ctx.request_repaint();
+                                        }
+                                    });
+                                } else if let Some(selection) = selection.as_ref() {
+                                    let save_path = selection.save.path.clone();
+                                    let rom = selection.rom.clone();
+
+                                    // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
+                                    rayon::spawn(move || {
+                                        *session.lock() = Some(
+                                            session::Session::new_singleplayer(
+                                                audio_binder,
+                                                &rom,
+                                                &save_path,
+                                                emu_tps_counter,
+                                            )
+                                            .unwrap(),
+                                        ); // TODO: Don't unwrap maybe
+                                        egui_ctx.request_repaint();
+                                    });
+                                }
                             }
                         });
                     });
