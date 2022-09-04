@@ -56,9 +56,14 @@ pub static B4BE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099d8,
 };
 
+const NEWLINE_COMMAND: u8 = 0xe9;
+const EREADER_COMMAND: u8 = 0xff;
+
 lazy_static! {
     pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe4, 0xe5).with_command(0xe8, 0);
+        rom::text::ParseOptions::new(0xe4, 0xe5)
+            .with_command(NEWLINE_COMMAND, 0)
+            .with_command(EREADER_COMMAND, 2);
 }
 
 pub struct Assets {
@@ -126,11 +131,42 @@ impl Assets {
                                     .flat_map(|part| {
                                         match part {
                                             rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
+                                                charset.get(c).unwrap_or(&"�").to_string()
                                             }
-                                            _ => "",
+                                            rom::text::Part::Command {
+                                                op: EREADER_COMMAND,
+                                                params,
+                                            } => {
+                                                if let Ok(parts) = rom::text::parse_entry(
+                                                    &mapper
+                                                        .get(0x02001770 + params[1] as u32 * 0x10),
+                                                    0,
+                                                    &TEXT_PARSE_OPTIONS,
+                                                ) {
+                                                    parts
+                                                        .into_iter()
+                                                        .flat_map(|part| {
+                                                            match part {
+                                                                rom::text::Part::Literal(c) => {
+                                                                    charset
+                                                                        .get(c)
+                                                                        .unwrap_or(&"�")
+                                                                        .to_string()
+                                                                }
+                                                                _ => "".to_string(),
+                                                            }
+                                                            .chars()
+                                                            .collect::<Vec<_>>()
+                                                        })
+                                                        .collect::<String>()
+                                                } else {
+                                                    "???".to_string()
+                                                }
+                                            }
+                                            _ => "".to_string(),
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {

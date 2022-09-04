@@ -71,13 +71,13 @@ pub static BR6E_00: Offsets = Offsets {
     modcard_details_names_pointer:  0,
 };
 
-const NEWLINE_TEXT_COMMAND: u8 = 0xe9;
+const NEWLINE_COMMAND: u8 = 0xe9;
 const PRINT_VAR_COMMAND: u8 = 0xfa;
 
 lazy_static! {
     pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
         rom::text::ParseOptions::new(0xe4, 0xe6)
-            .with_command(NEWLINE_TEXT_COMMAND, 0)
+            .with_command(NEWLINE_COMMAND, 0)
             .with_command(PRINT_VAR_COMMAND, 3);
 }
 
