@@ -17,4 +17,5 @@ replays-export =
 
 replay-viewer =
     .pause = Pause
+    .step = Step
     .speed = Speed

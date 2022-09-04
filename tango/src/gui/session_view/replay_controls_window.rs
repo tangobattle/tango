@@ -35,6 +35,17 @@ pub fn show(
                 {
                     session.set_paused(!paused);
                 }
+                if ui
+                    .button("⏯️")
+                    .on_hover_text(
+                        i18n::LOCALES
+                            .lookup(language, "replay-viewer.step")
+                            .unwrap(),
+                    )
+                    .clicked()
+                {
+                    session.frame_step();
+                }
                 let mut speed = session.fps_target() / session::EXPECTED_FPS;
                 ui.add(egui::Separator::default().vertical());
                 ui.label("🐢");

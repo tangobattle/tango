@@ -1,12 +1,24 @@
 use super::{core, sync};
 
 #[repr(transparent)]
+pub struct InThreadHandle<'a> {
+    raw: *mut mgba_sys::mCoreThread,
+    _lifetime: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> InThreadHandle<'a> {
+    pub fn pause(&mut self) {
+        unsafe { mgba_sys::mCoreThreadPauseFromThread(self.raw) }
+    }
+}
+
+#[repr(transparent)]
 pub struct Thread(std::sync::Arc<parking_lot::Mutex<Box<ThreadImpl>>>);
 
 struct ThreadImpl {
     core: core::Core,
     raw: mgba_sys::mCoreThread,
-    frame_callback: Option<Box<dyn Fn(core::CoreMutRef, &[u8]) + Send + 'static>>,
+    frame_callback: Option<Box<dyn Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static>>,
     current_callback:
         std::cell::RefCell<Option<Box<dyn Fn(crate::core::CoreMutRef<'_>) + Send + Sync>>>,
 }
@@ -14,7 +26,7 @@ struct ThreadImpl {
 unsafe impl Send for ThreadImpl {}
 
 unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
-    let t = &*((*ptr).userData as *mut ThreadImpl);
+    let t = &mut *((*ptr).userData as *mut ThreadImpl);
     if let Some(cb) = t.frame_callback.as_ref() {
         cb(
             core::CoreMutRef {
@@ -22,6 +34,10 @@ unsafe extern "C" fn c_frame_callback(ptr: *mut mgba_sys::mCoreThread) {
                 _lifetime: std::marker::PhantomData,
             },
             t.core.video_buffer().unwrap(),
+            InThreadHandle {
+                raw: &mut t.raw,
+                _lifetime: std::marker::PhantomData::<&'_ ()>,
+            },
         );
     }
 }
@@ -77,7 +93,10 @@ impl Thread {
         Thread(std::sync::Arc::new(parking_lot::Mutex::new(t)))
     }
 
-    pub fn set_frame_callback(&self, f: impl Fn(core::CoreMutRef, &[u8]) + Send + 'static) {
+    pub fn set_frame_callback(
+        &self,
+        f: impl Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static,
+    ) {
         self.0.lock().frame_callback = Some(Box::new(f));
     }
 

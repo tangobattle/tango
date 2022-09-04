@@ -11,6 +11,7 @@ pub struct Session {
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     mode: Mode,
     completion_rx: oneshot::Receiver<()>,
+    pause_on_next_frame: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct CompletionToken {
@@ -161,7 +162,7 @@ impl Session {
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
-            thread.set_frame_callback(move |mut core, video_buffer| {
+            thread.set_frame_callback(move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
@@ -178,6 +179,7 @@ impl Session {
                 cancellation_token,
             }),
             completion_rx,
+            pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -223,6 +225,7 @@ impl Session {
             audio_binder.sample_rate(),
         ))))?;
 
+        let pause_on_next_frame = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
@@ -232,11 +235,16 @@ impl Session {
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
-            thread.set_frame_callback(move |mut core, video_buffer| {
+            let pause_on_next_frame = pause_on_next_frame.clone();
+            thread.set_frame_callback(move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
+
+                if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    thread_handle.pause();
+                }
             });
         }
         Ok(Session {
@@ -247,6 +255,7 @@ impl Session {
             mode: Mode::SinglePlayer(SinglePlayer {
                 _completion_tx: completion_tx,
             }),
+            pause_on_next_frame,
             completion_rx,
         })
     }
@@ -312,6 +321,7 @@ impl Session {
         });
         thread.handle().unpause();
 
+        let pause_on_next_frame = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let vbuf = Arc::new(Mutex::new(vec![
             0u8;
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
@@ -322,7 +332,8 @@ impl Session {
             let emu_tps_counter = emu_tps_counter.clone();
             let completion_tx = completion_tx.clone();
             let replayer_state = replayer_state.clone();
-            thread.set_frame_callback(move |_core, video_buffer| {
+            let pause_on_next_frame = pause_on_next_frame.clone();
+            thread.set_frame_callback(move |_core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 emu_tps_counter.lock().mark();
@@ -331,6 +342,10 @@ impl Session {
                     if let Some(tx) = completion_tx.lock().take() {
                         let _ = tx.send(());
                     }
+                }
+
+                if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                    thread_handle.pause();
                 }
             });
         }
@@ -342,6 +357,7 @@ impl Session {
             joyflags: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             mode: Mode::Replayer,
             completion_rx,
+            pause_on_next_frame,
         })
     }
 
@@ -368,6 +384,13 @@ impl Session {
     pub fn is_paused(&self) -> bool {
         let handle = self.thread.handle();
         handle.is_paused()
+    }
+
+    pub fn frame_step(&self) {
+        self.pause_on_next_frame
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let handle = self.thread.handle();
+        handle.unpause();
     }
 
     pub fn set_fps_target(&self, fps: f32) {
