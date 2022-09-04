@@ -120,12 +120,22 @@ pub fn show(
                                         )
                                         .clicked()
                                     {
+                                        let (game, rom, patch) =
+                                            if let Some(selection) = selection.take() {
+                                                if selection.game == game {
+                                                    (selection.game, selection.rom, selection.patch)
+                                                } else {
+                                                    (game, roms.get(&game).unwrap().clone(), None)
+                                                }
+                                            } else {
+                                                (game, roms.get(&game).unwrap().clone(), None)
+                                            };
+
                                         *show = None;
-                                        let rom = roms.get(&game).unwrap().clone();
                                         *selection = Some(gui::Selection::new(
                                             game,
                                             save.clone(),
-                                            None,
+                                            patch,
                                             rom,
                                         ));
                                     }
