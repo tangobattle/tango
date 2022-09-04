@@ -85,7 +85,7 @@ impl Default for Config {
     }
 }
 
-pub fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
+fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
     directories_next::ProjectDirs::from("com.tangobattle", "", "Tango")
 }
 
@@ -167,11 +167,16 @@ impl Config {
         self.data_path.join("patches")
     }
 
+    pub fn logs_path(&self) -> std::path::PathBuf {
+        self.data_path.join("logs")
+    }
+
     pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
         std::fs::create_dir_all(&self.saves_path())?;
         std::fs::create_dir_all(&self.roms_path())?;
         std::fs::create_dir_all(&self.replays_path())?;
         std::fs::create_dir_all(&self.patches_path())?;
+        std::fs::create_dir_all(&self.logs_path())?;
         Ok(())
     }
 }

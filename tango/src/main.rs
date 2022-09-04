@@ -51,8 +51,6 @@ fn main() -> Result<(), anyhow::Error> {
     let config = config::Config::load_or_create()?;
     config.ensure_dirs()?;
 
-    let project_dirs = config::get_project_dirs().unwrap();
-
     if std::env::var(TANGO_CHILD_ENV_VAR).unwrap_or_default() == "1" {
         return child_main(config);
     }
@@ -66,12 +64,32 @@ fn main() -> Result<(), anyhow::Error> {
             .expect("format time"),
     );
 
-    let logs_dir = project_dirs.data_dir().join("logs");
-    std::fs::create_dir_all(&logs_dir)?;
-    let log_path = logs_dir.join(log_filename);
+    let log_path = config.logs_path().join(log_filename);
     log::info!("logging to: {}", log_path.display());
 
-    let log_file = std::fs::File::create(&log_path)?;
+    let log_file = match std::fs::File::create(&log_path) {
+        Ok(f) => f,
+        Err(e) => {
+            native_dialog::MessageDialog::new()
+                .set_title("Tango")
+                .set_text(
+                    &i18n::LOCALES
+                        .lookup_with_args(
+                            &config.language,
+                            "crash-no-log",
+                            &std::collections::HashMap::from([(
+                                "error",
+                                format!("{:?}", e).into(),
+                            )]),
+                        )
+                        .unwrap(),
+                )
+                .set_type(native_dialog::MessageType::Error)
+                .show_alert()
+                .unwrap();
+            return Err(e.into());
+        }
+    };
 
     let status = std::process::Command::new(std::env::current_exe()?)
         .args(
