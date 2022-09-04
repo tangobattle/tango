@@ -7,6 +7,8 @@ use std::io::Write;
 pub trait WriteSeek: std::io::Write + std::io::Seek {}
 impl<T: std::io::Write + std::io::Seek> WriteSeek for T {}
 
+pub mod export;
+
 pub struct Writer {
     encoder: Option<zstd::stream::write::Encoder<'static, Box<dyn WriteSeek + Send>>>,
     num_inputs: u32,
