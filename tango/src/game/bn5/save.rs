@@ -104,6 +104,24 @@ impl Save {
 }
 
 impl save::Save for Save {
+    fn view_chips(&self) -> Option<Box<dyn save::ChipsView + '_>> {
+        Some(Box::new(ChipsView { save: self }))
+    }
+
+    fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
+        Some(Box::new(NavicustView { save: self }))
+    }
+
+    fn view_modcards(&self) -> Option<save::ModcardsView> {
+        if self.game_info.region == Region::JP {
+            Some(save::ModcardsView::Modcards56(Box::new(Modcards56View {
+                save: self,
+            })))
+        } else {
+            None
+        }
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -116,5 +134,118 @@ impl save::Save for Save {
             MASK_OFFSET,
         );
         buf
+    }
+}
+
+pub struct ChipsView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::ChipsView<'a> for ChipsView<'a> {
+    fn chip_codes(&self) -> &'static [u8] {
+        &b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[..]
+    }
+
+    fn num_folders(&self) -> usize {
+        3 // TODO
+    }
+
+    fn equipped_folder_index(&self) -> usize {
+        self.save.buf[0x52d5] as usize
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        false
+    }
+
+    fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        let idx = self.save.buf[0x52d6 + folder_index];
+        if idx == 0xff {
+            None
+        } else {
+            Some(idx as usize)
+        }
+    }
+
+    fn tag_chip_indexes(&self, _folder_index: usize) -> Option<[usize; 2]> {
+        None
+    }
+
+    fn chip(&self, folder_index: usize, chip_index: usize) -> Option<save::Chip> {
+        if folder_index >= 3 || chip_index >= 30 {
+            return None;
+        }
+
+        let offset = 0x2df4 + folder_index * (30 * 2) + chip_index * 2;
+        let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
+
+        Some(save::Chip {
+            id: (raw & 0x1ff) as usize,
+            code: (raw >> 9) as usize,
+        })
+    }
+}
+
+pub struct Modcards56View<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::Modcards56View<'a> for Modcards56View<'a> {
+    fn count(&self) -> usize {
+        self.save.buf[0x79a0] as usize
+    }
+
+    fn modcard(&self, slot: usize) -> Option<save::Modcard> {
+        if slot >= self.count() {
+            return None;
+        }
+        let raw = self.save.buf[0x79d0 + slot];
+        Some(save::Modcard {
+            id: (raw & 0x7f) as usize,
+            enabled: raw >> 7 == 0,
+        })
+    }
+}
+
+pub struct NavicustView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::NavicustView<'a> for NavicustView<'a> {
+    fn width(&self) -> usize {
+        5
+    }
+
+    fn height(&self) -> usize {
+        5
+    }
+
+    fn command_line(&self) -> usize {
+        2
+    }
+
+    fn has_out_of_bounds(&self) -> bool {
+        false
+    }
+
+    fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
+        if i >= 25 {
+            return None;
+        }
+
+        let buf = &self.save.buf[0x4d6c + i * 8..0x4d6c + (i + 1) * 8];
+        let raw = buf[0];
+        if raw == 0 {
+            return None;
+        }
+
+        Some(save::NavicustPart {
+            id: (raw / 4) as usize,
+            variant: (raw % 4) as usize,
+            col: buf[0x2],
+            row: buf[0x3],
+            rot: buf[0x4],
+            compressed: buf[0x5] != 0,
+        })
     }
 }
