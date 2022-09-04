@@ -23,7 +23,7 @@ fn main() -> Result<(), anyhow::Error> {
  r8 = {:08x},  r9 = {:08x}, r10 = {:08x}, r11 = {:08x},
 r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x}
 
-WRAM will be dumped to {}."#,
+WRAM will be dumped to: {}"#,
         state.gpr(0),
         state.gpr(1),
         state.gpr(2),
