@@ -104,7 +104,10 @@ pub fn show(
 ) {
     session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
-    if input_state.is_key_pressed(glutin::event::VirtualKeyCode::Escape) {
+    if ctx
+        .input_mut()
+        .consume_key(egui::Modifiers::NONE, egui::Key::Escape)
+    {
         *show_escape_window = if show_escape_window.is_some() {
             None
         } else {
