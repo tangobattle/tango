@@ -2,13 +2,11 @@ use fluent_templates::Loader;
 
 use crate::{game, gui, i18n, patch};
 
-pub struct State {
-    selection: Option<String>,
-}
+pub struct State {}
 
 impl State {
-    pub fn new(selection: Option<String>) -> Self {
-        Self { selection }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -22,9 +20,10 @@ impl PatchesPane {
     pub fn show(
         &mut self,
         ui: &mut egui::Ui,
-        state: &mut State,
+        _state: &mut State,
         language: &unic_langid::LanguageIdentifier,
         repo_url: &str,
+        patch_selection: &mut Option<String>,
         patches_path: &std::path::Path,
         patches_scanner: gui::PatchesScanner,
     ) {
@@ -69,16 +68,16 @@ impl PatchesPane {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                         for (name, _) in patches.iter() {
                             if ui
-                                .selectable_label(state.selection.as_ref() == Some(name), name)
+                                .selectable_label(patch_selection.as_ref() == Some(name), name)
                                 .clicked()
                             {
-                                state.selection = Some(name.to_owned());
+                                *patch_selection = Some(name.to_owned());
                             }
                         }
                     });
                 });
 
-            let patch = if let Some(patch) = state.selection.as_ref().and_then(|n| patches.get(n)) {
+            let patch = if let Some(patch) = patch_selection.as_ref().and_then(|n| patches.get(n)) {
                 patch
             } else {
                 egui::ScrollArea::vertical()

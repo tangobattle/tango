@@ -746,6 +746,7 @@ impl PlayPane {
         audio_binder: audio::LateBinder,
         session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
         selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
+        patch_selection: &mut Option<String>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         state: &mut State,
     ) {
@@ -1619,6 +1620,8 @@ impl PlayPane {
                                         )
                                         .clicked()
                                     {
+                                        *patch_selection = Some(name.to_string());
+
                                         let rom = roms.get(&selection.game).unwrap().clone();
                                         let (rom_code, revision) =
                                             selection.game.rom_code_and_revision();

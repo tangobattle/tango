@@ -4,6 +4,7 @@ use crate::{audio, config, gui, i18n, patch, session, stats};
 
 pub struct State {
     tab: Tab,
+    patch_selection: Option<String>,
     play_pane: gui::play_pane::State,
     patches_pane: gui::patches_pane::State,
     replays_pane: gui::replays_pane::State,
@@ -13,8 +14,9 @@ impl State {
     pub fn new() -> Self {
         Self {
             tab: Tab::Play,
+            patch_selection: None,
             play_pane: gui::play_pane::State::new(),
-            patches_pane: gui::patches_pane::State::new(None),
+            patches_pane: gui::patches_pane::State::new(),
             replays_pane: gui::replays_pane::State::new(),
         }
     }
@@ -137,6 +139,7 @@ impl MainView {
                     audio_binder.clone(),
                     session.clone(),
                     selection.clone(),
+                    &mut state.patch_selection,
                     emu_tps_counter.clone(),
                     &mut state.play_pane,
                 );
@@ -167,6 +170,7 @@ impl MainView {
                     } else {
                         config::DEFAULT_PATCH_REPO
                     },
+                    &mut state.patch_selection,
                     &config.patches_path(),
                     patches_scanner.clone(),
                 );
