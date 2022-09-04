@@ -6,6 +6,7 @@ use crate::{gui, i18n, rom, save};
 pub struct State {
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
+    materialized: Option<MaterializedDarkAI>,
 }
 
 impl State {
@@ -13,6 +14,7 @@ impl State {
         Self {
             chip_icon_texture_cache: std::collections::HashMap::new(),
             element_icon_texture_cache: std::collections::HashMap::new(),
+            materialized: None,
         }
     }
 }
@@ -126,4 +128,7 @@ pub fn show<'a>(
     assets: &Box<dyn rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
+    let materialized = state
+        .materialized
+        .get_or_insert_with(|| MaterializedDarkAI::new(dark_ai_view, assets));
 }

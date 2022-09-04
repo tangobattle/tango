@@ -59,16 +59,16 @@ pub static BRBE_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static BRKE_00: Offsets = Offsets {
-    chip_data:                      0x0001e210,
-    chip_names_pointers:            0x00040b8c,
-    chip_icon_palette_pointer:      0x0004a0f8,
-    ncp_data:                       0x0013d628,
-    ncp_names_pointer:              0x00040b9c,
-    element_icon_palette_pointer:   0x001234c8,
-    element_icons_pointer:          0x001234c0,
-    modcard_data:                   0x0013895c,
-    modcard_names_pointer:          0x001378f4,
-    modcard_details_names_pointer:  0x00137900,
+    chip_data:                      0x0801e210,
+    chip_names_pointers:            0x08040b8c,
+    chip_icon_palette_pointer:      0x0804a0f8,
+    ncp_data:                       0x0813d628,
+    ncp_names_pointer:              0x08040b9c,
+    element_icon_palette_pointer:   0x081234c8,
+    element_icons_pointer:          0x081234c0,
+    modcard_data:                   0x0813895c,
+    modcard_names_pointer:          0x081378f4,
+    modcard_details_names_pointer:  0x08137900,
 };
 
 const NEWLINE_COMMAND: u8 = 0xe9;
