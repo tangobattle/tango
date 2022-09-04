@@ -316,7 +316,7 @@ impl Assets {
                                         }
                                         rom::text::Part::Command {
                                             op: NEWLINE_COMMAND,
-                                            ..,
+                                            ..
                                         } => " ",
                                         _ => "",
                                     }
