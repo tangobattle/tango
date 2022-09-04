@@ -75,6 +75,7 @@ pub struct State {
     pub roms_scanner: ROMsScanner,
     pub saves_scanner: SavesScanner,
     pub patches_scanner: PatchesScanner,
+    pub last_mouse_motion_time: Option<std::time::Instant>,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -165,6 +166,7 @@ impl State {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             selection: None,
+            last_mouse_motion_time: None,
             roms_scanner,
             saves_scanner,
             patches_scanner,
@@ -392,6 +394,7 @@ pub fn show(
             &config.video_filter,
             config.max_scale,
             &config.crashstates_path(),
+            &state.last_mouse_motion_time,
             &mut state.show_escape_window,
             state
                 .session_view

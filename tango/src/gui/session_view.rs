@@ -1,5 +1,7 @@
 use crate::{gui, input, session, video};
 
+mod replay_controls_window;
+
 pub struct State {
     vbuf: Option<VBuf>,
 }
@@ -99,6 +101,7 @@ pub fn show(
     video_filter: &str,
     max_scale: u32,
     crashstates_path: &std::path::Path,
+    last_mouse_motion_time: &Option<std::time::Instant>,
     show_escape_window: &mut Option<gui::escape_window::State>,
     state: &mut State,
 ) {
@@ -115,9 +118,8 @@ pub fn show(
         };
     }
 
-    // If we're in single-player or replayer mode, allow speedup.
     match session.mode() {
-        session::Mode::SinglePlayer(_) | session::Mode::Replayer => {
+        session::Mode::SinglePlayer(_) => {
             session.set_fps_target(
                 if input_mapping
                     .speed_up
@@ -129,6 +131,9 @@ pub fn show(
                     session::EXPECTED_FPS
                 },
             );
+        }
+        session::Mode::Replayer => {
+            replay_controls_window::show(ctx, session, last_mouse_motion_time);
         }
         _ => {}
     }

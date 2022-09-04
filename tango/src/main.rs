@@ -342,6 +342,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                 match window_event {
                     glutin::event::WindowEvent::MouseInput { .. }
                     | glutin::event::WindowEvent::CursorMoved { .. } => {
+                        state.last_mouse_motion_time = Some(std::time::Instant::now());
                         if state.steal_input.is_none() {
                             egui_glow.on_event(&window_event);
                         }
@@ -384,6 +385,12 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             }
                             glutin::event::WindowEvent::Occluded(false) => {
                                 config.full_screen = gl_window.window().fullscreen().is_some();
+                            }
+                            glutin::event::WindowEvent::CursorEntered { .. } => {
+                                state.last_mouse_motion_time = Some(std::time::Instant::now());
+                            }
+                            glutin::event::WindowEvent::CursorLeft { .. } => {
+                                state.last_mouse_motion_time = None;
                             }
                             glutin::event::WindowEvent::CloseRequested => {
                                 control_flow.set_exit();
