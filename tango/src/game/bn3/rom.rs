@@ -71,6 +71,8 @@ lazy_static! {
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
     chips: [rom::Chip; 374],
+    navicust_parts: [rom::NavicustPart; 204],
+    styles: [rom::Style; 40],
 }
 
 impl Assets {
@@ -170,7 +172,122 @@ impl Assets {
                         },
                         dark: false,
                         mb: buf[0x0a],
-                        damage: byteorder::LittleEndian::read_u16(&buf[0x0c..0x0c + 2]) as u32,
+                        damage: {
+                            let damage =
+                                byteorder::LittleEndian::read_u16(&buf[0x0c..0x0c + 2]) as u32;
+                            if damage < 1000 {
+                                damage
+                            } else {
+                                0
+                            }
+                        },
+                    }
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            navicust_parts: (0..204)
+                .map(|i| {
+                    let buf = &mapper.get(offsets.ncp_data)[i * 0x10..(i + 1) * 0x10];
+                    rom::NavicustPart {
+                        name: {
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(offsets.ncp_names_pointer)[..4],
+                                )),
+                                i / 4,
+                                &TEXT_PARSE_OPTIONS,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::Literal(c) => {
+                                                charset.get(c).unwrap_or(&"�")
+                                            }
+                                            _ => "",
+                                        }
+                                        .chars()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                "???".to_string()
+                            }
+                        },
+                        color: [
+                            None,
+                            Some(rom::NavicustPartColor::White),
+                            Some(rom::NavicustPartColor::Pink),
+                            Some(rom::NavicustPartColor::Yellow),
+                            Some(rom::NavicustPartColor::Red),
+                            Some(rom::NavicustPartColor::Blue),
+                            Some(rom::NavicustPartColor::Green),
+                            Some(rom::NavicustPartColor::Orange),
+                            Some(rom::NavicustPartColor::Purple),
+                            Some(rom::NavicustPartColor::Gray),
+                        ][buf[0x03] as usize]
+                            .clone(),
+                        is_solid: buf[0x01] == 0,
+                        compressed_bitmap: image::ImageBuffer::from_vec(
+                            5,
+                            5,
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49]
+                                .to_vec(),
+                        )
+                        .unwrap(),
+                        uncompressed_bitmap: image::ImageBuffer::from_vec(
+                            5,
+                            5,
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49]
+                                .to_vec(),
+                        )
+                        .unwrap(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+            styles: (0..40)
+                .map(|id| {
+                    let typ = id >> 3;
+                    let element = id & 0x7;
+
+                    rom::Style {
+                        name: {
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(offsets.key_items_names_pointer)[..4],
+                                )),
+                                128 + typ * 5 + element,
+                                &TEXT_PARSE_OPTIONS,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::Literal(c) => {
+                                                charset.get(c).unwrap_or(&"�")
+                                            }
+                                            _ => "",
+                                        }
+                                        .chars()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                "???".to_string()
+                            }
+                        },
+                        extra_ncp_color: [
+                            None,
+                            Some(rom::NavicustPartColor::Red),
+                            Some(rom::NavicustPartColor::Blue),
+                            Some(rom::NavicustPartColor::Green),
+                            Some(rom::NavicustPartColor::Blue),
+                            Some(rom::NavicustPartColor::Green),
+                            Some(rom::NavicustPartColor::Red),
+                            Some(rom::NavicustPartColor::Gray),
+                        ][typ as usize]
+                            .clone(),
                     }
                 })
                 .collect::<Vec<_>>()
@@ -187,6 +304,14 @@ impl rom::Assets for Assets {
 
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
+    }
+
+    fn navicust_part(&self, id: usize, variant: usize) -> Option<&rom::NavicustPart> {
+        self.navicust_parts.get(id * 4 + variant)
+    }
+
+    fn style(&self, id: usize) -> Option<&rom::Style> {
+        self.styles.get(id)
     }
 }
 

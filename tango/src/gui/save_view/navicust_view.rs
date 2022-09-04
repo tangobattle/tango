@@ -92,6 +92,8 @@ pub fn show<'a>(
         })
         .collect::<Vec<_>>();
 
+    let style = navicust_view.style().and_then(|id| assets.style(id));
+
     ui.horizontal(|ui| {
         if ui
             .button(format!(
@@ -100,7 +102,11 @@ pub fn show<'a>(
             ))
             .clicked()
         {
-            let _ = clipboard.set_text(
+            let mut buf = vec![];
+            if let Some(style) = style {
+                buf.push(style.name.clone());
+            }
+            buf.extend(
                 itertools::Itertools::zip_longest(
                     items
                         .iter()
@@ -115,12 +121,15 @@ pub fn show<'a>(
                     itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
                     itertools::EitherOrBoth::Left(l) => format!("{}\t", l),
                     itertools::EitherOrBoth::Right(r) => format!("\t{}", r),
-                })
-                .collect::<Vec<_>>()
-                .join("\n"),
+                }),
             );
+            let _ = clipboard.set_text(buf.join("\n"));
         }
     });
+
+    if let Some(style) = style {
+        ui.label(&style.name);
+    }
 
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
