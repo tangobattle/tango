@@ -380,6 +380,7 @@ pub fn show(
         ctx,
         handle.clone(),
         &mut state.replay_dump_windows,
+        &config.language,
         &config.replays_path(),
     );
     if let Some(session) = state.session.lock().as_ref() {

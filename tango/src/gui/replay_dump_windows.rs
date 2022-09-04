@@ -1,3 +1,5 @@
+use fluent_templates::Loader;
+
 use crate::{i18n, replay};
 
 pub struct State {
@@ -26,6 +28,7 @@ impl State {
                 rom,
                 replay,
                 path,
+                scale: 5,
                 progress: std::sync::Arc::new(parking_lot::Mutex::new((0, 0))),
                 result: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             },
@@ -39,6 +42,7 @@ pub struct ChildState {
     rom: Vec<u8>,
     replay: replay::Replay,
     path: std::path::PathBuf,
+    scale: usize,
     progress: std::sync::Arc<parking_lot::Mutex<(usize, usize)>>,
     result: std::sync::Arc<parking_lot::Mutex<Option<anyhow::Result<()>>>>,
 }
@@ -55,6 +59,7 @@ pub fn show(
     ctx: &egui::Context,
     handle: tokio::runtime::Handle,
     state: &mut State,
+    language: &unic_langid::LanguageIdentifier,
     replays_path: &std::path::Path,
 ) {
     state.children.retain(|id, state| {
@@ -70,61 +75,162 @@ pub fn show(
             .resizable(false)
             .show(ctx, |ui| {
                 ui.add_enabled_ui(state.cancellation_token.is_none(), |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut format!("{}", state.output_path.display()))
-                                .interactive(false),
-                        );
+                    egui::Grid::new(format!("replay-dump-window-{}-grid", id))
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(language, "replays-export.path")
+                                    .unwrap(),
+                            );
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui
+                                            .button(
+                                                i18n::LOCALES
+                                                    .lookup(language, "replays-export.change-path")
+                                                    .unwrap(),
+                                            )
+                                            .clicked()
+                                        {
+                                            if let Some(path) = native_dialog::FileDialog::new()
+                                                .set_location(
+                                                    state
+                                                        .output_path
+                                                        .parent()
+                                                        .unwrap_or(&std::path::PathBuf::new()),
+                                                )
+                                                .set_filename(
+                                                    state
+                                                        .output_path
+                                                        .file_name()
+                                                        .and_then(|filename| filename.to_str())
+                                                        .unwrap_or("replay.mp4"),
+                                                )
+                                                .add_filter("MP4", &["mp4"])
+                                                .show_save_single_file()
+                                                .unwrap()
+                                            {
+                                                state.output_path = path;
+                                            }
+                                        }
 
-                        if ui
-                            .button("TODO: CHANGE")
-                            .clicked()
-                        {
-                            if let Some(path) = native_dialog::FileDialog::new()
-                                .set_location(state.output_path.parent().unwrap_or(&std::path::PathBuf::new()))
-                                .set_filename(state.output_path.file_name().and_then(|filename| filename.to_str()).unwrap_or("replay.mp4"))
-                                .add_filter("MP4", &["mp4"])
-                                .show_save_single_file()
-                                .unwrap()
-                            {
-                                state.output_path = path;
-                            }
-                        }
-                    });
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut format!(
+                                                "{}",
+                                                state.output_path.display()
+                                            ))
+                                            .desired_width(ui.available_width())
+                                            .interactive(false),
+                                        );
+                                    },
+                                );
+                            });
+                            ui.end_row();
+
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(language, "replays-export.scale-factor")
+                                    .unwrap(),
+                            );
+                            ui.add(
+                                egui::DragValue::new(&mut state.scale)
+                                    .speed(1)
+                                    .clamp_range(1..=10),
+                            );
+                            ui.end_row();
+                        });
                 });
 
                 if let Some(result) = state.result.lock().as_ref() {
                     match result {
                         Ok(()) => {
-                            ui.label("TODO: DONE");
+                            ui.label(
+                                i18n::LOCALES
+                                    .lookup(language, "replays-export.success")
+                                    .unwrap(),
+                            );
+                            if ui
+                                .button(format!(
+                                    "{}",
+                                    i18n::LOCALES
+                                        .lookup(language, "replays-export.confirm-success")
+                                        .unwrap()
+                                ))
+                                .clicked()
+                            {
+                                open2 = false;
+                            }
                         }
-                        Err(e) =>{
-                            ui.label(format!("ERROR: {:?}", e));
+                        Err(e) => {
+                            ui.label(
+                                i18n::LOCALES
+                                    .lookup_with_args(
+                                        language,
+                                        "replays-export.error",
+                                        &std::collections::HashMap::from([(
+                                            "error",
+                                            format!("{:?}", e).into(),
+                                        )]),
+                                    )
+                                    .unwrap(),
+                            );
+                            if ui
+                                .button(format!(
+                                    "{}",
+                                    i18n::LOCALES
+                                        .lookup(language, "replays-export.confirm-error")
+                                        .unwrap()
+                                ))
+                                .clicked()
+                            {
+                                open2 = false;
+                            }
                         }
-                    }
-                    if ui.button("TODO: OK").clicked() {
-                        open2 = false;
                     }
                 } else if state.cancellation_token.is_some() {
-                    ui.add(egui::widgets::ProgressBar::new({
-                        let (current, total) = *state.progress.lock();
-                        if total > 0 { current as f32 / total as f32 } else { -1.0 }
-                    }).show_percentage());
-                    if ui.button("TODO: CANCEL").clicked() {
+                    ui.add(
+                        egui::widgets::ProgressBar::new({
+                            let (current, total) = *state.progress.lock();
+                            if total > 0 {
+                                current as f32 / total as f32
+                            } else {
+                                -1.0
+                            }
+                        })
+                        .show_percentage(),
+                    );
+                    if ui
+                        .button(format!(
+                            "❎ {}",
+                            i18n::LOCALES
+                                .lookup(language, "replays-export.cancel")
+                                .unwrap(),
+                        ))
+                        .clicked()
+                    {
                         open2 = false;
                     }
                 } else {
-                    if ui.button("TODO: EXPORT").clicked() {
+                    if ui
+                        .button(format!(
+                            "💾 {}",
+                            i18n::LOCALES.lookup(language, "replays.export").unwrap()
+                        ))
+                        .clicked()
+                    {
                         let egui_ctx = ui.ctx().clone();
                         let rom = state.rom.clone();
                         let replay = state.replay.clone();
                         let path = state.output_path.clone();
                         let progress = state.progress.clone();
                         let result = state.result.clone();
+                        let settings = replay::export::Settings::default_with_scale(state.scale);
                         let cancellation_token = tokio_util::sync::CancellationToken::new();
                         state.cancellation_token = Some(cancellation_token.clone());
                         handle.spawn(async move {
-                            let settings = replay::export::Settings::default();
                             tokio::select! {
                                 r = replay::export::export(&rom, &replay, &path, &settings, |current, total| {
                                     *progress.lock() = (current, total);
