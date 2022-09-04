@@ -1,3 +1,4 @@
+mod dark_ai_view;
 mod folder_view;
 mod modcards_view;
 mod navicust_view;
@@ -11,6 +12,7 @@ enum Tab {
     Navicust,
     Folder,
     Modcards,
+    DarkAI,
 }
 
 pub struct State {
@@ -18,6 +20,7 @@ pub struct State {
     navicust_view: navicust_view::State,
     folder_view: folder_view::State,
     modcards_view: modcards_view::State,
+    dark_ai_view: dark_ai_view::State,
 }
 
 impl State {
@@ -27,6 +30,7 @@ impl State {
             navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
             modcards_view: modcards_view::State::new(),
+            dark_ai_view: dark_ai_view::State::new(),
         }
     }
 }
@@ -44,6 +48,7 @@ pub fn show(
         let navicust_view = save.view_navicust();
         let chips_view = save.view_chips();
         let modcards_view = save.view_modcards();
+        let dark_ai_view = save.view_dark_ai();
 
         let mut available_tabs = vec![];
         if navicust_view.is_some() {
@@ -54,6 +59,9 @@ pub fn show(
         }
         if modcards_view.is_some() {
             available_tabs.push(Tab::Modcards);
+        }
+        if dark_ai_view.is_some() {
+            available_tabs.push(Tab::DarkAI);
         }
 
         ui.horizontal(|ui| {
@@ -68,6 +76,7 @@ pub fn show(
                                     Tab::Navicust => "save.navicust",
                                     Tab::Folder => "save.folder",
                                     Tab::Modcards => "save.modcards",
+                                    Tab::DarkAI => "save.dark-ai",
                                 },
                             )
                             .unwrap(),
@@ -126,6 +135,7 @@ pub fn show(
                     );
                 }
             }
+            Some(Tab::DarkAI) => {}
             None => {}
         }
     });
