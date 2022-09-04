@@ -739,6 +739,8 @@ fn show_lobby_table(
     cancellation_token: &tokio_util::sync::CancellationToken,
     config: &mut config::Config,
     lobby: &mut Lobby,
+    roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
+    patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) {
     egui_extras::TableBuilder::new(ui)
         .column(egui_extras::Size::remainder())
@@ -794,17 +796,101 @@ fn show_lobby_table(
         .body(|mut body| {
             body.row(20.0, |mut row| {
                 row.col(|ui| {
-                    ui.strong(
-                        i18n::LOCALES
-                            .lookup(&config.language, "play-details.game")
-                            .unwrap(),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.strong(
+                            i18n::LOCALES
+                                .lookup(&config.language, "play-details.game")
+                                .unwrap(),
+                        );
 
-                    let remote_game = lobby.remote_settings.game_info.as_ref().and_then(|gi| {
-                        game::find_by_family_and_variant(
-                            &gi.family_and_variant.0,
-                            gi.family_and_variant.1,
-                        )
+                        if let Some(selection) = lobby.selection.as_ref() {
+                            if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
+                                if let Some(remote_game) = game::find_by_family_and_variant(
+                                    &remote_gi.family_and_variant.0,
+                                    remote_gi.family_and_variant.1,
+                                ) {
+                                    if !roms.contains_key(&remote_game) {
+                                        gui::warning::show(
+                                            ui,
+                                            i18n::LOCALES
+                                                .lookup_with_args(
+                                                    &config.language,
+                                                    "lobby-issue.missing-rom",
+                                                    &std::collections::HashMap::from([(
+                                                        "game_name",
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                &config.language,
+                                                                &format!(
+                                                                    "game-{}.variant-{}",
+                                                                    remote_game
+                                                                        .family_and_variant()
+                                                                        .0,
+                                                                    remote_game
+                                                                        .family_and_variant()
+                                                                        .1
+                                                                ),
+                                                            )
+                                                            .unwrap()
+                                                            .into(),
+                                                    )]),
+                                                )
+                                                .unwrap(),
+                                        );
+                                    } else if get_netplay_compatibility(
+                                        selection.game,
+                                        selection.patch.as_ref().map(|(name, version, _)| {
+                                            (name.to_owned(), version.clone())
+                                        }),
+                                        patches,
+                                    ) != get_netplay_compatibility(
+                                        remote_game,
+                                        remote_gi
+                                            .patch
+                                            .as_ref()
+                                            .map(|pi| (pi.name.to_owned(), pi.version.clone())),
+                                        patches,
+                                    ) {
+                                        gui::warning::show(
+                                            ui,
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    &config.language,
+                                                    "lobby-issue.incompatible",
+                                                )
+                                                .unwrap(),
+                                        );
+                                    }
+                                } else {
+                                    gui::warning::show(
+                                        ui,
+                                        i18n::LOCALES
+                                            .lookup(
+                                                &config.language,
+                                                "lobby-issue.no-remote-game-selected",
+                                            )
+                                            .unwrap(),
+                                    );
+                                }
+                            } else {
+                                gui::warning::show(
+                                    ui,
+                                    i18n::LOCALES
+                                        .lookup(
+                                            &config.language,
+                                            "lobby-issue.no-remote-game-selected",
+                                        )
+                                        .unwrap(),
+                                );
+                            }
+                        } else {
+                            gui::warning::show(
+                                ui,
+                                i18n::LOCALES
+                                    .lookup(&config.language, "lobby-issue.no-local-game-selected")
+                                    .unwrap(),
+                            );
+                        }
                     });
                 });
                 row.col(|ui| {
@@ -858,7 +944,10 @@ fn show_lobby_table(
                                 .lookup(&config.language, "play-details.match-type")
                                 .unwrap(),
                         );
-                        if lobby.match_type != lobby.remote_settings.match_type {
+                        if lobby.selection.is_some()
+                            && lobby.remote_settings.game_info.is_some()
+                            && lobby.match_type != lobby.remote_settings.match_type
+                        {
                             gui::warning::show(
                                 ui,
                                 i18n::LOCALES
@@ -1138,6 +1227,8 @@ pub fn show(
                                                 &cancellation_token,
                                                 config,
                                                 &mut lobby,
+                                                &roms,
+                                                &patches,
                                             );
                                         },
                                     );

@@ -28,4 +28,8 @@ select-save = Select save
     .open-folder = Open folder
 
 lobby-issue =
+    .missing-rom = You do not have a copy of the opponent's game: {$game_name}
+    .no-local-game-selected = You must select a game.
+    .no-remote-game-selected = Your opponent has not selected a game.
+    .incompatible = The selected games are incompatible with each other.
     .match-type-mismatch = You must select the same match type as the opponent.
