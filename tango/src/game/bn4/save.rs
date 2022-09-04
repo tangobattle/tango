@@ -154,6 +154,12 @@ impl save::Save for Save {
         Some(Box::new(NavicustView { save: self }))
     }
 
+    fn view_modcards(&self) -> Option<save::ModcardsView> {
+        Some(save::ModcardsView::Modcards4(Box::new(Modcards4View {
+            save: self,
+        })))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -256,5 +262,25 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             rot: buf[0x4],
             compressed: buf[0x5] != 0,
         })
+    }
+}
+
+pub struct Modcards4View<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::Modcards4View<'a> for Modcards4View<'a> {
+    fn modcard(&self, slot: usize) -> Option<save::Modcard> {
+        let mut id = self.save.buf[self.save.shift + 0x464c + slot] as usize;
+        let enabled = if id < 0x85 {
+            true
+        } else {
+            id = self.save.buf[self.save.shift + 0x464c + 7 + slot] as usize;
+            if id >= 0x85 {
+                return None;
+            }
+            false
+        };
+        Some(save::Modcard { id, enabled })
     }
 }
