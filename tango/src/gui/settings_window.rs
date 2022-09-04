@@ -278,10 +278,9 @@ fn show_general_tab(
                         )
                         .clicked()
                     {
-                        if let Some(data_path) = native_dialog::FileDialog::new()
-                            .set_location(&config.data_path)
-                            .show_open_single_dir()
-                            .unwrap()
+                        if let Some(data_path) = rfd::FileDialog::new()
+                            .set_directory(&config.data_path)
+                            .pick_folder()
                         {
                             config.data_path = data_path;
                             let _ = config.ensure_dirs();

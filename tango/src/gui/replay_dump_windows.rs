@@ -95,14 +95,14 @@ pub fn show(
                                             )
                                             .clicked()
                                         {
-                                            if let Some(path) = native_dialog::FileDialog::new()
-                                                .set_location(
+                                            if let Some(path) = rfd::FileDialog::new()
+                                                .set_directory(
                                                     state
                                                         .output_path
                                                         .parent()
                                                         .unwrap_or(&std::path::PathBuf::new()),
                                                 )
-                                                .set_filename(
+                                                .set_file_name(
                                                     state
                                                         .output_path
                                                         .file_name()
@@ -110,8 +110,7 @@ pub fn show(
                                                         .unwrap_or("replay.mp4"),
                                                 )
                                                 .add_filter("MP4", &["mp4"])
-                                                .show_save_single_file()
-                                                .unwrap()
+                                                .save_file()
                                             {
                                                 state.output_path = path;
                                             }

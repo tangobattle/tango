@@ -70,9 +70,9 @@ fn main() -> Result<(), anyhow::Error> {
     let log_file = match std::fs::File::create(&log_path) {
         Ok(f) => f,
         Err(e) => {
-            native_dialog::MessageDialog::new()
+            rfd::MessageDialog::new()
                 .set_title("Tango")
-                .set_text(
+                .set_description(
                     &i18n::LOCALES
                         .lookup_with_args(
                             &config.language,
@@ -84,9 +84,8 @@ fn main() -> Result<(), anyhow::Error> {
                         )
                         .unwrap(),
                 )
-                .set_type(native_dialog::MessageType::Error)
-                .show_alert()
-                .unwrap();
+                .set_level(rfd::MessageLevel::Error)
+                .show();
             return Err(e.into());
         }
     };
@@ -103,9 +102,9 @@ fn main() -> Result<(), anyhow::Error> {
         .wait()?;
 
     if !status.success() {
-        native_dialog::MessageDialog::new()
+        rfd::MessageDialog::new()
             .set_title("Tango")
-            .set_text(
+            .set_description(
                 &i18n::LOCALES
                     .lookup_with_args(
                         &config.language,
@@ -117,9 +116,8 @@ fn main() -> Result<(), anyhow::Error> {
                     )
                     .unwrap(),
             )
-            .set_type(native_dialog::MessageType::Error)
-            .show_alert()
-            .unwrap();
+            .set_level(rfd::MessageLevel::Error)
+            .show();
     }
 
     if let Some(code) = status.code() {
