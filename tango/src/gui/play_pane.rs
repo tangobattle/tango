@@ -733,6 +733,238 @@ impl State {
     }
 }
 
+fn show_lobby_table(
+    ui: &mut egui::Ui,
+    handle: tokio::runtime::Handle,
+    cancellation_token: &tokio_util::sync::CancellationToken,
+    config: &mut config::Config,
+    lobby: &mut Lobby,
+) {
+    egui_extras::TableBuilder::new(ui)
+        .column(egui_extras::Size::remainder())
+        .column(egui_extras::Size::exact(200.0))
+        .column(egui_extras::Size::exact(200.0))
+        .header(20.0, |mut header| {
+            header.col(|_ui| {});
+            header.col(|ui| {
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                        if ui
+                            .button(format!(
+                                "🚶 {}",
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-leave")
+                                    .unwrap()
+                            ))
+                            .clicked()
+                        {
+                            cancellation_token.cancel();
+                        }
+
+                        ui.horizontal_top(|ui| {
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.strong(
+                                    i18n::LOCALES.lookup(&config.language, "play-you").unwrap(),
+                                );
+                                if lobby.local_negotiated_state.is_some() || lobby.sender.is_none()
+                                {
+                                    ui.label(
+                                        egui::RichText::new("✅")
+                                            .color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
+                                    );
+                                }
+                            });
+                        });
+                    });
+                });
+            });
+            header.col(|ui| {
+                ui.horizontal(|ui| {
+                    ui.strong(lobby.remote_settings.nickname.clone());
+                    if lobby.remote_commitment.is_some() {
+                        ui.label(
+                            egui::RichText::new("✅")
+                                .color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
+                        );
+                    }
+                });
+            });
+        })
+        .body(|mut body| {
+            body.row(20.0, |mut row| {
+                row.col(|ui| {
+                    ui.strong(
+                        i18n::LOCALES
+                            .lookup(&config.language, "play-details.game")
+                            .unwrap(),
+                    );
+
+                    let remote_game = lobby.remote_settings.game_info.as_ref().and_then(|gi| {
+                        game::find_by_family_and_variant(
+                            &gi.family_and_variant.0,
+                            gi.family_and_variant.1,
+                        )
+                    });
+                });
+                row.col(|ui| {
+                    ui.label(if let Some(selection) = lobby.selection.as_ref() {
+                        let (family, _) = selection.game.family_and_variant();
+                        i18n::LOCALES
+                            .lookup(
+                                &config.language,
+                                &format!("game-{}", family), // TODO: Show patch
+                            )
+                            .unwrap()
+                    } else {
+                        i18n::LOCALES
+                            .lookup(&config.language, "play-no-game")
+                            .unwrap()
+                    });
+                });
+                row.col(|ui| {
+                    ui.label(
+                        if let Some(game) =
+                            lobby
+                                .remote_settings
+                                .game_info
+                                .as_ref()
+                                .and_then(|game_info| {
+                                    let (family, variant) = &game_info.family_and_variant;
+                                    game::find_by_family_and_variant(&family, *variant)
+                                })
+                        {
+                            let (family, _) = game.family_and_variant();
+                            i18n::LOCALES
+                                .lookup(
+                                    &config.language,
+                                    &format!("game-{}", family), // TODO: Show patch
+                                )
+                                .unwrap()
+                        } else {
+                            i18n::LOCALES
+                                .lookup(&config.language, "play-no-game")
+                                .unwrap()
+                        },
+                    );
+                });
+            });
+
+            body.row(20.0, |mut row| {
+                row.col(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.strong(
+                            i18n::LOCALES
+                                .lookup(&config.language, "play-details.match-type")
+                                .unwrap(),
+                        );
+                        if lobby.match_type != lobby.remote_settings.match_type {
+                            gui::warning::show(
+                                ui,
+                                i18n::LOCALES
+                                    .lookup(&config.language, "lobby-issue.match-type-mismatch")
+                                    .unwrap(),
+                            );
+                        }
+                    });
+                });
+                row.col(|ui| {
+                    let game = lobby.selection.as_ref().map(|selection| selection.game);
+                    ui.add_enabled_ui(game.is_some(), |ui| {
+                        egui::ComboBox::new("start-match-type-combobox", "")
+                            .width(150.0)
+                            .selected_text(if let Some(game) = game.as_ref() {
+                                i18n::LOCALES
+                                    .lookup(
+                                        &config.language,
+                                        &format!(
+                                            "game-{}.match-type-{}-{}",
+                                            game.family_and_variant().0,
+                                            lobby.match_type.0,
+                                            lobby.match_type.1
+                                        ),
+                                    )
+                                    .unwrap()
+                            } else {
+                                "".to_string()
+                            })
+                            .show_ui(ui, |ui| {
+                                if let Some(game) = game {
+                                    let mut match_type = lobby.match_type;
+                                    for (typ, subtype_count) in
+                                        game.match_types().iter().enumerate()
+                                    {
+                                        for subtype in 0..*subtype_count {
+                                            ui.selectable_value(
+                                                &mut match_type,
+                                                (typ as u8, subtype as u8),
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &config.language,
+                                                        &format!(
+                                                            "game-{}.match-type-{}-{}",
+                                                            game.family_and_variant().0,
+                                                            typ,
+                                                            subtype
+                                                        ),
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        }
+                                        config.default_match_type = match_type.0;
+                                    }
+                                    if match_type != lobby.match_type {
+                                        handle.block_on(async {
+                                            let _ = lobby.set_match_type(match_type).await;
+                                        });
+                                    }
+                                }
+                            });
+                    });
+                });
+                row.col(|ui| {
+                    ui.label(
+                        if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
+                            i18n::LOCALES
+                                .lookup(
+                                    &config.language,
+                                    &format!(
+                                        "game-{}.match-type-{}-{}",
+                                        game_info.family_and_variant.0,
+                                        lobby.remote_settings.match_type.0,
+                                        lobby.remote_settings.match_type.1,
+                                    ),
+                                )
+                                .unwrap()
+                        } else {
+                            "".to_string()
+                        },
+                    );
+                });
+            });
+
+            body.row(20.0, |mut row| {
+                row.col(|ui| {
+                    ui.strong(
+                        i18n::LOCALES
+                            .lookup(&config.language, "play-details.reveal-setup")
+                            .unwrap(),
+                    );
+                });
+                row.col(|ui| {
+                    let mut checked = lobby.reveal_setup;
+                    ui.checkbox(&mut checked, "");
+                    handle.block_on(async {
+                        let _ = lobby.set_reveal_setup(checked).await;
+                    });
+                });
+                row.col(|ui| {
+                    ui.checkbox(&mut lobby.remote_settings.reveal_setup.clone(), "");
+                });
+            });
+        });
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     handle: tokio::runtime::Handle,
@@ -770,21 +1002,29 @@ pub fn show(
                             match connection_state {
                                 ConnectionState::Starting => {
                                     ui.horizontal(|ui| {
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                            if ui.button(format!(
-                                                "❎ {}",
-                                                i18n::LOCALES
-                                                    .lookup(&config.language, "play-cancel")
-                                                    .unwrap()
-                                            )).clicked()
-                                            {
-                                                cancellation_token.cancel();
-                                            }
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Min),
+                                            |ui| {
+                                                if ui
+                                                    .button(format!(
+                                                        "❎ {}",
+                                                        i18n::LOCALES
+                                                            .lookup(&config.language, "play-cancel")
+                                                            .unwrap()
+                                                    ))
+                                                    .clicked()
+                                                {
+                                                    cancellation_token.cancel();
+                                                }
 
-                                            ui.horizontal_top(|ui| {
-                                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                                                    ui.spinner();
-                                                    ui.label(
+                                                ui.horizontal_top(|ui| {
+                                                    ui.with_layout(
+                                                        egui::Layout::left_to_right(
+                                                            egui::Align::Min,
+                                                        ),
+                                                        |ui| {
+                                                            ui.spinner();
+                                                            ui.label(
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
@@ -792,29 +1032,39 @@ pub fn show(
                                                             )
                                                             .unwrap(),
                                                     );
+                                                        },
+                                                    );
                                                 });
-                                            });
-                                        });
+                                            },
+                                        );
                                     });
                                 }
                                 ConnectionState::Signaling => {
                                     ui.horizontal(|ui| {
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                            if ui.button(format!(
-                                                "❎ {}",
-                                                i18n::LOCALES
-                                                    .lookup(&config.language, "play-cancel")
-                                                    .unwrap()
-                                            )).clicked()
-                                            {
-                                                cancellation_token.cancel();
-                                            }
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Min),
+                                            |ui| {
+                                                if ui
+                                                    .button(format!(
+                                                        "❎ {}",
+                                                        i18n::LOCALES
+                                                            .lookup(&config.language, "play-cancel")
+                                                            .unwrap()
+                                                    ))
+                                                    .clicked()
+                                                {
+                                                    cancellation_token.cancel();
+                                                }
 
-                                            ui.horizontal_top(|ui| {
-                                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                                                    ui.set_width(ui.available_width());
-                                                    ui.spinner();
-                                                    ui.label(
+                                                ui.horizontal_top(|ui| {
+                                                    ui.with_layout(
+                                                        egui::Layout::left_to_right(
+                                                            egui::Align::Min,
+                                                        ),
+                                                        |ui| {
+                                                            ui.set_width(ui.available_width());
+                                                            ui.spinner();
+                                                            ui.label(
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
@@ -822,29 +1072,39 @@ pub fn show(
                                                             )
                                                             .unwrap(),
                                                     );
+                                                        },
+                                                    );
                                                 });
-                                            });
-                                        });
+                                            },
+                                        );
                                     });
                                 }
                                 ConnectionState::Waiting => {
                                     ui.horizontal(|ui| {
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                            if ui.button(format!(
-                                                "❎ {}",
-                                                i18n::LOCALES
-                                                    .lookup(&config.language, "play-cancel")
-                                                    .unwrap()
-                                            )).clicked()
-                                            {
-                                                cancellation_token.cancel();
-                                            }
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Min),
+                                            |ui| {
+                                                if ui
+                                                    .button(format!(
+                                                        "❎ {}",
+                                                        i18n::LOCALES
+                                                            .lookup(&config.language, "play-cancel")
+                                                            .unwrap()
+                                                    ))
+                                                    .clicked()
+                                                {
+                                                    cancellation_token.cancel();
+                                                }
 
-                                            ui.horizontal_top(|ui| {
-                                                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                                                    ui.set_width(ui.available_width());
-                                                    ui.spinner();
-                                                    ui.label(
+                                                ui.horizontal_top(|ui| {
+                                                    ui.with_layout(
+                                                        egui::Layout::left_to_right(
+                                                            egui::Align::Min,
+                                                        ),
+                                                        |ui| {
+                                                            ui.set_width(ui.available_width());
+                                                            ui.spinner();
+                                                            ui.label(
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
@@ -852,9 +1112,11 @@ pub fn show(
                                                             )
                                                             .unwrap(),
                                                     );
+                                                        },
+                                                    );
                                                 });
-                                            });
-                                        });
+                                            },
+                                        );
                                     });
                                 }
                                 ConnectionState::InLobby(lobby) => {
@@ -870,281 +1132,13 @@ pub fn show(
                                         lobby.local_negotiated_state.is_none()
                                             && lobby.sender.is_some(),
                                         |ui| {
-                                            egui_extras::TableBuilder::new(ui)
-                                                .column(egui_extras::Size::remainder())
-                                                .column(egui_extras::Size::exact(200.0))
-                                                .column(egui_extras::Size::exact(200.0))
-                                                .header(20.0, |mut header| {
-                                                    header.col(|_ui| {});
-                                                    header.col(|ui| {
-                                                        ui.horizontal(|ui| {
-                                                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                                                                if ui.button(format!(
-                                                                    "🚶 {}",
-                                                                    i18n::LOCALES
-                                                                        .lookup(&config.language, "play-leave")
-                                                                        .unwrap()
-                                                                )).clicked()
-                                                                {
-                                                                    cancellation_token.cancel();
-                                                                }
-
-                                                                ui.horizontal_top(|ui| {
-                                                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                                                                        ui.set_width(ui.available_width());
-                                                                        ui.strong(
-                                                                            i18n::LOCALES
-                                                                                .lookup(
-                                                                                    &config.language,
-                                                                                    "play-you",
-                                                                                )
-                                                                                .unwrap(),
-                                                                        );
-                                                                        if lobby.local_negotiated_state.is_some()
-                                                                            || lobby.sender.is_none()
-                                                                        {
-                                                                            ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
-                                                                        }
-                                                                    });
-                                                                });
-                                                            });
-                                                        });
-                                                    });
-                                                    header.col(|ui| {
-                                                        ui.horizontal(|ui| {
-                                                            ui.strong(
-                                                                lobby.remote_settings.nickname.clone(),
-                                                            );
-                                                            if lobby.remote_commitment.is_some() {
-                                                                ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
-                                                            }
-                                                        });
-                                                    });
-                                                })
-                                                .body(|mut body| {
-                                                    body.row(20.0, |mut row| {
-                                                        row.col(|ui| {
-                                                            ui.strong(
-                                                                i18n::LOCALES
-                                                                    .lookup(
-                                                                        &config.language,
-                                                                        "play-details.game",
-                                                                    )
-                                                                    .unwrap(),
-                                                            );
-                                                            if lobby.match_type != lobby.remote_settings.match_type {
-                                                                gui::warning::show(
-                                                                    ui,
-                                                                    i18n::LOCALES.lookup(
-                                                                        &config.language,
-                                                                        "lobby-issue.match-type-mismatch",
-                                                                    )
-                                                                    .unwrap()
-                                                                );
-                                                            }
-                                                        });
-                                                        row.col(|ui| {
-                                                            ui.label(
-                                                                if let Some(selection) = lobby
-                                                                    .selection.as_ref()
-                                                                {
-                                                                    let (family, _) = selection
-                                                                        .game
-                                                                        .family_and_variant();
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            &format!("game-{}", family), // TODO: Show patch
-                                                                        )
-                                                                        .unwrap()
-                                                                } else {
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            "play-no-game",
-                                                                        )
-                                                                        .unwrap()
-                                                                },
-                                                            );
-                                                        });
-                                                        row.col(|ui| {
-                                                            ui.label(
-                                                                if let Some(game) = lobby
-                                                                    .remote_settings
-                                                                    .game_info
-                                                                    .as_ref()
-                                                                    .and_then(|game_info| {
-                                                                        let (family, variant) =
-                                                                            &game_info.family_and_variant;
-                                                                        game::find_by_family_and_variant(
-                                                                            &family, *variant,
-                                                                        )
-                                                                    })
-                                                                {
-                                                                    let (family, _) =
-                                                                        game.family_and_variant();
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            &format!("game-{}", family), // TODO: Show patch
-                                                                        )
-                                                                        .unwrap()
-                                                                } else {
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            "play-no-game",
-                                                                        )
-                                                                        .unwrap()
-                                                                },
-                                                            );
-                                                        });
-                                                    });
-
-                                                    body.row(20.0, |mut row| {
-                                                        row.col(|ui| {
-                                                            ui.horizontal(|ui| {
-                                                                ui.strong(
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            "play-details.match-type",
-                                                                        )
-                                                                        .unwrap(),
-                                                                );
-                                                                if lobby.match_type != lobby.remote_settings.match_type {
-                                                                    gui::warning::show(
-                                                                        ui,
-                                                                        i18n::LOCALES.lookup(
-                                                                            &config.language,
-                                                                            "lobby-issue.match-type-mismatch",
-                                                                        )
-                                                                        .unwrap()
-                                                                    );
-                                                                }
-                                                            });
-                                                        });
-                                                        row.col(|ui| {
-                                                            let game = lobby
-                                                                .selection
-                                                                .as_ref()
-                                                                .map(|selection| selection.game);
-                                                            ui.add_enabled_ui(game.is_some(), |ui| {
-                                                                egui::ComboBox::new(
-                                                                    "start-match-type-combobox",
-                                                                    "",
-                                                                )
-                                                                .width(150.0)
-                                                                .selected_text(
-                                                                    if let Some(game) = game.as_ref() {
-                                                                        i18n::LOCALES.lookup(&config.language,
-                                                                            &format!(
-                                                                                "game-{}.match-type-{}-{}",
-                                                                                game.family_and_variant().0,
-                                                                                lobby.match_type.0,
-                                                                                lobby.match_type.1
-                                                                            )).unwrap()
-                                                                    } else {
-                                                                        "".to_string()
-                                                                    },
-                                                                )
-                                                                .show_ui(ui, |ui| {
-                                                                    if let Some(game) = game {
-                                                                        let mut match_type =
-                                                                            lobby.match_type;
-                                                                        for (typ, subtype_count) in game
-                                                                            .match_types()
-                                                                            .iter()
-                                                                            .enumerate()
-                                                                        {
-                                                                            for subtype in
-                                                                                0..*subtype_count
-                                                                            {
-                                                                                ui.selectable_value(
-                                                                                    &mut match_type,
-                                                                                    (
-                                                                                        typ as u8,
-                                                                                        subtype as u8,
-                                                                                    ),
-                                                                                    i18n::LOCALES.lookup(&config.language,
-                                                                                        &format!(
-                                                                                            "game-{}.match-type-{}-{}",
-                                                                                            game.family_and_variant().0,
-                                                                                            typ,
-                                                                                            subtype
-                                                                                        )).unwrap(),
-                                                                                );
-                                                                            }
-                                                                            config.default_match_type =
-                                                                                match_type.0;
-                                                                        }
-                                                                        if match_type
-                                                                            != lobby.match_type
-                                                                        {
-                                                                            handle.block_on(async {
-                                                                                let _ = lobby
-                                                                                    .set_match_type(
-                                                                                        match_type,
-                                                                                    )
-                                                                                    .await;
-                                                                            });
-                                                                        }
-                                                                    }
-                                                                });
-                                                            });
-                                                        });
-                                                        row.col(|ui| {
-                                                            ui.label(
-                                                                if let Some(game_info) = lobby
-                                                                    .remote_settings
-                                                                    .game_info
-                                                                    .as_ref()
-                                                                {
-                                                                    i18n::LOCALES.lookup(&config.language,
-                                                                        &format!(
-                                                                            "game-{}.match-type-{}-{}",
-                                                                            game_info.family_and_variant.0,
-                                                                            lobby.remote_settings.match_type.0,
-                                                                            lobby.remote_settings.match_type.1,
-                                                                        )).unwrap()
-                                                                } else {
-                                                                    "".to_string()
-                                                                },
-                                                            );
-                                                        });
-                                                    });
-
-                                                    body.row(20.0, |mut row| {
-                                                        row.col(|ui| {
-                                                            ui.strong(
-                                                                i18n::LOCALES
-                                                                    .lookup(
-                                                                        &config.language,
-                                                                        "play-details.reveal-setup",
-                                                                    )
-                                                                    .unwrap(),
-                                                            );
-                                                        });
-                                                        row.col(|ui| {
-                                                            let mut checked = lobby.reveal_setup;
-                                                            ui.checkbox(&mut checked, "");
-                                                            handle.block_on(async {
-                                                                let _ = lobby
-                                                                    .set_reveal_setup(checked)
-                                                                    .await;
-                                                            });
-                                                        });
-                                                        row.col(|ui| {
-                                                            ui.checkbox(
-                                                                &mut lobby
-                                                                    .remote_settings
-                                                                    .reveal_setup
-                                                                    .clone(),
-                                                                "",
-                                                            );
-                                                        });
-                                                    });
-                                                });
+                                            show_lobby_table(
+                                                ui,
+                                                handle.clone(),
+                                                &cancellation_token,
+                                                config,
+                                                &mut lobby,
+                                            );
                                         },
                                     );
                                 }
@@ -1154,29 +1148,29 @@ pub fn show(
 
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-
-                            let (lobby, cancellation_token) = if let Some(connection_task) = connection_task.as_ref()
-                            {
-                                match connection_task {
-                                    ConnectionTask::InProgress {
-                                        state: task_state,
-                                        cancellation_token,
-                                    } => (
-                                        if let ConnectionState::InLobby(lobby) = task_state {
-                                            Some(lobby.clone())
-                                        } else {
-                                            None
-                                        },
-                                        Some(cancellation_token.clone()),
-                                    ),
-                                    ConnectionTask::Failed(_) => (None, None),
-                                }
-                            } else {
-                                (None, None)
-                            };
+                            let (lobby, cancellation_token) =
+                                if let Some(connection_task) = connection_task.as_ref() {
+                                    match connection_task {
+                                        ConnectionTask::InProgress {
+                                            state: task_state,
+                                            cancellation_token,
+                                        } => (
+                                            if let ConnectionState::InLobby(lobby) = task_state {
+                                                Some(lobby.clone())
+                                            } else {
+                                                None
+                                            },
+                                            Some(cancellation_token.clone()),
+                                        ),
+                                        ConnectionTask::Failed(_) => (None, None),
+                                    }
+                                } else {
+                                    (None, None)
+                                };
 
                             let error_window_open = {
-                                if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref() {
+                                if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref()
+                                {
                                     let mut open = true;
                                     egui::Window::new("")
                                         .id(egui::Id::new("connection-failed-window"))
@@ -1204,21 +1198,23 @@ pub fn show(
                                     .add_enabled(
                                         !error_window_open
                                             && (!state.link_code.is_empty() || selection.is_some()),
-                                        egui::Button::new(egui::RichText::new(if state.link_code.is_empty() {
-                                            format!(
-                                                "▶️ {}",
-                                                i18n::LOCALES
-                                                    .lookup(&config.language, "play-play")
-                                                    .unwrap()
-                                            )
-                                        } else {
-                                            format!(
-                                                "🥊 {}",
-                                                i18n::LOCALES
-                                                    .lookup(&config.language, "play-fight")
-                                                    .unwrap()
-                                            )
-                                        })),
+                                        egui::Button::new(egui::RichText::new(
+                                            if state.link_code.is_empty() {
+                                                format!(
+                                                    "▶️ {}",
+                                                    i18n::LOCALES
+                                                        .lookup(&config.language, "play-play")
+                                                        .unwrap()
+                                                )
+                                            } else {
+                                                format!(
+                                                    "🥊 {}",
+                                                    i18n::LOCALES
+                                                        .lookup(&config.language, "play-fight")
+                                                        .unwrap()
+                                                )
+                                            },
+                                        )),
                                     )
                                     .clicked()
                                 {
@@ -1226,7 +1222,10 @@ pub fn show(
                                 }
 
                                 if ui
-                                    .add_enabled(!error_window_open, egui::Button::new(egui::RichText::new("🎲")))
+                                    .add_enabled(
+                                        !error_window_open,
+                                        egui::Button::new(egui::RichText::new("🎲")),
+                                    )
                                     .on_hover_text(
                                         i18n::LOCALES
                                             .lookup(&config.language, "play-random")
@@ -1241,8 +1240,8 @@ pub fn show(
 
                             if let Some(lobby) = lobby {
                                 let mut lobby = lobby.blocking_lock();
-                                let mut ready =
-                                    lobby.local_negotiated_state.is_some() || lobby.sender.is_none();
+                                let mut ready = lobby.local_negotiated_state.is_some()
+                                    || lobby.sender.is_none();
                                 let was_ready = ready;
                                 ui.add_enabled(
                                     selection.is_some()
@@ -1320,7 +1319,9 @@ pub fn show(
                                 }
                             }
 
-                            if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
+                            if input_resp.lost_focus()
+                                && ui.ctx().input().key_pressed(egui::Key::Enter)
+                            {
                                 submitted = true;
                             }
 
@@ -1331,20 +1332,25 @@ pub fn show(
                                 let emu_tps_counter = emu_tps_counter.clone();
 
                                 if !state.link_code.is_empty() {
-                                    let cancellation_token = tokio_util::sync::CancellationToken::new();
+                                    let cancellation_token =
+                                        tokio_util::sync::CancellationToken::new();
                                     *connection_task = Some(ConnectionTask::InProgress {
                                         state: ConnectionState::Starting,
                                         cancellation_token: cancellation_token.clone(),
                                     });
 
                                     handle.spawn({
-                                        let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
-                                            config.matchmaking_endpoint.clone()
-                                        } else {
-                                            config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-                                        };
+                                        let matchmaking_endpoint =
+                                            if !config.matchmaking_endpoint.is_empty() {
+                                                config.matchmaking_endpoint.clone()
+                                            } else {
+                                                config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+                                            };
                                         let link_code = state.link_code.to_owned();
-                                        let nickname = config.nickname.clone().unwrap_or_else(|| "".to_string());
+                                        let nickname = config
+                                            .nickname
+                                            .clone()
+                                            .unwrap_or_else(|| "".to_string());
                                         let patches_path = config.patches_path();
                                         let replays_path = config.replays_path();
                                         let config_arc = config_arc.clone();
