@@ -76,6 +76,7 @@ pub fn show(
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     state: &mut State,
+    replay_dump_windows: &mut gui::replay_dump_windows::State,
     language: &unic_langid::LanguageIdentifier,
     patches_path: &std::path::Path,
     patches_scanner: gui::PatchesScanner,
@@ -399,7 +400,13 @@ pub fn show(
                                 i18n::LOCALES.lookup(language, "replays.export").unwrap()
                             ))
                             .clicked()
-                        {}
+                        {
+                            replay_dump_windows.add_child(
+                                selection.rom.clone(),
+                                selection.replay.clone(),
+                                selection.path.clone(),
+                            );
+                        }
 
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                             ui.horizontal(|ui| {

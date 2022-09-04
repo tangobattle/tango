@@ -8,6 +8,7 @@ mod escape_window;
 mod main_view;
 mod patches_pane;
 mod play_pane;
+mod replay_dump_windows;
 mod replays_pane;
 mod save_select_window;
 mod save_view;
@@ -81,6 +82,7 @@ pub struct State {
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
     show_debug_window: Option<debug_window::State>,
+    replay_dump_windows: replay_dump_windows::State,
     clipboard: arboard::Clipboard,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
     font_families: FontFamilies,
@@ -175,6 +177,7 @@ impl State {
             show_escape_window: None,
             show_debug_window: None,
             session_view: None,
+            replay_dump_windows: replay_dump_windows::State::new(),
             clipboard: arboard::Clipboard::new().unwrap(),
             font_data: std::collections::BTreeMap::from([
                 (
@@ -373,6 +376,12 @@ pub fn show(
         &config.language,
         &mut state.show_settings,
     );
+    replay_dump_windows::show(
+        ctx,
+        handle.clone(),
+        &mut state.replay_dump_windows,
+        &config.replays_path(),
+    );
     if let Some(session) = state.session.lock().as_ref() {
         session_view::show(
             ctx,
@@ -397,6 +406,7 @@ pub fn show(
             handle.clone(),
             window,
             &mut state.show_settings,
+            &mut state.replay_dump_windows,
             &mut state.clipboard,
             state.audio_binder.clone(),
             state.roms_scanner.clone(),

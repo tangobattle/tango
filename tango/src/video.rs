@@ -16,7 +16,7 @@ impl Filter for NullFilter {
     }
 }
 
-pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter>> {
+pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter + Sync + Send>> {
     match name {
         "null" | "" => Some(Box::new(NullFilter)),
         "hq2x" => Some(Box::new(hqx::HQ2XFilter)),
