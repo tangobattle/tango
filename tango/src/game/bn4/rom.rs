@@ -258,15 +258,15 @@ impl Assets {
                             .clone(),
                         is_solid: buf[0x01] == 0,
                         compressed_bitmap: image::ImageBuffer::from_vec(
-                            7,
-                            7,
+                            5,
+                            5,
                             mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49]
                                 .to_vec(),
                         )
                         .unwrap(),
                         uncompressed_bitmap: image::ImageBuffer::from_vec(
-                            7,
-                            7,
+                            5,
+                            5,
                             mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49]
                                 .to_vec(),
                         )

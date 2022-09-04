@@ -1,7 +1,8 @@
 mod hooks;
+mod rom;
 mod save;
 
-use crate::game;
+use crate::{game, patch};
 
 const MATCH_TYPES: &[usize] = &[2, 2];
 
@@ -61,6 +62,28 @@ impl game::Game for EXE5BImpl {
             },
         )?))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::BRBJ_00,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::JA_CHARSET),
+            rom,
+            wram,
+        )))
+    }
 }
 
 struct EXE5CImpl;
@@ -118,6 +141,28 @@ impl game::Game for EXE5CImpl {
                 variant: save::Variant::Colonel,
             },
         )?))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::BRKJ_00,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::JA_CHARSET),
+            rom,
+            wram,
+        )))
     }
 }
 
@@ -177,6 +222,28 @@ impl game::Game for BN5PImpl {
             },
         )?))
     }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::BRBE_00,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::EN_CHARSET),
+            rom,
+            wram,
+        )))
+    }
 }
 
 struct BN5CImpl;
@@ -234,5 +301,27 @@ impl game::Game for BN5CImpl {
                 variant: save::Variant::Colonel,
             },
         )?))
+    }
+
+    fn load_rom_assets(
+        &self,
+        rom: &[u8],
+        wram: &[u8],
+        overrides: &patch::SaveeditOverrides,
+    ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
+        Ok(Box::new(rom::Assets::new(
+            &rom::BRKE_00,
+            override_charset
+                .as_ref()
+                .map(|cs| cs.as_slice())
+                .unwrap_or(&rom::EN_CHARSET),
+            rom,
+            wram,
+        )))
     }
 }

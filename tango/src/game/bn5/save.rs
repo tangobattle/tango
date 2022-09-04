@@ -113,13 +113,9 @@ impl save::Save for Save {
     }
 
     fn view_modcards(&self) -> Option<save::ModcardsView> {
-        if self.game_info.region == Region::JP {
-            Some(save::ModcardsView::Modcards56(Box::new(Modcards56View {
-                save: self,
-            })))
-        } else {
-            None
-        }
+        Some(save::ModcardsView::Modcards56(Box::new(Modcards56View {
+            save: self,
+        })))
     }
 
     fn as_raw_wram(&self) -> &[u8] {

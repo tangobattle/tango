@@ -285,6 +285,10 @@ impl Assets {
                                                 rom::text::Part::Literal(c) => {
                                                     charset.get(c).unwrap_or(&"�")
                                                 }
+                                                rom::text::Part::Command {
+                                                    op: NEWLINE_COMMAND,
+                                                    ..,
+                                                } => " ",
                                                 _ => "",
                                             }
                                             .chars()
