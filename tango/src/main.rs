@@ -192,7 +192,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     });
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
-    let mut gui = gui::Gui::new(&egui_glow.egui_ctx);
 
     let audio_binder = audio::LateBinder::new(48000);
 
@@ -257,6 +256,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     }
 
     let mut state = gui::State::new(
+        &egui_glow.egui_ctx,
         std::sync::Arc::new(parking_lot::RwLock::new(config)),
         audio_binder.clone(),
         fps_counter.clone(),
@@ -306,7 +306,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                     gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32
                         / 100.0,
                 );
-                gui.show(
+                gui::show(
                     ctx,
                     &mut config,
                     handle.clone(),

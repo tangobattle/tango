@@ -82,100 +82,22 @@ pub struct State {
     show_settings: Option<settings_window::State>,
     show_debug_window: Option<debug_window::State>,
     clipboard: arboard::Clipboard,
+    font_data: std::collections::BTreeMap<String, egui::FontData>,
+    font_families: FontFamilies,
+    themes: Themes,
+    current_language: Option<unic_langid::LanguageIdentifier>,
+    session_view: Option<session_view::State>,
     drpc: discord_rpc_client::Client,
 }
 
 impl State {
     pub fn new(
+        ctx: &egui::Context,
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     ) -> Self {
-        let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
-        drpc.start();
-
-        let roms_scanner = scanner::Scanner::new();
-        let saves_scanner = scanner::Scanner::new();
-        let patches_scanner = scanner::Scanner::new();
-        {
-            let config = config.read().clone();
-            let roms_path = config.roms_path();
-            let saves_path = config.saves_path();
-            let patches_path = config.patches_path();
-            roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-            saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-            patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
-        }
-
-        Self {
-            config,
-            session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            roms_scanner,
-            saves_scanner,
-            patches_scanner,
-            main_view: main_view::State::new(),
-            audio_binder,
-            fps_counter,
-            emu_tps_counter,
-            steal_input: None,
-            show_settings: None,
-            show_escape_window: None,
-            show_debug_window: None,
-            clipboard: arboard::Clipboard::new().unwrap(),
-            drpc,
-        }
-    }
-}
-
-struct Themes {
-    light: egui::style::Visuals,
-    dark: egui::style::Visuals,
-}
-
-#[derive(Clone)]
-pub struct FontFamilies {
-    latn: egui::FontFamily,
-    jpan: egui::FontFamily,
-    hans: egui::FontFamily,
-    hant: egui::FontFamily,
-}
-
-impl FontFamilies {
-    pub fn for_language(&self, lang: &unic_langid::LanguageIdentifier) -> egui::FontFamily {
-        let mut lang = lang.clone();
-        lang.maximize();
-        match lang.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
-                self.jpan.clone()
-            }
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
-                self.hans.clone()
-            }
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
-                self.hant.clone()
-            }
-            _ => self.latn.clone(),
-        }
-    }
-}
-
-pub struct Gui {
-    main_view: main_view::MainView,
-    settings_window: settings_window::SettingsWindow,
-    session_view: session_view::SessionView,
-    debug_window: debug_window::DebugWindow,
-    steal_input_window: steal_input_window::StealInputWindow,
-    escape_window: escape_window::EscapeWindow,
-    font_data: std::collections::BTreeMap<String, egui::FontData>,
-    font_families: FontFamilies,
-    themes: Themes,
-    current_language: Option<unic_langid::LanguageIdentifier>,
-}
-
-impl Gui {
-    pub fn new(ctx: &egui::Context) -> Self {
         let font_families = FontFamilies {
             latn: egui::FontFamily::Name("Latn".into()),
             jpan: egui::FontFamily::Name("Jpan".into()),
@@ -221,13 +143,39 @@ impl Gui {
         .into();
         ctx.set_style(style);
 
+        let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
+        drpc.start();
+
+        let roms_scanner = scanner::Scanner::new();
+        let saves_scanner = scanner::Scanner::new();
+        let patches_scanner = scanner::Scanner::new();
+        {
+            let config = config.read().clone();
+            let roms_path = config.roms_path();
+            let saves_path = config.saves_path();
+            let patches_path = config.patches_path();
+            roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+            saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+            patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
+        }
+
         Self {
-            main_view: main_view::MainView::new(),
-            steal_input_window: steal_input_window::StealInputWindow::new(),
-            debug_window: debug_window::DebugWindow::new(),
-            settings_window: settings_window::SettingsWindow::new(font_families.clone()),
-            session_view: session_view::SessionView::new(),
-            escape_window: escape_window::EscapeWindow::new(),
+            config,
+            session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            roms_scanner,
+            saves_scanner,
+            patches_scanner,
+            main_view: main_view::State::new(),
+            audio_binder,
+            fps_counter,
+            emu_tps_counter,
+            steal_input: None,
+            show_settings: None,
+            show_escape_window: None,
+            show_debug_window: None,
+            session_view: None,
+            clipboard: arboard::Clipboard::new().unwrap(),
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
@@ -270,158 +218,194 @@ impl Gui {
                 },
             },
             current_language: None,
+            drpc,
+        }
+    }
+}
+
+struct Themes {
+    light: egui::style::Visuals,
+    dark: egui::style::Visuals,
+}
+
+#[derive(Clone)]
+pub struct FontFamilies {
+    latn: egui::FontFamily,
+    jpan: egui::FontFamily,
+    hans: egui::FontFamily,
+    hant: egui::FontFamily,
+}
+
+impl FontFamilies {
+    pub fn for_language(&self, lang: &unic_langid::LanguageIdentifier) -> egui::FontFamily {
+        let mut lang = lang.clone();
+        lang.maximize();
+        match lang.script {
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
+                self.jpan.clone()
+            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
+                self.hans.clone()
+            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
+                self.hant.clone()
+            }
+            _ => self.latn.clone(),
+        }
+    }
+}
+
+pub fn show(
+    ctx: &egui::Context,
+    config: &mut config::Config,
+    handle: tokio::runtime::Handle,
+    window: &glutin::window::Window,
+    input_state: &input::State,
+    state: &mut State,
+) {
+    {
+        let mut session = state.session.lock();
+        if let Some(s) = session.as_ref() {
+            if s.completed() {
+                *session = None;
+            }
         }
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        config: &mut config::Config,
-        handle: tokio::runtime::Handle,
-        window: &glutin::window::Window,
-        input_state: &input::State,
-        state: &mut State,
-    ) {
-        {
-            let mut session = state.session.lock();
-            if let Some(s) = session.as_ref() {
-                if s.completed() {
-                    *session = None;
-                }
+    if state.current_language.as_ref() != Some(&config.language) {
+        let mut language = config.language.clone();
+        language.maximize();
+
+        let primary_font = match language.script {
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
+                "NotoSansJP-Regular"
             }
-        }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
+                "NotoSansSC-Regular"
+            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
+                "NotoSansTC-Regular"
+            }
+            _ => "NotoSans-Regular",
+        };
 
-        if self.current_language.as_ref() != Some(&config.language) {
-            let mut language = config.language.clone();
-            language.maximize();
+        let proportional = vec![
+            primary_font.to_string(),
+            "NotoSans-Regular".to_string(),
+            "NotoSansJP-Regular".to_string(),
+            "NotoSansSC-Regular".to_string(),
+            "NotoSansTC-Regular".to_string(),
+            "NotoEmoji-Regular".to_string(),
+        ];
 
-            let primary_font = match language.script {
-                Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
-                    "NotoSansJP-Regular"
-                }
-                Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
-                    "NotoSansSC-Regular"
-                }
-                Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
-                    "NotoSansTC-Regular"
-                }
-                _ => "NotoSans-Regular",
-            };
+        let mut monospace = vec!["NotoSansMono-Regular".to_string()];
+        monospace.extend(proportional.clone());
 
-            let proportional = vec![
-                primary_font.to_string(),
-                "NotoSans-Regular".to_string(),
-                "NotoSansJP-Regular".to_string(),
-                "NotoSansSC-Regular".to_string(),
-                "NotoSansTC-Regular".to_string(),
-                "NotoEmoji-Regular".to_string(),
-            ];
-
-            let mut monospace = vec!["NotoSansMono-Regular".to_string()];
-            monospace.extend(proportional.clone());
-
-            ctx.set_fonts(egui::FontDefinitions {
-                font_data: self.font_data.clone(),
-                families: std::collections::BTreeMap::from([
-                    (egui::FontFamily::Proportional, proportional),
-                    (egui::FontFamily::Monospace, monospace),
-                    (
-                        self.font_families.jpan.clone(),
-                        vec!["NotoSansJP-Regular".to_string()],
-                    ),
-                    (
-                        self.font_families.hans.clone(),
-                        vec!["NotoSansSC-Regular".to_string()],
-                    ),
-                    (
-                        self.font_families.hant.clone(),
-                        vec!["NotoSansTC-Regular".to_string()],
-                    ),
-                    (
-                        self.font_families.latn.clone(),
-                        vec!["NotoSans-Regular".to_string()],
-                    ),
-                ]),
-            });
-            self.current_language = Some(config.language.clone());
-            log::info!(
-                "language was changed to {}",
-                self.current_language.as_ref().unwrap()
-            );
-        }
-
-        ctx.set_visuals(match config.theme {
-            config::Theme::System => match dark_light::detect() {
-                dark_light::Mode::Light => self.themes.light.clone(),
-                dark_light::Mode::Dark => self.themes.dark.clone(),
-            },
-            config::Theme::Light => self.themes.light.clone(),
-            config::Theme::Dark => self.themes.dark.clone(),
+        ctx.set_fonts(egui::FontDefinitions {
+            font_data: state.font_data.clone(),
+            families: std::collections::BTreeMap::from([
+                (egui::FontFamily::Proportional, proportional),
+                (egui::FontFamily::Monospace, monospace),
+                (
+                    state.font_families.jpan.clone(),
+                    vec!["NotoSansJP-Regular".to_string()],
+                ),
+                (
+                    state.font_families.hans.clone(),
+                    vec!["NotoSansSC-Regular".to_string()],
+                ),
+                (
+                    state.font_families.hant.clone(),
+                    vec!["NotoSansTC-Regular".to_string()],
+                ),
+                (
+                    state.font_families.latn.clone(),
+                    vec!["NotoSans-Regular".to_string()],
+                ),
+            ]),
         });
+        state.current_language = Some(config.language.clone());
+        log::info!(
+            "language was changed to {}",
+            state.current_language.as_ref().unwrap()
+        );
+    }
 
-        if config.show_debug_overlay {
-            self.debug_window.show(
-                ctx,
-                config,
-                handle.clone(),
-                state.session.clone(),
-                state.fps_counter.clone(),
-                state.emu_tps_counter.clone(),
-                state
-                    .show_debug_window
-                    .get_or_insert_with(|| debug_window::State::new()),
-            );
-        }
-        self.settings_window.show(
+    ctx.set_visuals(match config.theme {
+        config::Theme::System => match dark_light::detect() {
+            dark_light::Mode::Light => state.themes.light.clone(),
+            dark_light::Mode::Dark => state.themes.dark.clone(),
+        },
+        config::Theme::Light => state.themes.light.clone(),
+        config::Theme::Dark => state.themes.dark.clone(),
+    });
+
+    if config.show_debug_overlay {
+        debug_window::show(
             ctx,
-            &mut state.show_settings,
             config,
+            handle.clone(),
+            state.session.clone(),
+            state.fps_counter.clone(),
+            state.emu_tps_counter.clone(),
+            state
+                .show_debug_window
+                .get_or_insert_with(|| debug_window::State::new()),
+        );
+    }
+    settings_window::show(
+        ctx,
+        &mut state.show_settings,
+        &state.font_families,
+        config,
+        state.roms_scanner.clone(),
+        state.saves_scanner.clone(),
+        state.patches_scanner.clone(),
+        window,
+        &mut state.steal_input,
+    );
+    steal_input_window::show(ctx, &config.language, &mut state.steal_input);
+    escape_window::show(
+        ctx,
+        state.session.clone(),
+        state.selection.clone(),
+        &mut state.show_escape_window,
+        &config.language,
+        &mut state.show_settings,
+    );
+    if let Some(session) = state.session.lock().as_ref() {
+        session_view::show(
+            ctx,
+            input_state,
+            &config.input_mapping,
+            session,
+            &config.video_filter,
+            config.max_scale,
+            &config.crashstates_path(),
+            &mut state.show_escape_window,
+            state
+                .session_view
+                .get_or_insert_with(|| session_view::State::new()),
+        );
+    } else {
+        state.session_view = None;
+        main_view::show(
+            ctx,
+            &state.font_families,
+            config,
+            state.config.clone(),
+            handle.clone(),
+            window,
+            &mut state.show_settings,
+            &mut state.clipboard,
+            state.audio_binder.clone(),
             state.roms_scanner.clone(),
             state.saves_scanner.clone(),
             state.patches_scanner.clone(),
-            window,
-            &mut state.steal_input,
-        );
-        self.steal_input_window
-            .show(ctx, &config.language, &mut state.steal_input);
-        self.escape_window.show(
-            ctx,
+            state.emu_tps_counter.clone(),
             state.session.clone(),
             state.selection.clone(),
-            &mut state.show_escape_window,
-            &config.language,
-            &mut state.show_settings,
+            &mut state.main_view,
         );
-        if let Some(session) = state.session.lock().as_ref() {
-            self.session_view.show(
-                ctx,
-                input_state,
-                &config.input_mapping,
-                session,
-                &config.video_filter,
-                config.max_scale,
-                &config.crashstates_path(),
-                &mut state.show_escape_window,
-            );
-        } else {
-            self.main_view.show(
-                ctx,
-                &self.font_families,
-                config,
-                state.config.clone(),
-                handle.clone(),
-                window,
-                &mut state.show_settings,
-                &mut state.clipboard,
-                state.audio_binder.clone(),
-                state.roms_scanner.clone(),
-                state.saves_scanner.clone(),
-                state.patches_scanner.clone(),
-                state.emu_tps_counter.clone(),
-                state.session.clone(),
-                state.selection.clone(),
-                &mut state.main_view,
-            );
-        }
     }
 }
