@@ -385,8 +385,8 @@ impl rom::Assets for Assets {
         self.navicust_parts.get(id * 4 + variant)
     }
 
-    fn num_navicust_parts(&self) -> usize {
-        self.navicust_parts.len()
+    fn num_navicust_parts(&self) -> (usize, usize) {
+        (self.navicust_parts.len() / 4, 4)
     }
 
     fn modcard56(&self, id: usize) -> Option<&rom::Modcard56> {

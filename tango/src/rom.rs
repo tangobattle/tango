@@ -100,8 +100,8 @@ pub trait Assets {
         let _ = variant;
         None
     }
-    fn num_navicust_parts(&self) -> usize {
-        0
+    fn num_navicust_parts(&self) -> (usize, usize) {
+        (0, 0)
     }
     fn style(&self, id: usize) -> Option<&Style> {
         let _ = id;
