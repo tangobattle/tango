@@ -92,8 +92,6 @@ pub fn show<'a>(
         })
         .collect::<Vec<_>>();
 
-    let style = navicust_view.style().and_then(|id| assets.style(id));
-
     ui.horizontal(|ui| {
         if ui
             .button(format!(
@@ -103,8 +101,14 @@ pub fn show<'a>(
             .clicked()
         {
             let mut buf = vec![];
-            if let Some(style) = style {
-                buf.push(style.name.clone());
+            if let Some(style) = navicust_view.style() {
+                buf.push(
+                    assets
+                        .style(style)
+                        .map(|style| style.name.as_str())
+                        .unwrap_or("")
+                        .to_owned(),
+                );
             }
             buf.extend(
                 itertools::Itertools::zip_longest(
@@ -127,8 +131,13 @@ pub fn show<'a>(
         }
     });
 
-    if let Some(style) = style {
-        ui.label(&style.name);
+    if let Some(style) = navicust_view.style() {
+        ui.label(
+            assets
+                .style(style)
+                .map(|style| style.name.as_str())
+                .unwrap_or(""),
+        );
     }
 
     ui.horizontal(|ui| {
