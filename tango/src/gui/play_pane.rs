@@ -1474,7 +1474,7 @@ pub fn show(
                                                         egui::TextFormat::simple(
                                                             ui.style()
                                                                 .text_styles
-                                                                .get(&egui::TextStyle::Small)
+                                                                .get(&egui::TextStyle::Body)
                                                                 .unwrap()
                                                                 .clone(),
                                                             ui.visuals().text_color(),
