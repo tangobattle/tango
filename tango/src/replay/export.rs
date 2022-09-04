@@ -5,7 +5,7 @@ use byteorder::ByteOrder;
 use crate::{game, replay, replayer, video};
 
 pub struct Settings {
-    pub ffmpeg: std::path::PathBuf,
+    pub ffmpeg: Option<std::path::PathBuf>,
     pub ffmpeg_audio_flags: String,
     pub ffmpeg_video_flags: String,
     pub ffmpeg_mux_flags: String,
@@ -15,7 +15,7 @@ pub struct Settings {
 impl Settings {
     pub fn default_with_scale(factor: usize) -> Self {
         Self {
-            ffmpeg: "ffmpeg".into(),
+            ffmpeg: None,
             ffmpeg_audio_flags: "-c:a aac -ar 48000 -b:a 384k -ac 2".to_string(),
             ffmpeg_video_flags: format!("-c:v libx264 -vf scale=iw*{}:ih*{}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2", factor, factor),
             ffmpeg_mux_flags: "-movflags +faststart".to_string(),
@@ -37,6 +37,17 @@ pub fn export(
     settings: &Settings,
     progress_callback: impl Fn(usize, usize),
 ) -> anyhow::Result<()> {
+    let ffmpeg = settings.ffmpeg.clone().unwrap_or_else(|| {
+        let mut p = std::env::current_exe()
+            .ok()
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("ffmpeg"))
+            .unwrap_or("ffmpeg".into());
+        p.set_extension(std::env::consts::EXE_EXTENSION);
+        p
+    });
+
     let mut core = mgba::core::Core::new_gba("tango")?;
     core.enable_video_buffer();
 
@@ -86,7 +97,7 @@ pub fn export(
     let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
 
     let video_output = tempfile::NamedTempFile::new()?;
-    let mut video_child = std::process::Command::new(&settings.ffmpeg);
+    let mut video_child = std::process::Command::new(&ffmpeg);
     video_child
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
@@ -112,7 +123,7 @@ pub fn export(
     let mut video_child = video_child.spawn()?;
 
     let audio_output = tempfile::NamedTempFile::new()?;
-    let mut audio_child = std::process::Command::new(&settings.ffmpeg);
+    let mut audio_child = std::process::Command::new(&ffmpeg);
     audio_child
         .stdin(std::process::Stdio::piped())
         .args(&["-y"])
@@ -199,7 +210,7 @@ pub fn export(
     audio_child.stdin = None;
     audio_child.wait()?;
 
-    let mut mux_child = std::process::Command::new(&settings.ffmpeg);
+    let mut mux_child = std::process::Command::new(&ffmpeg);
     mux_child
         .args(&["-y"])
         .args(&["-i"])
