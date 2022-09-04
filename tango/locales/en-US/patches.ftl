@@ -3,6 +3,6 @@ patches = Patches
     .authors = Authors
     .license = License
     .all-rights-reserved = All rights reserved
-    .source = Source
+    .source = Website
     .games = Supported games
     .update = Update

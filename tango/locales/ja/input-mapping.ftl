@@ -12,6 +12,7 @@ input-button =
     .r = R
     .start = START
     .select = SELECT
+    .speed-up = 加速
 
 physical-input-buttons =
     .dpup = 十字ボタン ⬆
@@ -29,7 +30,7 @@ physical-input-buttons =
     .back = BACK
     .guide = ガイド
     .start = START
-  .touchpad = タッチパッド
+    .touchpad = タッチパッド
 
 physical-input-axes =
     .leftxminus = Lスティック ⬅
