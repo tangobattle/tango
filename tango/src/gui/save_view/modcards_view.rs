@@ -37,13 +37,41 @@ pub fn show_modcards4<'a>(
     assets: &Box<dyn rom::Assets + Send + Sync>,
     _state: &mut State,
 ) {
+    ui.horizontal(|ui| {
+        if ui
+            .button(format!(
+                "📋 {}",
+                i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
+            ))
+            .clicked()
+        {
+            let _ = clipboard.set_text(
+                (0..6)
+                    .map(|i| {
+                        let modcard = modcards4_view.modcard(i);
+                        if let Some(modcard) = modcard {
+                            if modcard.enabled {
+                                format!("{:03}", modcard.id)
+                            } else {
+                                "---".to_owned()
+                            }
+                        } else {
+                            "---".to_owned()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            );
+        }
+    });
+
     egui_extras::TableBuilder::new(ui)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(egui_extras::Size::remainder())
-        .column(egui_extras::Size::exact(300.0))
+        .column(egui_extras::Size::exact(250.0))
         .striped(true)
         .body(|body| {
-            body.rows(44.0, 6, |i, mut row| {
+            body.rows(41.0, 6, |i, mut row| {
                 let modcard = modcards4_view.modcard(i);
                 if let Some((modcard, info)) = modcard
                     .as_ref()
