@@ -17,6 +17,10 @@ impl State {
         cstr.to_str().unwrap().to_string()
     }
 
+    pub fn gpr(&self, i: usize) -> u32 {
+        self.0.cpu.gprs[i] as u32
+    }
+
     pub fn rom_crc32(&self) -> u32 {
         self.0.romCrc32
     }
