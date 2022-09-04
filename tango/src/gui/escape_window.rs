@@ -13,7 +13,7 @@ impl State {
 pub fn show(
     ctx: &egui::Context,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
+    selection: &mut Option<gui::Selection>,
     show_escape_window: &mut Option<State>,
     language: &unic_langid::LanguageIdentifier,
     show_settings: &mut Option<gui::settings_window::State>,
@@ -51,7 +51,7 @@ pub fn show(
                     *session.lock() = None;
                     // Current save file needs to be reloaded from disk.
                     // TODO: Maybe we even need to rescan saves if region lock status changed? (e.g. EXE4 -> BN4)
-                    if let Some(selection) = selection.lock().as_mut() {
+                    if let Some(selection) = selection.as_mut() {
                         let _ = selection.reload_save();
                     }
                     *show_escape_window = None;

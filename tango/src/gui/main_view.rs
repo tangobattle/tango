@@ -45,7 +45,7 @@ pub fn show(
     patches_scanner: gui::PatchesScanner,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
+    selection: &mut Option<gui::Selection>,
     state: &mut State,
 ) {
     egui::TopBottomPanel::top("main-top-panel").show(ctx, |ui| {
@@ -123,7 +123,7 @@ pub fn show(
                 patches_scanner.clone(),
                 audio_binder.clone(),
                 session.clone(),
-                selection.clone(),
+                selection,
                 &mut state.patch_selection,
                 emu_tps_counter.clone(),
                 &mut state.play_pane,

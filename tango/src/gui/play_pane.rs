@@ -731,13 +731,12 @@ pub fn show(
     patches_scanner: gui::PatchesScanner,
     audio_binder: audio::LateBinder,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    selection: std::sync::Arc<parking_lot::Mutex<Option<gui::Selection>>>,
+    selection: &mut Option<gui::Selection>,
     patch_selection: &mut Option<String>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     state: &mut State,
 ) {
     let mut connection_task = state.connection_task.blocking_lock();
-    let mut selection = selection.lock();
 
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();

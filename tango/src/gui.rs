@@ -70,7 +70,7 @@ impl Selection {
 pub struct State {
     pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    pub selection: std::sync::Arc<parking_lot::Mutex<Option<Selection>>>,
+    selection: Option<Selection>,
     pub steal_input: Option<steal_input_window::State>,
     pub roms_scanner: ROMsScanner,
     pub saves_scanner: SavesScanner,
@@ -164,7 +164,7 @@ impl State {
         Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
-            selection: std::sync::Arc::new(parking_lot::Mutex::new(None)),
+            selection: None,
             roms_scanner,
             saves_scanner,
             patches_scanner,
@@ -371,7 +371,7 @@ pub fn show(
     escape_window::show(
         ctx,
         state.session.clone(),
-        state.selection.clone(),
+        &mut state.selection,
         &mut state.show_escape_window,
         &config.language,
         &mut state.show_settings,
@@ -415,7 +415,7 @@ pub fn show(
             state.patches_scanner.clone(),
             state.emu_tps_counter.clone(),
             state.session.clone(),
-            state.selection.clone(),
+            &mut state.selection,
             &mut state.main_view,
         );
     }
