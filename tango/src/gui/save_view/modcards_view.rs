@@ -27,6 +27,44 @@ fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_deb
             ui.label(name.color(egui::Color32::BLACK));
         });
 }
+pub fn show_modcards4<'a>(
+    ui: &mut egui::Ui,
+    clipboard: &mut arboard::Clipboard,
+    font_families: &gui::FontFamilies,
+    lang: &unic_langid::LanguageIdentifier,
+    game_lang: &unic_langid::LanguageIdentifier,
+    modcards4_view: &Box<dyn save::Modcards4View<'a> + 'a>,
+    _assets: &Box<dyn rom::Assets + Send + Sync>,
+    _state: &mut State,
+) {
+    egui_extras::TableBuilder::new(ui)
+        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+        .column(egui_extras::Size::remainder())
+        .striped(true)
+        .body(|body| {
+            body.rows(40.0, 6, |i, mut row| {
+                let modcard = modcards4_view.modcard(i);
+                row.col(|ui| {
+                    ui.vertical(|ui| {
+                        let mut slot_label =
+                            egui::RichText::new(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
+                                .small();
+                        let title_label = if let Some(modcard) = modcard.as_ref() {
+                            if !modcard.enabled {
+                                slot_label = slot_label.strikethrough();
+                            }
+                            format!("#{:03}", modcard.id)
+                        } else {
+                            slot_label = slot_label.strikethrough();
+                            "---".to_string()
+                        };
+                        ui.label(title_label);
+                        ui.label(slot_label.small());
+                    });
+                });
+            });
+        });
+}
 
 pub fn show_modcards56<'a>(
     ui: &mut egui::Ui,
@@ -185,7 +223,16 @@ pub fn show<'a>(
     state: &mut State,
 ) {
     match modcards_view {
-        save::ModcardsView::Modcards4(modcards4_view) => todo!(),
+        save::ModcardsView::Modcards4(modcards4_view) => show_modcards4(
+            ui,
+            clipboard,
+            font_families,
+            lang,
+            game_lang,
+            modcards4_view,
+            assets,
+            state,
+        ),
         save::ModcardsView::Modcards56(modcards56_view) => show_modcards56(
             ui,
             clipboard,
