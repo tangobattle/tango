@@ -388,6 +388,7 @@ pub fn show(
     if let Some(session) = state.session.lock().as_ref() {
         session_view::show(
             ctx,
+            &config.language,
             input_state,
             &config.input_mapping,
             session,

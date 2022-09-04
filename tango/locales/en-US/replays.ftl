@@ -14,3 +14,7 @@ replays-export =
     .cancel = Cancel
     .confirm-success = Yay!
     .confirm-error = Damn!
+
+replay-viewer =
+    .pause = Pause
+    .speed = Speed

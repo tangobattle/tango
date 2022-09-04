@@ -95,6 +95,7 @@ fn show_emulator(
 
 pub fn show(
     ctx: &egui::Context,
+    language: &unic_langid::LanguageIdentifier,
     input_state: &input::State,
     input_mapping: &input::Mapping,
     session: &session::Session,
@@ -133,7 +134,7 @@ pub fn show(
             );
         }
         session::Mode::Replayer => {
-            replay_controls_window::show(ctx, session, last_mouse_motion_time);
+            replay_controls_window::show(ctx, session, language, last_mouse_motion_time);
         }
         _ => {}
     }
