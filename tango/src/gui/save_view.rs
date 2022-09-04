@@ -1,5 +1,5 @@
 mod folder_view;
-mod modcards56_view;
+mod modcards_view;
 mod navicust_view;
 
 use fluent_templates::Loader;
@@ -17,7 +17,7 @@ pub struct State {
     tab: Option<Tab>,
     navicust_view: navicust_view::State,
     folder_view: folder_view::State,
-    modcards56_view: modcards56_view::State,
+    modcards_view: modcards_view::State,
 }
 
 impl State {
@@ -26,7 +26,7 @@ impl State {
             tab: None,
             navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
-            modcards56_view: modcards56_view::State::new(),
+            modcards_view: modcards_view::State::new(),
         }
     }
 }
@@ -43,7 +43,7 @@ pub fn show(
     ui.vertical(|ui| {
         let navicust_view = save.view_navicust();
         let chips_view = save.view_chips();
-        let modcards56_view = save.view_modcards56();
+        let modcards_view = save.view_modcards();
 
         let mut available_tabs = vec![];
         if navicust_view.is_some() {
@@ -52,7 +52,7 @@ pub fn show(
         if chips_view.is_some() {
             available_tabs.push(Tab::Folder);
         }
-        if modcards56_view.is_some() {
+        if modcards_view.is_some() {
             available_tabs.push(Tab::Modcards);
         }
 
@@ -113,16 +113,16 @@ pub fn show(
                 }
             }
             Some(Tab::Modcards) => {
-                if let Some(modcards56_view) = modcards56_view {
-                    modcards56_view::show(
+                if let Some(modcards_view) = modcards_view {
+                    modcards_view::show(
                         ui,
                         clipboard,
                         font_families,
                         lang,
                         game_lang,
-                        &modcards56_view,
+                        &modcards_view,
                         assets,
-                        &mut state.modcards56_view,
+                        &mut state.modcards_view,
                     );
                 }
             }

@@ -28,7 +28,7 @@ fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_deb
         });
 }
 
-pub fn show<'a>(
+pub fn show_modcards56<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
@@ -172,4 +172,29 @@ pub fn show<'a>(
                 },
             );
         });
+}
+
+pub fn show<'a>(
+    ui: &mut egui::Ui,
+    clipboard: &mut arboard::Clipboard,
+    font_families: &gui::FontFamilies,
+    lang: &unic_langid::LanguageIdentifier,
+    game_lang: &unic_langid::LanguageIdentifier,
+    modcards_view: &save::ModcardsView,
+    assets: &Box<dyn rom::Assets + Send + Sync>,
+    state: &mut State,
+) {
+    match modcards_view {
+        save::ModcardsView::Modcards4(modcards4_view) => todo!(),
+        save::ModcardsView::Modcards56(modcards56_view) => show_modcards56(
+            ui,
+            clipboard,
+            font_families,
+            lang,
+            game_lang,
+            modcards56_view,
+            assets,
+            state,
+        ),
+    }
 }

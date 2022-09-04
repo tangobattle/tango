@@ -124,9 +124,11 @@ impl save::Save for Save {
         Some(Box::new(NavicustView { save: self }))
     }
 
-    fn view_modcards56(&self) -> Option<Box<dyn save::Modcards56View + '_>> {
+    fn view_modcards(&self) -> Option<save::ModcardsView> {
         if self.game_info.region == Region::JP {
-            Some(Box::new(Modcards56View { save: self }))
+            Some(save::ModcardsView::Modcards56(Box::new(Modcards56View {
+                save: self,
+            })))
         } else {
             None
         }
@@ -218,12 +220,12 @@ impl<'a> save::Modcards56View<'a> for Modcards56View<'a> {
         self.save.buf[0x65f0] as usize
     }
 
-    fn modcard(&self, slot: usize) -> Option<save::Modcard56> {
+    fn modcard(&self, slot: usize) -> Option<save::Modcard> {
         if slot >= self.count() {
             return None;
         }
         let raw = self.save.buf[0x6620 + slot];
-        Some(save::Modcard56 {
+        Some(save::Modcard {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
         })

@@ -94,6 +94,11 @@ where
     }
 }
 
+pub enum ModcardsView<'a> {
+    Modcards4(Box<dyn Modcards4View<'a> + 'a>),
+    Modcards56(Box<dyn Modcards56View<'a> + 'a>),
+}
+
 pub trait Save
 where
     Self: SaveClone,
@@ -105,7 +110,7 @@ where
         None
     }
 
-    fn view_modcards56(&self) -> Option<Box<dyn Modcards56View + '_>> {
+    fn view_modcards(&self) -> Option<ModcardsView> {
         None
     }
 
@@ -161,14 +166,18 @@ pub trait ChipsView<'a> {
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
-pub struct Modcard56 {
+pub struct Modcard {
     pub id: usize,
     pub enabled: bool,
 }
 
 pub trait Modcards56View<'a> {
     fn count(&self) -> usize;
-    fn modcard(&self, slot: usize) -> Option<Modcard56>;
+    fn modcard(&self, slot: usize) -> Option<Modcard>;
+}
+
+pub trait Modcards4View<'a> {
+    fn modcard(&self, slot: usize) -> Option<Modcard>;
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
