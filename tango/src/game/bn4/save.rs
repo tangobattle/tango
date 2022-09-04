@@ -150,6 +150,10 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
+        Some(Box::new(NavicustView { save: self }))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -207,6 +211,50 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,
             code: (raw >> 9) as usize,
+        })
+    }
+}
+
+pub struct NavicustView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::NavicustView<'a> for NavicustView<'a> {
+    fn width(&self) -> usize {
+        5
+    }
+
+    fn height(&self) -> usize {
+        5
+    }
+
+    fn command_line(&self) -> usize {
+        2
+    }
+
+    fn has_out_of_bounds(&self) -> bool {
+        false
+    }
+
+    fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
+        if i >= 25 {
+            return None;
+        }
+
+        let offset = self.save.shift + 0x4564;
+        let buf = &self.save.buf[offset + i * 8..offset + (i + 1) * 8];
+        let raw = buf[0];
+        if raw == 0 {
+            return None;
+        }
+
+        Some(save::NavicustPart {
+            id: (raw / 4) as usize,
+            variant: (raw % 4) as usize,
+            col: buf[0x2],
+            row: buf[0x3],
+            rot: buf[0x4],
+            compressed: buf[0x5] != 0,
         })
     }
 }

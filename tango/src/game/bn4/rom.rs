@@ -69,6 +69,7 @@ lazy_static! {
 pub struct Assets {
     element_icons: [image::RgbaImage; 13],
     chips: [rom::Chip; 389],
+    navicust_parts: [rom::NavicustPart; 188],
 }
 
 impl Assets {
@@ -208,6 +209,64 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
+            navicust_parts: (0..188)
+                .map(|i| {
+                    let buf = &mapper.get(offsets.ncp_data)[i * 0x10..(i + 1) * 0x10];
+                    rom::NavicustPart {
+                        name: {
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(offsets.ncp_names_pointer)[..4],
+                                )),
+                                i / 4,
+                                &TEXT_PARSE_OPTIONS,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::Literal(c) => {
+                                                charset.get(c).unwrap_or(&"�")
+                                            }
+                                            _ => "",
+                                        }
+                                        .chars()
+                                    })
+                                    .collect::<String>()
+                            } else {
+                                "???".to_string()
+                            }
+                        },
+                        color: [
+                            None,
+                            Some(rom::NavicustPartColor::White),
+                            Some(rom::NavicustPartColor::Pink),
+                            Some(rom::NavicustPartColor::Yellow),
+                            Some(rom::NavicustPartColor::Red),
+                            Some(rom::NavicustPartColor::Blue),
+                            Some(rom::NavicustPartColor::Green),
+                        ][buf[0x03] as usize]
+                            .clone(),
+                        is_solid: buf[0x01] == 0,
+                        compressed_bitmap: image::ImageBuffer::from_vec(
+                            7,
+                            7,
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49]
+                                .to_vec(),
+                        )
+                        .unwrap(),
+                        uncompressed_bitmap: image::ImageBuffer::from_vec(
+                            7,
+                            7,
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49]
+                                .to_vec(),
+                        )
+                        .unwrap(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
         }
     }
 }
@@ -219,6 +278,10 @@ impl rom::Assets for Assets {
 
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
+    }
+
+    fn navicust_part(&self, id: usize, variant: usize) -> Option<&rom::NavicustPart> {
+        self.navicust_parts.get(id * 4 + variant)
     }
 }
 
