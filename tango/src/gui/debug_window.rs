@@ -58,7 +58,7 @@ impl DebugWindow {
                                 "{:3.02}",
                                 1.0 / fps_counter.lock().mean_duration().as_secs_f32()
                             ))
-                            .family(egui::FontFamily::Monospace),
+                            .monospace(),
                         );
                         ui.end_row();
 
@@ -77,7 +77,7 @@ impl DebugWindow {
                                                     "{:4}",
                                                     round.current_tick()
                                                 ))
-                                                .family(egui::FontFamily::Monospace),
+                                                .monospace(),
                                             );
                                             ui.end_row();
 
@@ -87,7 +87,7 @@ impl DebugWindow {
                                                     "{:1}",
                                                     round.local_player_index()
                                                 ))
-                                                .family(egui::FontFamily::Monospace),
+                                                .monospace(),
                                             );
                                             ui.end_row();
 
@@ -99,7 +99,7 @@ impl DebugWindow {
                                                     round.remote_queue_length(),
                                                     round.local_delay(),
                                                 ))
-                                                .family(egui::FontFamily::Monospace),
+                                                .monospace(),
                                             );
                                             ui.end_row();
                                             round.tps_adjustment()
@@ -121,7 +121,7 @@ impl DebugWindow {
                                     1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
                                     tps_adjustment
                                 ))
-                                .family(egui::FontFamily::Monospace),
+                                .monospace(),
                             );
                             ui.end_row();
                         }

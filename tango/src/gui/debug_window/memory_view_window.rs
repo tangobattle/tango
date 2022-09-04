@@ -78,16 +78,28 @@ impl MemoryViewWindow {
                 sa.show_rows(ui, ROW_HEIGHT, 0x0fffffff / 0x10, |ui, range| {
                     ui.vertical(|ui| {
                         for i in range {
-                            ui.horizontal(|ui| {
+                            ui.horizontal_top(|ui| {
                                 ui.set_height(ROW_HEIGHT);
                                 let offset = i * 16;
-                                ui.monospace(format!("{:08x}", offset));
+                                ui.label(
+                                    egui::RichText::new(format!("{:08x}", offset))
+                                        .monospace()
+                                        .weak(),
+                                );
                                 let bs = audio_guard
                                     .core_mut()
                                     .raw_read_range::<16>(offset as u32, -1);
-                                for b in bs {
-                                    ui.monospace(format!("{:02x}", b));
-                                }
+                                ui.add(
+                                    egui::TextEdit::singleline(
+                                        &mut bs
+                                            .iter()
+                                            .map(|b| format!("{:02x}", b))
+                                            .collect::<Vec<_>>()
+                                            .join(" "),
+                                    )
+                                    .frame(false)
+                                    .font(egui::TextStyle::Monospace),
+                                );
                                 ui.monospace(
                                     bs.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
                                         .iter()
