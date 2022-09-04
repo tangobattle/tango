@@ -29,7 +29,7 @@ pub struct Replay {
     pub input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
 }
 
-pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Error> {
+pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(bool, Metadata), std::io::Error> {
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
     if &header != HEADER {
@@ -46,14 +46,15 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<Metadata, std::io::Er
         ));
     }
 
-    let _ = r.read_u32::<byteorder::LittleEndian>()?;
+    let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
 
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
     let mut raw_metadata = vec![0u8; metadata_len as usize];
     r.read_exact(&mut raw_metadata[..])?;
-    Ok(tango_protos::replay::ReplayMetadata::decode(
-        &raw_metadata[..],
-    )?)
+    Ok((
+        num_inputs > 0,
+        tango_protos::replay::ReplayMetadata::decode(&raw_metadata[..])?,
+    ))
 }
 
 impl Replay {

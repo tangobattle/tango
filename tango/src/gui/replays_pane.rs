@@ -16,7 +16,7 @@ struct Selection {
 
 pub struct State {
     replays_scanner:
-        scanner::Scanner<std::collections::BTreeMap<std::path::PathBuf, replay::Metadata>>,
+        scanner::Scanner<std::collections::BTreeMap<std::path::PathBuf, (bool, replay::Metadata)>>,
     selection: Option<Selection>,
 }
 
@@ -103,7 +103,7 @@ pub fn show(
             .id_source("replays-window-left")
             .show(ui, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    for (path, metadata) in replays.iter().rev() {
+                    for (path, (_is_complete, metadata)) in replays.iter().rev() {
                         let ts = if let Some(ts) = std::time::UNIX_EPOCH
                             .checked_add(std::time::Duration::from_millis(metadata.ts))
                         {
