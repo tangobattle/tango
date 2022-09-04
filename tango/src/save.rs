@@ -117,6 +117,10 @@ where
     fn view_navicust(&self) -> Option<Box<dyn NavicustView + '_>> {
         None
     }
+
+    fn view_dark_ai(&self) -> Option<Box<dyn DarkAIView + '_>> {
+        None
+    }
 }
 
 impl Clone for Box<dyn Save + Send + Sync> {
@@ -202,4 +206,9 @@ pub trait NavicustView<'a> {
     fn command_line(&self) -> usize;
     fn has_out_of_bounds(&self) -> bool;
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
+}
+
+pub trait DarkAIView<'a> {
+    fn chip_use_count(&self, id: usize) -> u16;
+    fn secondary_chip_use_count(&self, id: usize) -> u16;
 }

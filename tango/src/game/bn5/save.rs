@@ -118,6 +118,10 @@ impl save::Save for Save {
         })))
     }
 
+    fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
+        Some(Box::new(DarkAIView { save: self }))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -243,5 +247,21 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             rot: buf[0x4],
             compressed: buf[0x5] != 0,
         })
+    }
+}
+
+pub struct DarkAIView<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
+    fn chip_use_count(&self, id: usize) -> u16 {
+        let offset = 0x7340 + id * 2;
+        byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2])
+    }
+
+    fn secondary_chip_use_count(&self, id: usize) -> u16 {
+        let offset = 0x2340 + id * 2;
+        byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2])
     }
 }
