@@ -2,6 +2,8 @@ use byteorder::ByteOrder;
 
 use crate::rom;
 
+pub mod modcards;
+
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
@@ -70,10 +72,17 @@ pub struct Assets {
     element_icons: [image::RgbaImage; 13],
     chips: [rom::Chip; 389],
     navicust_parts: [rom::NavicustPart; 188],
+    modcards: &'static [rom::Modcard4; 133],
 }
 
 impl Assets {
-    pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+    pub fn new(
+        offsets: &Offsets,
+        modcards: &'static [rom::Modcard4; 133],
+        charset: &[&str],
+        rom: &[u8],
+        wram: &[u8],
+    ) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -267,6 +276,7 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
+            modcards,
         }
     }
 }
@@ -282,6 +292,10 @@ impl rom::Assets for Assets {
 
     fn navicust_part(&self, id: usize, variant: usize) -> Option<&rom::NavicustPart> {
         self.navicust_parts.get(id * 4 + variant)
+    }
+
+    fn modcard4(&self, id: usize) -> Option<&rom::Modcard4> {
+        self.modcards.get(id)
     }
 }
 

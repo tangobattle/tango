@@ -74,6 +74,11 @@ impl game::Game for EXE4RSImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::B4WJ_01,
+            overrides
+                .language
+                .as_ref()
+                .and_then(|lang| rom::modcards::for_language(lang))
+                .unwrap_or(&rom::modcards::JA_MODCARDS),
             override_charset
                 .as_ref()
                 .map(|cs| cs.as_slice())
@@ -152,6 +157,11 @@ impl game::Game for EXE4BMImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::B4BJ_00,
+            overrides
+                .language
+                .as_ref()
+                .and_then(|lang| rom::modcards::for_language(lang))
+                .unwrap_or(&rom::modcards::JA_MODCARDS),
             override_charset
                 .as_ref()
                 .map(|cs| cs.as_slice())
@@ -230,6 +240,11 @@ impl game::Game for BN4RSImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::B4WE_00,
+            overrides
+                .language
+                .as_ref()
+                .and_then(|lang| rom::modcards::for_language(lang))
+                .unwrap_or(&rom::modcards::EN_MODCARDS),
             override_charset
                 .as_ref()
                 .map(|cs| cs.as_slice())
@@ -308,6 +323,11 @@ impl game::Game for BN4BMImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::B4BE_00,
+            overrides
+                .language
+                .as_ref()
+                .and_then(|lang| rom::modcards::for_language(lang))
+                .unwrap_or(&rom::modcards::EN_MODCARDS),
             override_charset
                 .as_ref()
                 .map(|cs| cs.as_slice())

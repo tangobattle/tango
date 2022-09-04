@@ -34,34 +34,85 @@ pub fn show_modcards4<'a>(
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
     modcards4_view: &Box<dyn save::Modcards4View<'a> + 'a>,
-    _assets: &Box<dyn rom::Assets + Send + Sync>,
+    assets: &Box<dyn rom::Assets + Send + Sync>,
     _state: &mut State,
 ) {
     egui_extras::TableBuilder::new(ui)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(egui_extras::Size::remainder())
+        .column(egui_extras::Size::exact(300.0))
         .striped(true)
         .body(|body| {
-            body.rows(40.0, 6, |i, mut row| {
+            body.rows(44.0, 6, |i, mut row| {
                 let modcard = modcards4_view.modcard(i);
-                row.col(|ui| {
-                    ui.vertical(|ui| {
-                        let mut slot_label =
-                            egui::RichText::new(format!("0{}", ['A', 'B', 'C', 'D', 'E', 'F'][i]))
-                                .small();
-                        let title_label = if let Some(modcard) = modcard.as_ref() {
+                if let Some((modcard, info)) = modcard
+                    .as_ref()
+                    .and_then(|modcard| assets.modcard4(modcard.id).map(|info| (modcard, info)))
+                {
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            let mut name_label =
+                                egui::RichText::new(format!("#{:03} {}", modcard.id, info.name))
+                                    .family(font_families.for_language(game_lang));
+                            if !modcard.enabled {
+                                name_label = name_label.strikethrough();
+                            }
+
+                            let mut slot_label = egui::RichText::new(format!(
+                                "0{}",
+                                ['A', 'B', 'C', 'D', 'E', 'F'][i]
+                            ))
+                            .small();
                             if !modcard.enabled {
                                 slot_label = slot_label.strikethrough();
                             }
-                            format!("#{:03}", modcard.id)
-                        } else {
-                            slot_label = slot_label.strikethrough();
-                            "---".to_string()
-                        };
-                        ui.label(title_label);
-                        ui.label(slot_label.small());
+
+                            ui.label(name_label);
+                            ui.label(slot_label);
+                        });
                     });
-                });
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            ui.with_layout(
+                                egui::Layout::top_down_justified(egui::Align::Min),
+                                |ui| {
+                                    show_effect(
+                                        ui,
+                                        egui::RichText::new(info.effect)
+                                            .family(font_families.for_language(game_lang)),
+                                        modcard.enabled,
+                                        false,
+                                    );
+
+                                    if let Some(bug) = info.bug {
+                                        show_effect(
+                                            ui,
+                                            egui::RichText::new(bug)
+                                                .family(font_families.for_language(game_lang)),
+                                            modcard.enabled,
+                                            true,
+                                        );
+                                    }
+                                },
+                            );
+                        });
+                    });
+                } else {
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            ui.label("---");
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "0{}",
+                                    ['A', 'B', 'C', 'D', 'E', 'F'][i]
+                                ))
+                                .small()
+                                .strikethrough(),
+                            );
+                        });
+                    });
+                    row.col(|ui| {});
+                }
             });
         });
 }

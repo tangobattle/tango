@@ -40,6 +40,14 @@ pub struct Modcard56 {
 }
 
 #[derive(Clone, Debug)]
+pub struct Modcard4 {
+    pub name: &'static str,
+    pub slot: u8,
+    pub effect: &'static str,
+    pub bug: Option<&'static str>,
+}
+
+#[derive(Clone, Debug)]
 pub enum NavicustPartColor {
     White,
     Yellow,
@@ -67,6 +75,10 @@ pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
     fn modcard56(&self, id: usize) -> Option<&Modcard56> {
+        let _ = id;
+        None
+    }
+    fn modcard4(&self, id: usize) -> Option<&Modcard4> {
         let _ = id;
         None
     }
