@@ -104,6 +104,7 @@ impl SessionView {
         session: &session::Session,
         video_filter: &str,
         max_scale: u32,
+        crashstates_path: &std::path::Path,
         show_escape_window: &mut Option<gui::escape_window::State>,
     ) {
         session.set_joyflags(input_mapping.to_mgba_keys(input_state));
@@ -139,7 +140,7 @@ impl SessionView {
             // HACK: No better way to lock the core.
             let mut audio_guard = thread_handle.lock_audio();
             let core = audio_guard.core_mut();
-            panic!(
+            log::error!(
                 r#"mgba thread crashed @ thumb pc = {:08x}!
  r0 = {:08x},  r1 = {:08x},  r2 = {:08x},  r3 = {:08x},
  r4 = {:08x},  r5 = {:08x},  r6 = {:08x},  r7 = {:08x},
@@ -163,6 +164,18 @@ r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x}"#,
                 core.as_ref().gba().cpu().gpr(14),
                 core.as_ref().gba().cpu().gpr(15),
             );
+            let state = core.save_state().unwrap();
+            let crashstate_path = crashstates_path.join(format!(
+                "{}.state",
+                time::OffsetDateTime::from(std::time::SystemTime::now())
+                    .format(time::macros::format_description!(
+                        "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
+                    ))
+                    .expect("format time"),
+            ));
+            log::error!("writing crashstate to {}", crashstate_path.display());
+            std::fs::write(crashstate_path, state.as_slice()).unwrap();
+            panic!("not possible to proceed any further! aborting!");
         }
 
         egui::CentralPanel::default()

@@ -400,6 +400,7 @@ impl Gui {
                 session,
                 &config.video_filter,
                 config.max_scale,
+                &config.crashstates_path(),
                 &mut state.show_escape_window,
             );
         } else {
