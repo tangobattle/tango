@@ -286,6 +286,10 @@ impl rom::Assets for Assets {
         self.chips.get(id)
     }
 
+    fn num_chips(&self) -> usize {
+        self.chips.len()
+    }
+
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
     }
@@ -294,8 +298,16 @@ impl rom::Assets for Assets {
         self.navicust_parts.get(id * 4 + variant)
     }
 
+    fn num_navicust_parts(&self) -> usize {
+        self.navicust_parts.len()
+    }
+
     fn modcard4(&self, id: usize) -> Option<&rom::Modcard4> {
         self.modcards.get(id)
+    }
+
+    fn num_modcards4(&self) -> usize {
+        self.navicust_parts.len()
     }
 }
 

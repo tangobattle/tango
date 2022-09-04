@@ -302,6 +302,10 @@ impl rom::Assets for Assets {
         self.chips.get(id)
     }
 
+    fn num_chips(&self) -> usize {
+        self.chips.len()
+    }
+
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
     }
@@ -310,8 +314,16 @@ impl rom::Assets for Assets {
         self.navicust_parts.get(id * 4 + variant)
     }
 
+    fn num_navicust_parts(&self) -> usize {
+        self.navicust_parts.len()
+    }
+
     fn style(&self, id: usize) -> Option<&rom::Style> {
         self.styles.get(id)
+    }
+
+    fn num_styles(&self) -> usize {
+        self.styles.len()
     }
 }
 

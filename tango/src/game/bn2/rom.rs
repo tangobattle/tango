@@ -144,6 +144,10 @@ impl rom::Assets for Assets {
         self.chips.get(id)
     }
 
+    fn num_chips(&self) -> usize {
+        self.chips.len()
+    }
+
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
     }

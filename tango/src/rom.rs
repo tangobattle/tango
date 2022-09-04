@@ -79,23 +79,36 @@ pub struct Style {
 
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
+    fn num_chips(&self) -> usize;
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
     fn modcard56(&self, id: usize) -> Option<&Modcard56> {
         let _ = id;
         None
     }
+    fn num_modcards56(&self) -> usize {
+        0
+    }
     fn modcard4(&self, id: usize) -> Option<&Modcard4> {
         let _ = id;
         None
+    }
+    fn num_modcards4(&self) -> usize {
+        0
     }
     fn navicust_part(&self, id: usize, variant: usize) -> Option<&NavicustPart> {
         let _ = id;
         let _ = variant;
         None
     }
+    fn num_navicust_parts(&self) -> usize {
+        0
+    }
     fn style(&self, id: usize) -> Option<&Style> {
         let _ = id;
         None
+    }
+    fn num_styles(&self) -> usize {
+        0
     }
 }
 
