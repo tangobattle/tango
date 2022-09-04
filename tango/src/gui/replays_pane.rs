@@ -406,13 +406,13 @@ impl ReplaysPane {
                                 });
                             }
 
-                            // if ui
-                            //     .button(format!(
-                            //         "💾 {}",
-                            //         i18n::LOCALES.lookup(language, "replays.export").unwrap()
-                            //     ))
-                            //     .clicked()
-                            // {}
+                            if ui
+                                .button(format!(
+                                    "💾 {}",
+                                    i18n::LOCALES.lookup(language, "replays.export").unwrap()
+                                ))
+                                .clicked()
+                            {}
 
                             ui.with_layout(
                                 egui::Layout::top_down_justified(egui::Align::Min),

@@ -12,15 +12,21 @@ pub struct Settings {
     pub video_filter: String,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
+impl Settings {
+    pub fn default_with_scale(factor: usize) -> Self {
         Self {
             ffmpeg: "ffmpeg".into(),
             ffmpeg_audio_flags: "-c:a aac -ar 48000 -b:a 384k -ac 2".to_string(),
-            ffmpeg_video_flags: "-c:v libx264 -vf scale=iw*5:ih*5:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2".to_string(),
+            ffmpeg_video_flags: format!("-c:v libx264 -vf scale=iw*{}:ih*{}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2", factor, factor),
             ffmpeg_mux_flags: "-movflags +faststart".to_string(),
             video_filter: "".to_string(),
         }
+    }
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self::default_with_scale(5)
     }
 }
 
@@ -182,7 +188,10 @@ pub fn export(
             .as_mut()
             .unwrap()
             .write_all(&audio_bytes)?;
-        progress_callback(replayer_state.lock_inner().input_pairs_left(), total);
+        progress_callback(
+            total - replayer_state.lock_inner().input_pairs_left(),
+            total,
+        );
     }
 
     video_child.stdin = None;
