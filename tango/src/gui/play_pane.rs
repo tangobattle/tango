@@ -772,7 +772,7 @@ impl PlayPane {
                                             if ui.button(format!(
                                                 "❎ {}",
                                                 i18n::LOCALES
-                                                    .lookup(&config.language, "main.cancel")
+                                                    .lookup(&config.language, "play-cancel")
                                                     .unwrap()
                                             )).clicked()
                                             {
@@ -786,7 +786,7 @@ impl PlayPane {
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
-                                                                "main-connection-task.starting",
+                                                                "play-connection-task.starting",
                                                             )
                                                             .unwrap(),
                                                     );
@@ -801,7 +801,7 @@ impl PlayPane {
                                             if ui.button(format!(
                                                 "❎ {}",
                                                 i18n::LOCALES
-                                                    .lookup(&config.language, "main.cancel")
+                                                    .lookup(&config.language, "play-cancel")
                                                     .unwrap()
                                             )).clicked()
                                             {
@@ -816,7 +816,7 @@ impl PlayPane {
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
-                                                                "main-connection-task.signaling",
+                                                                "play-connection-task.signaling",
                                                             )
                                                             .unwrap(),
                                                     );
@@ -831,7 +831,7 @@ impl PlayPane {
                                             if ui.button(format!(
                                                 "❎ {}",
                                                 i18n::LOCALES
-                                                    .lookup(&config.language, "main.cancel")
+                                                    .lookup(&config.language, "play-cancel")
                                                     .unwrap()
                                             )).clicked()
                                             {
@@ -846,7 +846,7 @@ impl PlayPane {
                                                         i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
-                                                                "main-connection-task.waiting",
+                                                                "play-connection-task.waiting",
                                                             )
                                                             .unwrap(),
                                                     );
@@ -880,7 +880,7 @@ impl PlayPane {
                                                                 if ui.button(format!(
                                                                     "🚶 {}",
                                                                     i18n::LOCALES
-                                                                        .lookup(&config.language, "main.leave")
+                                                                        .lookup(&config.language, "play-leave")
                                                                         .unwrap()
                                                                 )).clicked()
                                                                 {
@@ -894,7 +894,7 @@ impl PlayPane {
                                                                             i18n::LOCALES
                                                                                 .lookup(
                                                                                     &config.language,
-                                                                                    "main.you",
+                                                                                    "play-you",
                                                                                 )
                                                                                 .unwrap(),
                                                                         );
@@ -926,7 +926,7 @@ impl PlayPane {
                                                                 i18n::LOCALES
                                                                     .lookup(
                                                                         &config.language,
-                                                                        "main-details.game",
+                                                                        "play-details.game",
                                                                     )
                                                                     .unwrap(),
                                                             );
@@ -949,7 +949,7 @@ impl PlayPane {
                                                                     i18n::LOCALES
                                                                         .lookup(
                                                                             &config.language,
-                                                                            "main.no-game",
+                                                                            "play-no-game",
                                                                         )
                                                                         .unwrap()
                                                                 },
@@ -981,7 +981,7 @@ impl PlayPane {
                                                                 i18n::LOCALES
                                                                     .lookup(
                                                                         &config.language,
-                                                                        "main.no-game",
+                                                                        "play-no-game",
                                                                     )
                                                                     .unwrap()
                                                             },
@@ -995,7 +995,7 @@ impl PlayPane {
                                                                 i18n::LOCALES
                                                                     .lookup(
                                                                         &config.language,
-                                                                        "main-details.match-type",
+                                                                        "play-details.match-type",
                                                                     )
                                                                     .unwrap(),
                                                             );
@@ -1096,7 +1096,7 @@ impl PlayPane {
                                                                 i18n::LOCALES
                                                                     .lookup(
                                                                         &config.language,
-                                                                        "main-details.reveal-setup",
+                                                                        "play-details.reveal-setup",
                                                                     )
                                                                     .unwrap(),
                                                             );
@@ -1184,14 +1184,14 @@ impl PlayPane {
                                             format!(
                                                 "▶️ {}",
                                                 i18n::LOCALES
-                                                    .lookup(&config.language, "main.play")
+                                                    .lookup(&config.language, "play-play")
                                                     .unwrap()
                                             )
                                         } else {
                                             format!(
                                                 "🥊 {}",
                                                 i18n::LOCALES
-                                                    .lookup(&config.language, "main.fight")
+                                                    .lookup(&config.language, "play-fight")
                                                     .unwrap()
                                             )
                                         })),
@@ -1205,7 +1205,7 @@ impl PlayPane {
                                     .add_enabled(!error_window_open, egui::Button::new(egui::RichText::new("🎲")))
                                     .on_hover_text(
                                         i18n::LOCALES
-                                            .lookup(&config.language, "main.random")
+                                            .lookup(&config.language, "play-random")
                                             .unwrap(),
                                     )
                                     .clicked()
@@ -1232,7 +1232,7 @@ impl PlayPane {
                                     egui::Checkbox::new(
                                         &mut ready,
                                         i18n::LOCALES
-                                            .lookup(&config.language, "main.ready")
+                                            .lookup(&config.language, "play-ready")
                                             .unwrap(),
                                     ),
                                 );
@@ -1262,7 +1262,7 @@ impl PlayPane {
                                 egui::TextEdit::singleline(&mut state.link_code)
                                     .hint_text(
                                         i18n::LOCALES
-                                            .lookup(&config.language, "main.link-code")
+                                            .lookup(&config.language, "play-link-code")
                                             .unwrap(),
                                     )
                                     .desired_width(f32::INFINITY),
@@ -1578,7 +1578,7 @@ impl PlayPane {
                                     })
                                     .unwrap_or(
                                         &i18n::LOCALES
-                                            .lookup(&config.language, "main.no-patch")
+                                            .lookup(&config.language, "play-no-patch")
                                             .unwrap(),
                                     ),
                             )
@@ -1597,7 +1597,7 @@ impl PlayPane {
                                     .selectable_label(
                                         selection.patch.is_none(),
                                         &i18n::LOCALES
-                                            .lookup(&config.language, "main.no-patch")
+                                            .lookup(&config.language, "play-no-patch")
                                             .unwrap(),
                                     )
                                     .clicked()

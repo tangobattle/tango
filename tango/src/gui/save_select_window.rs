@@ -44,6 +44,7 @@ impl SaveSelectWindow {
         ))
         .id(egui::Id::new("select-save-window"))
         .open(&mut show_window)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
         .show(ctx, |ui| {
             let roms = roms_scanner.read();
             let saves = saves_scanner.read();
