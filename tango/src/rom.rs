@@ -71,6 +71,12 @@ pub struct NavicustPart {
     pub uncompressed_bitmap: NavicustBitmap,
 }
 
+#[derive(Clone, Debug)]
+pub struct Style {
+    pub name: String,
+    pub extra_ncp_color: Option<NavicustPartColor>,
+}
+
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
@@ -85,6 +91,10 @@ pub trait Assets {
     fn navicust_part(&self, id: usize, variant: usize) -> Option<&NavicustPart> {
         let _ = id;
         let _ = variant;
+        None
+    }
+    fn style(&self, id: usize) -> Option<&Style> {
+        let _ = id;
         None
     }
 }
