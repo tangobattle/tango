@@ -146,10 +146,12 @@ pub fn show(
                 if let Some(result) = state.result.lock().as_ref() {
                     match result {
                         Ok(()) => {
-                            ui.label(
-                                i18n::LOCALES
-                                    .lookup(language, "replays-export.success")
-                                    .unwrap(),
+                            ui.add(
+                                egui::widgets::ProgressBar::new(1.0).text(
+                                    i18n::LOCALES
+                                        .lookup(language, "replays-export.success")
+                                        .unwrap(),
+                                ),
                             );
                             if ui
                                 .button(format!(
