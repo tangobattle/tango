@@ -28,6 +28,22 @@ struct Lobby {
     patches_scanner: gui::PatchesScanner,
 }
 
+fn get_netplay_compatibility(
+    game: &'static (dyn game::Game + Send + Sync),
+    patch: Option<(String, semver::Version)>,
+    patches: &std::collections::BTreeMap<String, patch::Patch>,
+) -> Option<String> {
+    if let Some(patch) = patch.as_ref() {
+        patches.get(&patch.0).and_then(|p| {
+            p.versions
+                .get(&patch.1)
+                .map(|vinfo| vinfo.netplay_compatibility.clone())
+        })
+    } else {
+        Some(game.family_and_variant().0.to_string())
+    }
+}
+
 fn are_settings_compatible(
     local_settings: &net::protocol::Settings,
     remote_settings: &net::protocol::Settings,
@@ -96,21 +112,20 @@ fn are_settings_compatible(
         ) -> Self {
             Self {
                 netplay_compatibility: settings.game_info.as_ref().and_then(|g| {
-                    if game::find_by_family_and_variant(
+                    if let Some(game) = game::find_by_family_and_variant(
                         g.family_and_variant.0.as_str(),
                         g.family_and_variant.1,
-                    )
-                    .map(|g| roms.contains_key(&g))
-                    .unwrap_or(false)
-                    {
-                        if let Some(patch) = g.patch.as_ref() {
-                            patches.get(&patch.name).and_then(|p| {
-                                p.versions
-                                    .get(&patch.version)
-                                    .map(|vinfo| vinfo.netplay_compatibility.clone())
-                            })
+                    ) {
+                        if roms.contains_key(&game) {
+                            get_netplay_compatibility(
+                                game,
+                                g.patch
+                                    .as_ref()
+                                    .map(|pi| (pi.name.to_string(), pi.version.clone())),
+                                patches,
+                            )
                         } else {
-                            Some(g.family_and_variant.0.clone())
+                            None
                         }
                     } else {
                         None
@@ -917,6 +932,16 @@ pub fn show(
                                                                     )
                                                                     .unwrap(),
                                                             );
+                                                            if lobby.match_type != lobby.remote_settings.match_type {
+                                                                gui::warning::show(
+                                                                    ui,
+                                                                    i18n::LOCALES.lookup(
+                                                                        &config.language,
+                                                                        "lobby-issue.match-type-mismatch",
+                                                                    )
+                                                                    .unwrap()
+                                                                );
+                                                            }
                                                         });
                                                         row.col(|ui| {
                                                             ui.label(
@@ -944,48 +969,60 @@ pub fn show(
                                                         });
                                                         row.col(|ui| {
                                                             ui.label(
-                                                            if let Some(game) = lobby
-                                                                .remote_settings
-                                                                .game_info
-                                                                .as_ref()
-                                                                .and_then(|game_info| {
-                                                                    let (family, variant) =
-                                                                        &game_info.family_and_variant;
-                                                                    game::find_by_family_and_variant(
-                                                                        &family, *variant,
-                                                                    )
-                                                                })
-                                                            {
-                                                                let (family, _) =
-                                                                    game.family_and_variant();
-                                                                i18n::LOCALES
-                                                                    .lookup(
-                                                                        &config.language,
-                                                                        &format!("game-{}", family), // TODO: Show patch
-                                                                    )
-                                                                    .unwrap()
-                                                            } else {
-                                                                i18n::LOCALES
-                                                                    .lookup(
-                                                                        &config.language,
-                                                                        "play-no-game",
-                                                                    )
-                                                                    .unwrap()
-                                                            },
-                                                        );
+                                                                if let Some(game) = lobby
+                                                                    .remote_settings
+                                                                    .game_info
+                                                                    .as_ref()
+                                                                    .and_then(|game_info| {
+                                                                        let (family, variant) =
+                                                                            &game_info.family_and_variant;
+                                                                        game::find_by_family_and_variant(
+                                                                            &family, *variant,
+                                                                        )
+                                                                    })
+                                                                {
+                                                                    let (family, _) =
+                                                                        game.family_and_variant();
+                                                                    i18n::LOCALES
+                                                                        .lookup(
+                                                                            &config.language,
+                                                                            &format!("game-{}", family), // TODO: Show patch
+                                                                        )
+                                                                        .unwrap()
+                                                                } else {
+                                                                    i18n::LOCALES
+                                                                        .lookup(
+                                                                            &config.language,
+                                                                            "play-no-game",
+                                                                        )
+                                                                        .unwrap()
+                                                                },
+                                                            );
                                                         });
                                                     });
 
                                                     body.row(20.0, |mut row| {
                                                         row.col(|ui| {
-                                                            ui.strong(
-                                                                i18n::LOCALES
-                                                                    .lookup(
-                                                                        &config.language,
-                                                                        "play-details.match-type",
-                                                                    )
-                                                                    .unwrap(),
-                                                            );
+                                                            ui.horizontal(|ui| {
+                                                                ui.strong(
+                                                                    i18n::LOCALES
+                                                                        .lookup(
+                                                                            &config.language,
+                                                                            "play-details.match-type",
+                                                                        )
+                                                                        .unwrap(),
+                                                                );
+                                                                if lobby.match_type != lobby.remote_settings.match_type {
+                                                                    gui::warning::show(
+                                                                        ui,
+                                                                        i18n::LOCALES.lookup(
+                                                                            &config.language,
+                                                                            "lobby-issue.match-type-mismatch",
+                                                                        )
+                                                                        .unwrap()
+                                                                    );
+                                                                }
+                                                            });
                                                         });
                                                         row.col(|ui| {
                                                             let game = lobby
