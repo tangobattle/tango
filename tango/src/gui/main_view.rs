@@ -47,6 +47,7 @@ pub fn show(
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: &mut Option<gui::Selection>,
     state: &mut State,
+    discord_rpc: discord_presence::Client,
 ) {
     egui::TopBottomPanel::top("main-top-panel").show(ctx, |ui| {
         ui.vertical(|ui| {
@@ -127,6 +128,7 @@ pub fn show(
                 &mut state.patch_selection,
                 emu_tps_counter.clone(),
                 &mut state.play_pane,
+                discord_rpc,
             );
         }
         Tab::Replays => {

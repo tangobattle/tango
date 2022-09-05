@@ -6,6 +6,7 @@ extern crate lazy_static;
 mod audio;
 mod battle;
 mod config;
+mod discord;
 mod game;
 mod gui;
 mod i18n;

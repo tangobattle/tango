@@ -92,7 +92,7 @@ pub struct State {
     themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
     session_view: Option<session_view::State>,
-    drpc: discord_rpc_client::Client,
+    discord_rpc: discord_presence::Client,
 }
 
 impl State {
@@ -148,8 +148,8 @@ impl State {
         .into();
         ctx.set_style(style);
 
-        let mut drpc = discord_rpc_client::Client::new(DISCORD_APP_ID);
-        drpc.start();
+        let mut discord_rpc = discord_presence::Client::new(DISCORD_APP_ID);
+        discord_rpc.start();
 
         let roms_scanner = scanner::Scanner::new();
         let saves_scanner = scanner::Scanner::new();
@@ -225,7 +225,7 @@ impl State {
                 },
             },
             current_language: None,
-            drpc,
+            discord_rpc,
         }
     }
 }
@@ -433,6 +433,7 @@ pub fn show(
             state.session.clone(),
             &mut state.selection,
             &mut state.main_view,
+            state.discord_rpc.clone(),
         );
     }
 }

@@ -1071,6 +1071,7 @@ pub fn show(
     patch_selection: &mut Option<String>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     state: &mut State,
+    discord_rpc: discord_presence::Client,
 ) {
     let mut connection_task = state.connection_task.blocking_lock();
 
