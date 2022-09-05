@@ -118,11 +118,11 @@ impl save::Save for Save {
         })))
     }
 
-    fn view_navi(&self) -> Option<save::NaviView> {
-        Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
-            save: self,
-        })))
-    }
+    // fn view_navi(&self) -> Option<save::NaviView> {
+    //     Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
+    //         save: self,
+    //     })))
+    // }
 
     fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
         Some(Box::new(DarkAIView { save: self }))

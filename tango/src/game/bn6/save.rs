@@ -130,11 +130,11 @@ impl save::Save for Save {
         }
     }
 
-    fn view_navi(&self) -> Option<save::NaviView> {
-        Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
-            save: self,
-        })))
-    }
+    // fn view_navi(&self) -> Option<save::NaviView> {
+    //     Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
+    //         save: self,
+    //     })))
+    // }
 
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
