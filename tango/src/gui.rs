@@ -1,4 +1,6 @@
-use crate::{audio, config, game, input, patch, rom, save, scanner, session, stats};
+use fluent_templates::Loader;
+
+use crate::{audio, config, game, i18n, input, patch, rom, save, scanner, session, stats};
 use std::str::FromStr;
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
@@ -386,6 +388,11 @@ pub fn show(
         &config.replays_path(),
     );
     if let Some(session) = state.session.lock().as_ref() {
+        window.set_title(
+            &i18n::LOCALES
+                .lookup(&config.language, "window-title.running")
+                .unwrap(),
+        );
         session_view::show(
             ctx,
             &config.language,
@@ -403,6 +410,11 @@ pub fn show(
         );
     } else {
         state.session_view = None;
+        window.set_title(
+            &i18n::LOCALES
+                .lookup(&config.language, "window-title")
+                .unwrap(),
+        );
         main_view::show(
             ctx,
             &state.font_families,

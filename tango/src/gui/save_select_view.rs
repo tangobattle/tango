@@ -36,11 +36,12 @@ pub fn show(
         let games = game::sorted_all_games(language);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
             if ui
-                .button(
+                .button(format!(
+                    "📂 {}",
                     i18n::LOCALES
                         .lookup(language, "select-save.open-folder")
                         .unwrap(),
-                )
+                ))
                 .clicked()
             {
                 let _ = open::that(

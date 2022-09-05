@@ -71,7 +71,11 @@ fn main() -> Result<(), anyhow::Error> {
         Ok(f) => f,
         Err(e) => {
             rfd::MessageDialog::new()
-                .set_title("Tango")
+                .set_title(
+                    &i18n::LOCALES
+                        .lookup(&config.language, "window-title")
+                        .unwrap(),
+                )
                 .set_description(
                     &i18n::LOCALES
                         .lookup_with_args(
