@@ -19,11 +19,19 @@ impl State {
     }
 }
 
+const SECONDARY_STANDARD_CHIP_COUNTS: &[usize; 3] = &[1, 1, 1];
+const STANDARD_CHIP_COUNTS: &[usize; 16] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+const MEGA_CHIP_COUNTS: &[usize; 5] = &[1, 1, 1, 1, 1];
+const GIGA_CHIP_COUNTS: &[usize; 1] = &[1];
+const COMBO_COUNTS: &[usize; 8] = &[1, 1, 1, 1, 1, 1, 1, 1];
+const PROGRAM_ADVANCE_COUNTS: &[usize; 1] = &[1];
+
 struct MaterializedDarkAI {
     secondary_standard_chips: [Option<usize>; 3],
     standard_chips: [Option<usize>; 16],
     mega_chips: [Option<usize>; 5],
     giga_chip: Option<usize>,
+    #[allow(dead_code)]
     combos: [Option<usize>; 8],
     program_advance: Option<usize>,
 }
@@ -252,6 +260,25 @@ fn show_table<const N: usize>(
         })
 }
 
+fn make_string<'a, const N: usize>(
+    chips: &'a [Option<usize>; N],
+    counts: &'a [usize; N],
+    assets: &'a Box<dyn rom::Assets + Send + Sync>,
+) -> impl std::iter::Iterator<Item = String> + 'a {
+    std::iter::zip(chips, counts).map(|(id, count)| {
+        let name = if let Some(id) = id {
+            if let Some(info) = assets.chip(*id) {
+                &info.name
+            } else {
+                "-"
+            }
+        } else {
+            "-"
+        };
+        format!("{}\t{}", count, name)
+    })
+}
+
 pub fn show<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
@@ -265,6 +292,48 @@ pub fn show<'a>(
     let materialized = state
         .materialized
         .get_or_insert_with(|| MaterializedDarkAI::new(dark_ai_view, assets));
+
+    ui.horizontal(|ui| {
+        if ui
+            .button(format!(
+                "📋 {}",
+                i18n::LOCALES.lookup(lang, "copy-to-clipboard").unwrap(),
+            ))
+            .clicked()
+        {
+            let _ = clipboard.set_text(
+                make_string(
+                    &materialized.secondary_standard_chips,
+                    SECONDARY_STANDARD_CHIP_COUNTS,
+                    assets,
+                )
+                .chain(make_string(
+                    &materialized.standard_chips,
+                    STANDARD_CHIP_COUNTS,
+                    assets,
+                ))
+                .chain(make_string(
+                    &materialized.mega_chips,
+                    MEGA_CHIP_COUNTS,
+                    assets,
+                ))
+                .chain(make_string(
+                    &[materialized.giga_chip],
+                    GIGA_CHIP_COUNTS,
+                    assets,
+                ))
+                .chain(make_string(&[None; 8], COMBO_COUNTS, assets))
+                .chain(make_string(
+                    &[materialized.program_advance],
+                    PROGRAM_ADVANCE_COUNTS,
+                    assets,
+                ))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            );
+        }
+    });
+
     egui::ScrollArea::vertical()
         .id_source("dark-ai-view")
         .auto_shrink([false, false])
@@ -280,7 +349,7 @@ pub fn show<'a>(
                     show_table(
                         ui,
                         &materialized.secondary_standard_chips,
-                        &[1, 1, 1],
+                        SECONDARY_STANDARD_CHIP_COUNTS,
                         assets,
                         font_families,
                         lang,
@@ -300,7 +369,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &materialized.standard_chips,
-                    &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                    STANDARD_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -315,7 +384,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &materialized.mega_chips,
-                    &[1, 1, 1, 1, 1],
+                    MEGA_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -330,7 +399,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[materialized.giga_chip],
-                    &[1],
+                    GIGA_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -345,7 +414,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[None; 8],
-                    &[1; 8],
+                    COMBO_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -364,7 +433,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[materialized.program_advance],
-                    &[1],
+                    PROGRAM_ADVANCE_COUNTS,
                     assets,
                     font_families,
                     lang,

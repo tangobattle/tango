@@ -35,11 +35,7 @@ pub fn show<'a>(
     }
 
     let mut chips = (0..30)
-        .map(|i| {
-            chips_view
-                .chip(chips_view.equipped_folder_index(), i)
-                .unwrap()
-        })
+        .map(|i| chips_view.chip(chips_view.equipped_folder_index(), i))
         .collect::<Vec<_>>();
 
     if !chips_view.regular_chip_is_in_place() {
@@ -111,15 +107,19 @@ pub fn show<'a>(
                     .iter()
                     .map(|(chip, g)| {
                         let mut buf = String::new();
-                        if state.grouped {
-                            buf.push_str(&format!("{}\t", g.count));
+                        if let Some(chip) = chip {
+                            if state.grouped {
+                                buf.push_str(&format!("{}\t", g.count));
+                            }
+                            let info = assets.chip(chip.id);
+                            buf.push_str(&format!(
+                                "{}\t{}\t",
+                                info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                chips_view.chip_codes()[chip.code] as char
+                            ));
+                        } else {
+                            buf.push_str("???");
                         }
-                        let info = assets.chip(chip.id);
-                        buf.push_str(&format!(
-                            "{}\t{}\t",
-                            info.map(|info| info.name.as_str()).unwrap_or("???"),
-                            chips_view.chip_codes()[chip.code] as char
-                        ));
                         if g.is_regular {
                             buf.push_str("[REG]");
                         }
@@ -155,7 +155,7 @@ pub fn show<'a>(
     tb.striped(true).body(|body| {
         body.rows(28.0, items.len(), |i, mut row| {
             let (chip, g) = &items[i];
-            let info = assets.chip(chip.id);
+            let info = chip.as_ref().and_then(|chip| assets.chip(chip.id));
             if state.grouped {
                 row.col(|ui| {
                     ui.strong(format!("{}x", g.count));
@@ -164,6 +164,12 @@ pub fn show<'a>(
             row.col(|ui| {
                 let icon = if let Some(icon) = info.map(|info| &info.icon) {
                     icon
+                } else {
+                    return;
+                };
+
+                let chip = if let Some(chip) = chip.as_ref() {
+                    chip
                 } else {
                     return;
                 };
@@ -190,13 +196,17 @@ pub fn show<'a>(
                 ui.horizontal(|ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label(
-                            egui::RichText::new(
-                                info.map(|info| info.name.as_str()).unwrap_or("???"),
-                            )
-                            .family(font_families.for_language(game_lang)),
-                        );
-                        ui.label(format!(" {}", chips_view.chip_codes()[chip.code] as char));
+                        let chip = if let Some(chip) = chip.as_ref() {
+                            ui.label(
+                                egui::RichText::new(
+                                    info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                )
+                                .family(font_families.for_language(game_lang)),
+                            );
+                            ui.label(format!(" {}", chips_view.chip_codes()[chip.code] as char));
+                        } else {
+                            ui.label("???");
+                        };
                     });
                     if g.is_regular {
                         egui::Frame::none()
