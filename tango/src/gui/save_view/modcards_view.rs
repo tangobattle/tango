@@ -139,7 +139,7 @@ pub fn show_modcards4<'a>(
                             );
                         });
                     });
-                    row.col(|ui| {});
+                    row.col(|_ui| {});
                 }
             });
         });
