@@ -7,10 +7,7 @@ pub struct GameInfo {
     pub family: String,
 }
 
-pub fn make_base_activity(
-    lang: &unic_langid::LanguageIdentifier,
-    game_info: Option<GameInfo>,
-) -> discord_presence::models::Activity {
+pub fn make_base_activity(game_info: Option<GameInfo>) -> discord_presence::models::Activity {
     discord_presence::models::Activity {
         details: game_info.as_ref().map(|gi| gi.title.clone()),
         assets: Some(discord_presence::models::ActivityAssets {
@@ -42,7 +39,7 @@ pub fn make_looking_activity(
             id: Some(format!("party:{}", link_code)),
             size: Some((1, 2)),
         }),
-        ..make_base_activity(lang, game_info)
+        ..make_base_activity(game_info)
     }
 }
 
@@ -56,7 +53,7 @@ pub fn make_single_player_activity(
                 .lookup(lang, "discord-presence.in-single-player")
                 .unwrap(),
         ),
-        ..make_base_activity(lang, game_info)
+        ..make_base_activity(game_info)
     }
 }
 
@@ -75,7 +72,7 @@ pub fn make_in_lobby_activity(
             id: Some(format!("party:{}", link_code)),
             size: Some((2, 2)),
         }),
-        ..make_base_activity(lang, game_info)
+        ..make_base_activity(game_info)
     }
 }
 
@@ -102,7 +99,7 @@ pub fn make_in_progress_activity(
                 .map(|d| d.as_millis() as u64),
             end: None,
         }),
-        ..make_base_activity(lang, game_info)
+        ..make_base_activity(game_info)
     }
 }
 
