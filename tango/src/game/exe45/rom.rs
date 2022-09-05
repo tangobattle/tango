@@ -35,6 +35,7 @@ lazy_static! {
 pub struct Assets {
     element_icons: [image::RgbaImage; 13],
     chips: [rom::Chip; 389],
+    navis: [rom::Navi; 23],
 }
 
 impl Assets {
@@ -143,6 +144,54 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
+            navis: (0..23)
+                .map(|id| rom::Navi {
+                    name: {
+                        if let Ok(parts) = rom::text::parse_entry(
+                            &mapper.get(byteorder::LittleEndian::read_u32(
+                                &mapper.get(offsets.navi_names_pointer)[..4],
+                            )),
+                            id,
+                            &TEXT_PARSE_OPTIONS,
+                        ) {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        rom::text::Part::Literal(c) => {
+                                            charset.get(c).unwrap_or(&"�")
+                                        }
+                                        _ => "",
+                                    }
+                                    .chars()
+                                })
+                                .collect::<String>()
+                        } else {
+                            "???".to_string()
+                        }
+                    },
+                    emblem: {
+                        rom::apply_palette(
+                            rom::read_merged_tiles(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(offsets.emblem_icons_pointers)
+                                        [id * 4..(id + 1) * 4],
+                                ))[..rom::TILE_BYTES * 4],
+                                2,
+                            )
+                            .unwrap(),
+                            &rom::read_palette(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(offsets.emblem_icon_palette_pointers)
+                                        [id * 4..(id + 1) * 4],
+                                ))[..32],
+                            ),
+                        )
+                    },
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
         }
     }
 }
@@ -158,6 +207,14 @@ impl rom::Assets for Assets {
 
     fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
         self.element_icons.get(id)
+    }
+
+    fn navi(&self, id: usize) -> Option<&rom::Navi> {
+        self.navis.get(id)
+    }
+
+    fn num_navis(&self) -> usize {
+        self.navis.len()
     }
 }
 

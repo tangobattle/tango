@@ -77,6 +77,12 @@ pub struct Style {
     pub extra_ncp_color: Option<NavicustPartColor>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Navi {
+    pub name: String,
+    pub emblem: image::RgbaImage,
+}
+
 pub trait Assets {
     fn chip(&self, id: usize) -> Option<&Chip>;
     fn num_chips(&self) -> usize;
@@ -108,6 +114,13 @@ pub trait Assets {
         None
     }
     fn num_styles(&self) -> usize {
+        0
+    }
+    fn navi(&self, id: usize) -> Option<&Navi> {
+        let _ = id;
+        None
+    }
+    fn num_navis(&self) -> usize {
         0
     }
 }
