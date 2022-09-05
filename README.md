@@ -1,7 +1,5 @@
 # Tango
 
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftangobattle%2Ftango.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftangobattle%2Ftango?ref=badge_shield)
-
 Tango is rollback netplay for Mega Man Battle Network.
 
 ## Supported games
@@ -89,7 +87,3 @@ The order of language support is as follows:
 -   **Japanese (ja):** This is Tango's secondary but fully supported language. All text in the UI, barring some extremely supplementary text (e.g. the About screen) is expected to be available in Japanese. If new UI text is added, a Japanese translation SHOULD also be provided. Tango releases MUST NOT contain missing Japanese text.
 
 -   **All other languages:** These are Tango's tertiary languages. Support is provided on a best effort basis and translations are provided as available.
-
-## License
-
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Ftangobattle%2Ftango.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Ftangobattle%2Ftango?ref=badge_large)
