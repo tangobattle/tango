@@ -60,6 +60,7 @@ pub struct Config {
     pub default_match_type: u8,
     pub data_path: std::path::PathBuf,
     pub full_screen: bool,
+    pub streamer_mode: bool,
 }
 
 impl Default for Config {
@@ -81,6 +82,7 @@ impl Default for Config {
             default_match_type: 1,
             data_path: "".into(),
             full_screen: false,
+            streamer_mode: false,
         }
     }
 }

@@ -251,6 +251,20 @@ fn show_general_tab(
                     });
                 ui.end_row();
             }
+
+            {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-streamer-mode")
+                        .unwrap(),
+                );
+                ui.checkbox(&mut config.streamer_mode, "").on_hover_text(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-streamer-mode.tooltip")
+                        .unwrap(),
+                );
+                ui.end_row();
+            }
         });
 }
 

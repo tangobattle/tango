@@ -40,6 +40,7 @@ impl State {
 }
 pub fn show(
     ui: &mut egui::Ui,
+    streamer_mode: bool,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
@@ -73,6 +74,17 @@ pub fn show(
         }
 
         ui.horizontal(|ui| {
+            if streamer_mode
+                && ui
+                    .selectable_label(
+                        state.tab == None,
+                        i18n::LOCALES.lookup(lang, "save.cover").unwrap(),
+                    )
+                    .clicked()
+            {
+                state.tab = None;
+            }
+
             for tab in available_tabs.iter() {
                 if ui
                     .selectable_label(
@@ -97,7 +109,7 @@ pub fn show(
             }
         });
 
-        if state.tab.is_none() {
+        if state.tab.is_none() && !streamer_mode {
             state.tab = available_tabs.first().cloned();
         }
 
@@ -172,7 +184,19 @@ pub fn show(
                     );
                 }
             }
-            None => {}
+            None => {
+                ui.with_layout(
+                    egui::Layout::centered_and_justified(egui::Direction::LeftToRight)
+                        .with_main_align(egui::Align::Center),
+                    |ui| {
+                        ui.label(
+                            i18n::LOCALES
+                                .lookup(lang, "save-cover-description")
+                                .unwrap(),
+                        );
+                    },
+                );
+            }
         }
     });
 }

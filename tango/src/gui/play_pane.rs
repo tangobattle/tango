@@ -1920,6 +1920,7 @@ pub fn show(
                         let game_language = selection.game.language();
                         gui::save_view::show(
                             ui,
+                            config.streamer_mode,
                             clipboard,
                             font_families,
                             &config.language,

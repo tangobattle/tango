@@ -431,6 +431,7 @@ pub fn show(
                         let game_language = selection.game.language();
                         gui::save_view::show(
                             ui,
+                            false,
                             clipboard,
                             font_families,
                             language,
