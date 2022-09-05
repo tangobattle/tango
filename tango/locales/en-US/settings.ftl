@@ -4,6 +4,7 @@ settings = Settings
     .graphics = Graphics
     .audio = Audio
     .netplay = Netplay
+    .advanced = Advanced
     .about = About
 
 settings-theme = Theme
@@ -24,6 +25,7 @@ settings-ui-scale = UI scale
 
 settings-language = Language
 settings-nickname = Nickname
+settings-streamer-mode = Streamer mode
 settings-debug-overlay = Show debug overlay
 settings-input-delay = Input delay
 settings-max-queue-length = Max queue length

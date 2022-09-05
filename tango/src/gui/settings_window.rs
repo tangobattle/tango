@@ -9,6 +9,7 @@ enum Tab {
     Graphics,
     Audio,
     Netplay,
+    Advanced,
     About,
 }
 
@@ -90,6 +91,13 @@ pub fn show(
                 );
                 ui.selectable_value(
                     &mut state.tab,
+                    Tab::Advanced,
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings.advanced")
+                        .unwrap(),
+                );
+                ui.selectable_value(
+                    &mut state.tab,
                     Tab::About,
                     i18n::LOCALES
                         .lookup(&config.language, "settings.about")
@@ -104,14 +112,7 @@ pub fn show(
                 .show(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                         match state.tab {
-                            Tab::General => show_general_tab(
-                                ui,
-                                config,
-                                font_families,
-                                roms_scanner.clone(),
-                                saves_scanner.clone(),
-                                patches_scanner.clone(),
-                            ),
+                            Tab::General => show_general_tab(ui, config, font_families),
                             Tab::Input => show_input_tab(
                                 ui,
                                 &config.language,
@@ -121,6 +122,13 @@ pub fn show(
                             Tab::Graphics => show_graphics_tab(ui, config, window),
                             Tab::Audio => show_audio_tab(ui, config),
                             Tab::Netplay => show_netplay_tab(ui, config),
+                            Tab::Advanced => show_advanced_tab(
+                                ui,
+                                config,
+                                roms_scanner.clone(),
+                                saves_scanner.clone(),
+                                patches_scanner.clone(),
+                            ),
                             Tab::About => show_about_tab(ui, &state.emblem),
                         };
                     });
@@ -136,9 +144,6 @@ fn show_general_tab(
     ui: &mut egui::Ui,
     config: &mut config::Config,
     font_families: &gui::FontFamilies,
-    roms_scanner: gui::ROMsScanner,
-    saves_scanner: gui::SavesScanner,
-    patches_scanner: gui::PatchesScanner,
 ) {
     egui::Grid::new("settings-window-general-grid")
         .num_columns(2)
@@ -244,75 +249,6 @@ fn show_general_tab(
                             zh_hant_label.clone(),
                         );
                     });
-                ui.end_row();
-            }
-
-            {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-data-path")
-                        .unwrap(),
-                );
-                ui.horizontal(|ui| {
-                    ui.add(
-                        egui::TextEdit::singleline(&mut format!("{}", config.data_path.display()))
-                            .interactive(false),
-                    );
-
-                    if ui
-                        .button(
-                            i18n::LOCALES
-                                .lookup(&config.language, "settings-data-path.open")
-                                .unwrap(),
-                        )
-                        .clicked()
-                    {
-                        let _ = open::that(&config.data_path);
-                    }
-
-                    if ui
-                        .button(
-                            i18n::LOCALES
-                                .lookup(&config.language, "settings-data-path.change")
-                                .unwrap(),
-                        )
-                        .clicked()
-                    {
-                        if let Some(data_path) = rfd::FileDialog::new()
-                            .set_directory(&config.data_path)
-                            .pick_folder()
-                        {
-                            config.data_path = data_path;
-                            let _ = config.ensure_dirs();
-                            rayon::spawn({
-                                let roms_scanner = roms_scanner.clone();
-                                let saves_scanner = saves_scanner.clone();
-                                let patches_scanner = patches_scanner.clone();
-                                let roms_path = config.roms_path();
-                                let saves_path = config.saves_path();
-                                let patches_path = config.patches_path();
-                                move || {
-                                    roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-                                    saves_scanner
-                                        .rescan(move || Some(save::scan_saves(&saves_path)));
-                                    patches_scanner.rescan(move || {
-                                        Some(patch::scan(&patches_path).unwrap_or_default())
-                                    });
-                                }
-                            });
-                        }
-                    }
-                });
-                ui.end_row();
-            }
-
-            {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-debug-overlay")
-                        .unwrap(),
-                );
-                ui.checkbox(&mut config.show_debug_overlay, "");
                 ui.end_row();
             }
         });
@@ -587,6 +523,87 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
                     .desired_width(200.0),
             );
             ui.end_row();
+        });
+}
+
+fn show_advanced_tab(
+    ui: &mut egui::Ui,
+    config: &mut config::Config,
+    roms_scanner: gui::ROMsScanner,
+    saves_scanner: gui::SavesScanner,
+    patches_scanner: gui::PatchesScanner,
+) {
+    egui::Grid::new("settings-window-general-grid")
+        .num_columns(2)
+        .show(ui, |ui| {
+            {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-data-path")
+                        .unwrap(),
+                );
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut format!("{}", config.data_path.display()))
+                            .interactive(false),
+                    );
+
+                    if ui
+                        .button(
+                            i18n::LOCALES
+                                .lookup(&config.language, "settings-data-path.open")
+                                .unwrap(),
+                        )
+                        .clicked()
+                    {
+                        let _ = open::that(&config.data_path);
+                    }
+
+                    if ui
+                        .button(
+                            i18n::LOCALES
+                                .lookup(&config.language, "settings-data-path.change")
+                                .unwrap(),
+                        )
+                        .clicked()
+                    {
+                        if let Some(data_path) = rfd::FileDialog::new()
+                            .set_directory(&config.data_path)
+                            .pick_folder()
+                        {
+                            config.data_path = data_path;
+                            let _ = config.ensure_dirs();
+                            rayon::spawn({
+                                let roms_scanner = roms_scanner.clone();
+                                let saves_scanner = saves_scanner.clone();
+                                let patches_scanner = patches_scanner.clone();
+                                let roms_path = config.roms_path();
+                                let saves_path = config.saves_path();
+                                let patches_path = config.patches_path();
+                                move || {
+                                    roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+                                    saves_scanner
+                                        .rescan(move || Some(save::scan_saves(&saves_path)));
+                                    patches_scanner.rescan(move || {
+                                        Some(patch::scan(&patches_path).unwrap_or_default())
+                                    });
+                                }
+                            });
+                        }
+                    }
+                });
+                ui.end_row();
+            }
+
+            {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-debug-overlay")
+                        .unwrap(),
+                );
+                ui.checkbox(&mut config.show_debug_overlay, "");
+                ui.end_row();
+            }
         });
 }
 
