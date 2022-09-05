@@ -76,6 +76,12 @@ impl save::Save for Save {
         Some(Box::new(ChipsView { save: self }))
     }
 
+    fn view_navi(&self) -> Option<save::NaviView> {
+        Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
+            save: self,
+        })))
+    }
+
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf
     }
@@ -129,5 +135,15 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             id: (raw & 0x1ff) as usize,
             code: (raw >> 9) as usize,
         })
+    }
+}
+
+pub struct Navi4dot556View<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::Navi4dot556View<'a> for Navi4dot556View<'a> {
+    fn navi(&self) -> usize {
+        self.save.buf[0x4ad1] as usize
     }
 }

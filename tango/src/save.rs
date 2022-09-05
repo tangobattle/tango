@@ -99,6 +99,10 @@ pub enum ModcardsView<'a> {
     Modcards56(Box<dyn Modcards56View<'a> + 'a>),
 }
 
+pub enum NaviView<'a> {
+    Navi4dot556(Box<dyn Navi4dot556View<'a> + 'a>),
+}
+
 pub trait Save
 where
     Self: SaveClone,
@@ -119,6 +123,10 @@ where
     }
 
     fn view_dark_ai(&self) -> Option<Box<dyn DarkAIView + '_>> {
+        None
+    }
+
+    fn view_navi(&self) -> Option<NaviView> {
         None
     }
 }
@@ -182,6 +190,10 @@ pub trait Modcards56View<'a> {
 
 pub trait Modcards4View<'a> {
     fn modcard(&self, slot: usize) -> Option<Modcard>;
+}
+
+pub trait Navi4dot556View<'a> {
+    fn navi(&self) -> usize;
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]

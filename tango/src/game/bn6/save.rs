@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save;
+use crate::save::{self, Navi4dot556View as _};
 
 const SRAM_START_OFFSET: usize = 0x0100;
 const SRAM_SIZE: usize = 0x6710;
@@ -102,11 +102,7 @@ impl Save {
             }
     }
 
-    fn current_navi(&self) -> u8 {
-        self.buf[0x1b81]
-    }
-
-    fn navi_stats_offset(&self, id: u8) -> usize {
+    fn navi_stats_offset(&self, id: usize) -> usize {
         (if self.game_info.region == Region::JP {
             0x478c
         } else {
@@ -132,6 +128,12 @@ impl save::Save for Save {
         } else {
             None
         }
+    }
+
+    fn view_navi(&self) -> Option<save::NaviView> {
+        Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
+            save: self,
+        })))
     }
 
     fn as_raw_wram(&self) -> &[u8] {
@@ -163,7 +165,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn equipped_folder_index(&self) -> usize {
-        self.save.buf[self.save.navi_stats_offset(self.save.current_navi()) + 0x2d] as usize
+        let navi_stats_offset = self
+            .save
+            .navi_stats_offset(Navi4dot556View { save: self.save }.navi());
+        self.save.buf[navi_stats_offset + 0x2d] as usize
     }
 
     fn regular_chip_is_in_place(&self) -> bool {
@@ -171,8 +176,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
-        let idx = self.save.buf
-            [self.save.navi_stats_offset(self.save.current_navi()) + 0x2e + folder_index];
+        let navi_stats_offset = self
+            .save
+            .navi_stats_offset(Navi4dot556View { save: self.save }.navi());
+        let idx = self.save.buf[navi_stats_offset + 0x2e + folder_index];
         if idx >= 30 {
             None
         } else {
@@ -181,14 +188,11 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]> {
-        let idx1 = self.save.buf[self.save.navi_stats_offset(self.save.current_navi())
-            + 0x56
-            + folder_index * 2
-            + 0x00];
-        let idx2 = self.save.buf[self.save.navi_stats_offset(self.save.current_navi())
-            + 0x56
-            + folder_index * 2
-            + 0x01];
+        let navi_stats_offset = self
+            .save
+            .navi_stats_offset(Navi4dot556View { save: self.save }.navi());
+        let idx1 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00];
+        let idx2 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01];
         if idx1 == 0xff || idx2 == 0xff {
             None
         } else {
@@ -278,5 +282,14 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             rot: buf[0x5],
             compressed: buf[0x6] != 0,
         })
+    }
+}
+pub struct Navi4dot556View<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::Navi4dot556View<'a> for Navi4dot556View<'a> {
+    fn navi(&self) -> usize {
+        self.save.buf[0x1b81] as usize
     }
 }

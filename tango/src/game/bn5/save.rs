@@ -118,6 +118,12 @@ impl save::Save for Save {
         })))
     }
 
+    fn view_navi(&self) -> Option<save::NaviView> {
+        Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
+            save: self,
+        })))
+    }
+
     fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
         Some(Box::new(DarkAIView { save: self }))
     }
@@ -273,5 +279,15 @@ impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
         Some(byteorder::LittleEndian::read_u16(
             &self.save.buf[offset..offset + 2],
         ))
+    }
+}
+
+pub struct Navi4dot556View<'a> {
+    save: &'a Save,
+}
+
+impl<'a> save::Navi4dot556View<'a> for Navi4dot556View<'a> {
+    fn navi(&self) -> usize {
+        self.save.buf[0x2940] as usize
     }
 }
