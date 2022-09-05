@@ -624,6 +624,7 @@ lazy_static! {
                         "mitetekure",
                         "nai",
                         "onegai",
+                        "oomaigaa",
                         "sikatanai",
                         "simasu",
                         "simasyou",
