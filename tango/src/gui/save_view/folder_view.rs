@@ -196,7 +196,7 @@ pub fn show<'a>(
                 ui.horizontal(|ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        let chip = if let Some(chip) = chip.as_ref() {
+                        if let Some(chip) = chip.as_ref() {
                             ui.label(
                                 egui::RichText::new(
                                     info.map(|info| info.name.as_str()).unwrap_or("???"),
