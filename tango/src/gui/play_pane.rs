@@ -3,7 +3,9 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{audio, config, game, gui, i18n, net, patch, randomcode, save, session, stats};
+use crate::{
+    audio, config, discord, game, gui, i18n, net, patch, randomcode, save, session, stats,
+};
 
 struct LobbySelection {
     pub game: &'static (dyn game::Game + Send + Sync),
@@ -1071,7 +1073,7 @@ pub fn show(
     patch_selection: &mut Option<String>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     state: &mut State,
-    discord_rpc: discord_presence::Client,
+    discord_client: &mut discord::Client,
 ) {
     let mut connection_task = state.connection_task.blocking_lock();
 
@@ -1414,6 +1416,11 @@ pub fn show(
                             if input_resp.lost_focus()
                                 && ui.ctx().input().key_pressed(egui::Key::Enter)
                             {
+                                submitted = true;
+                            }
+
+                            if let Some(link_code) = discord_client.take_current_join_secret() {
+                                state.link_code = link_code.to_string();
                                 submitted = true;
                             }
 

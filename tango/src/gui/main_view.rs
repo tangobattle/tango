@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, gui, i18n, patch, session, stats};
+use crate::{audio, config, discord, gui, i18n, patch, session, stats};
 
 pub struct State {
     tab: Tab,
@@ -47,7 +47,7 @@ pub fn show(
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: &mut Option<gui::Selection>,
     state: &mut State,
-    discord_rpc: discord_presence::Client,
+    discord_client: &mut discord::Client,
 ) {
     egui::TopBottomPanel::top("main-top-panel").show(ctx, |ui| {
         ui.vertical(|ui| {
@@ -109,6 +109,11 @@ pub fn show(
         });
     });
 
+    // If a join is requested, switch immediately to the play tab.
+    if discord_client.has_current_join_secret() {
+        state.tab = Tab::Play;
+    }
+
     egui::CentralPanel::default().show(ctx, |ui| match state.tab {
         Tab::Play => {
             gui::play_pane::show(
@@ -128,7 +133,7 @@ pub fn show(
                 &mut state.patch_selection,
                 emu_tps_counter.clone(),
                 &mut state.play_pane,
-                discord_rpc,
+                discord_client,
             );
         }
         Tab::Replays => {

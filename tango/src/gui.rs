@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, game, i18n, input, patch, rom, save, scanner, session, stats};
+use crate::{audio, config, discord, game, i18n, input, patch, rom, save, scanner, session, stats};
 use std::str::FromStr;
 
 const DISCORD_APP_ID: u64 = 974089681333534750;
@@ -92,7 +92,7 @@ pub struct State {
     themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
     session_view: Option<session_view::State>,
-    discord_rpc: discord_presence::Client,
+    discord_client: discord::Client,
 }
 
 impl State {
@@ -148,8 +148,11 @@ impl State {
         .into();
         ctx.set_style(style);
 
-        let mut discord_rpc = discord_presence::Client::new(DISCORD_APP_ID);
-        discord_rpc.start();
+        let mut discord_client = discord::Client::new(DISCORD_APP_ID);
+        discord_client.set_current_activity(Some(discord::make_base_activity(
+            &config.read().language,
+            None,
+        )));
 
         let roms_scanner = scanner::Scanner::new();
         let saves_scanner = scanner::Scanner::new();
@@ -225,7 +228,7 @@ impl State {
                 },
             },
             current_language: None,
-            discord_rpc,
+            discord_client,
         }
     }
 }
@@ -387,6 +390,7 @@ pub fn show(
         &config.language,
         &config.replays_path(),
     );
+
     if let Some(session) = state.session.lock().as_ref() {
         window.set_title(
             &i18n::LOCALES
@@ -433,7 +437,7 @@ pub fn show(
             state.session.clone(),
             &mut state.selection,
             &mut state.main_view,
-            state.discord_rpc.clone(),
+            &mut state.discord_client,
         );
     }
 }
