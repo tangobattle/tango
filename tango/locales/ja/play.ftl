@@ -23,7 +23,7 @@ play-connection-task =
 
 select-save = セーブファイルを選択
     .select-button = 選択
-    .no-save-selected = セーブファイルを選択しない
+    .no-save-selected = セーブファイルが選択されていません
     .return-to-games-list = 作品一覧へ戻る
     .open-folder = フォルダを開く
 
