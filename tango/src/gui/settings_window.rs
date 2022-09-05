@@ -38,7 +38,7 @@ pub fn show(
     roms_scanner: gui::ROMsScanner,
     saves_scanner: gui::SavesScanner,
     patches_scanner: gui::PatchesScanner,
-    window: &glutin::window::Window,
+    window: &winit::window::Window,
     steal_input: &mut Option<gui::steal_input_window::State>,
 ) {
     let mut open = state.is_some();
@@ -438,7 +438,7 @@ fn show_input_tab(
 fn show_graphics_tab(
     ui: &mut egui::Ui,
     config: &mut config::Config,
-    window: &glutin::window::Window,
+    window: &winit::window::Window,
 ) {
     egui::Grid::new("settings-window-graphics-grid")
         .num_columns(2)
@@ -484,7 +484,7 @@ fn show_graphics_tab(
             );
             ui.add(egui::Checkbox::new(&mut config.full_screen, ""));
             if config.full_screen && window.fullscreen().is_none() {
-                window.set_fullscreen(Some(glutin::window::Fullscreen::Borderless(None)));
+                window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
             } else if !config.full_screen && window.fullscreen().is_some() {
                 window.set_fullscreen(None);
             }

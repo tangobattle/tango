@@ -264,7 +264,7 @@ pub fn show(
     ctx: &egui::Context,
     config: &mut config::Config,
     handle: tokio::runtime::Handle,
-    window: &glutin::window::Window,
+    window: &winit::window::Window,
     input_state: &input::State,
     state: &mut State,
 ) {

@@ -35,7 +35,7 @@ pub fn show(
     config: &mut config::Config,
     config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     handle: tokio::runtime::Handle,
-    window: &glutin::window::Window,
+    window: &winit::window::Window,
     show_settings: &mut Option<gui::settings_window::State>,
     replay_dump_windows: &mut gui::replay_dump_windows::State,
     clipboard: &mut arboard::Clipboard,

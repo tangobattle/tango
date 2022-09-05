@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 pub struct StateTypes;
 impl input_helper::StateTypes for StateTypes {
-    type Key = glutin::event::VirtualKeyCode;
+    type Key = winit::event::VirtualKeyCode;
     type Button = sdl2::controller::Button;
 }
 
@@ -44,7 +44,7 @@ where
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PhysicalInput {
-    Key(glutin::event::VirtualKeyCode),
+    Key(winit::event::VirtualKeyCode),
     Button(
         #[serde(
             serialize_with = "serialize_sdl2_button",
@@ -107,7 +107,7 @@ impl Default for Mapping {
     fn default() -> Self {
         Mapping {
             up: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Up),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Up),
                 PhysicalInput::Button(sdl2::controller::Button::DPadUp),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftY,
@@ -115,7 +115,7 @@ impl Default for Mapping {
                 },
             ],
             down: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Down),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Down),
                 PhysicalInput::Button(sdl2::controller::Button::DPadDown),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftY,
@@ -123,7 +123,7 @@ impl Default for Mapping {
                 },
             ],
             left: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Left),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Left),
                 PhysicalInput::Button(sdl2::controller::Button::DPadLeft),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftX,
@@ -131,7 +131,7 @@ impl Default for Mapping {
                 },
             ],
             right: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Right),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Right),
                 PhysicalInput::Button(sdl2::controller::Button::DPadRight),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::LeftX,
@@ -139,15 +139,15 @@ impl Default for Mapping {
                 },
             ],
             a: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Z),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Z),
                 PhysicalInput::Button(sdl2::controller::Button::A),
             ],
             b: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::X),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::X),
                 PhysicalInput::Button(sdl2::controller::Button::B),
             ],
             l: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::A),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::A),
                 PhysicalInput::Button(sdl2::controller::Button::LeftShoulder),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::TriggerLeft,
@@ -155,7 +155,7 @@ impl Default for Mapping {
                 },
             ],
             r: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::S),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::S),
                 PhysicalInput::Button(sdl2::controller::Button::RightShoulder),
                 PhysicalInput::Axis {
                     axis: sdl2::controller::Axis::TriggerRight,
@@ -163,14 +163,14 @@ impl Default for Mapping {
                 },
             ],
             select: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Space),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Space),
                 PhysicalInput::Button(sdl2::controller::Button::Back),
             ],
             start: vec![
-                PhysicalInput::Key(glutin::event::VirtualKeyCode::Return),
+                PhysicalInput::Key(winit::event::VirtualKeyCode::Return),
                 PhysicalInput::Button(sdl2::controller::Button::Start),
             ],
-            speed_up: vec![PhysicalInput::Key(glutin::event::VirtualKeyCode::LShift)],
+            speed_up: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::LShift)],
         }
     }
 }

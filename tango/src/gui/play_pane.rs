@@ -1058,7 +1058,7 @@ pub fn show(
     ui: &mut egui::Ui,
     handle: tokio::runtime::Handle,
     font_families: &gui::FontFamilies,
-    window: &glutin::window::Window,
+    window: &winit::window::Window,
     clipboard: &mut arboard::Clipboard,
     config: &mut config::Config,
     config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
@@ -1212,7 +1212,7 @@ pub fn show(
                                     let mut lobby = lobby.blocking_lock();
                                     if !lobby.attention_requested {
                                         window.request_user_attention(Some(
-                                            glutin::window::UserAttentionType::Critical,
+                                            winit::window::UserAttentionType::Critical,
                                         ));
                                         lobby.attention_requested = true;
                                     }

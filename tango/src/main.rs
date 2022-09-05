@@ -147,9 +147,9 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let icon_width = icon.width();
     let icon_height = icon.height();
 
-    let wb = glutin::window::WindowBuilder::new()
+    let wb = winit::window::WindowBuilder::new()
         .with_title("Tango")
-        .with_window_icon(Some(glutin::window::Icon::from_rgba(
+        .with_window_icon(Some(winit::window::Icon::from_rgba(
             icon.into_bytes(),
             icon_width,
             icon_height,
@@ -163,7 +163,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             mgba::gba::SCREEN_HEIGHT,
         ))
         .with_fullscreen(if config.full_screen {
-            Some(glutin::window::Fullscreen::Borderless(None))
+            Some(winit::window::Fullscreen::Borderless(None))
         } else {
             None
         });
@@ -335,28 +335,28 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         };
 
         match event {
-            glutin::event::Event::WindowEvent {
+            winit::event::Event::WindowEvent {
                 event: window_event,
                 ..
             } => {
                 match window_event {
-                    glutin::event::WindowEvent::MouseInput { .. }
-                    | glutin::event::WindowEvent::CursorMoved { .. } => {
+                    winit::event::WindowEvent::MouseInput { .. }
+                    | winit::event::WindowEvent::CursorMoved { .. } => {
                         state.last_mouse_motion_time = Some(std::time::Instant::now());
                         if state.steal_input.is_none() {
                             egui_glow.on_event(&window_event);
                         }
                     }
-                    glutin::event::WindowEvent::KeyboardInput {
+                    winit::event::WindowEvent::KeyboardInput {
                         input:
-                            glutin::event::KeyboardInput {
+                            winit::event::KeyboardInput {
                                 virtual_keycode: Some(virutal_keycode),
                                 state: element_state,
                                 ..
                             },
                         ..
                     } => match element_state {
-                        glutin::event::ElementState::Pressed => {
+                        winit::event::ElementState::Pressed => {
                             if let Some(steal_input) = state.steal_input.take() {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Key(virutal_keycode),
@@ -368,7 +368,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                 }
                             }
                         }
-                        glutin::event::ElementState::Released => {
+                        winit::event::ElementState::Released => {
                             if !egui_glow.on_event(&window_event) {
                                 input_state.handle_key_up(virutal_keycode);
                             }
@@ -377,22 +377,22 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                     window_event => {
                         egui_glow.on_event(&window_event);
                         match window_event {
-                            glutin::event::WindowEvent::Focused(false) => {
+                            winit::event::WindowEvent::Focused(false) => {
                                 input_state.clear_keys();
                             }
-                            glutin::event::WindowEvent::Resized(size) => {
+                            winit::event::WindowEvent::Resized(size) => {
                                 gl_window.resize(size);
                             }
-                            glutin::event::WindowEvent::Occluded(false) => {
+                            winit::event::WindowEvent::Occluded(false) => {
                                 config.full_screen = gl_window.window().fullscreen().is_some();
                             }
-                            glutin::event::WindowEvent::CursorEntered { .. } => {
+                            winit::event::WindowEvent::CursorEntered { .. } => {
                                 state.last_mouse_motion_time = Some(std::time::Instant::now());
                             }
-                            glutin::event::WindowEvent::CursorLeft { .. } => {
+                            winit::event::WindowEvent::CursorLeft { .. } => {
                                 state.last_mouse_motion_time = None;
                             }
-                            glutin::event::WindowEvent::CloseRequested => {
+                            winit::event::WindowEvent::CloseRequested => {
                                 control_flow.set_exit();
                             }
                             _ => {}
@@ -401,16 +401,16 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                 };
                 gl_window.window().request_redraw();
             }
-            glutin::event::Event::NewEvents(cause) => {
+            winit::event::Event::NewEvents(cause) => {
                 input_state.digest();
-                if let glutin::event::StartCause::ResumeTimeReached { .. } = cause {
+                if let winit::event::StartCause::ResumeTimeReached { .. } = cause {
                     gl_window.window().request_redraw();
                 }
             }
-            glutin::event::Event::UserEvent(UserEvent::RequestRepaint) => {
+            winit::event::Event::UserEvent(UserEvent::RequestRepaint) => {
                 gl_window.window().request_redraw();
             }
-            glutin::event::Event::MainEventsCleared => {
+            winit::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
                 for sdl_event in sdl_event_loop.poll_iter() {
                     (|| match sdl_event {
@@ -476,8 +476,8 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                 }
             }
 
-            glutin::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
-            glutin::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
+            winit::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
+            winit::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
 
             _ => {}
         }
