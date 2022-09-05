@@ -27,6 +27,7 @@ fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_deb
             ui.label(name.color(egui::Color32::BLACK));
         });
 }
+
 pub fn show_modcards4<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,

@@ -78,7 +78,7 @@ pub struct Style {
 }
 
 #[derive(Clone, Debug)]
-pub struct Navi {
+pub struct Navi4dot556 {
     pub name: String,
     pub emblem: image::RgbaImage,
 }
@@ -116,11 +116,11 @@ pub trait Assets {
     fn num_styles(&self) -> usize {
         0
     }
-    fn navi(&self, id: usize) -> Option<&Navi> {
+    fn navi4dot556(&self, id: usize) -> Option<&Navi4dot556> {
         let _ = id;
         None
     }
-    fn num_navis(&self) -> usize {
+    fn num_navis4dot556(&self) -> usize {
         0
     }
 }

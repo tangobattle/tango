@@ -35,7 +35,7 @@ lazy_static! {
 pub struct Assets {
     element_icons: [image::RgbaImage; 13],
     chips: [rom::Chip; 389],
-    navis: [rom::Navi; 23],
+    navis4dot556: [rom::Navi4dot556; 23],
 }
 
 impl Assets {
@@ -144,8 +144,8 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
-            navis: (0..23)
-                .map(|id| rom::Navi {
+            navis4dot556: (0..23)
+                .map(|id| rom::Navi4dot556 {
                     name: {
                         if let Ok(parts) = rom::text::parse_entry(
                             &mapper.get(byteorder::LittleEndian::read_u32(
@@ -209,12 +209,12 @@ impl rom::Assets for Assets {
         self.element_icons.get(id)
     }
 
-    fn navi(&self, id: usize) -> Option<&rom::Navi> {
-        self.navis.get(id)
+    fn navi4dot556(&self, id: usize) -> Option<&rom::Navi4dot556> {
+        self.navis4dot556.get(id)
     }
 
-    fn num_navis(&self) -> usize {
-        self.navis.len()
+    fn num_navis4dot556(&self) -> usize {
+        self.navis4dot556.len()
     }
 }
 

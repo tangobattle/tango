@@ -1,6 +1,7 @@
 mod dark_ai_view;
 mod folder_view;
 mod modcards_view;
+mod navi_view;
 mod navicust_view;
 
 use fluent_templates::Loader;
@@ -9,6 +10,7 @@ use crate::{gui, i18n, rom, save};
 
 #[derive(PartialEq, Clone)]
 enum Tab {
+    Navi,
     Navicust,
     Folder,
     Modcards,
@@ -17,6 +19,7 @@ enum Tab {
 
 pub struct State {
     tab: Option<Tab>,
+    navi_view: navi_view::State,
     navicust_view: navicust_view::State,
     folder_view: folder_view::State,
     modcards_view: modcards_view::State,
@@ -27,6 +30,7 @@ impl State {
     pub fn new() -> Self {
         Self {
             tab: None,
+            navi_view: navi_view::State::new(),
             navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
             modcards_view: modcards_view::State::new(),
@@ -45,12 +49,16 @@ pub fn show(
     state: &mut State,
 ) {
     ui.vertical(|ui| {
+        let navi_view = save.view_navi();
         let navicust_view = save.view_navicust();
         let chips_view = save.view_chips();
         let modcards_view = save.view_modcards();
         let dark_ai_view = save.view_dark_ai();
 
         let mut available_tabs = vec![];
+        if navi_view.is_some() {
+            available_tabs.push(Tab::Navi);
+        }
         if navicust_view.is_some() {
             available_tabs.push(Tab::Navicust);
         }
@@ -73,6 +81,7 @@ pub fn show(
                             .lookup(
                                 lang,
                                 match tab {
+                                    Tab::Navi => "save.navi",
                                     Tab::Navicust => "save.navicust",
                                     Tab::Folder => "save.folder",
                                     Tab::Modcards => "save.modcards",
@@ -93,6 +102,20 @@ pub fn show(
         }
 
         match state.tab {
+            Some(Tab::Navi) => {
+                if let Some(navi_view) = navi_view {
+                    navi_view::show(
+                        ui,
+                        clipboard,
+                        font_families,
+                        lang,
+                        game_lang,
+                        &navi_view,
+                        assets,
+                        &mut state.navi_view,
+                    );
+                }
+            }
             Some(Tab::Navicust) => {
                 if let Some(navicust_view) = navicust_view {
                     navicust_view::show(
