@@ -2,22 +2,22 @@ use fluent_templates::Loader;
 
 use crate::i18n;
 
+pub struct GameInfo {
+    pub title: String,
+    pub family: String,
+}
+
 pub fn make_base_activity(
     lang: &unic_langid::LanguageIdentifier,
-    game_family: Option<&str>,
+    game_info: Option<GameInfo>,
 ) -> discord_presence::models::Activity {
-    let title = game_family.map(|family| {
-        i18n::LOCALES
-            .lookup(lang, &format!("game-{}", family))
-            .unwrap()
-    });
     discord_presence::models::Activity {
-        details: title.clone(),
+        details: game_info.as_ref().map(|gi| gi.title.clone()),
         assets: Some(discord_presence::models::ActivityAssets {
             small_image: Some("logo".to_string()),
             small_text: Some("Tango".to_string()),
-            large_image: game_family.as_ref().map(|family| family.to_string()),
-            large_text: title,
+            large_image: game_info.as_ref().map(|gi| gi.family.clone()),
+            large_text: game_info.as_ref().map(|gi| gi.title.clone()),
         }),
         ..Default::default()
     }
@@ -26,10 +26,14 @@ pub fn make_base_activity(
 pub fn make_looking_activity(
     link_code: &str,
     lang: &unic_langid::LanguageIdentifier,
-    game_family: Option<&str>,
+    game_info: Option<GameInfo>,
 ) -> discord_presence::models::Activity {
     discord_presence::models::Activity {
-        state: Some("Looking for match".to_string()),
+        state: Some(
+            i18n::LOCALES
+                .lookup(lang, "discord-presence.looking")
+                .unwrap(),
+        ),
         secrets: Some(discord_presence::models::ActivitySecrets {
             join: Some(link_code.to_string()),
             ..Default::default()
@@ -38,32 +42,40 @@ pub fn make_looking_activity(
             id: Some(format!("party:{}", link_code)),
             size: Some((1, 2)),
         }),
-        ..make_base_activity(lang, game_family)
+        ..make_base_activity(lang, game_info)
     }
 }
 
 pub fn make_single_player_activity(
     lang: &unic_langid::LanguageIdentifier,
-    game_family: Option<&str>,
+    game_info: Option<GameInfo>,
 ) -> discord_presence::models::Activity {
     discord_presence::models::Activity {
-        state: Some("In single player".to_string()),
-        ..make_base_activity(lang, game_family)
+        state: Some(
+            i18n::LOCALES
+                .lookup(lang, "discord-presence.in-single-player")
+                .unwrap(),
+        ),
+        ..make_base_activity(lang, game_info)
     }
 }
 
 pub fn make_in_lobby_activity(
     link_code: &str,
     lang: &unic_langid::LanguageIdentifier,
-    game_family: Option<&str>,
+    game_info: Option<GameInfo>,
 ) -> discord_presence::models::Activity {
     discord_presence::models::Activity {
-        state: Some("In lobby".to_string()),
+        state: Some(
+            i18n::LOCALES
+                .lookup(lang, "discord-presence.in-lobby")
+                .unwrap(),
+        ),
         party: Some(discord_presence::models::ActivityParty {
             id: Some(format!("party:{}", link_code)),
             size: Some((2, 2)),
         }),
-        ..make_base_activity(lang, game_family)
+        ..make_base_activity(lang, game_info)
     }
 }
 
@@ -71,10 +83,14 @@ pub fn make_in_progress_activity(
     link_code: &str,
     start_time: std::time::SystemTime,
     lang: &unic_langid::LanguageIdentifier,
-    game_family: Option<&str>,
+    game_info: Option<GameInfo>,
 ) -> discord_presence::models::Activity {
     discord_presence::models::Activity {
-        state: Some("Match in progress".to_string()),
+        state: Some(
+            i18n::LOCALES
+                .lookup(lang, "discord-presence.in-progress")
+                .unwrap(),
+        ),
         party: Some(discord_presence::models::ActivityParty {
             id: Some(format!("party:{}", link_code)),
             size: Some((2, 2)),
@@ -86,7 +102,7 @@ pub fn make_in_progress_activity(
                 .map(|d| d.as_millis() as u64),
             end: None,
         }),
-        ..make_base_activity(lang, game_family)
+        ..make_base_activity(lang, game_info)
     }
 }
 
