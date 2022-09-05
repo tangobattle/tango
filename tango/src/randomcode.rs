@@ -690,7 +690,7 @@ pub fn generate(lang: &unic_langid::LanguageIdentifier) -> String {
     let mut thread_rng = rand::thread_rng();
 
     let mut lang_code = lang.language.as_str();
-    if CHOICES.contains_key(&lang_code) {
+    if !CHOICES.contains_key(&lang_code) {
         lang_code = "en";
     }
 
