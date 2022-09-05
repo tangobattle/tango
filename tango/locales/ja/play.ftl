@@ -26,3 +26,10 @@ select-save = セーブファイルを選択
     .no-save-selected = セーブファイルを選択しない
     .return-to-games-list = 作品一覧へ戻る
     .open-folder = フォルダを開く
+
+lobby-issue =
+    .missing-rom = 相手の作品のROMを持っていません：{$game_name}
+    .no-local-game-selected = 作品を選択していません。
+    .no-remote-game-selected = 相手は作品を選択していません。
+    .incompatible = 選択した作品に互換性がありません。
+    .match-type-mismatch = 自分と相手のマッチタイプは異なります。

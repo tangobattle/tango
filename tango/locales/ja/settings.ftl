@@ -4,6 +4,7 @@ settings = 設定
     .graphics = グラフィックス
     .audio = オーディオ
     .netplay = ネットプレー
+    .advanced = 詳細設定
     .about = Tangoについて
 
 settings-theme = テーマ
@@ -24,6 +25,8 @@ settings-ui-scale = UIスケール
 
 settings-language = 言語
 settings-nickname = ニックネーム
+settings-streamer-mode = 生放送プライバシー モード
+    .tooltip = このモードを有効にすると、セーブビューアに「カバー」タブが追加され、選択したセーブファイルに関する全ての情報が非表示になります。
 settings-debug-overlay = デバッグオーバーレイの表示
 settings-input-delay = 入力遅延
 settings-max-queue-length = 最大キューの長
