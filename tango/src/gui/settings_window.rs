@@ -166,7 +166,7 @@ fn show_general_tab(
                         .unwrap(),
                 );
                 ui.add(egui::TextEdit::singleline(&mut nickname).desired_width(100.0));
-                config.nickname = Some(nickname);
+                config.nickname = Some(nickname.chars().take(20).collect());
                 ui.end_row();
             }
 
