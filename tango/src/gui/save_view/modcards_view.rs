@@ -66,13 +66,15 @@ pub fn show_modcard4s<'a>(
         }
     });
 
+    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+    let spacing_y = ui.spacing().item_spacing.y;
     egui_extras::TableBuilder::new(ui)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(egui_extras::Size::remainder())
         .column(egui_extras::Size::exact(250.0))
         .striped(true)
         .body(|body| {
-            body.rows(41.0, 6, |i, mut row| {
+            body.rows(row_height * 2.0 + spacing_y, 6, |i, mut row| {
                 let modcard = modcard4s_view.modcard(i);
                 if let Some((modcard, info)) = modcard
                     .as_ref()
