@@ -6,11 +6,12 @@ use std::sync::Arc;
 pub const EXPECTED_FPS: f32 = 60.0;
 
 pub struct GameInfo {
-    pub family_and_variant: (String, u8),
+    pub game: &'static (dyn game::Game + Send + Sync),
     pub patch: Option<(String, semver::Version)>,
 }
 
 pub struct Session {
+    start_time: std::time::SystemTime,
     game_info: GameInfo,
     vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
     _audio_binding: audio::Binding,
@@ -177,11 +178,9 @@ impl Session {
             });
         }
         Ok(Session {
+            start_time: std::time::SystemTime::now(),
             game_info: GameInfo {
-                family_and_variant: {
-                    let (family, variant) = local_game.family_and_variant();
-                    (family.to_owned(), variant)
-                },
+                game: local_game,
                 patch: local_patch,
             },
             vbuf,
@@ -262,13 +261,8 @@ impl Session {
             });
         }
         Ok(Session {
-            game_info: GameInfo {
-                family_and_variant: {
-                    let (family, variant) = game.family_and_variant();
-                    (family.to_owned(), variant)
-                },
-                patch,
-            },
+            start_time: std::time::SystemTime::now(),
+            game_info: GameInfo { game, patch },
             vbuf,
             _audio_binding: audio_binding,
             thread,
@@ -372,13 +366,8 @@ impl Session {
         }
 
         Ok(Session {
-            game_info: GameInfo {
-                family_and_variant: {
-                    let (family, variant) = game.family_and_variant();
-                    (family.to_owned(), variant)
-                },
-                patch,
-            },
+            start_time: std::time::SystemTime::now(),
+            game_info: GameInfo { game, patch },
             vbuf,
             _audio_binding: audio_binding,
             thread,
@@ -457,6 +446,10 @@ impl Session {
 
     pub fn game_info(&self) -> &GameInfo {
         &self.game_info
+    }
+
+    pub fn start_time(&self) -> std::time::SystemTime {
+        self.start_time
     }
 }
 

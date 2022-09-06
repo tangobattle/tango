@@ -1,4 +1,4 @@
-use crate::{gui, input, session, video};
+use crate::{discord, gui, input, session, video};
 
 mod replay_controls_window;
 
@@ -105,6 +105,7 @@ pub fn show(
     last_mouse_motion_time: &Option<std::time::Instant>,
     show_escape_window: &mut Option<gui::escape_window::State>,
     state: &mut State,
+    discord_client: &mut discord::Client,
 ) {
     session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
@@ -117,6 +118,46 @@ pub fn show(
         } else {
             Some(gui::escape_window::State::new())
         };
+    }
+
+    let game_info = session.game_info();
+    match session.mode() {
+        session::Mode::SinglePlayer(_) => {
+            discord_client.set_current_activity(Some(discord::make_single_player_activity(
+                session.start_time(),
+                language,
+                Some(discord::make_game_info(
+                    game_info.game,
+                    game_info
+                        .patch
+                        .as_ref()
+                        .map(|(name, version)| (name.as_str(), version)),
+                    language,
+                )),
+            )));
+        }
+        session::Mode::PvP(pvp) => {
+            discord_client.set_current_activity(Some(discord::make_in_progress_activity(
+                pvp.match_
+                    .blocking_lock()
+                    .as_ref()
+                    .map(|match_| match_.link_code())
+                    .unwrap_or(""),
+                session.start_time(),
+                language,
+                Some(discord::make_game_info(
+                    game_info.game,
+                    game_info
+                        .patch
+                        .as_ref()
+                        .map(|(name, version)| (name.as_str(), version)),
+                    language,
+                )),
+            )));
+        }
+        session::Mode::Replayer => {
+            discord_client.set_current_activity(Some(discord::make_base_activity(None)));
+        }
     }
 
     match session.mode() {

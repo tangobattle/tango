@@ -16,6 +16,7 @@ struct LobbySelection {
 
 struct Lobby {
     attention_requested: bool,
+    link_code: String,
     sender: Option<net::Sender>,
     selection: Option<LobbySelection>,
     nickname: String,
@@ -499,6 +500,7 @@ async fn run_connection_task(
                         sender: Some(sender),
                         selection: None,
                         nickname,
+                        link_code,
                         match_type: (default_match_type, 0),
                         reveal_setup: false,
                         remote_rom: None,
@@ -573,7 +575,7 @@ async fn run_connection_task(
 
                     log::info!("ending lobby");
 
-                    let (mut sender, match_type, local_settings, mut remote_rom, remote_settings, remote_commitment, local_negotiated_state, selection) = {
+                    let (mut sender, match_type, local_settings, mut remote_rom, remote_settings, remote_commitment, local_negotiated_state, selection, link_code) = {
                         let mut lobby = lobby.lock().await;
                         let local_settings = lobby.make_local_settings();
                         let sender = if let Some(sender) = lobby.sender.take() {
@@ -581,7 +583,7 @@ async fn run_connection_task(
                         } else {
                             anyhow::bail!("no sender?");
                         };
-                        (sender, lobby.match_type, local_settings, lobby.remote_rom.clone(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take(), lobby.selection.take())
+                        (sender, lobby.match_type, local_settings, lobby.remote_rom.clone(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take(), lobby.selection.take(), lobby.link_code.clone())
                     };
 
                     let remote_rom = if let Some(remote_rom) = remote_rom.take() {
@@ -1128,7 +1130,9 @@ pub fn show(
                         }) = connection_task.as_ref()
                         {
                             match connection_state {
-                                ConnectionState::Starting => {
+                                ConnectionState::Starting
+                                | ConnectionState::Signaling
+                                | ConnectionState::Waiting => {
                                     ui.horizontal(|ui| {
                                         ui.with_layout(
                                             egui::Layout::right_to_left(egui::Align::Min),
@@ -1152,100 +1156,54 @@ pub fn show(
                                                         ),
                                                         |ui| {
                                                             ui.spinner();
-                                                            ui.label(
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                "play-connection-task.starting",
-                                                            )
-                                                            .unwrap(),
-                                                    );
+                                                            ui.label(match connection_state {
+                                                                ConnectionState::Starting => {
+                                                                    i18n::LOCALES
+                                                                        .lookup(
+                                                                            &config.language,
+                                                                            "play-connection-task.starting",
+                                                                        )
+                                                                        .unwrap()
+                                                                }
+                                                                ConnectionState::Signaling => {
+                                                                    i18n::LOCALES
+                                                                        .lookup(
+                                                                            &config.language,
+                                                                            "play-connection-task.signaling",
+                                                                        )
+                                                                        .unwrap()
+                                                                }
+                                                                ConnectionState::Waiting => {
+                                                                    i18n::LOCALES
+                                                                        .lookup(
+                                                                            &config.language,
+                                                                            "play-connection-task.waiting",
+                                                                        )
+                                                                        .unwrap()
+                                                                },
+                                                                _ => unreachable!(),
+                                                            });
                                                         },
                                                     );
                                                 });
                                             },
                                         );
                                     });
-                                }
-                                ConnectionState::Signaling => {
-                                    ui.horizontal(|ui| {
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Min),
-                                            |ui| {
-                                                if ui
-                                                    .button(format!(
-                                                        "❎ {}",
-                                                        i18n::LOCALES
-                                                            .lookup(&config.language, "play-cancel")
-                                                            .unwrap()
-                                                    ))
-                                                    .clicked()
-                                                {
-                                                    cancellation_token.cancel();
-                                                }
-
-                                                ui.horizontal_top(|ui| {
-                                                    ui.with_layout(
-                                                        egui::Layout::left_to_right(
-                                                            egui::Align::Min,
-                                                        ),
-                                                        |ui| {
-                                                            ui.set_width(ui.available_width());
-                                                            ui.spinner();
-                                                            ui.label(
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                "play-connection-task.signaling",
-                                                            )
-                                                            .unwrap(),
-                                                    );
-                                                        },
-                                                    );
-                                                });
-                                            },
-                                        );
-                                    });
-                                }
-                                ConnectionState::Waiting => {
-                                    ui.horizontal(|ui| {
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Min),
-                                            |ui| {
-                                                if ui
-                                                    .button(format!(
-                                                        "❎ {}",
-                                                        i18n::LOCALES
-                                                            .lookup(&config.language, "play-cancel")
-                                                            .unwrap()
-                                                    ))
-                                                    .clicked()
-                                                {
-                                                    cancellation_token.cancel();
-                                                }
-
-                                                ui.horizontal_top(|ui| {
-                                                    ui.with_layout(
-                                                        egui::Layout::left_to_right(
-                                                            egui::Align::Min,
-                                                        ),
-                                                        |ui| {
-                                                            ui.set_width(ui.available_width());
-                                                            ui.spinner();
-                                                            ui.label(
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                "play-connection-task.waiting",
-                                                            )
-                                                            .unwrap(),
-                                                    );
-                                                        },
-                                                    );
-                                                });
-                                            },
-                                        );
-                                    });
+                                    discord_client.set_current_activity(Some(
+                                        discord::make_looking_activity(
+                                            &state.link_code,
+                                            &config.language,
+                                            selection.as_ref().map(|selection| {
+                                                discord::make_game_info(
+                                                    selection.game,
+                                                    selection.patch
+                                                        .as_ref()
+                                                        .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
+                                                    &config.language
+                                                )
+                                            }),
+                                        )
+                                    ));
                                 }
                                 ConnectionState::InLobby(lobby) => {
                                     let mut lobby = lobby.blocking_lock();
@@ -1255,6 +1213,22 @@ pub fn show(
                                         ));
                                         lobby.attention_requested = true;
                                     }
+
+                                    discord_client.set_current_activity(Some(
+                                        discord::make_in_lobby_activity(
+                                            &lobby.link_code,
+                                            &config.language,
+                                            lobby.selection.as_ref().map(|selection| {
+                                                discord::make_game_info(
+                                                    selection.game,
+                                                    selection.patch
+                                                        .as_ref()
+                                                        .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
+                                                    &config.language
+                                                )
+                                            }),
+                                        ),
+                                    ));
 
                                     ui.add_enabled_ui(
                                         lobby.local_negotiated_state.is_none()
@@ -1273,6 +1247,9 @@ pub fn show(
                                     );
                                 }
                             }
+                        } else {
+                            discord_client
+                                .set_current_activity(Some(discord::make_base_activity(None)));
                         }
                     }
 

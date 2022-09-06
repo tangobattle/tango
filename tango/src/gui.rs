@@ -388,6 +388,7 @@ pub fn show(
             state
                 .session_view
                 .get_or_insert_with(|| session_view::State::new()),
+            &mut state.discord_client,
         );
     } else {
         state.session_view = None;

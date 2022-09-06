@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, patch};
+use crate::{game, i18n, patch};
 
 pub struct State {}
 

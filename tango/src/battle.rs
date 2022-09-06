@@ -130,6 +130,10 @@ impl Match {
         Ok(match_)
     }
 
+    pub fn link_code(&self) -> &str {
+        &self.link_code
+    }
+
     pub fn cancel(&self) {
         self.cancellation_token.cancel()
     }
