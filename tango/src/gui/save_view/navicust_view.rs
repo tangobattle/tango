@@ -38,15 +38,15 @@ fn navicust_part_colors(color: &rom::NavicustPartColor) -> (egui::Color32, egui:
         ),
         rom::NavicustPartColor::Orange => (
             egui::Color32::from_rgb(0xde, 0x7b, 0x00),
-            egui::Color32::from_rgb(0xde, 0x7b, 0x00),
+            egui::Color32::from_rgb(0xbd, 0x5a, 0x00),
         ),
         rom::NavicustPartColor::Purple => (
             egui::Color32::from_rgb(0x94, 0x00, 0xce),
-            egui::Color32::from_rgb(0x94, 0x00, 0xce),
+            egui::Color32::from_rgb(0x73, 0x00, 0xad),
         ),
         rom::NavicustPartColor::Gray => (
             egui::Color32::from_rgb(0x84, 0x84, 0x84),
-            egui::Color32::from_rgb(0x84, 0x84, 0x84),
+            egui::Color32::from_rgb(0x63, 0x63, 0x63),
         ),
     }
 }
