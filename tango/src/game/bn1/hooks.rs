@@ -56,6 +56,15 @@ impl game::Hooks for Hooks {
                 )
             },
             {
+                (
+                    self.offsets.rom.start_screen_play_music_call,
+                    Box::new(move |mut core| {
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                    }),
+                )
+            },
+            {
                 let munger = self.munger();
                 (
                     self.offsets.rom.start_screen_sram_unmask_ret,
@@ -765,6 +774,20 @@ impl game::Hooks for Hooks {
         };
 
         vec![
+            {
+                let replayer_state = replayer_state.clone();
+                (
+                    self.offsets.rom.battle_start_play_music_call,
+                    Box::new(move |mut core| {
+                        let replayer_state = replayer_state.lock_inner();
+                        if !replayer_state.disable_bgm() {
+                            return;
+                        }
+                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                    }),
+                )
+            },
             {
                 let replayer_state = replayer_state.clone();
                 (

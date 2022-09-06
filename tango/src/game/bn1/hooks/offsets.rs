@@ -35,6 +35,8 @@ pub(super) struct ROMOffsets {
     /// At this point, it is safe to do the equivalent of selecting the CONTINUE on the START menu.
     pub(super) start_screen_sram_unmask_ret: u32,
 
+    pub(super) start_screen_play_music_call: u32,
+
     /// This is immediately after game initialization is complete: that is, the internal state is set correctly.
     ///
     /// At this point, it is safe to jump into the link battle menu.
@@ -80,6 +82,8 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango ends its match here.
     pub(super) match_end_ret: u32,
+
+    pub(super) battle_start_play_music_call: u32,
 }
 
 #[rustfmt::skip]
@@ -106,6 +110,7 @@ pub static AREE_00: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry:              0x08018ca4,
         start_screen_sram_unmask_ret:               0x080104d2,
+        start_screen_play_music_call:               0x08010498,
         game_load_ret:                              0x0800407e,
         main_read_joyflags:                         0x08000356,
         init_sio_call:                              0x0801ccee,
@@ -122,6 +127,7 @@ pub static AREE_00: Offsets = Offsets {
         link_is_p2_ret:                             0x08002c58,
         comm_menu_init_ret:                         0x0801ce94,
         match_end_ret:                              0x08005cd0,
+        battle_start_play_music_call:               0x080059ec,
     },
 };
 
@@ -131,6 +137,7 @@ pub static AREJ_00: Offsets = Offsets {
     rom: ROMOffsets {
         start_screen_jump_table_entry:              0x08018c18,
         start_screen_sram_unmask_ret:               0x0801048e,
+        start_screen_play_music_call:               0x08010464,
         game_load_ret:                              0x0800406e,
         main_read_joyflags:                         0x08000356,
         init_sio_call:                              0x0801cbec,
@@ -147,5 +154,6 @@ pub static AREJ_00: Offsets = Offsets {
         link_is_p2_ret:                             0x08002c48,
         comm_menu_init_ret:                         0x0801cd90,
         match_end_ret:                              0x08005cc0,
+        battle_start_play_music_call:               0x080059dc,
     },
 };
