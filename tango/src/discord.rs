@@ -158,6 +158,10 @@ impl Client {
     }
 
     pub fn set_current_activity(&self, activity: Option<discord_presence::models::Activity>) {
+        if activity == *self.current_activity.lock() {
+            return;
+        }
+
         let mut drpc = self.drpc.clone();
         self.handle.spawn_blocking({
             let mut activity = activity.clone();
