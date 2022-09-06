@@ -22,7 +22,6 @@ pub fn show(
         .id(egui::Id::new("memory-viewer"))
         .open(&mut open)
         .show(ctx, |ui| {
-            const FONT_WIDTH: f32 = 10.0;
             let state = state.as_mut().unwrap();
 
             let mut jumping = false;
@@ -57,49 +56,83 @@ pub fn show(
             let thread_handle = session.thread_handle();
             let mut audio_guard = thread_handle.lock_audio();
 
-            const ROW_HEIGHT: f32 = 18.0;
+            let row_height = ui.text_style_height(&egui::TextStyle::Body);
             let mut sa = egui::ScrollArea::vertical().auto_shrink([true, false]);
             if jumping {
                 if let Ok(jump_to) = u32::from_str_radix(&state.jump_to, 16) {
                     sa = sa.vertical_scroll_offset(
-                        (ROW_HEIGHT + ui.spacing().item_spacing.y) * (jump_to / 0x10) as f32,
+                        (row_height + ui.spacing().item_spacing.y) * (jump_to / 0x10) as f32,
                     );
                 }
             }
 
-            sa.show_rows(ui, ROW_HEIGHT, 0x0fffffff / 0x10, |ui, range| {
-                ui.vertical(|ui| {
-                    for i in range {
-                        ui.horizontal_top(|ui| {
-                            ui.set_height(ROW_HEIGHT);
-                            let offset = i * 16;
-                            ui.label(
-                                egui::RichText::new(format!("{:08x}", offset))
-                                    .monospace()
-                                    .weak(),
-                            );
-                            let bs = audio_guard
-                                .core_mut()
-                                .raw_read_range::<16>(offset as u32, -1);
-                            ui.add(
-                                egui::TextEdit::singleline(
-                                    &mut bs
-                                        .iter()
-                                        .map(|b| format!("{:02x}", b))
-                                        .collect::<Vec<_>>()
-                                        .join(" "),
-                                )
-                                .frame(false)
-                                .font(egui::TextStyle::Monospace),
-                            );
-                            ui.monospace(
-                                bs.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
-                                    .iter()
-                                    .collect::<String>(),
-                            );
-                        });
-                    }
-                });
+            const FONT_WIDTH: f32 = 8.0;
+            sa.show_rows(ui, row_height, 0x0fffffff / 0x10, |ui, range| {
+                egui_extras::StripBuilder::new(ui)
+                    .sizes(egui_extras::Size::exact(row_height), range.len())
+                    .vertical(|mut outer_strip| {
+                        for i in range {
+                            outer_strip.cell(|ui| {
+                                let rect = ui
+                                    .available_rect_before_wrap()
+                                    .expand(ui.spacing().item_spacing.y);
+                                if i % 2 == 0 {
+                                    ui.painter().rect_filled(
+                                        rect,
+                                        0.0,
+                                        ui.visuals().faint_bg_color,
+                                    );
+                                }
+
+                                egui_extras::StripBuilder::new(ui)
+                                    .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                                    .size(egui_extras::Size::exact(8.0 * FONT_WIDTH))
+                                    .size(egui_extras::Size::exact(48.0 * FONT_WIDTH))
+                                    .size(egui_extras::Size::remainder())
+                                    .horizontal(|mut strip| {
+                                        let offset = i * 16;
+                                        strip.cell(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!("{:08x}", offset))
+                                                    .monospace()
+                                                    .weak(),
+                                            );
+                                        });
+                                        let bs = audio_guard
+                                            .core_mut()
+                                            .raw_read_range::<16>(offset as u32, -1);
+                                        strip.cell(|ui| {
+                                            ui.add(
+                                                egui::TextEdit::singleline(
+                                                    &mut bs
+                                                        .iter()
+                                                        .map(|b| format!("{:02x}", b))
+                                                        .collect::<Vec<_>>()
+                                                        .join(" "),
+                                                )
+                                                .desired_width(ui.available_width())
+                                                .frame(false)
+                                                .font(egui::TextStyle::Monospace),
+                                            );
+                                        });
+
+                                        strip.cell(|ui| {
+                                            ui.monospace(
+                                                bs.map(|b| {
+                                                    if b >= 32 && b < 127 {
+                                                        b as char
+                                                    } else {
+                                                        '.'
+                                                    }
+                                                })
+                                                .iter()
+                                                .collect::<String>(),
+                                            );
+                                        });
+                                    });
+                            });
+                        }
+                    });
             });
         });
     if !open {
