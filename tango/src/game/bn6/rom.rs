@@ -150,8 +150,8 @@ impl Assets {
                                 .map(|chip| chip.name.clone())
                                 .unwrap_or("???".to_string())
                         } else {
-                            let i = i % 0x100;
                             let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
 
                             if let Ok(parts) = rom::text::parse_entry(
                                 &mapper.get(byteorder::LittleEndian::read_u32(

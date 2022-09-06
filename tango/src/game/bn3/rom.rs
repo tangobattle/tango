@@ -120,8 +120,8 @@ impl Assets {
                     let flags = buf[0x13];
                     rom::Chip {
                         name: {
-                            let i = i % 0x100;
                             let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
 
                             if let Ok(parts) = rom::text::parse_entry(
                                 &mapper.get(byteorder::LittleEndian::read_u32(
