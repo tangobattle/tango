@@ -9,6 +9,7 @@ pub struct Settings {
     pub ffmpeg_video_flags: String,
     pub ffmpeg_mux_flags: String,
     pub video_filter: String,
+    pub disable_bgm: bool,
 }
 
 impl Settings {
@@ -19,13 +20,8 @@ impl Settings {
             ffmpeg_video_flags: format!("-c:v libx264 -vf scale=iw*{}:ih*{}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2", factor, factor),
             ffmpeg_mux_flags: "-movflags +faststart".to_string(),
             video_filter: "".to_string(),
+            disable_bgm: false,
         }
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self::default_with_scale(5)
     }
 }
 
@@ -70,6 +66,9 @@ pub async fn export(
 
     let replayer_state =
         replayer::State::new(replay.local_player_index, input_pairs, 0, Box::new(|| {}));
+    replayer_state
+        .lock_inner()
+        .set_disable_bgm(settings.disable_bgm);
     let game = game::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8)
         .ok_or(anyhow::anyhow!("game not found"))?;
 

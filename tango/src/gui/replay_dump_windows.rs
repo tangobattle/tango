@@ -29,6 +29,7 @@ impl State {
                 replay,
                 path,
                 scale: 5,
+                disable_bgm: false,
                 progress: std::sync::Arc::new(parking_lot::Mutex::new((0, 0))),
                 result: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             },
@@ -43,6 +44,7 @@ pub struct ChildState {
     replay: replay::Replay,
     path: std::path::PathBuf,
     scale: usize,
+    disable_bgm: bool,
     progress: std::sync::Arc<parking_lot::Mutex<(usize, usize)>>,
     result: std::sync::Arc<parking_lot::Mutex<Option<anyhow::Result<()>>>>,
 }
@@ -80,64 +82,69 @@ pub fn show(
                         .show(ui, |ui| {
                             ui.strong(
                                 i18n::LOCALES
-                                    .lookup(language, "replays-export.path")
+                                    .lookup(language, "replays-export-path")
                                     .unwrap(),
                             );
                             ui.horizontal(|ui| {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui
-                                            .button(
-                                                i18n::LOCALES
-                                                    .lookup(language, "replays-export.change-path")
-                                                    .unwrap(),
-                                            )
-                                            .clicked()
-                                        {
-                                            if let Some(path) = rfd::FileDialog::new()
-                                                .set_directory(
-                                                    state
-                                                        .output_path
-                                                        .parent()
-                                                        .unwrap_or(&std::path::PathBuf::new()),
-                                                )
-                                                .set_file_name(
-                                                    state
-                                                        .output_path
-                                                        .file_name()
-                                                        .and_then(|filename| filename.to_str())
-                                                        .unwrap_or("replay.mp4"),
-                                                )
-                                                .add_filter("MP4", &["mp4"])
-                                                .save_file()
-                                            {
-                                                state.output_path = path;
-                                            }
-                                        }
-
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut format!(
-                                                "{}",
-                                                state.output_path.display()
-                                            ))
-                                            .desired_width(ui.available_width())
-                                            .interactive(false),
-                                        );
-                                    },
+                                ui.add(
+                                    egui::TextEdit::singleline(&mut format!(
+                                        "{}",
+                                        state.output_path.display()
+                                    ))
+                                    .desired_width(300.0)
+                                    .interactive(false),
                                 );
+
+                                if ui
+                                    .button(
+                                        i18n::LOCALES
+                                            .lookup(language, "replays-export-path.change")
+                                            .unwrap(),
+                                    )
+                                    .clicked()
+                                {
+                                    if let Some(path) = rfd::FileDialog::new()
+                                        .set_directory(
+                                            state
+                                                .output_path
+                                                .parent()
+                                                .unwrap_or(&std::path::PathBuf::new()),
+                                        )
+                                        .set_file_name(
+                                            state
+                                                .output_path
+                                                .file_name()
+                                                .and_then(|filename| filename.to_str())
+                                                .unwrap_or("replay.mp4"),
+                                        )
+                                        .add_filter("MP4", &["mp4"])
+                                        .save_file()
+                                    {
+                                        state.output_path = path;
+                                    }
+                                }
                             });
                             ui.end_row();
 
                             ui.strong(
                                 i18n::LOCALES
-                                    .lookup(language, "replays-export.scale-factor")
+                                    .lookup(language, "replays-export-scale-factor")
                                     .unwrap(),
                             );
                             ui.add(
                                 egui::DragValue::new(&mut state.scale)
                                     .speed(1)
                                     .clamp_range(1..=10),
+                            );
+                            ui.end_row();
+
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(language, "replays-export-disable-bgm")
+                                    .unwrap(),
+                            );
+                            ui.add(
+                                egui::Checkbox::new(&mut state.disable_bgm, "")
                             );
                             ui.end_row();
                         });
@@ -149,7 +156,7 @@ pub fn show(
                             ui.add(
                                 egui::widgets::ProgressBar::new(1.0).text(
                                     i18n::LOCALES
-                                        .lookup(language, "replays-export.success")
+                                        .lookup(language, "replays-export-success")
                                         .unwrap(),
                                 ),
                             );
@@ -157,7 +164,7 @@ pub fn show(
                                 .button(format!(
                                     "{}",
                                     i18n::LOCALES
-                                        .lookup(language, "replays-export.confirm-success")
+                                        .lookup(language, "replays-export-confirm-success")
                                         .unwrap()
                                 ))
                                 .clicked()
@@ -170,7 +177,7 @@ pub fn show(
                                 i18n::LOCALES
                                     .lookup_with_args(
                                         language,
-                                        "replays-export.error",
+                                        "replays-export-error",
                                         &std::collections::HashMap::from([(
                                             "error",
                                             format!("{:?}", e).into(),
@@ -182,7 +189,7 @@ pub fn show(
                                 .button(format!(
                                     "{}",
                                     i18n::LOCALES
-                                        .lookup(language, "replays-export.confirm-error")
+                                        .lookup(language, "replays-export-confirm-error")
                                         .unwrap()
                                 ))
                                 .clicked()
@@ -207,7 +214,7 @@ pub fn show(
                         .button(format!(
                             "❎ {}",
                             i18n::LOCALES
-                                .lookup(language, "replays-export.cancel")
+                                .lookup(language, "replays-export-cancel")
                                 .unwrap(),
                         ))
                         .clicked()
@@ -228,7 +235,8 @@ pub fn show(
                         let path = state.output_path.clone();
                         let progress = state.progress.clone();
                         let result = state.result.clone();
-                        let settings = replay::export::Settings::default_with_scale(state.scale);
+                        let mut settings = replay::export::Settings::default_with_scale(state.scale);
+                        settings.disable_bgm = state.disable_bgm;
                         let cancellation_token = tokio_util::sync::CancellationToken::new();
                         state.cancellation_token = Some(cancellation_token.clone());
                         handle.spawn(async move {

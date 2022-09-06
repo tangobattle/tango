@@ -36,6 +36,10 @@ impl InnerState {
         self.disable_bgm
     }
 
+    pub fn set_disable_bgm(&mut self, disable_bgm: bool) {
+        self.disable_bgm = disable_bgm;
+    }
+
     pub fn commit_tick(&self) -> u32 {
         self.commit_tick
     }
