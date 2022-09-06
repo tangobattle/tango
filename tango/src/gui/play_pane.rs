@@ -1096,6 +1096,434 @@ fn show_lobby_table(
         });
 }
 
+fn show_bottom_pane(
+    ui: &mut egui::Ui,
+    handle: tokio::runtime::Handle,
+    window: &winit::window::Window,
+    clipboard: &mut arboard::Clipboard,
+    config: &mut config::Config,
+    config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+    roms_scanner: rom::Scanner,
+    patches_scanner: patch::Scanner,
+    audio_binder: audio::LateBinder,
+    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
+    selection: &mut Option<gui::Selection>,
+    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    discord_client: &mut discord::Client,
+    connection_task: &mut Option<ConnectionTask>,
+    connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
+    link_code: &mut String,
+    show_save_select: &mut Option<gui::save_select_view::State>,
+) {
+    let roms = roms_scanner.read();
+    let patches = patches_scanner.read();
+
+    egui::TopBottomPanel::bottom("play-bottom-pane")
+    .frame(egui::Frame::none()
+        .fill(ui.style().visuals.window_fill())
+        .inner_margin(egui::style::Margin { left: 0.0, right: 0.0, bottom: 0.0, top: 8.0 })
+    )
+    .show_inside(ui, |ui| {
+        ui.vertical(|ui| {
+            {
+                if let Some(ConnectionTask::InProgress {
+                    state: connection_state,
+                    cancellation_token,
+                }) = connection_task.as_ref()
+                {
+                    match connection_state {
+                        ConnectionState::Starting
+                        | ConnectionState::Signaling
+                        | ConnectionState::Waiting => {
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Min),
+                                    |ui| {
+                                        if ui
+                                            .button(format!(
+                                                "❎ {}",
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "play-cancel")
+                                                    .unwrap()
+                                            ))
+                                            .clicked()
+                                        {
+                                            cancellation_token.cancel();
+                                        }
+
+                                        ui.horizontal_top(|ui| {
+                                            ui.with_layout(
+                                                egui::Layout::left_to_right(
+                                                    egui::Align::Min,
+                                                ),
+                                                |ui| {
+                                                    ui.spinner();
+                                                    ui.label(match connection_state {
+                                                        ConnectionState::Starting => {
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &config.language,
+                                                                    "play-connection-task.starting",
+                                                                )
+                                                                .unwrap()
+                                                        }
+                                                        ConnectionState::Signaling => {
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &config.language,
+                                                                    "play-connection-task.signaling",
+                                                                )
+                                                                .unwrap()
+                                                        }
+                                                        ConnectionState::Waiting => {
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &config.language,
+                                                                    "play-connection-task.waiting",
+                                                                )
+                                                                .unwrap()
+                                                        },
+                                                        _ => unreachable!(),
+                                                    });
+                                                },
+                                            );
+                                        });
+                                    },
+                                );
+                            });
+                            discord_client.set_current_activity(Some(
+                                discord::make_looking_activity(
+                                    link_code,
+                                    &config.language,
+                                    selection.as_ref().map(|selection| {
+                                        discord::make_game_info(
+                                            selection.game,
+                                            selection.patch
+                                                .as_ref()
+                                                .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
+                                            &config.language
+                                        )
+                                    }),
+                                )
+                            ));
+                        }
+                        ConnectionState::InLobby(lobby) => {
+                            let mut lobby = lobby.blocking_lock();
+                            if !lobby.attention_requested {
+                                window.request_user_attention(Some(
+                                    winit::window::UserAttentionType::Critical,
+                                ));
+                                lobby.attention_requested = true;
+                            }
+
+                            discord_client.set_current_activity(Some(
+                                discord::make_in_lobby_activity(
+                                    &lobby.link_code,
+                                    &config.language,
+                                    lobby.selection.as_ref().map(|selection| {
+                                        discord::make_game_info(
+                                            selection.game,
+                                            selection.patch
+                                                .as_ref()
+                                                .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
+                                            &config.language
+                                        )
+                                    }),
+                                ),
+                            ));
+
+                            ui.add_enabled_ui(
+                                lobby.local_negotiated_state.is_none()
+                                    && lobby.sender.is_some(),
+                                |ui| {
+                                    show_lobby_table(
+                                        ui,
+                                        handle.clone(),
+                                        &cancellation_token,
+                                        config,
+                                        &mut lobby,
+                                        &roms,
+                                        &patches,
+                                    );
+                                },
+                            );
+                        }
+                    }
+                } else {
+                    discord_client
+                        .set_current_activity(Some(discord::make_base_activity(None)));
+                }
+            }
+
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let (lobby, cancellation_token) =
+                        if let Some(connection_task) = connection_task.as_ref() {
+                            match connection_task {
+                                ConnectionTask::InProgress {
+                                    state: task_state,
+                                    cancellation_token,
+                                } => (
+                                    if let ConnectionState::InLobby(lobby) = task_state {
+                                        Some(lobby.clone())
+                                    } else {
+                                        None
+                                    },
+                                    Some(cancellation_token.clone()),
+                                ),
+                                ConnectionTask::Failed(_) => (None, None),
+                            }
+                        } else {
+                            (None, None)
+                        };
+
+                    let error_window_open = {
+                        if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref()
+                        {
+                            let mut open = true;
+                            egui::Window::new("")
+                                .id(egui::Id::new("connection-failed-window"))
+                                .open(&mut open)
+                                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                                .show(ui.ctx(), |ui| {
+                                    // TODO: Localization
+                                    ui.label(format!("{:?}", err));
+                                });
+                            open
+                        } else {
+                            false
+                        }
+                    };
+
+                    if !error_window_open {
+                        if let Some(ConnectionTask::Failed(_)) = connection_task.as_ref() {
+                            *connection_task = None;
+                        }
+                    }
+
+                    let mut submitted = false;
+                    if cancellation_token.is_none() {
+                        if ui
+                            .add_enabled(
+                                !error_window_open
+                                    && (!link_code.is_empty() || selection.is_some()),
+                                egui::Button::new(egui::RichText::new(
+                                    if link_code.is_empty() {
+                                        format!(
+                                            "▶️ {}",
+                                            i18n::LOCALES
+                                                .lookup(&config.language, "play-play")
+                                                .unwrap()
+                                        )
+                                    } else {
+                                        format!(
+                                            "🥊 {}",
+                                            i18n::LOCALES
+                                                .lookup(&config.language, "play-fight")
+                                                .unwrap()
+                                        )
+                                    },
+                                )),
+                            )
+                            .clicked()
+                        {
+                            submitted = true;
+                        }
+
+                        if ui
+                            .add_enabled(
+                                !error_window_open,
+                                egui::Button::new(egui::RichText::new("🎲")),
+                            )
+                            .on_hover_text(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-random")
+                                    .unwrap(),
+                            )
+                            .clicked()
+                        {
+                            *link_code = randomcode::generate(&config.language);
+                            let _ = clipboard.set_text(link_code.clone());
+                        }
+                    }
+
+                    if let Some(lobby) = lobby {
+                        let mut lobby = lobby.blocking_lock();
+                        let mut ready = lobby.local_negotiated_state.is_some()
+                            || lobby.sender.is_none();
+                        let was_ready = ready;
+                        ui.add_enabled(
+                            selection.is_some()
+                                && are_settings_compatible(
+                                    &lobby.make_local_settings(),
+                                    &lobby.remote_settings,
+                                    &roms,
+                                    &patches,
+                                )
+                                && lobby.sender.is_some(),
+                            egui::Checkbox::new(
+                                &mut ready,
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-ready")
+                                    .unwrap(),
+                            ),
+                        );
+                        if error_window_open {
+                            ready = was_ready;
+                        }
+                        if lobby.sender.is_some() {
+                            handle.block_on(async {
+                                if !was_ready && ready {
+                                    *show_save_select = None;
+                                    let save_data = lobby
+                                        .selection
+                                        .as_ref()
+                                        .map(|selection| selection.save.to_vec());
+                                    if let Some(save_data) = save_data {
+                                        let _ = lobby.commit(&save_data).await;
+                                    }
+                                } else if was_ready && !ready {
+                                    let _ = lobby.uncommit().await;
+                                }
+                            });
+                        }
+                    }
+
+                    let input_resp = ui.add_enabled(
+                        cancellation_token.is_none() && !error_window_open,
+                        egui::TextEdit::singleline(link_code)
+                            .hint_text(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-link-code")
+                                    .unwrap(),
+                            )
+                            .desired_width(f32::INFINITY),
+                    );
+                    *link_code = link_code
+                        .to_lowercase()
+                        .chars()
+                        .filter(|c| {
+                            "abcdefghijklmnopqrstuvwxyz0123456789-"
+                                .chars()
+                                .any(|c2| c2 == *c)
+                        })
+                        .take(40)
+                        .collect::<String>()
+                        .trim_start_matches("-")
+                        .to_string();
+
+                    if let Some(last) = link_code.chars().last() {
+                        if last == '-' {
+                            *link_code = link_code
+                                .chars()
+                                .rev()
+                                .skip_while(|c| *c == '-')
+                                .collect::<Vec<_>>()
+                                .into_iter()
+                                .rev()
+                                .collect::<String>()
+                                + "-";
+                        }
+                    }
+
+                    if input_resp.lost_focus()
+                        && ui.ctx().input().key_pressed(egui::Key::Enter)
+                    {
+                        submitted = true;
+                    }
+
+                    if let Some(join_secret) = discord_client.take_current_join_secret() {
+                        *link_code = join_secret.to_string();
+                        submitted = true;
+                    }
+
+                    if submitted {
+                        let audio_binder = audio_binder.clone();
+                        let egui_ctx = ui.ctx().clone();
+                        let session = session.clone();
+                        let emu_tps_counter = emu_tps_counter.clone();
+
+                        if !link_code.is_empty() {
+                            let cancellation_token =
+                                tokio_util::sync::CancellationToken::new();
+                            *connection_task = Some(ConnectionTask::InProgress {
+                                state: ConnectionState::Starting,
+                                cancellation_token: cancellation_token.clone(),
+                            });
+
+                            handle.spawn({
+                                let matchmaking_endpoint =
+                                    if !config.matchmaking_endpoint.is_empty() {
+                                        config.matchmaking_endpoint.clone()
+                                    } else {
+                                        config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+                                    };
+                                let link_code = link_code.to_owned();
+                                let nickname = config
+                                    .nickname
+                                    .clone()
+                                    .unwrap_or_else(|| "".to_string());
+                                let patches_path = config.patches_path();
+                                let replays_path = config.replays_path();
+                                let config_arc = config_arc.clone();
+                                let handle = handle.clone();
+                                let connection_task_arc = connection_task_arc.clone();
+                                let roms_scanner = roms_scanner.clone();
+                                let patches_scanner = patches_scanner.clone();
+                                async move {
+                                    run_connection_task(
+                                        config_arc,
+                                        handle,
+                                        egui_ctx.clone(),
+                                        audio_binder,
+                                        emu_tps_counter,
+                                        session,
+                                        roms_scanner,
+                                        patches_scanner,
+                                        matchmaking_endpoint,
+                                        link_code,
+                                        nickname,
+                                        patches_path,
+                                        replays_path,
+                                        connection_task_arc,
+                                        cancellation_token,
+                                    )
+                                    .await;
+                                    egui_ctx.request_repaint();
+                                }
+                            });
+                        } else if let Some(selection) = selection.as_ref() {
+                            let save_path = selection.save.path.clone();
+                            let game = selection.game;
+                            let rom = selection.rom.clone();
+                            let patch = selection
+                                .patch
+                                .as_ref()
+                                .map(|(name, version, _)| (name.clone(), version.clone()));
+
+                            // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
+                            handle.spawn_blocking(move || {
+                                *session.lock() = Some(
+                                    session::Session::new_singleplayer(
+                                        audio_binder,
+                                        game,
+                                        patch,
+                                        &rom,
+                                        &save_path,
+                                        emu_tps_counter,
+                                    )
+                                    .unwrap(),
+                                ); // TODO: Don't unwrap maybe
+                                egui_ctx.request_repaint();
+                            });
+                        }
+                    }
+                });
+            });
+        });
+    });
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     handle: tokio::runtime::Handle,
@@ -1115,420 +1543,32 @@ pub fn show(
     state: &mut State,
     discord_client: &mut discord::Client,
 ) {
+    let connection_task_arc = state.connection_task.clone();
     let mut connection_task = state.connection_task.blocking_lock();
 
-    let roms = roms_scanner.read();
-    let patches = patches_scanner.read();
-
     if state.show_save_select.is_none() {
-        egui::TopBottomPanel::bottom("play-bottom-pane")
-                .frame(egui::Frame::none()
-                    .fill(ui.style().visuals.window_fill())
-                    .inner_margin(egui::style::Margin { left: 0.0, right: 0.0, bottom: 0.0, top: 8.0 })
-                )
-                .show_inside(ui, |ui| {
-                    ui.vertical(|ui| {
-                        {
-                            if let Some(ConnectionTask::InProgress {
-                                state: connection_state,
-                                cancellation_token,
-                            }) = connection_task.as_ref()
-                            {
-                                match connection_state {
-                                    ConnectionState::Starting
-                                    | ConnectionState::Signaling
-                                    | ConnectionState::Waiting => {
-                                        ui.horizontal(|ui| {
-                                            ui.with_layout(
-                                                egui::Layout::right_to_left(egui::Align::Min),
-                                                |ui| {
-                                                    if ui
-                                                        .button(format!(
-                                                            "❎ {}",
-                                                            i18n::LOCALES
-                                                                .lookup(&config.language, "play-cancel")
-                                                                .unwrap()
-                                                        ))
-                                                        .clicked()
-                                                    {
-                                                        cancellation_token.cancel();
-                                                    }
-
-                                                    ui.horizontal_top(|ui| {
-                                                        ui.with_layout(
-                                                            egui::Layout::left_to_right(
-                                                                egui::Align::Min,
-                                                            ),
-                                                            |ui| {
-                                                                ui.spinner();
-                                                                ui.label(match connection_state {
-                                                                    ConnectionState::Starting => {
-                                                                        i18n::LOCALES
-                                                                            .lookup(
-                                                                                &config.language,
-                                                                                "play-connection-task.starting",
-                                                                            )
-                                                                            .unwrap()
-                                                                    }
-                                                                    ConnectionState::Signaling => {
-                                                                        i18n::LOCALES
-                                                                            .lookup(
-                                                                                &config.language,
-                                                                                "play-connection-task.signaling",
-                                                                            )
-                                                                            .unwrap()
-                                                                    }
-                                                                    ConnectionState::Waiting => {
-                                                                        i18n::LOCALES
-                                                                            .lookup(
-                                                                                &config.language,
-                                                                                "play-connection-task.waiting",
-                                                                            )
-                                                                            .unwrap()
-                                                                    },
-                                                                    _ => unreachable!(),
-                                                                });
-                                                            },
-                                                        );
-                                                    });
-                                                },
-                                            );
-                                        });
-                                        discord_client.set_current_activity(Some(
-                                            discord::make_looking_activity(
-                                                &state.link_code,
-                                                &config.language,
-                                                selection.as_ref().map(|selection| {
-                                                    discord::make_game_info(
-                                                        selection.game,
-                                                        selection.patch
-                                                            .as_ref()
-                                                            .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
-                                                        &config.language
-                                                    )
-                                                }),
-                                            )
-                                        ));
-                                    }
-                                    ConnectionState::InLobby(lobby) => {
-                                        let mut lobby = lobby.blocking_lock();
-                                        if !lobby.attention_requested {
-                                            window.request_user_attention(Some(
-                                                winit::window::UserAttentionType::Critical,
-                                            ));
-                                            lobby.attention_requested = true;
-                                        }
-
-                                        discord_client.set_current_activity(Some(
-                                            discord::make_in_lobby_activity(
-                                                &lobby.link_code,
-                                                &config.language,
-                                                lobby.selection.as_ref().map(|selection| {
-                                                    discord::make_game_info(
-                                                        selection.game,
-                                                        selection.patch
-                                                            .as_ref()
-                                                            .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
-                                                        &config.language
-                                                    )
-                                                }),
-                                            ),
-                                        ));
-
-                                        ui.add_enabled_ui(
-                                            lobby.local_negotiated_state.is_none()
-                                                && lobby.sender.is_some(),
-                                            |ui| {
-                                                show_lobby_table(
-                                                    ui,
-                                                    handle.clone(),
-                                                    &cancellation_token,
-                                                    config,
-                                                    &mut lobby,
-                                                    &roms,
-                                                    &patches,
-                                                );
-                                            },
-                                        );
-                                    }
-                                }
-                            } else {
-                                discord_client
-                                    .set_current_activity(Some(discord::make_base_activity(None)));
-                            }
-                        }
-
-                        ui.horizontal(|ui| {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                let (lobby, cancellation_token) =
-                                    if let Some(connection_task) = connection_task.as_ref() {
-                                        match connection_task {
-                                            ConnectionTask::InProgress {
-                                                state: task_state,
-                                                cancellation_token,
-                                            } => (
-                                                if let ConnectionState::InLobby(lobby) = task_state {
-                                                    Some(lobby.clone())
-                                                } else {
-                                                    None
-                                                },
-                                                Some(cancellation_token.clone()),
-                                            ),
-                                            ConnectionTask::Failed(_) => (None, None),
-                                        }
-                                    } else {
-                                        (None, None)
-                                    };
-
-                                let error_window_open = {
-                                    if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref()
-                                    {
-                                        let mut open = true;
-                                        egui::Window::new("")
-                                            .id(egui::Id::new("connection-failed-window"))
-                                            .open(&mut open)
-                                            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                                            .show(ui.ctx(), |ui| {
-                                                // TODO: Localization
-                                                ui.label(format!("{:?}", err));
-                                            });
-                                        open
-                                    } else {
-                                        false
-                                    }
-                                };
-
-                                if !error_window_open {
-                                    if let Some(ConnectionTask::Failed(_)) = connection_task.as_ref() {
-                                        *connection_task = None;
-                                    }
-                                }
-
-                                let mut submitted = false;
-                                if cancellation_token.is_none() {
-                                    if ui
-                                        .add_enabled(
-                                            !error_window_open
-                                                && (!state.link_code.is_empty() || selection.is_some()),
-                                            egui::Button::new(egui::RichText::new(
-                                                if state.link_code.is_empty() {
-                                                    format!(
-                                                        "▶️ {}",
-                                                        i18n::LOCALES
-                                                            .lookup(&config.language, "play-play")
-                                                            .unwrap()
-                                                    )
-                                                } else {
-                                                    format!(
-                                                        "🥊 {}",
-                                                        i18n::LOCALES
-                                                            .lookup(&config.language, "play-fight")
-                                                            .unwrap()
-                                                    )
-                                                },
-                                            )),
-                                        )
-                                        .clicked()
-                                    {
-                                        submitted = true;
-                                    }
-
-                                    if ui
-                                        .add_enabled(
-                                            !error_window_open,
-                                            egui::Button::new(egui::RichText::new("🎲")),
-                                        )
-                                        .on_hover_text(
-                                            i18n::LOCALES
-                                                .lookup(&config.language, "play-random")
-                                                .unwrap(),
-                                        )
-                                        .clicked()
-                                    {
-                                        state.link_code = randomcode::generate(&config.language);
-                                        let _ = clipboard.set_text(state.link_code.clone());
-                                    }
-                                }
-
-                                if let Some(lobby) = lobby {
-                                    let mut lobby = lobby.blocking_lock();
-                                    let mut ready = lobby.local_negotiated_state.is_some()
-                                        || lobby.sender.is_none();
-                                    let was_ready = ready;
-                                    ui.add_enabled(
-                                        selection.is_some()
-                                            && are_settings_compatible(
-                                                &lobby.make_local_settings(),
-                                                &lobby.remote_settings,
-                                                &roms,
-                                                &patches,
-                                            )
-                                            && lobby.sender.is_some(),
-                                        egui::Checkbox::new(
-                                            &mut ready,
-                                            i18n::LOCALES
-                                                .lookup(&config.language, "play-ready")
-                                                .unwrap(),
-                                        ),
-                                    );
-                                    if error_window_open {
-                                        ready = was_ready;
-                                    }
-                                    if lobby.sender.is_some() {
-                                        handle.block_on(async {
-                                            if !was_ready && ready {
-                                                state.show_save_select = None;
-                                                let save_data = lobby
-                                                    .selection
-                                                    .as_ref()
-                                                    .map(|selection| selection.save.to_vec());
-                                                if let Some(save_data) = save_data {
-                                                    let _ = lobby.commit(&save_data).await;
-                                                }
-                                            } else if was_ready && !ready {
-                                                let _ = lobby.uncommit().await;
-                                            }
-                                        });
-                                    }
-                                }
-
-                                let input_resp = ui.add_enabled(
-                                    cancellation_token.is_none() && !error_window_open,
-                                    egui::TextEdit::singleline(&mut state.link_code)
-                                        .hint_text(
-                                            i18n::LOCALES
-                                                .lookup(&config.language, "play-link-code")
-                                                .unwrap(),
-                                        )
-                                        .desired_width(f32::INFINITY),
-                                );
-                                state.link_code = state
-                                    .link_code
-                                    .to_lowercase()
-                                    .chars()
-                                    .filter(|c| {
-                                        "abcdefghijklmnopqrstuvwxyz0123456789-"
-                                            .chars()
-                                            .any(|c2| c2 == *c)
-                                    })
-                                    .take(40)
-                                    .collect::<String>()
-                                    .trim_start_matches("-")
-                                    .to_string();
-
-                                if let Some(last) = state.link_code.chars().last() {
-                                    if last == '-' {
-                                        state.link_code = state
-                                            .link_code
-                                            .chars()
-                                            .rev()
-                                            .skip_while(|c| *c == '-')
-                                            .collect::<Vec<_>>()
-                                            .into_iter()
-                                            .rev()
-                                            .collect::<String>()
-                                            + "-";
-                                    }
-                                }
-
-                                if input_resp.lost_focus()
-                                    && ui.ctx().input().key_pressed(egui::Key::Enter)
-                                {
-                                    submitted = true;
-                                }
-
-                                if let Some(link_code) = discord_client.take_current_join_secret() {
-                                    state.link_code = link_code.to_string();
-                                    submitted = true;
-                                }
-
-                                if submitted {
-                                    let audio_binder = audio_binder.clone();
-                                    let egui_ctx = ui.ctx().clone();
-                                    let session = session.clone();
-                                    let emu_tps_counter = emu_tps_counter.clone();
-
-                                    if !state.link_code.is_empty() {
-                                        let cancellation_token =
-                                            tokio_util::sync::CancellationToken::new();
-                                        *connection_task = Some(ConnectionTask::InProgress {
-                                            state: ConnectionState::Starting,
-                                            cancellation_token: cancellation_token.clone(),
-                                        });
-
-                                        handle.spawn({
-                                            let matchmaking_endpoint =
-                                                if !config.matchmaking_endpoint.is_empty() {
-                                                    config.matchmaking_endpoint.clone()
-                                                } else {
-                                                    config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-                                                };
-                                            let link_code = state.link_code.to_owned();
-                                            let nickname = config
-                                                .nickname
-                                                .clone()
-                                                .unwrap_or_else(|| "".to_string());
-                                            let patches_path = config.patches_path();
-                                            let replays_path = config.replays_path();
-                                            let config_arc = config_arc.clone();
-                                            let handle = handle.clone();
-                                            let connection_task_arc = state.connection_task.clone();
-                                            let roms_scanner = roms_scanner.clone();
-                                            let patches_scanner = patches_scanner.clone();
-                                            async move {
-                                                run_connection_task(
-                                                    config_arc,
-                                                    handle,
-                                                    egui_ctx.clone(),
-                                                    audio_binder,
-                                                    emu_tps_counter,
-                                                    session,
-                                                    roms_scanner,
-                                                    patches_scanner,
-                                                    matchmaking_endpoint,
-                                                    link_code,
-                                                    nickname,
-                                                    patches_path,
-                                                    replays_path,
-                                                    connection_task_arc,
-                                                    cancellation_token,
-                                                )
-                                                .await;
-                                                egui_ctx.request_repaint();
-                                            }
-                                        });
-                                    } else if let Some(selection) = selection.as_ref() {
-                                        let save_path = selection.save.path.clone();
-                                        let game = selection.game;
-                                        let rom = selection.rom.clone();
-                                        let patch = selection
-                                            .patch
-                                            .as_ref()
-                                            .map(|(name, version, _)| (name.clone(), version.clone()));
-
-                                        // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
-                                        handle.spawn_blocking(move || {
-                                            *session.lock() = Some(
-                                                session::Session::new_singleplayer(
-                                                    audio_binder,
-                                                    game,
-                                                    patch,
-                                                    &rom,
-                                                    &save_path,
-                                                    emu_tps_counter,
-                                                )
-                                                .unwrap(),
-                                            ); // TODO: Don't unwrap maybe
-                                            egui_ctx.request_repaint();
-                                        });
-                                    }
-                                }
-                            });
-                        });
-                    });
-                });
+        show_bottom_pane(
+            ui,
+            handle.clone(),
+            window,
+            clipboard,
+            config,
+            config_arc.clone(),
+            roms_scanner.clone(),
+            patches_scanner.clone(),
+            audio_binder.clone(),
+            session,
+            selection,
+            emu_tps_counter,
+            discord_client,
+            &mut *connection_task,
+            connection_task_arc,
+            &mut state.link_code,
+            &mut state.show_save_select,
+        );
     }
 
+    let roms = roms_scanner.read();
     egui::CentralPanel::default()
             .frame(egui::Frame::none()
                 .fill(ui.style().visuals.window_fill())
