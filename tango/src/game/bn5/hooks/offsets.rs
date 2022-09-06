@@ -176,7 +176,7 @@ pub static BRBE_00: Offsets = Offsets {
         handle_sio_entry:                       0x0803d11c,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x08134b50,
-        battle_start_play_music_call:           0x08008676,
+        battle_start_play_music_call:           0x08007e1a,
     },
 };
 
@@ -206,7 +206,7 @@ pub static BRKE_00: Offsets = Offsets {
         handle_sio_entry:                       0x0803d120,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x08134c38,
-        battle_start_play_music_call:           0x08008676,
+        battle_start_play_music_call:           0x08007e1a,
     },
 };
 
@@ -236,7 +236,7 @@ pub static BRBJ_00: Offsets = Offsets {
         handle_sio_entry:                       0x0803d030,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x08134708,
-        battle_start_play_music_call:           0x08008676,
+        battle_start_play_music_call:           0x08007e1a,
     },
 };
 
@@ -266,6 +266,6 @@ pub static BRKJ_00: Offsets = Offsets {
         handle_sio_entry:                       0x0803d034,
         in_battle_call_handle_link_cable_input: 0x08006c12,
         comm_menu_end_battle_entry:             0x081347f0,
-        battle_start_play_music_call:           0x08008676,
+        battle_start_play_music_call:           0x08007e1a,
     },
 };
