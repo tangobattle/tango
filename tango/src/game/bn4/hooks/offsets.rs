@@ -114,6 +114,8 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango ends its match here.
     pub(super) match_end_ret: u32,
+
+    pub(super) battle_start_play_music_call: u32,
 }
 
 #[rustfmt::skip]
@@ -161,6 +163,7 @@ pub static B4BE_00: Offsets = Offsets {
         handle_sio_entry:                       0x080482f8,
         in_battle_call_handle_link_cable_input: 0x08006b16,
         match_end_ret:                          0x08004f68,
+        battle_start_play_music_call:           0x080074bc,
     },
 };
 
@@ -190,6 +193,7 @@ pub static B4WE_00: Offsets = Offsets {
         handle_sio_entry:                       0x080482f0,
         in_battle_call_handle_link_cable_input: 0x08006b16,
         match_end_ret:                          0x08004f68,
+        battle_start_play_music_call:           0x080074bc,
     },
 };
 
@@ -219,6 +223,7 @@ pub static B4BJ_00: Offsets = Offsets {
         handle_sio_entry:                       0x080481b8,
         in_battle_call_handle_link_cable_input: 0x08006af2,
         match_end_ret:                          0x08004f48,
+        battle_start_play_music_call:           0x08007490,
     },
 };
 
@@ -248,6 +253,7 @@ pub static B4WJ_00: Offsets = Offsets {
         handle_sio_entry:                       0x080481b0,
         in_battle_call_handle_link_cable_input: 0x08006af2,
         match_end_ret:                          0x08004f48,
+        battle_start_play_music_call:           0x08007490,
     },
 };
 
@@ -277,6 +283,7 @@ pub static B4BJ_01: Offsets = Offsets {
         handle_sio_entry:                       0x080481f4,
         in_battle_call_handle_link_cable_input: 0x08006af6,
         match_end_ret:                          0x08004f48,
+        battle_start_play_music_call:           0x08007494,
     },
 };
 
@@ -306,5 +313,6 @@ pub static B4WJ_01: Offsets = Offsets {
         handle_sio_entry:                       0x080481ec,
         in_battle_call_handle_link_cable_input: 0x08006af6,
         match_end_ret:                          0x08004f48,
+        battle_start_play_music_call:           0x08007494,
     },
 };
