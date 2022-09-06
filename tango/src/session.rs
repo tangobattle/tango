@@ -4,7 +4,14 @@ use rand::SeedableRng;
 use std::sync::Arc;
 
 pub const EXPECTED_FPS: f32 = 60.0;
+
+pub struct GameInfo {
+    family_and_variant: (String, u8),
+    patch: Option<(String, semver::Version)>,
+}
+
 pub struct Session {
+    game_info: GameInfo,
     vbuf: std::sync::Arc<Mutex<Vec<u8>>>,
     _audio_binding: audio::Binding,
     thread: mgba::thread::Thread,
@@ -51,6 +58,7 @@ impl Session {
         netplay_compatibility: String,
         local_settings: net::protocol::Settings,
         local_game: &'static (dyn game::Game + Send + Sync),
+        local_patch: Option<(String, semver::Version)>,
         local_rom: &[u8],
         local_save: &[u8],
         remote_settings: net::protocol::Settings,
@@ -170,6 +178,13 @@ impl Session {
             });
         }
         Ok(Session {
+            game_info: GameInfo {
+                family_and_variant: {
+                    let (family, variant) = local_game.family_and_variant();
+                    (family.to_owned(), variant)
+                },
+                patch: local_patch,
+            },
             vbuf,
             _audio_binding: audio_binding,
             thread,
@@ -185,6 +200,8 @@ impl Session {
 
     pub fn new_singleplayer(
         audio_binder: audio::LateBinder,
+        game: &'static (dyn game::Game + Send + Sync),
+        patch: Option<(String, semver::Version)>,
         rom: &[u8],
         save_path: &std::path::Path,
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
@@ -248,6 +265,13 @@ impl Session {
             });
         }
         Ok(Session {
+            game_info: GameInfo {
+                family_and_variant: {
+                    let (family, variant) = game.family_and_variant();
+                    (family.to_owned(), variant)
+                },
+                patch,
+            },
             vbuf,
             _audio_binding: audio_binding,
             thread,
@@ -262,6 +286,8 @@ impl Session {
 
     pub fn new_replayer(
         audio_binder: audio::LateBinder,
+        game: &'static (dyn game::Game + Send + Sync),
+        patch: Option<(String, semver::Version)>,
         rom: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,
         replay: &replay::Replay,
@@ -351,6 +377,13 @@ impl Session {
         }
 
         Ok(Session {
+            game_info: GameInfo {
+                family_and_variant: {
+                    let (family, variant) = game.family_and_variant();
+                    (family.to_owned(), variant)
+                },
+                patch,
+            },
             vbuf,
             _audio_binding: audio_binding,
             thread,
@@ -425,6 +458,10 @@ impl Session {
     pub fn set_joyflags(&self, joyflags: u32) {
         self.joyflags
             .store(joyflags, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn game_info(&self) -> &GameInfo {
+        &self.game_info
     }
 }
 

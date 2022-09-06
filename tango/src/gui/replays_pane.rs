@@ -376,6 +376,11 @@ pub fn show(
                             handle.spawn_blocking({
                                 let ctx = ui.ctx().clone();
                                 let audio_binder = audio_binder.clone();
+                                let game = selection.game;
+                                let patch = selection
+                                    .patch
+                                    .as_ref()
+                                    .map(|(name, version, _)| (name.clone(), version.clone()));
                                 let rom = selection.rom.clone();
                                 let emu_tps_counter = emu_tps_counter.clone();
                                 let replay = selection.replay.clone();
@@ -384,6 +389,8 @@ pub fn show(
                                     *session.lock() = Some(
                                         session::Session::new_replayer(
                                             audio_binder,
+                                            game,
+                                            patch,
                                             &rom,
                                             emu_tps_counter,
                                             &replay,

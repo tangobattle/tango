@@ -662,11 +662,14 @@ async fn run_connection_task(
                             handle,
                             audio_binder,
                             link_code,
-                            selection.patch
+                            selection.patch.as_ref()
                                 .map(|(_, _, metadata)| metadata.netplay_compatibility.clone())
                                 .unwrap_or(selection.game.family_and_variant().0.to_owned()),
                             local_settings,
                             selection.game,
+                            selection.patch.as_ref().map(|(name, version, _)| {
+                                (name.clone(), version.clone())
+                            }),
                             &selection.rom,
                             &local_negotiated_state.save_data,
                             remote_settings,
@@ -1481,13 +1484,20 @@ pub fn show(
                                     });
                                 } else if let Some(selection) = selection.as_ref() {
                                     let save_path = selection.save.path.clone();
+                                    let game = selection.game;
                                     let rom = selection.rom.clone();
+                                    let patch = selection
+                                        .patch
+                                        .as_ref()
+                                        .map(|(name, version, _)| (name.clone(), version.clone()));
 
                                     // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
                                     handle.spawn_blocking(move || {
                                         *session.lock() = Some(
                                             session::Session::new_singleplayer(
                                                 audio_binder,
+                                                game,
+                                                patch,
                                                 &rom,
                                                 &save_path,
                                                 emu_tps_counter,
