@@ -309,6 +309,7 @@ impl Autoupdater {
                                     }
                                 }
                             });
+                            log::info!("patch autoupdate completed");
                         })
                         .await;
                     tokio::select! {
