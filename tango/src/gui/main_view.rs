@@ -82,7 +82,9 @@ pub fn show(
                                 )
                                 .clicked()
                             {
-                                state.replays_pane.rescan(&config.replays_path());
+                                state
+                                    .replays_pane
+                                    .rescan(handle.clone(), &config.replays_path());
                             }
 
                             if ui
@@ -92,7 +94,7 @@ pub fn show(
                                 )
                                 .clicked()
                             {
-                                rayon::spawn({
+                                handle.spawn_blocking({
                                     let patches_scanner = patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
@@ -139,6 +141,7 @@ pub fn show(
         Tab::Replays => {
             gui::replays_pane::show(
                 ui,
+                handle.clone(),
                 clipboard,
                 &font_families,
                 &mut state.replays_pane,
@@ -156,6 +159,7 @@ pub fn show(
         Tab::Patches => {
             gui::patches_pane::show(
                 ui,
+                handle.clone(),
                 &mut state.patches_pane,
                 &config.language,
                 if !config.patch_repo.is_empty() {

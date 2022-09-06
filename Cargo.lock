@@ -4981,7 +4981,6 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "rand_pcg",
- "rayon",
  "regex",
  "reqwest",
  "reservoir-sampling",

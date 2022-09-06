@@ -2,6 +2,8 @@ use fluent_templates::Loader;
 
 use crate::i18n;
 
+const APP_ID: u64 = 974089681333534750;
+
 pub struct GameInfo {
     pub title: String,
     pub family: String,
@@ -104,6 +106,7 @@ pub fn make_in_progress_activity(
 }
 
 pub struct Client {
+    handle: tokio::runtime::Handle,
     drpc: discord_presence::Client,
     current_activity:
         std::sync::Arc<parking_lot::Mutex<Option<discord_presence::models::Activity>>>,
@@ -111,15 +114,15 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(client_id: u64) -> Self {
-        let drpc = discord_presence::Client::new(client_id);
+    pub fn new(handle: tokio::runtime::Handle) -> Self {
+        let drpc = discord_presence::Client::new(APP_ID);
 
         let current_activity: std::sync::Arc<
             parking_lot::Mutex<Option<discord_presence::models::Activity>>,
         > = std::sync::Arc::new(parking_lot::Mutex::new(None));
         let current_join_secret = std::sync::Arc::new(parking_lot::Mutex::new(None));
 
-        rayon::spawn({
+        handle.spawn_blocking({
             let mut drpc = drpc.clone();
             let current_activity = current_activity.clone();
             let current_join_secret = current_join_secret.clone();
@@ -146,6 +149,7 @@ impl Client {
         });
 
         let client = Self {
+            handle,
             drpc,
             current_activity,
             current_join_secret,
@@ -155,7 +159,7 @@ impl Client {
 
     pub fn set_current_activity(&self, activity: Option<discord_presence::models::Activity>) {
         let mut drpc = self.drpc.clone();
-        rayon::spawn({
+        self.handle.spawn_blocking({
             let mut activity = activity.clone();
             move || {
                 if let Some(activity) = activity.take() {

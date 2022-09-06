@@ -34,6 +34,7 @@ impl State {
 pub fn show(
     ctx: &egui::Context,
     state: &mut Option<State>,
+    handle: tokio::runtime::Handle,
     font_families: &gui::FontFamilies,
     config: &mut config::Config,
     roms_scanner: gui::ROMsScanner,
@@ -125,6 +126,7 @@ pub fn show(
                             Tab::Advanced => show_advanced_tab(
                                 ui,
                                 config,
+                                handle.clone(),
                                 roms_scanner.clone(),
                                 saves_scanner.clone(),
                                 patches_scanner.clone(),
@@ -543,6 +545,7 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
 fn show_advanced_tab(
     ui: &mut egui::Ui,
     config: &mut config::Config,
+    handle: tokio::runtime::Handle,
     roms_scanner: gui::ROMsScanner,
     saves_scanner: gui::SavesScanner,
     patches_scanner: gui::PatchesScanner,
@@ -587,7 +590,7 @@ fn show_advanced_tab(
                         {
                             config.data_path = data_path;
                             let _ = config.ensure_dirs();
-                            rayon::spawn({
+                            handle.spawn_blocking({
                                 let roms_scanner = roms_scanner.clone();
                                 let saves_scanner = saves_scanner.clone();
                                 let patches_scanner = patches_scanner.clone();

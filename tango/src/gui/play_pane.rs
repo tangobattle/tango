@@ -1484,7 +1484,7 @@ pub fn show(
                                     let rom = selection.rom.clone();
 
                                     // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
-                                    rayon::spawn(move || {
+                                    handle.spawn_blocking(move || {
                                         *session.lock() = Some(
                                             session::Session::new_singleplayer(
                                                 audio_binder,
@@ -1630,7 +1630,7 @@ pub fn show(
                     .clicked()
                 {
                     state.show_save_select = if state.show_save_select.is_none() {
-                        rayon::spawn({
+                        handle.spawn_blocking({
                             let roms_scanner = roms_scanner.clone();
                             let saves_scanner = saves_scanner.clone();
                             let roms_path = config.roms_path();

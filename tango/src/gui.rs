@@ -3,8 +3,6 @@ use fluent_templates::Loader;
 use crate::{audio, config, discord, game, i18n, input, patch, rom, save, scanner, session, stats};
 use std::str::FromStr;
 
-const DISCORD_APP_ID: u64 = 974089681333534750;
-
 mod debug_window;
 mod escape_window;
 mod main_view;
@@ -99,6 +97,7 @@ impl State {
     pub fn new(
         ctx: &egui::Context,
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+        discord_client: discord::Client,
         audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -147,12 +146,6 @@ impl State {
         ]
         .into();
         ctx.set_style(style);
-
-        let mut discord_client = discord::Client::new(DISCORD_APP_ID);
-        discord_client.set_current_activity(Some(discord::make_base_activity(
-            &config.read().language,
-            None,
-        )));
 
         let roms_scanner = scanner::Scanner::new();
         let saves_scanner = scanner::Scanner::new();
@@ -366,6 +359,7 @@ pub fn show(
     settings_window::show(
         ctx,
         &mut state.show_settings,
+        handle.clone(),
         &state.font_families,
         config,
         state.roms_scanner.clone(),

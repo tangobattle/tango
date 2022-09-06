@@ -258,15 +258,18 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         controllers.insert(which, controller);
     }
 
+    let discord_client = discord::Client::new(handle.clone());
+
     let mut state = gui::State::new(
         &egui_glow.egui_ctx,
         std::sync::Arc::new(parking_lot::RwLock::new(config)),
+        discord_client,
         audio_binder.clone(),
         fps_counter.clone(),
         emu_tps_counter.clone(),
     );
 
-    rayon::spawn({
+    handle.spawn_blocking({
         let config = state.config.clone();
         let patches_scanner = state.patches_scanner.clone();
         move || loop {

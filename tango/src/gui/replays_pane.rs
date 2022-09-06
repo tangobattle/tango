@@ -28,8 +28,8 @@ impl State {
         }
     }
 
-    pub fn rescan(&self, replays_path: &std::path::Path) {
-        rayon::spawn({
+    pub fn rescan(&self, handle: tokio::runtime::Handle, replays_path: &std::path::Path) {
+        handle.spawn_blocking({
             let replays_scanner = self.replays_scanner.clone();
             let replays_path = replays_path.to_path_buf();
             move || {
@@ -73,6 +73,7 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
+    handle: tokio::runtime::Handle,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     state: &mut State,
@@ -372,7 +373,7 @@ pub fn show(
                             ))
                             .clicked()
                         {
-                            rayon::spawn({
+                            handle.spawn_blocking({
                                 let ctx = ui.ctx().clone();
                                 let audio_binder = audio_binder.clone();
                                 let rom = selection.rom.clone();
