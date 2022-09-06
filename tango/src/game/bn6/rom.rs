@@ -80,10 +80,19 @@ pub struct Assets {
     modcards56: Option<[rom::Modcard56; 118]>,
 }
 
+#[derive(Default)]
+pub struct AssetLoadOptions<'a> {
+    pub charset: &'a [&'a str],
+    pub chip_names: Option<Vec<String>>,
+    pub navicust_part_names: Option<Vec<String>>,
+    pub modcard56_names: Option<Vec<String>>,
+    pub modcard56_effect_names: Option<Vec<rom::Modcard56EffectTemplate>>,
+}
+
 impl Assets {
-    pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+    pub fn new(offsets: &Offsets, rom: &[u8], wram: &[u8], options: AssetLoadOptions) -> Self {
         let text_parse_options = rom::text::ParseOptions {
-            charset,
+            charset: options.charset,
             extension_op: 0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
@@ -130,11 +139,9 @@ impl Assets {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {
                         name: {
-                            let (i, pointer) = if i < 0x100 {
-                                (i, offsets.chip_names_pointers)
-                            } else {
-                                (i - 0x100, offsets.chip_names_pointers + 4)
-                            };
+                            let i = i % 0x100;
+                            let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
+
                             if let Ok(parts) = rom::text::parse_entry(
                                 &mapper.get(byteorder::LittleEndian::read_u32(
                                     &mapper.get(pointer)[..4],

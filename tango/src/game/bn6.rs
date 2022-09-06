@@ -76,12 +76,15 @@ impl game::Game for EXE6GImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::BR5J_00,
-            override_charset
-                .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
             rom,
             wram,
+            rom::AssetLoadOptions {
+                charset: override_charset
+                    .as_ref()
+                    .map(|cs| cs.as_slice())
+                    .unwrap_or(&rom::JA_CHARSET),
+                ..Default::default()
+            },
         )))
     }
 }
@@ -156,12 +159,15 @@ impl game::Game for EXE6FImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::BR6J_00,
-            override_charset
-                .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
             rom,
             wram,
+            rom::AssetLoadOptions {
+                charset: override_charset
+                    .as_ref()
+                    .map(|cs| cs.as_slice())
+                    .unwrap_or(&rom::JA_CHARSET),
+                ..Default::default()
+            },
         )))
     }
 }
@@ -236,12 +242,15 @@ impl game::Game for BN6GImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::BR5E_00,
-            override_charset
-                .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
             rom,
             wram,
+            rom::AssetLoadOptions {
+                charset: override_charset
+                    .as_ref()
+                    .map(|cs| cs.as_slice())
+                    .unwrap_or(&rom::EN_CHARSET),
+                ..Default::default()
+            },
         )))
     }
 }
@@ -316,12 +325,15 @@ impl game::Game for BN6FImpl {
 
         Ok(Box::new(rom::Assets::new(
             &rom::BR6E_00,
-            override_charset
-                .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
             rom,
             wram,
+            rom::AssetLoadOptions {
+                charset: override_charset
+                    .as_ref()
+                    .map(|cs| cs.as_slice())
+                    .unwrap_or(&rom::EN_CHARSET),
+                ..Default::default()
+            },
         )))
     }
 }

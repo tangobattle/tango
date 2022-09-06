@@ -78,7 +78,7 @@ pub struct ROMOverrides {
     pub navicust_part_names: Option<Vec<String>>,
     pub modcard56_names: Option<Vec<String>>,
     #[serde(deserialize_with = "deserialize_option_vec_modcard56_effect_template")]
-    pub modcard56_effects: Option<Vec<rom::Modcard56EffectTemplate>>,
+    pub modcard56_effect_names: Option<Vec<rom::Modcard56EffectTemplate>>,
 }
 
 #[derive(serde::Deserialize)]
