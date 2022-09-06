@@ -749,11 +749,13 @@ fn show_lobby_table(
     roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) {
+    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+    let spacing_y = ui.spacing().item_spacing.y;
     egui_extras::TableBuilder::new(ui)
         .column(egui_extras::Size::remainder())
         .column(egui_extras::Size::exact(200.0))
         .column(egui_extras::Size::exact(200.0))
-        .header(20.0, |mut header| {
+        .header(row_height, |mut header| {
             header.col(|_ui| {});
             header.col(|ui| {
                 ui.horizontal(|ui| {
@@ -814,9 +816,9 @@ fn show_lobby_table(
                         .map(|gi| gi.patch.is_some())
                         .unwrap_or(false)
                 {
-                    40.0
+                    row_height * 2.0 + spacing_y * 0.5
                 } else {
-                    20.0
+                    row_height
                 },
                 |mut row| {
                     row.col(|ui| {
@@ -976,7 +978,7 @@ fn show_lobby_table(
                 },
             );
 
-            body.row(20.0, |mut row| {
+            body.row(row_height, |mut row| {
                 row.col(|ui| {
                     ui.horizontal(|ui| {
                         ui.strong(
@@ -1072,7 +1074,7 @@ fn show_lobby_table(
                 });
             });
 
-            body.row(20.0, |mut row| {
+            body.row(row_height, |mut row| {
                 row.col(|ui| {
                     ui.strong(
                         i18n::LOCALES

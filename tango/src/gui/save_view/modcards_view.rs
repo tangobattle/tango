@@ -203,6 +203,8 @@ pub fn show_modcard56s<'a>(
         }
     });
 
+    let row_height = ui.text_style_height(&egui::TextStyle::Body);
+    let spacing_y = ui.spacing().item_spacing.y;
     egui_extras::TableBuilder::new(ui)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(egui_extras::Size::remainder())
@@ -212,11 +214,12 @@ pub fn show_modcard56s<'a>(
         .body(|body| {
             body.heterogeneous_rows(
                 items.iter().map(|(_, effects)| {
-                    std::cmp::max(
+                    let num_effects = std::cmp::max(
                         effects.iter().filter(|effect| effect.is_ability).count(),
                         effects.iter().filter(|effect| !effect.is_ability).count(),
-                    ) as f32
-                        * 20.0
+                    );
+                    num_effects as f32 * row_height + num_effects as f32 * spacing_y
+                        - spacing_y * 0.5
                 }),
                 |i, mut row| {
                     let (modcard, effects) = &items[i];
