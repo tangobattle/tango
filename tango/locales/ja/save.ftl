@@ -4,6 +4,7 @@ save =
     .navicust = ナビカスとマイザー
     .folder = チップフォルダ
     .modcards = 改造カード
+    .dark-ai = ダークソウルAI
 
 save-cover-description = このタブは意図的に空白のままになっています。
 
