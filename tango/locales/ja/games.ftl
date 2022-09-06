@@ -49,7 +49,7 @@ game-bn4 = ロックマンエグゼ4（英語版）
     .match-type-0-0 = シングル
     .match-type-1-0 = トリプル
 
-game-exe45 = ロックマンエグゼ4.5 リアルオペレーション
+game-exe45 = ロックマンエグゼ4.5
     .short = EXE4.5
     .variant-0 = ロックマンエグゼ4.5 リアルオペレーション
     .match-type-0-0 = シングル

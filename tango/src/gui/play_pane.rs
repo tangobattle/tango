@@ -799,69 +799,97 @@ fn show_lobby_table(
             });
         })
         .body(|mut body| {
-            body.row(20.0, |mut row| {
-                row.col(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.strong(
-                            i18n::LOCALES
-                                .lookup(&config.language, "play-details.game")
-                                .unwrap(),
-                        );
+            body.row(
+                if lobby
+                    .selection
+                    .as_ref()
+                    .map(|s| s.patch.is_some())
+                    .unwrap_or(false)
+                    || lobby
+                        .remote_settings
+                        .game_info
+                        .as_ref()
+                        .map(|gi| gi.patch.is_some())
+                        .unwrap_or(false)
+                {
+                    40.0
+                } else {
+                    20.0
+                },
+                |mut row| {
+                    row.col(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-details.game")
+                                    .unwrap(),
+                            );
 
-                        if let Some(selection) = lobby.selection.as_ref() {
-                            if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
-                                if let Some(remote_game) = game::find_by_family_and_variant(
-                                    &remote_gi.family_and_variant.0,
-                                    remote_gi.family_and_variant.1,
-                                ) {
-                                    if !roms.contains_key(&remote_game) {
-                                        gui::warning::show(
-                                            ui,
-                                            i18n::LOCALES
-                                                .lookup_with_args(
-                                                    &config.language,
-                                                    "lobby-issue.missing-rom",
-                                                    &std::collections::HashMap::from([(
-                                                        "game_name",
-                                                        i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                &format!(
-                                                                    "game-{}.variant-{}",
-                                                                    remote_game
-                                                                        .family_and_variant()
-                                                                        .0,
-                                                                    remote_game
-                                                                        .family_and_variant()
-                                                                        .1
-                                                                ),
-                                                            )
-                                                            .unwrap()
-                                                            .into(),
-                                                    )]),
-                                                )
-                                                .unwrap(),
-                                        );
-                                    } else if get_netplay_compatibility(
-                                        selection.game,
-                                        selection.patch.as_ref().map(|(name, version, _)| {
-                                            (name.to_owned(), version.clone())
-                                        }),
-                                        patches,
-                                    ) != get_netplay_compatibility(
-                                        remote_game,
-                                        remote_gi
-                                            .patch
-                                            .as_ref()
-                                            .map(|pi| (pi.name.to_owned(), pi.version.clone())),
-                                        patches,
+                            if let Some(selection) = lobby.selection.as_ref() {
+                                if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
+                                    if let Some(remote_game) = game::find_by_family_and_variant(
+                                        &remote_gi.family_and_variant.0,
+                                        remote_gi.family_and_variant.1,
                                     ) {
+                                        if !roms.contains_key(&remote_game) {
+                                            gui::warning::show(
+                                                ui,
+                                                i18n::LOCALES
+                                                    .lookup_with_args(
+                                                        &config.language,
+                                                        "lobby-issue.missing-rom",
+                                                        &std::collections::HashMap::from([(
+                                                            "game_name",
+                                                            i18n::LOCALES
+                                                                .lookup(
+                                                                    &config.language,
+                                                                    &format!(
+                                                                        "game-{}.variant-{}",
+                                                                        remote_game
+                                                                            .family_and_variant()
+                                                                            .0,
+                                                                        remote_game
+                                                                            .family_and_variant()
+                                                                            .1
+                                                                    ),
+                                                                )
+                                                                .unwrap()
+                                                                .into(),
+                                                        )]),
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        } else if get_netplay_compatibility(
+                                            selection.game,
+                                            selection.patch.as_ref().map(|(name, version, _)| {
+                                                (name.to_owned(), version.clone())
+                                            }),
+                                            patches,
+                                        ) != get_netplay_compatibility(
+                                            remote_game,
+                                            remote_gi
+                                                .patch
+                                                .as_ref()
+                                                .map(|pi| (pi.name.to_owned(), pi.version.clone())),
+                                            patches,
+                                        ) {
+                                            gui::warning::show(
+                                                ui,
+                                                i18n::LOCALES
+                                                    .lookup(
+                                                        &config.language,
+                                                        "lobby-issue.incompatible",
+                                                    )
+                                                    .unwrap(),
+                                            );
+                                        }
+                                    } else {
                                         gui::warning::show(
                                             ui,
                                             i18n::LOCALES
                                                 .lookup(
                                                     &config.language,
-                                                    "lobby-issue.incompatible",
+                                                    "lobby-issue.no-remote-game-selected",
                                                 )
                                                 .unwrap(),
                                         );
@@ -883,63 +911,74 @@ fn show_lobby_table(
                                     i18n::LOCALES
                                         .lookup(
                                             &config.language,
-                                            "lobby-issue.no-remote-game-selected",
+                                            "lobby-issue.no-local-game-selected",
                                         )
                                         .unwrap(),
                                 );
                             }
-                        } else {
-                            gui::warning::show(
-                                ui,
-                                i18n::LOCALES
-                                    .lookup(&config.language, "lobby-issue.no-local-game-selected")
-                                    .unwrap(),
-                            );
-                        }
+                        });
                     });
-                });
-                row.col(|ui| {
-                    ui.label(if let Some(selection) = lobby.selection.as_ref() {
-                        let (family, _) = selection.game.family_and_variant();
-                        i18n::LOCALES
-                            .lookup(
-                                &config.language,
-                                &format!("game-{}", family), // TODO: Show patch
-                            )
-                            .unwrap()
-                    } else {
-                        i18n::LOCALES
-                            .lookup(&config.language, "play-no-game")
-                            .unwrap()
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            if let Some(selection) = lobby.selection.as_ref() {
+                                let (family, _) = selection.game.family_and_variant();
+                                ui.label(
+                                    i18n::LOCALES
+                                        .lookup(
+                                            &config.language,
+                                            &format!("game-{}", family), // TODO: Show patch
+                                        )
+                                        .unwrap(),
+                                );
+                                if let Some((patch_name, version, _)) = selection.patch.as_ref() {
+                                    ui.label(format!("{} v{}", patch_name, version));
+                                }
+                            } else {
+                                ui.label(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "play-no-game")
+                                        .unwrap(),
+                                );
+                            }
+                        });
                     });
-                });
-                row.col(|ui| {
-                    ui.label(
-                        if let Some(game) =
-                            lobby
-                                .remote_settings
-                                .game_info
-                                .as_ref()
-                                .and_then(|game_info| {
-                                    let (family, variant) = &game_info.family_and_variant;
+                    row.col(|ui| {
+                        ui.vertical(|ui| {
+                            if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
+                                let (family, variant) = &game_info.family_and_variant;
+                                if let Some(game) =
                                     game::find_by_family_and_variant(&family, *variant)
-                                })
-                        {
-                            let (family, _) = game.family_and_variant();
-                            i18n::LOCALES
-                                .lookup(
-                                    &config.language,
-                                    &format!("game-{}", family), // TODO: Show patch
-                                )
-                                .unwrap()
-                        } else {
-                            i18n::LOCALES
-                                .lookup(&config.language, "play-no-game")
-                                .unwrap()
-                        },
-                    );
-                });
-            });
+                                {
+                                    let (family, _) = game.family_and_variant();
+                                    ui.label(
+                                        i18n::LOCALES
+                                            .lookup(
+                                                &config.language,
+                                                &format!("game-{}", family), // TODO: Show patch
+                                            )
+                                            .unwrap(),
+                                    );
+                                    if let Some(pi) = game_info.patch.as_ref() {
+                                        ui.label(format!("{} v{}", pi.name, pi.version));
+                                    }
+                                } else {
+                                    ui.label(
+                                        i18n::LOCALES
+                                            .lookup(&config.language, "play-no-game")
+                                            .unwrap(),
+                                    );
+                                }
+                            } else {
+                                ui.label(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "play-no-game")
+                                        .unwrap(),
+                                );
+                            }
+                        });
+                    });
+                },
+            );
 
             body.row(20.0, |mut row| {
                 row.col(|ui| {
