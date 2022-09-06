@@ -120,6 +120,8 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango ends its match here.
     pub(super) comm_menu_end_battle_entry: u32,
+
+    pub(super) battle_start_play_music_call: u32,
 }
 
 #[rustfmt::skip]
@@ -174,6 +176,7 @@ pub static MEGAMAN6_FXXBR6E_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803deb4,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812b5ca,
         comm_menu_end_battle_entry:                                 0x0812b708,
+        battle_start_play_music_call:                               0x08009236,
     },
 };
 
@@ -203,6 +206,7 @@ pub static MEGAMAN6_GXXBR5E_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803de88,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x0812d3a6,
         comm_menu_end_battle_entry:                                 0x0812d4e4,
+        battle_start_play_music_call:                               0x08009236,
     },
 };
 
@@ -232,6 +236,7 @@ pub static ROCKEXE6_RXXBR6J_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803eef8,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08133fca,
         comm_menu_end_battle_entry:                                 0x08134108,
+        battle_start_play_music_call:                               0x08009406,
     },
 };
 
@@ -261,5 +266,6 @@ pub static ROCKEXE6_GXXBR5J_00: Offsets = Offsets {
         handle_sio_entry:                                           0x0803eecc,
         comm_menu_in_battle_call_comm_menu_handle_link_cable_input: 0x08135d92,
         comm_menu_end_battle_entry:                                 0x08135ed0,
+        battle_start_play_music_call:                               0x08009406,
     },
 };
