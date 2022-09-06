@@ -70,6 +70,7 @@ pub fn show_modcard4s<'a>(
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
         .column(egui_extras::Size::remainder())
         .column(egui_extras::Size::exact(250.0))
+        .striped(true)
         .body(|body| {
             body.rows(41.0, 6, |i, mut row| {
                 let modcard = modcard4s_view.modcard(i);
