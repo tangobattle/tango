@@ -6,8 +6,8 @@ use std::sync::Arc;
 pub const EXPECTED_FPS: f32 = 60.0;
 
 pub struct GameInfo {
-    family_and_variant: (String, u8),
-    patch: Option<(String, semver::Version)>,
+    pub family_and_variant: (String, u8),
+    pub patch: Option<(String, semver::Version)>,
 }
 
 pub struct Session {
@@ -48,7 +48,6 @@ pub enum Mode {
     Replayer,
 }
 
-#[allow(dead_code)] // TODO
 impl Session {
     pub fn new_pvp(
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
@@ -221,8 +220,6 @@ impl Session {
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
-            .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
@@ -298,8 +295,6 @@ impl Session {
         core.as_mut()
             .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
-        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
-            .unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
