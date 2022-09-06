@@ -313,7 +313,7 @@ impl Autoupdater {
                         })
                         .await;
                     tokio::select! {
-                        _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => { }
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(15 * 60)) => { }
                         _ = cancellation_token.cancelled() => { break 'l; }
                     }
                 }
