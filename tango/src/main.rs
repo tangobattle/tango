@@ -269,7 +269,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         emu_tps_counter.clone(),
     );
 
-    handle.spawn_blocking({
+    std::thread::spawn({
         let config = state.config.clone();
         let patches_scanner = state.patches_scanner.clone();
         move || loop {

@@ -122,7 +122,7 @@ impl Client {
         > = std::sync::Arc::new(parking_lot::Mutex::new(None));
         let current_join_secret = std::sync::Arc::new(parking_lot::Mutex::new(None));
 
-        handle.spawn_blocking({
+        std::thread::spawn({
             let mut drpc = drpc.clone();
             let current_activity = current_activity.clone();
             let current_join_secret = current_join_secret.clone();
