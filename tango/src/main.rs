@@ -260,40 +260,34 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     let discord_client = discord::Client::new(handle.clone());
 
+    let roms_scanner = scanner::Scanner::new();
+    let saves_scanner = scanner::Scanner::new();
+    let patches_scanner = scanner::Scanner::new();
+    {
+        let roms_path = config.roms_path();
+        let saves_path = config.saves_path();
+        let patches_path = config.patches_path();
+        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+        saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+        patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
+    }
+
+    let config_arc = std::sync::Arc::new(parking_lot::RwLock::new(config));
     let mut state = gui::State::new(
         &egui_glow.egui_ctx,
-        std::sync::Arc::new(parking_lot::RwLock::new(config)),
+        config_arc.clone(),
         discord_client,
         audio_binder.clone(),
         fps_counter.clone(),
         emu_tps_counter.clone(),
+        roms_scanner.clone(),
+        saves_scanner.clone(),
+        patches_scanner.clone(),
     );
 
-    std::thread::spawn({
-        let config = state.config.clone();
-        let patches_scanner = state.patches_scanner.clone();
-        move || loop {
-            let (repo_url, patches_path) = {
-                let config = config.read();
-                (
-                    if !config.patch_repo.is_empty() {
-                        config.patch_repo.clone()
-                    } else {
-                        config::DEFAULT_PATCH_REPO.to_owned()
-                    },
-                    config.patches_path().to_path_buf(),
-                )
-            };
-            patches_scanner.rescan(move || match patch::update(&repo_url, &patches_path) {
-                Ok(patches) => Some(patches),
-                Err(e) => {
-                    log::error!("failed to update patches: {:?}", e);
-                    return None;
-                }
-            });
-            std::thread::sleep(std::time::Duration::from_secs(30 * 60));
-        }
-    });
+    let mut patch_autoupdater =
+        patch::Autoupdater::new(config_arc.clone(), patches_scanner.clone());
+    patch_autoupdater.set_enabled(handle.clone(), config_arc.read().enable_patch_autoupdate);
 
     egui_glow.egui_ctx.set_request_repaint_callback({
         let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
@@ -303,7 +297,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     });
 
     event_loop.run(move |event, _, control_flow| {
-        let mut config = state.config.read().clone();
+        let mut config = config_arc.read().clone();
         let old_config = config.clone();
 
         let mut redraw = || {
@@ -491,9 +485,10 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         }
 
         if config != old_config {
-            *state.config.write() = config.clone();
+            *config_arc.write() = config.clone();
             let r = config.save();
             log::info!("config save: {:?}", r);
         }
+        patch_autoupdater.set_enabled(handle.clone(), config.enable_patch_autoupdate);
     });
 }

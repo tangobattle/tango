@@ -9,6 +9,7 @@ enum Tab {
     Graphics,
     Audio,
     Netplay,
+    Patches,
     Advanced,
     About,
 }
@@ -92,6 +93,13 @@ pub fn show(
                 );
                 ui.selectable_value(
                     &mut state.tab,
+                    Tab::Patches,
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings.patches")
+                        .unwrap(),
+                );
+                ui.selectable_value(
+                    &mut state.tab,
                     Tab::Advanced,
                     i18n::LOCALES
                         .lookup(&config.language, "settings.advanced")
@@ -123,6 +131,7 @@ pub fn show(
                             Tab::Graphics => show_graphics_tab(ui, config, window),
                             Tab::Audio => show_audio_tab(ui, config),
                             Tab::Netplay => show_netplay_tab(ui, config),
+                            Tab::Patches => show_patches_tab(ui, config),
                             Tab::Advanced => show_advanced_tab(
                                 ui,
                                 config,
@@ -538,6 +547,37 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
                 egui::TextEdit::singleline(&mut config.replaycollector_endpoint)
                     .desired_width(200.0),
             );
+            ui.end_row();
+        });
+}
+
+fn show_patches_tab(ui: &mut egui::Ui, config: &mut config::Config) {
+    egui::Grid::new("settings-window-patches-grid")
+        .num_columns(2)
+        .show(ui, |ui| {
+            ui.strong(
+                i18n::LOCALES
+                    .lookup(&config.language, "settings-patch-repo")
+                    .unwrap(),
+            );
+            let patch_repo = config.patch_repo.is_empty();
+            ui.add(
+                egui::TextEdit::singleline(&mut config.patch_repo)
+                    .desired_width(200.0)
+                    .hint_text(if patch_repo {
+                        config::DEFAULT_PATCH_REPO
+                    } else {
+                        ""
+                    }),
+            );
+            ui.end_row();
+
+            ui.strong(
+                i18n::LOCALES
+                    .lookup(&config.language, "settings-enable-patch-autoupdate")
+                    .unwrap(),
+            );
+            ui.checkbox(&mut config.enable_patch_autoupdate, "");
             ui.end_row();
         });
 }

@@ -4,6 +4,7 @@ settings = Settings
     .graphics = Graphics
     .audio = Audio
     .netplay = Netplay
+    .patches = Patches
     .advanced = Advanced
     .about = About
 
@@ -32,6 +33,8 @@ settings-input-delay = Input delay
 settings-max-queue-length = Max queue length
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint
+settings-patch-repo = Patches repository
+settings-enable-patch-autoupdate = Enable autoupdate
 settings-data-path = Data path
     .open = Open
     .change = Change

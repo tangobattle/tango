@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, discord, game, i18n, input, patch, rom, save, scanner, session, stats};
+use crate::{audio, config, discord, game, i18n, input, patch, rom, save, session, stats};
 use std::str::FromStr;
 
 mod debug_window;
@@ -61,13 +61,13 @@ impl Selection {
 }
 
 pub struct State {
-    pub config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: Option<Selection>,
     pub steal_input: Option<steal_input_window::State>,
-    pub roms_scanner: rom::Scanner,
-    pub saves_scanner: save::Scanner,
-    pub patches_scanner: patch::Scanner,
+    roms_scanner: rom::Scanner,
+    saves_scanner: save::Scanner,
+    patches_scanner: patch::Scanner,
     pub last_mouse_motion_time: Option<std::time::Instant>,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -94,6 +94,9 @@ impl State {
         audio_binder: audio::LateBinder,
         fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
         emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+        roms_scanner: rom::Scanner,
+        saves_scanner: save::Scanner,
+        patches_scanner: patch::Scanner,
     ) -> Self {
         let font_families = FontFamilies {
             latn: egui::FontFamily::Name("Latn".into()),
@@ -139,19 +142,6 @@ impl State {
         ]
         .into();
         ctx.set_style(style);
-
-        let roms_scanner = scanner::Scanner::new();
-        let saves_scanner = scanner::Scanner::new();
-        let patches_scanner = scanner::Scanner::new();
-        {
-            let config = config.read().clone();
-            let roms_path = config.roms_path();
-            let saves_path = config.saves_path();
-            let patches_path = config.patches_path();
-            roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-            saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-            patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
-        }
 
         Self {
             config,

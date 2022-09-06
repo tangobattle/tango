@@ -2,7 +2,7 @@ pub mod bps;
 
 use serde::Deserialize;
 
-use crate::{config, game, gui, scanner};
+use crate::{config, game, scanner};
 
 #[derive(serde::Deserialize)]
 struct Metadata {
@@ -257,6 +257,7 @@ pub type Scanner = scanner::Scanner<std::collections::BTreeMap<String, Patch>>;
 pub struct Autoupdater {
     config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     patches_scanner: Scanner,
+    cancellation_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl Autoupdater {
@@ -267,6 +268,71 @@ impl Autoupdater {
         Self {
             config,
             patches_scanner,
+            cancellation_token: None,
+        }
+    }
+
+    fn start(&mut self, handle: tokio::runtime::Handle) {
+        if self.cancellation_token.is_some() {
+            return;
+        }
+
+        log::info!("starting patch autoupdater");
+        let cancellation_token = tokio_util::sync::CancellationToken::new();
+        handle.spawn({
+            let cancellation_token = cancellation_token.clone();
+            let config = self.config.clone();
+            let patches_scanner = self.patches_scanner.clone();
+            async move {
+                'l: loop {
+                    let (repo_url, patches_path) = {
+                        let config = config.read();
+                        (
+                            if !config.patch_repo.is_empty() {
+                                config.patch_repo.clone()
+                            } else {
+                                config::DEFAULT_PATCH_REPO.to_owned()
+                            },
+                            config.patches_path().to_path_buf(),
+                        )
+                    };
+
+                    let patches_scanner = patches_scanner.clone();
+                    let _ = tokio::runtime::Handle::current()
+                        .spawn_blocking(move || {
+                            patches_scanner.rescan(move || {
+                                match update(&repo_url, &patches_path) {
+                                    Ok(patches) => Some(patches),
+                                    Err(e) => {
+                                        log::error!("failed to update patches: {:?}", e);
+                                        return None;
+                                    }
+                                }
+                            });
+                        })
+                        .await;
+                    tokio::select! {
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => { }
+                        _ = cancellation_token.cancelled() => { break 'l; }
+                    }
+                }
+                log::info!("stopped patch autoupdater");
+            }
+        });
+        self.cancellation_token = Some(cancellation_token);
+    }
+
+    fn stop(&mut self) {
+        if let Some(cancellation_token) = self.cancellation_token.take() {
+            cancellation_token.cancel();
+        }
+    }
+
+    pub fn set_enabled(&mut self, handle: tokio::runtime::Handle, enabled: bool) {
+        if enabled {
+            self.start(handle);
+        } else {
+            self.stop();
         }
     }
 }
