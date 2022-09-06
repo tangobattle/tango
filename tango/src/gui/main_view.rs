@@ -116,10 +116,10 @@ pub fn show(
         state.tab = Tab::Play;
     }
 
-    match state.tab {
+    egui::CentralPanel::default().show(ctx, |ui| match state.tab {
         Tab::Play => {
             gui::play_pane::show(
-                ctx,
+                ui,
                 handle.clone(),
                 &font_families,
                 window,
@@ -140,7 +140,7 @@ pub fn show(
         }
         Tab::Replays => {
             gui::replays_pane::show(
-                ctx,
+                ui,
                 handle.clone(),
                 clipboard,
                 &font_families,
@@ -158,7 +158,7 @@ pub fn show(
         }
         Tab::Patches => {
             gui::patches_pane::show(
-                ctx,
+                ui,
                 handle.clone(),
                 &mut state.patches_pane,
                 &config.language,
@@ -172,5 +172,5 @@ pub fn show(
                 patches_scanner.clone(),
             );
         }
-    }
+    });
 }
