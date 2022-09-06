@@ -1097,7 +1097,7 @@ fn show_lobby_table(
 }
 
 pub fn show(
-    ui: &mut egui::Ui,
+    ctx: &egui::Context,
     handle: tokio::runtime::Handle,
     font_families: &gui::FontFamilies,
     window: &winit::window::Window,
@@ -1115,737 +1115,627 @@ pub fn show(
     state: &mut State,
     discord_client: &mut discord::Client,
 ) {
-    let mut connection_task = state.connection_task.blocking_lock();
+    egui::CentralPanel::default()
+        .show(ctx, |ui| {
+            let mut connection_task = state.connection_task.blocking_lock();
 
-    let roms = roms_scanner.read();
-    let patches = patches_scanner.read();
+            let roms = roms_scanner.read();
+            let patches = patches_scanner.read();
 
-    if state.show_save_select.is_none() {
-        egui::TopBottomPanel::bottom("play-bottom-pane")
-            .frame(egui::Frame::none())
-            .show_inside(ui, |ui| {
-                ui.vertical(|ui| {
-                    {
-                        if let Some(ConnectionTask::InProgress {
-                            state: connection_state,
-                            cancellation_token,
-                        }) = connection_task.as_ref()
-                        {
-                            match connection_state {
-                                ConnectionState::Starting
-                                | ConnectionState::Signaling
-                                | ConnectionState::Waiting => {
-                                    ui.horizontal(|ui| {
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Min),
-                                            |ui| {
-                                                if ui
-                                                    .button(format!(
-                                                        "❎ {}",
-                                                        i18n::LOCALES
-                                                            .lookup(&config.language, "play-cancel")
-                                                            .unwrap()
-                                                    ))
-                                                    .clicked()
-                                                {
-                                                    cancellation_token.cancel();
-                                                }
+            if state.show_save_select.is_none() {
+                egui::TopBottomPanel::bottom("play-bottom-pane")
+                    .frame(egui::Frame::none()
+                        .fill(ctx.style().visuals.window_fill())
+                        .inner_margin(egui::style::Margin { left: 0.0, right: 0.0, bottom: 0.0, top: 8.0 })
+                    )
+                    .show_inside(ui, |ui| {
+                        ui.vertical(|ui| {
+                            {
+                                if let Some(ConnectionTask::InProgress {
+                                    state: connection_state,
+                                    cancellation_token,
+                                }) = connection_task.as_ref()
+                                {
+                                    match connection_state {
+                                        ConnectionState::Starting
+                                        | ConnectionState::Signaling
+                                        | ConnectionState::Waiting => {
+                                            ui.horizontal(|ui| {
+                                                ui.with_layout(
+                                                    egui::Layout::right_to_left(egui::Align::Min),
+                                                    |ui| {
+                                                        if ui
+                                                            .button(format!(
+                                                                "❎ {}",
+                                                                i18n::LOCALES
+                                                                    .lookup(&config.language, "play-cancel")
+                                                                    .unwrap()
+                                                            ))
+                                                            .clicked()
+                                                        {
+                                                            cancellation_token.cancel();
+                                                        }
 
-                                                ui.horizontal_top(|ui| {
-                                                    ui.with_layout(
-                                                        egui::Layout::left_to_right(
-                                                            egui::Align::Min,
-                                                        ),
-                                                        |ui| {
-                                                            ui.spinner();
-                                                            ui.label(match connection_state {
-                                                                ConnectionState::Starting => {
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            "play-connection-task.starting",
-                                                                        )
-                                                                        .unwrap()
-                                                                }
-                                                                ConnectionState::Signaling => {
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            "play-connection-task.signaling",
-                                                                        )
-                                                                        .unwrap()
-                                                                }
-                                                                ConnectionState::Waiting => {
-                                                                    i18n::LOCALES
-                                                                        .lookup(
-                                                                            &config.language,
-                                                                            "play-connection-task.waiting",
-                                                                        )
-                                                                        .unwrap()
+                                                        ui.horizontal_top(|ui| {
+                                                            ui.with_layout(
+                                                                egui::Layout::left_to_right(
+                                                                    egui::Align::Min,
+                                                                ),
+                                                                |ui| {
+                                                                    ui.spinner();
+                                                                    ui.label(match connection_state {
+                                                                        ConnectionState::Starting => {
+                                                                            i18n::LOCALES
+                                                                                .lookup(
+                                                                                    &config.language,
+                                                                                    "play-connection-task.starting",
+                                                                                )
+                                                                                .unwrap()
+                                                                        }
+                                                                        ConnectionState::Signaling => {
+                                                                            i18n::LOCALES
+                                                                                .lookup(
+                                                                                    &config.language,
+                                                                                    "play-connection-task.signaling",
+                                                                                )
+                                                                                .unwrap()
+                                                                        }
+                                                                        ConnectionState::Waiting => {
+                                                                            i18n::LOCALES
+                                                                                .lookup(
+                                                                                    &config.language,
+                                                                                    "play-connection-task.waiting",
+                                                                                )
+                                                                                .unwrap()
+                                                                        },
+                                                                        _ => unreachable!(),
+                                                                    });
                                                                 },
-                                                                _ => unreachable!(),
-                                                            });
-                                                        },
-                                                    );
-                                                });
-                                            },
-                                        );
-                                    });
-                                    discord_client.set_current_activity(Some(
-                                        discord::make_looking_activity(
-                                            &state.link_code,
-                                            &config.language,
-                                            selection.as_ref().map(|selection| {
-                                                discord::make_game_info(
-                                                    selection.game,
-                                                    selection.patch
-                                                        .as_ref()
-                                                        .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
-                                                    &config.language
+                                                            );
+                                                        });
+                                                    },
+                                                );
+                                            });
+                                            discord_client.set_current_activity(Some(
+                                                discord::make_looking_activity(
+                                                    &state.link_code,
+                                                    &config.language,
+                                                    selection.as_ref().map(|selection| {
+                                                        discord::make_game_info(
+                                                            selection.game,
+                                                            selection.patch
+                                                                .as_ref()
+                                                                .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
+                                                            &config.language
+                                                        )
+                                                    }),
                                                 )
-                                            }),
-                                        )
-                                    ));
-                                }
-                                ConnectionState::InLobby(lobby) => {
-                                    let mut lobby = lobby.blocking_lock();
-                                    if !lobby.attention_requested {
-                                        window.request_user_attention(Some(
-                                            winit::window::UserAttentionType::Critical,
-                                        ));
-                                        lobby.attention_requested = true;
-                                    }
-
-                                    discord_client.set_current_activity(Some(
-                                        discord::make_in_lobby_activity(
-                                            &lobby.link_code,
-                                            &config.language,
-                                            lobby.selection.as_ref().map(|selection| {
-                                                discord::make_game_info(
-                                                    selection.game,
-                                                    selection.patch
-                                                        .as_ref()
-                                                        .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
-                                                    &config.language
-                                                )
-                                            }),
-                                        ),
-                                    ));
-
-                                    ui.add_enabled_ui(
-                                        lobby.local_negotiated_state.is_none()
-                                            && lobby.sender.is_some(),
-                                        |ui| {
-                                            show_lobby_table(
-                                                ui,
-                                                handle.clone(),
-                                                &cancellation_token,
-                                                config,
-                                                &mut lobby,
-                                                &roms,
-                                                &patches,
-                                            );
-                                        },
-                                    );
-                                }
-                            }
-                        } else {
-                            discord_client
-                                .set_current_activity(Some(discord::make_base_activity(None)));
-                        }
-                    }
-
-                    ui.horizontal(|ui| {
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let (lobby, cancellation_token) =
-                                if let Some(connection_task) = connection_task.as_ref() {
-                                    match connection_task {
-                                        ConnectionTask::InProgress {
-                                            state: task_state,
-                                            cancellation_token,
-                                        } => (
-                                            if let ConnectionState::InLobby(lobby) = task_state {
-                                                Some(lobby.clone())
-                                            } else {
-                                                None
-                                            },
-                                            Some(cancellation_token.clone()),
-                                        ),
-                                        ConnectionTask::Failed(_) => (None, None),
-                                    }
-                                } else {
-                                    (None, None)
-                                };
-
-                            let error_window_open = {
-                                if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref()
-                                {
-                                    let mut open = true;
-                                    egui::Window::new("")
-                                        .id(egui::Id::new("connection-failed-window"))
-                                        .open(&mut open)
-                                        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                                        .show(ui.ctx(), |ui| {
-                                            // TODO: Localization
-                                            ui.label(format!("{:?}", err));
-                                        });
-                                    open
-                                } else {
-                                    false
-                                }
-                            };
-
-                            if !error_window_open {
-                                if let Some(ConnectionTask::Failed(_)) = connection_task.as_ref() {
-                                    *connection_task = None;
-                                }
-                            }
-
-                            let mut submitted = false;
-                            if cancellation_token.is_none() {
-                                if ui
-                                    .add_enabled(
-                                        !error_window_open
-                                            && (!state.link_code.is_empty() || selection.is_some()),
-                                        egui::Button::new(egui::RichText::new(
-                                            if state.link_code.is_empty() {
-                                                format!(
-                                                    "▶️ {}",
-                                                    i18n::LOCALES
-                                                        .lookup(&config.language, "play-play")
-                                                        .unwrap()
-                                                )
-                                            } else {
-                                                format!(
-                                                    "🥊 {}",
-                                                    i18n::LOCALES
-                                                        .lookup(&config.language, "play-fight")
-                                                        .unwrap()
-                                                )
-                                            },
-                                        )),
-                                    )
-                                    .clicked()
-                                {
-                                    submitted = true;
-                                }
-
-                                if ui
-                                    .add_enabled(
-                                        !error_window_open,
-                                        egui::Button::new(egui::RichText::new("🎲")),
-                                    )
-                                    .on_hover_text(
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "play-random")
-                                            .unwrap(),
-                                    )
-                                    .clicked()
-                                {
-                                    state.link_code = randomcode::generate(&config.language);
-                                    let _ = clipboard.set_text(state.link_code.clone());
-                                }
-                            }
-
-                            if let Some(lobby) = lobby {
-                                let mut lobby = lobby.blocking_lock();
-                                let mut ready = lobby.local_negotiated_state.is_some()
-                                    || lobby.sender.is_none();
-                                let was_ready = ready;
-                                ui.add_enabled(
-                                    selection.is_some()
-                                        && are_settings_compatible(
-                                            &lobby.make_local_settings(),
-                                            &lobby.remote_settings,
-                                            &roms,
-                                            &patches,
-                                        )
-                                        && lobby.sender.is_some(),
-                                    egui::Checkbox::new(
-                                        &mut ready,
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "play-ready")
-                                            .unwrap(),
-                                    ),
-                                );
-                                if error_window_open {
-                                    ready = was_ready;
-                                }
-                                if lobby.sender.is_some() {
-                                    handle.block_on(async {
-                                        if !was_ready && ready {
-                                            state.show_save_select = None;
-                                            let save_data = lobby
-                                                .selection
-                                                .as_ref()
-                                                .map(|selection| selection.save.to_vec());
-                                            if let Some(save_data) = save_data {
-                                                let _ = lobby.commit(&save_data).await;
-                                            }
-                                        } else if was_ready && !ready {
-                                            let _ = lobby.uncommit().await;
+                                            ));
                                         }
-                                    });
+                                        ConnectionState::InLobby(lobby) => {
+                                            let mut lobby = lobby.blocking_lock();
+                                            if !lobby.attention_requested {
+                                                window.request_user_attention(Some(
+                                                    winit::window::UserAttentionType::Critical,
+                                                ));
+                                                lobby.attention_requested = true;
+                                            }
+
+                                            discord_client.set_current_activity(Some(
+                                                discord::make_in_lobby_activity(
+                                                    &lobby.link_code,
+                                                    &config.language,
+                                                    lobby.selection.as_ref().map(|selection| {
+                                                        discord::make_game_info(
+                                                            selection.game,
+                                                            selection.patch
+                                                                .as_ref()
+                                                                .map(|(patch_name, patch_version, _)| (patch_name.as_str(), patch_version)),
+                                                            &config.language
+                                                        )
+                                                    }),
+                                                ),
+                                            ));
+
+                                            ui.add_enabled_ui(
+                                                lobby.local_negotiated_state.is_none()
+                                                    && lobby.sender.is_some(),
+                                                |ui| {
+                                                    show_lobby_table(
+                                                        ui,
+                                                        handle.clone(),
+                                                        &cancellation_token,
+                                                        config,
+                                                        &mut lobby,
+                                                        &roms,
+                                                        &patches,
+                                                    );
+                                                },
+                                            );
+                                        }
+                                    }
+                                } else {
+                                    discord_client
+                                        .set_current_activity(Some(discord::make_base_activity(None)));
                                 }
                             }
 
-                            let input_resp = ui.add_enabled(
-                                cancellation_token.is_none() && !error_window_open,
-                                egui::TextEdit::singleline(&mut state.link_code)
-                                    .hint_text(
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "play-link-code")
-                                            .unwrap(),
-                                    )
-                                    .desired_width(f32::INFINITY),
-                            );
-                            state.link_code = state
-                                .link_code
-                                .to_lowercase()
-                                .chars()
-                                .filter(|c| {
-                                    "abcdefghijklmnopqrstuvwxyz0123456789-"
-                                        .chars()
-                                        .any(|c2| c2 == *c)
-                                })
-                                .take(40)
-                                .collect::<String>()
-                                .trim_start_matches("-")
-                                .to_string();
+                            ui.horizontal(|ui| {
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    let (lobby, cancellation_token) =
+                                        if let Some(connection_task) = connection_task.as_ref() {
+                                            match connection_task {
+                                                ConnectionTask::InProgress {
+                                                    state: task_state,
+                                                    cancellation_token,
+                                                } => (
+                                                    if let ConnectionState::InLobby(lobby) = task_state {
+                                                        Some(lobby.clone())
+                                                    } else {
+                                                        None
+                                                    },
+                                                    Some(cancellation_token.clone()),
+                                                ),
+                                                ConnectionTask::Failed(_) => (None, None),
+                                            }
+                                        } else {
+                                            (None, None)
+                                        };
 
-                            if let Some(last) = state.link_code.chars().last() {
-                                if last == '-' {
+                                    let error_window_open = {
+                                        if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref()
+                                        {
+                                            let mut open = true;
+                                            egui::Window::new("")
+                                                .id(egui::Id::new("connection-failed-window"))
+                                                .open(&mut open)
+                                                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                                                .show(ui.ctx(), |ui| {
+                                                    // TODO: Localization
+                                                    ui.label(format!("{:?}", err));
+                                                });
+                                            open
+                                        } else {
+                                            false
+                                        }
+                                    };
+
+                                    if !error_window_open {
+                                        if let Some(ConnectionTask::Failed(_)) = connection_task.as_ref() {
+                                            *connection_task = None;
+                                        }
+                                    }
+
+                                    let mut submitted = false;
+                                    if cancellation_token.is_none() {
+                                        if ui
+                                            .add_enabled(
+                                                !error_window_open
+                                                    && (!state.link_code.is_empty() || selection.is_some()),
+                                                egui::Button::new(egui::RichText::new(
+                                                    if state.link_code.is_empty() {
+                                                        format!(
+                                                            "▶️ {}",
+                                                            i18n::LOCALES
+                                                                .lookup(&config.language, "play-play")
+                                                                .unwrap()
+                                                        )
+                                                    } else {
+                                                        format!(
+                                                            "🥊 {}",
+                                                            i18n::LOCALES
+                                                                .lookup(&config.language, "play-fight")
+                                                                .unwrap()
+                                                        )
+                                                    },
+                                                )),
+                                            )
+                                            .clicked()
+                                        {
+                                            submitted = true;
+                                        }
+
+                                        if ui
+                                            .add_enabled(
+                                                !error_window_open,
+                                                egui::Button::new(egui::RichText::new("🎲")),
+                                            )
+                                            .on_hover_text(
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "play-random")
+                                                    .unwrap(),
+                                            )
+                                            .clicked()
+                                        {
+                                            state.link_code = randomcode::generate(&config.language);
+                                            let _ = clipboard.set_text(state.link_code.clone());
+                                        }
+                                    }
+
+                                    if let Some(lobby) = lobby {
+                                        let mut lobby = lobby.blocking_lock();
+                                        let mut ready = lobby.local_negotiated_state.is_some()
+                                            || lobby.sender.is_none();
+                                        let was_ready = ready;
+                                        ui.add_enabled(
+                                            selection.is_some()
+                                                && are_settings_compatible(
+                                                    &lobby.make_local_settings(),
+                                                    &lobby.remote_settings,
+                                                    &roms,
+                                                    &patches,
+                                                )
+                                                && lobby.sender.is_some(),
+                                            egui::Checkbox::new(
+                                                &mut ready,
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "play-ready")
+                                                    .unwrap(),
+                                            ),
+                                        );
+                                        if error_window_open {
+                                            ready = was_ready;
+                                        }
+                                        if lobby.sender.is_some() {
+                                            handle.block_on(async {
+                                                if !was_ready && ready {
+                                                    state.show_save_select = None;
+                                                    let save_data = lobby
+                                                        .selection
+                                                        .as_ref()
+                                                        .map(|selection| selection.save.to_vec());
+                                                    if let Some(save_data) = save_data {
+                                                        let _ = lobby.commit(&save_data).await;
+                                                    }
+                                                } else if was_ready && !ready {
+                                                    let _ = lobby.uncommit().await;
+                                                }
+                                            });
+                                        }
+                                    }
+
+                                    let input_resp = ui.add_enabled(
+                                        cancellation_token.is_none() && !error_window_open,
+                                        egui::TextEdit::singleline(&mut state.link_code)
+                                            .hint_text(
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "play-link-code")
+                                                    .unwrap(),
+                                            )
+                                            .desired_width(f32::INFINITY),
+                                    );
                                     state.link_code = state
                                         .link_code
+                                        .to_lowercase()
                                         .chars()
-                                        .rev()
-                                        .skip_while(|c| *c == '-')
-                                        .collect::<Vec<_>>()
-                                        .into_iter()
-                                        .rev()
+                                        .filter(|c| {
+                                            "abcdefghijklmnopqrstuvwxyz0123456789-"
+                                                .chars()
+                                                .any(|c2| c2 == *c)
+                                        })
+                                        .take(40)
                                         .collect::<String>()
-                                        + "-";
-                                }
-                            }
+                                        .trim_start_matches("-")
+                                        .to_string();
 
-                            if input_resp.lost_focus()
-                                && ui.ctx().input().key_pressed(egui::Key::Enter)
-                            {
-                                submitted = true;
-                            }
-
-                            if let Some(link_code) = discord_client.take_current_join_secret() {
-                                state.link_code = link_code.to_string();
-                                submitted = true;
-                            }
-
-                            if submitted {
-                                let audio_binder = audio_binder.clone();
-                                let egui_ctx = ui.ctx().clone();
-                                let session = session.clone();
-                                let emu_tps_counter = emu_tps_counter.clone();
-
-                                if !state.link_code.is_empty() {
-                                    let cancellation_token =
-                                        tokio_util::sync::CancellationToken::new();
-                                    *connection_task = Some(ConnectionTask::InProgress {
-                                        state: ConnectionState::Starting,
-                                        cancellation_token: cancellation_token.clone(),
-                                    });
-
-                                    handle.spawn({
-                                        let matchmaking_endpoint =
-                                            if !config.matchmaking_endpoint.is_empty() {
-                                                config.matchmaking_endpoint.clone()
-                                            } else {
-                                                config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
-                                            };
-                                        let link_code = state.link_code.to_owned();
-                                        let nickname = config
-                                            .nickname
-                                            .clone()
-                                            .unwrap_or_else(|| "".to_string());
-                                        let patches_path = config.patches_path();
-                                        let replays_path = config.replays_path();
-                                        let config_arc = config_arc.clone();
-                                        let handle = handle.clone();
-                                        let connection_task_arc = state.connection_task.clone();
-                                        let roms_scanner = roms_scanner.clone();
-                                        let patches_scanner = patches_scanner.clone();
-                                        async move {
-                                            run_connection_task(
-                                                config_arc,
-                                                handle,
-                                                egui_ctx.clone(),
-                                                audio_binder,
-                                                emu_tps_counter,
-                                                session,
-                                                roms_scanner,
-                                                patches_scanner,
-                                                matchmaking_endpoint,
-                                                link_code,
-                                                nickname,
-                                                patches_path,
-                                                replays_path,
-                                                connection_task_arc,
-                                                cancellation_token,
-                                            )
-                                            .await;
-                                            egui_ctx.request_repaint();
+                                    if let Some(last) = state.link_code.chars().last() {
+                                        if last == '-' {
+                                            state.link_code = state
+                                                .link_code
+                                                .chars()
+                                                .rev()
+                                                .skip_while(|c| *c == '-')
+                                                .collect::<Vec<_>>()
+                                                .into_iter()
+                                                .rev()
+                                                .collect::<String>()
+                                                + "-";
                                         }
-                                    });
-                                } else if let Some(selection) = selection.as_ref() {
-                                    let save_path = selection.save.path.clone();
-                                    let game = selection.game;
-                                    let rom = selection.rom.clone();
-                                    let patch = selection
-                                        .patch
-                                        .as_ref()
-                                        .map(|(name, version, _)| (name.clone(), version.clone()));
+                                    }
 
-                                    // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
-                                    handle.spawn_blocking(move || {
-                                        *session.lock() = Some(
-                                            session::Session::new_singleplayer(
-                                                audio_binder,
-                                                game,
-                                                patch,
-                                                &rom,
-                                                &save_path,
-                                                emu_tps_counter,
-                                            )
-                                            .unwrap(),
-                                        ); // TODO: Don't unwrap maybe
-                                        egui_ctx.request_repaint();
-                                    });
-                                }
-                            }
+                                    if input_resp.lost_focus()
+                                        && ui.ctx().input().key_pressed(egui::Key::Enter)
+                                    {
+                                        submitted = true;
+                                    }
+
+                                    if let Some(link_code) = discord_client.take_current_join_secret() {
+                                        state.link_code = link_code.to_string();
+                                        submitted = true;
+                                    }
+
+                                    if submitted {
+                                        let audio_binder = audio_binder.clone();
+                                        let egui_ctx = ui.ctx().clone();
+                                        let session = session.clone();
+                                        let emu_tps_counter = emu_tps_counter.clone();
+
+                                        if !state.link_code.is_empty() {
+                                            let cancellation_token =
+                                                tokio_util::sync::CancellationToken::new();
+                                            *connection_task = Some(ConnectionTask::InProgress {
+                                                state: ConnectionState::Starting,
+                                                cancellation_token: cancellation_token.clone(),
+                                            });
+
+                                            handle.spawn({
+                                                let matchmaking_endpoint =
+                                                    if !config.matchmaking_endpoint.is_empty() {
+                                                        config.matchmaking_endpoint.clone()
+                                                    } else {
+                                                        config::DEFAULT_MATCHMAKING_ENDPOINT.to_string()
+                                                    };
+                                                let link_code = state.link_code.to_owned();
+                                                let nickname = config
+                                                    .nickname
+                                                    .clone()
+                                                    .unwrap_or_else(|| "".to_string());
+                                                let patches_path = config.patches_path();
+                                                let replays_path = config.replays_path();
+                                                let config_arc = config_arc.clone();
+                                                let handle = handle.clone();
+                                                let connection_task_arc = state.connection_task.clone();
+                                                let roms_scanner = roms_scanner.clone();
+                                                let patches_scanner = patches_scanner.clone();
+                                                async move {
+                                                    run_connection_task(
+                                                        config_arc,
+                                                        handle,
+                                                        egui_ctx.clone(),
+                                                        audio_binder,
+                                                        emu_tps_counter,
+                                                        session,
+                                                        roms_scanner,
+                                                        patches_scanner,
+                                                        matchmaking_endpoint,
+                                                        link_code,
+                                                        nickname,
+                                                        patches_path,
+                                                        replays_path,
+                                                        connection_task_arc,
+                                                        cancellation_token,
+                                                    )
+                                                    .await;
+                                                    egui_ctx.request_repaint();
+                                                }
+                                            });
+                                        } else if let Some(selection) = selection.as_ref() {
+                                            let save_path = selection.save.path.clone();
+                                            let game = selection.game;
+                                            let rom = selection.rom.clone();
+                                            let patch = selection
+                                                .patch
+                                                .as_ref()
+                                                .map(|(name, version, _)| (name.clone(), version.clone()));
+
+                                            // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
+                                            handle.spawn_blocking(move || {
+                                                *session.lock() = Some(
+                                                    session::Session::new_singleplayer(
+                                                        audio_binder,
+                                                        game,
+                                                        patch,
+                                                        &rom,
+                                                        &save_path,
+                                                        emu_tps_counter,
+                                                    )
+                                                    .unwrap(),
+                                                ); // TODO: Don't unwrap maybe
+                                                egui_ctx.request_repaint();
+                                            });
+                                        }
+                                    }
+                                });
+                            });
                         });
                     });
-                });
-            });
-    }
+            }
 
-    egui::CentralPanel::default()
-        .frame(egui::Frame::none())
-        .show_inside(ui, |ui| {
-            let is_ready = connection_task
-                .as_ref()
-                .map(|task| match task {
-                    ConnectionTask::InProgress { state, .. } => match state {
-                        ConnectionState::InLobby(lobby) => {
-                            lobby.blocking_lock().local_negotiated_state.is_some()
-                        }
-                        _ => false,
-                    },
-                    _ => false,
-                })
-                .unwrap_or(false);
-
-            ui.add_enabled_ui(!is_ready, |ui| {
-                if ui
-                    .horizontal(|ui| {
-                        ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center)
-                                .with_cross_justify(true),
-                            |ui| {
-                                ui.add({
-                                    let text = egui::RichText::new(
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "select-save.select-button")
-                                            .unwrap(),
-                                    );
-
-                                    if state.show_save_select.is_some() {
-                                        egui::Button::new(
-                                            text.color(
-                                                ui.ctx().style().visuals.selection.stroke.color,
-                                            ),
-                                        )
-                                        .fill(ui.ctx().style().visuals.selection.bg_fill)
-                                    } else {
-                                        egui::Button::new(text)
-                                    }
-                                }) | ui
-                                    .vertical_centered_justified(|ui| {
-                                        let mut layouter =
-                                            |ui: &egui::Ui, _: &str, _wrap_width: f32| {
-                                                let mut layout_job =
-                                                    egui::text::LayoutJob::default();
-                                                if let Some(selection) = selection.as_ref() {
-                                                    let (family, variant) =
-                                                        selection.game.family_and_variant();
-                                                    layout_job.append(
-                                                        &format!(
-                                                            "{}",
-                                                            selection
-                                                                .save
-                                                                .path
-                                                                .strip_prefix(&config.saves_path())
-                                                                .unwrap_or(
-                                                                    selection.save.path.as_path()
-                                                                )
-                                                                .display()
-                                                        ),
-                                                        0.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Body)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
-                                                    );
-                                                    layout_job.append(
-                                                        &i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                &format!(
-                                                                    "game-{}.variant-{}",
-                                                                    family, variant
-                                                                ),
-                                                            )
-                                                            .unwrap(),
-                                                        5.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Small)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
-                                                    );
-                                                } else {
-                                                    layout_job.append(
-                                                        &i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                "select-save.no-save-selected",
-                                                            )
-                                                            .unwrap(),
-                                                        0.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Body)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
-                                                    );
-                                                }
-                                                ui.fonts().layout_job(layout_job)
-                                            };
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut String::new())
-                                                .layouter(&mut layouter),
-                                        )
-                                    })
-                                    .inner
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none()
+                        .fill(ctx.style().visuals.window_fill())
+                        .inner_margin(egui::style::Margin::symmetric(0.0, 0.0))
+                    )
+                .show_inside(ui, |ui| {
+                    let is_ready = connection_task
+                        .as_ref()
+                        .map(|task| match task {
+                            ConnectionTask::InProgress { state, .. } => match state {
+                                ConnectionState::InLobby(lobby) => {
+                                    lobby.blocking_lock().local_negotiated_state.is_some()
+                                }
+                                _ => false,
                             },
-                        )
-                        .inner
-                    })
-                    .inner
-                    .clicked()
-                {
-                    state.show_save_select = if state.show_save_select.is_none() {
-                        handle.spawn_blocking({
-                            let roms_scanner = roms_scanner.clone();
-                            let saves_scanner = saves_scanner.clone();
-                            let roms_path = config.roms_path();
-                            let saves_path = config.saves_path();
-                            move || {
-                                roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
-                                saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
-                            }
-                        });
-                        Some(gui::save_select_view::State::new(selection.as_ref().map(
-                            |selection| (selection.game, Some(selection.save.path.to_path_buf())),
-                        )))
-                    } else {
-                        None
-                    };
-                }
-            });
+                            _ => false,
+                        })
+                        .unwrap_or(false);
 
-            if state.show_save_select.is_some() {
-                gui::save_select_view::show(
-                    ui,
-                    &mut state.show_save_select,
-                    &mut *selection,
-                    &config.language,
-                    &config.saves_path(),
-                    roms_scanner.clone(),
-                    saves_scanner.clone(),
-                );
-            } else {
-                ui.horizontal_top(|ui| {
-                    let patches = patches_scanner.read();
+                    ui.add_enabled_ui(!is_ready, |ui| {
+                        if ui
+                            .horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center)
+                                        .with_cross_justify(true),
+                                    |ui| {
+                                        ui.add({
+                                            let text = egui::RichText::new(
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "select-save.select-button")
+                                                    .unwrap(),
+                                            );
 
-                    let mut supported_patches = std::collections::BTreeMap::new();
-                    {
-                        let selection = if let Some(selection) = selection.as_mut() {
-                            selection
-                        } else {
-                            return;
-                        };
-
-                        for (name, info) in patches.iter() {
-                            let mut supported_versions = info
-                                .versions
-                                .iter()
-                                .filter(|(_, v)| v.supported_games.contains(&selection.game))
-                                .map(|(v, _)| v)
-                                .collect::<Vec<_>>();
-                            supported_versions.sort();
-                            supported_versions.reverse();
-
-                            if supported_versions.is_empty() {
-                                continue;
-                            }
-
-                            supported_patches.insert(name, (info, supported_versions));
+                                            if state.show_save_select.is_some() {
+                                                egui::Button::new(
+                                                    text.color(
+                                                        ui.ctx().style().visuals.selection.stroke.color,
+                                                    ),
+                                                )
+                                                .fill(ui.ctx().style().visuals.selection.bg_fill)
+                                            } else {
+                                                egui::Button::new(text)
+                                            }
+                                        }) | ui
+                                            .vertical_centered_justified(|ui| {
+                                                let mut layouter =
+                                                    |ui: &egui::Ui, _: &str, _wrap_width: f32| {
+                                                        let mut layout_job =
+                                                            egui::text::LayoutJob::default();
+                                                        if let Some(selection) = selection.as_ref() {
+                                                            let (family, variant) =
+                                                                selection.game.family_and_variant();
+                                                            layout_job.append(
+                                                                &format!(
+                                                                    "{}",
+                                                                    selection
+                                                                        .save
+                                                                        .path
+                                                                        .strip_prefix(&config.saves_path())
+                                                                        .unwrap_or(
+                                                                            selection.save.path.as_path()
+                                                                        )
+                                                                        .display()
+                                                                ),
+                                                                0.0,
+                                                                egui::TextFormat::simple(
+                                                                    ui.style()
+                                                                        .text_styles
+                                                                        .get(&egui::TextStyle::Body)
+                                                                        .unwrap()
+                                                                        .clone(),
+                                                                    ui.visuals().text_color(),
+                                                                ),
+                                                            );
+                                                            layout_job.append(
+                                                                &i18n::LOCALES
+                                                                    .lookup(
+                                                                        &config.language,
+                                                                        &format!(
+                                                                            "game-{}.variant-{}",
+                                                                            family, variant
+                                                                        ),
+                                                                    )
+                                                                    .unwrap(),
+                                                                5.0,
+                                                                egui::TextFormat::simple(
+                                                                    ui.style()
+                                                                        .text_styles
+                                                                        .get(&egui::TextStyle::Small)
+                                                                        .unwrap()
+                                                                        .clone(),
+                                                                    ui.visuals().text_color(),
+                                                                ),
+                                                            );
+                                                        } else {
+                                                            layout_job.append(
+                                                                &i18n::LOCALES
+                                                                    .lookup(
+                                                                        &config.language,
+                                                                        "select-save.no-save-selected",
+                                                                    )
+                                                                    .unwrap(),
+                                                                0.0,
+                                                                egui::TextFormat::simple(
+                                                                    ui.style()
+                                                                        .text_styles
+                                                                        .get(&egui::TextStyle::Body)
+                                                                        .unwrap()
+                                                                        .clone(),
+                                                                    ui.visuals().text_color(),
+                                                                ),
+                                                            );
+                                                        }
+                                                        ui.fonts().layout_job(layout_job)
+                                                    };
+                                                ui.add(
+                                                    egui::TextEdit::singleline(&mut String::new())
+                                                        .layouter(&mut layouter),
+                                                )
+                                            })
+                                            .inner
+                                    },
+                                )
+                                .inner
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            state.show_save_select = if state.show_save_select.is_none() {
+                                handle.spawn_blocking({
+                                    let roms_scanner = roms_scanner.clone();
+                                    let saves_scanner = saves_scanner.clone();
+                                    let roms_path = config.roms_path();
+                                    let saves_path = config.saves_path();
+                                    move || {
+                                        roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
+                                        saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+                                    }
+                                });
+                                Some(gui::save_select_view::State::new(selection.as_ref().map(
+                                    |selection| (selection.game, Some(selection.save.path.to_path_buf())),
+                                )))
+                            } else {
+                                None
+                            };
                         }
-                    }
+                    });
 
-                    const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
-                    ui.add_enabled_ui(!is_ready && selection.is_some(), |ui| {
-                        egui::ComboBox::from_id_source("patch-select-combobox")
-                            .selected_text(
-                                selection
-                                    .as_ref()
-                                    .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
-                                    .unwrap_or(
-                                        &i18n::LOCALES
-                                            .lookup(&config.language, "play-no-patch")
-                                            .unwrap(),
-                                    ),
-                            )
-                            .width(
-                                ui.available_width()
-                                    - ui.spacing().item_spacing.x
-                                    - PATCH_VERSION_COMBOBOX_WIDTH,
-                            )
-                            .show_ui(ui, |ui| {
+                    if state.show_save_select.is_some() {
+                        gui::save_select_view::show(
+                            ui,
+                            &mut state.show_save_select,
+                            &mut *selection,
+                            &config.language,
+                            &config.saves_path(),
+                            roms_scanner.clone(),
+                            saves_scanner.clone(),
+                        );
+                    } else {
+                        ui.horizontal_top(|ui| {
+                            let patches = patches_scanner.read();
+
+                            let mut supported_patches = std::collections::BTreeMap::new();
+                            {
                                 let selection = if let Some(selection) = selection.as_mut() {
                                     selection
                                 } else {
                                     return;
                                 };
-                                if ui
-                                    .selectable_label(
-                                        selection.patch.is_none(),
-                                        &i18n::LOCALES
-                                            .lookup(&config.language, "play-no-patch")
-                                            .unwrap(),
-                                    )
-                                    .clicked()
-                                {
-                                    *selection = gui::Selection::new(
-                                        selection.game.clone(),
-                                        selection.save.clone(),
-                                        None,
-                                        roms.get(&selection.game).unwrap().clone(),
-                                    );
-                                }
 
-                                for (name, (_, supported_versions)) in supported_patches.iter() {
-                                    if ui
-                                        .selectable_label(
-                                            selection.patch.as_ref().map(|(name, _, _)| name)
-                                                == Some(*name),
-                                            *name,
-                                        )
-                                        .clicked()
-                                    {
-                                        *patch_selection = Some(name.to_string());
+                                for (name, info) in patches.iter() {
+                                    let mut supported_versions = info
+                                        .versions
+                                        .iter()
+                                        .filter(|(_, v)| v.supported_games.contains(&selection.game))
+                                        .map(|(v, _)| v)
+                                        .collect::<Vec<_>>();
+                                    supported_versions.sort();
+                                    supported_versions.reverse();
 
-                                        let rom = roms.get(&selection.game).unwrap().clone();
-                                        let (rom_code, revision) =
-                                            selection.game.rom_code_and_revision();
-                                        let version = *supported_versions.first().unwrap();
-
-                                        let version_metadata = if let Some(version_metadata) = patches
-                                            .get(*name)
-                                            .and_then(|p| p.versions.get(version))
-                                            .cloned()
-                                        {
-                                            version_metadata
-                                        } else {
-                                            return;
-                                        };
-
-                                        let bps = match std::fs::read(
-                                            config
-                                                .patches_path()
-                                                .join(name)
-                                                .join(format!("v{}", version))
-                                                .join(format!(
-                                                    "{}_{:02}.bps",
-                                                    std::str::from_utf8(rom_code).unwrap(),
-                                                    revision
-                                                )),
-                                        ) {
-                                            Ok(bps) => bps,
-                                            Err(e) => {
-                                                log::error!(
-                                                    "failed to load patch {} to {:?}: {:?}",
-                                                    name,
-                                                    (rom_code, revision),
-                                                    e
-                                                );
-                                                return;
-                                            }
-                                        };
-
-                                        let rom = match patch::bps::apply(&rom, &bps) {
-                                            Ok(r) => r.to_vec(),
-                                            Err(e) => {
-                                                log::error!(
-                                                    "failed to apply patch {} to {:?}: {:?}",
-                                                    name,
-                                                    (rom_code, revision),
-                                                    e
-                                                );
-                                                return;
-                                            }
-                                        };
-
-                                        *selection = gui::Selection::new(
-                                            selection.game.clone(),
-                                            selection.save.clone(),
-                                            Some(((*name).clone(), version.clone(), version_metadata)),
-                                            rom,
-                                        );
+                                    if supported_versions.is_empty() {
+                                        continue;
                                     }
+
+                                    supported_patches.insert(name, (info, supported_versions));
                                 }
-                            });
-                        ui.add_enabled_ui(
-                            !is_ready
-                                && selection
-                                    .as_ref()
-                                    .and_then(|selection| selection.patch.as_ref())
-                                    .and_then(|patch| supported_patches.get(&patch.0))
-                                    .map(|(_, vs)| !vs.is_empty())
-                                    .unwrap_or(false),
-                            |ui| {
-                                egui::ComboBox::from_id_source("patch-version-select-combobox")
-                                    .width(
-                                        PATCH_VERSION_COMBOBOX_WIDTH
-                                            - ui.spacing().item_spacing.x * 2.0,
-                                    )
+                            }
+
+                            const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
+                            ui.add_enabled_ui(!is_ready && selection.is_some(), |ui| {
+                                egui::ComboBox::from_id_source("patch-select-combobox")
                                     .selected_text(
                                         selection
                                             .as_ref()
-                                            .and_then(|s| {
-                                                s.patch
-                                                    .as_ref()
-                                                    .map(|(_, version, _)| version.to_string())
-                                            })
-                                            .unwrap_or("".to_string()),
+                                            .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
+                                            .unwrap_or(
+                                                &i18n::LOCALES
+                                                    .lookup(&config.language, "play-no-patch")
+                                                    .unwrap(),
+                                            ),
+                                    )
+                                    .width(
+                                        ui.available_width()
+                                            - ui.spacing().item_spacing.x
+                                            - PATCH_VERSION_COMBOBOX_WIDTH,
                                     )
                                     .show_ui(ui, |ui| {
                                         let selection = if let Some(selection) = selection.as_mut() {
@@ -1853,38 +1743,43 @@ pub fn show(
                                         } else {
                                             return;
                                         };
-
-                                        let patch = if let Some(patch) = selection.patch.as_ref() {
-                                            patch.clone()
-                                        } else {
-                                            return;
-                                        };
-
-                                        let supported_versions = if let Some(supported_versions) =
-                                            supported_patches.get(&patch.0).map(|(_, vs)| vs)
+                                        if ui
+                                            .selectable_label(
+                                                selection.patch.is_none(),
+                                                &i18n::LOCALES
+                                                    .lookup(&config.language, "play-no-patch")
+                                                    .unwrap(),
+                                            )
+                                            .clicked()
                                         {
-                                            supported_versions
-                                        } else {
-                                            return;
-                                        };
+                                            *selection = gui::Selection::new(
+                                                selection.game.clone(),
+                                                selection.save.clone(),
+                                                None,
+                                                roms.get(&selection.game).unwrap().clone(),
+                                            );
+                                        }
 
-                                        for version in supported_versions.iter() {
+                                        for (name, (_, supported_versions)) in supported_patches.iter() {
                                             if ui
                                                 .selectable_label(
-                                                    &patch.1 == *version,
-                                                    version.to_string(),
+                                                    selection.patch.as_ref().map(|(name, _, _)| name)
+                                                        == Some(*name),
+                                                    *name,
                                                 )
                                                 .clicked()
                                             {
+                                                *patch_selection = Some(name.to_string());
+
                                                 let rom = roms.get(&selection.game).unwrap().clone();
                                                 let (rom_code, revision) =
                                                     selection.game.rom_code_and_revision();
+                                                let version = *supported_versions.first().unwrap();
 
-                                                let version_metadata = if let Some(version_metadata) =
-                                                    patches
-                                                        .get(&patch.0)
-                                                        .and_then(|p| p.versions.get(version))
-                                                        .cloned()
+                                                let version_metadata = if let Some(version_metadata) = patches
+                                                    .get(*name)
+                                                    .and_then(|p| p.versions.get(version))
+                                                    .cloned()
                                                 {
                                                     version_metadata
                                                 } else {
@@ -1894,7 +1789,7 @@ pub fn show(
                                                 let bps = match std::fs::read(
                                                     config
                                                         .patches_path()
-                                                        .join(&patch.0)
+                                                        .join(name)
                                                         .join(format!("v{}", version))
                                                         .join(format!(
                                                             "{}_{:02}.bps",
@@ -1906,7 +1801,7 @@ pub fn show(
                                                     Err(e) => {
                                                         log::error!(
                                                             "failed to load patch {} to {:?}: {:?}",
-                                                            patch.0,
+                                                            name,
                                                             (rom_code, revision),
                                                             e
                                                         );
@@ -1919,7 +1814,7 @@ pub fn show(
                                                     Err(e) => {
                                                         log::error!(
                                                             "failed to apply patch {} to {:?}: {:?}",
-                                                            patch.0,
+                                                            name,
                                                             (rom_code, revision),
                                                             e
                                                         );
@@ -1930,58 +1825,172 @@ pub fn show(
                                                 *selection = gui::Selection::new(
                                                     selection.game.clone(),
                                                     selection.save.clone(),
-                                                    Some((
-                                                        patch.0.clone(),
-                                                        (*version).clone(),
-                                                        version_metadata,
-                                                    )),
+                                                    Some(((*name).clone(), version.clone(), version_metadata)),
                                                     rom,
                                                 );
                                             }
                                         }
                                     });
-                            },
-                        );
-                    });
+                                ui.add_enabled_ui(
+                                    !is_ready
+                                        && selection
+                                            .as_ref()
+                                            .and_then(|selection| selection.patch.as_ref())
+                                            .and_then(|patch| supported_patches.get(&patch.0))
+                                            .map(|(_, vs)| !vs.is_empty())
+                                            .unwrap_or(false),
+                                    |ui| {
+                                        egui::ComboBox::from_id_source("patch-version-select-combobox")
+                                            .width(
+                                                PATCH_VERSION_COMBOBOX_WIDTH
+                                                    - ui.spacing().item_spacing.x * 2.0,
+                                            )
+                                            .selected_text(
+                                                selection
+                                                    .as_ref()
+                                                    .and_then(|s| {
+                                                        s.patch
+                                                            .as_ref()
+                                                            .map(|(_, version, _)| version.to_string())
+                                                    })
+                                                    .unwrap_or("".to_string()),
+                                            )
+                                            .show_ui(ui, |ui| {
+                                                let selection = if let Some(selection) = selection.as_mut() {
+                                                    selection
+                                                } else {
+                                                    return;
+                                                };
+
+                                                let patch = if let Some(patch) = selection.patch.as_ref() {
+                                                    patch.clone()
+                                                } else {
+                                                    return;
+                                                };
+
+                                                let supported_versions = if let Some(supported_versions) =
+                                                    supported_patches.get(&patch.0).map(|(_, vs)| vs)
+                                                {
+                                                    supported_versions
+                                                } else {
+                                                    return;
+                                                };
+
+                                                for version in supported_versions.iter() {
+                                                    if ui
+                                                        .selectable_label(
+                                                            &patch.1 == *version,
+                                                            version.to_string(),
+                                                        )
+                                                        .clicked()
+                                                    {
+                                                        let rom = roms.get(&selection.game).unwrap().clone();
+                                                        let (rom_code, revision) =
+                                                            selection.game.rom_code_and_revision();
+
+                                                        let version_metadata = if let Some(version_metadata) =
+                                                            patches
+                                                                .get(&patch.0)
+                                                                .and_then(|p| p.versions.get(version))
+                                                                .cloned()
+                                                        {
+                                                            version_metadata
+                                                        } else {
+                                                            return;
+                                                        };
+
+                                                        let bps = match std::fs::read(
+                                                            config
+                                                                .patches_path()
+                                                                .join(&patch.0)
+                                                                .join(format!("v{}", version))
+                                                                .join(format!(
+                                                                    "{}_{:02}.bps",
+                                                                    std::str::from_utf8(rom_code).unwrap(),
+                                                                    revision
+                                                                )),
+                                                        ) {
+                                                            Ok(bps) => bps,
+                                                            Err(e) => {
+                                                                log::error!(
+                                                                    "failed to load patch {} to {:?}: {:?}",
+                                                                    patch.0,
+                                                                    (rom_code, revision),
+                                                                    e
+                                                                );
+                                                                return;
+                                                            }
+                                                        };
+
+                                                        let rom = match patch::bps::apply(&rom, &bps) {
+                                                            Ok(r) => r.to_vec(),
+                                                            Err(e) => {
+                                                                log::error!(
+                                                                    "failed to apply patch {} to {:?}: {:?}",
+                                                                    patch.0,
+                                                                    (rom_code, revision),
+                                                                    e
+                                                                );
+                                                                return;
+                                                            }
+                                                        };
+
+                                                        *selection = gui::Selection::new(
+                                                            selection.game.clone(),
+                                                            selection.save.clone(),
+                                                            Some((
+                                                                patch.0.clone(),
+                                                                (*version).clone(),
+                                                                version_metadata,
+                                                            )),
+                                                            rom,
+                                                        );
+                                                    }
+                                                }
+                                            });
+                                    },
+                                );
+                            });
+                        });
+
+                        if let Some(selection) = selection.as_mut() {
+                            if let Some(assets) = selection.assets.as_ref() {
+                                let game_language = selection.game.language();
+                                gui::save_view::show(
+                                    ui,
+                                    config.streamer_mode,
+                                    clipboard,
+                                    font_families,
+                                    &config.language,
+                                    if let Some((_, _, metadata)) = selection.patch.as_ref() {
+                                        if let Some(language) =
+                                            metadata.rom_overrides.language.as_ref()
+                                        {
+                                            language
+                                        } else {
+                                            &game_language
+                                        }
+                                    } else {
+                                        &game_language
+                                    },
+                                    &selection.save.save,
+                                    assets,
+                                    &mut selection.save_view_state,
+                                );
+                            }
+                        }
+                    }
                 });
 
-                if let Some(selection) = selection.as_mut() {
-                    if let Some(assets) = selection.assets.as_ref() {
-                        let game_language = selection.game.language();
-                        gui::save_view::show(
-                            ui,
-                            config.streamer_mode,
-                            clipboard,
-                            font_families,
-                            &config.language,
-                            if let Some((_, _, metadata)) = selection.patch.as_ref() {
-                                if let Some(language) =
-                                    metadata.rom_overrides.language.as_ref()
-                                {
-                                    language
-                                } else {
-                                    &game_language
-                                }
-                            } else {
-                                &game_language
-                            },
-                            &selection.save.save,
-                            assets,
-                            &mut selection.save_view_state,
-                        );
-                    }
-                }
+            if let Some(ConnectionTask::InProgress {
+                state: ConnectionState::InLobby(lobby),
+                ..
+            }) = connection_task.as_ref()
+            {
+                handle.block_on(async {
+                    let mut lobby = lobby.lock().await;
+                    let _ = lobby.set_local_selection(&selection).await;
+                });
             }
         });
-
-    if let Some(ConnectionTask::InProgress {
-        state: ConnectionState::InLobby(lobby),
-        ..
-    }) = connection_task.as_ref()
-    {
-        handle.block_on(async {
-            let mut lobby = lobby.lock().await;
-            let _ = lobby.set_local_selection(&selection).await;
-        });
-    }
 }
