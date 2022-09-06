@@ -3,6 +3,7 @@ use crate::game;
 use crate::lockstep;
 
 pub struct InnerState {
+    disable_bgm: bool,
     current_tick: u32,
     local_player_index: u8,
     input_pairs:
@@ -29,6 +30,10 @@ pub struct InnerState {
 impl InnerState {
     pub fn take_error(&mut self) -> Option<anyhow::Error> {
         self.error.take()
+    }
+
+    pub fn disable_bgm(&self) -> bool {
+        self.disable_bgm
     }
 
     pub fn commit_tick(&self) -> u32 {
@@ -211,6 +216,7 @@ impl State {
         });
         State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
             InnerState {
+                disable_bgm: false,
                 current_tick: 0,
                 local_player_index,
                 input_pairs: input_pairs
@@ -306,6 +312,7 @@ impl Fastforwarder {
         self.hooks.prepare_for_fastforward(self.core.as_mut());
 
         *self.state.0.lock() = Some(InnerState {
+            disable_bgm: false,
             current_tick,
             local_player_index: self.local_player_index,
             input_pairs: input_pairs.into_iter().collect(),
