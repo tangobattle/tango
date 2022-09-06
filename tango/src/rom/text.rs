@@ -1,36 +1,25 @@
 use std::io::Read;
 
+use crate::rom;
 use byteorder::{ByteOrder, ReadBytesExt};
 
 #[derive(Clone, Debug)]
 pub enum Part {
-    Literal(usize),
+    String(String),
     Command { op: u8, params: Vec<u8> },
 }
 
-pub struct ParseOptions {
-    extension_op: u8,
-    eof_op: u8,
-    commands: std::collections::HashMap<u8, usize>,
-}
-
-impl ParseOptions {
-    pub fn new(extension_op: u8, eof_op: u8) -> Self {
-        Self {
-            extension_op,
-            eof_op,
-            commands: std::collections::HashMap::new(),
-        }
-    }
-
-    pub fn with_command(mut self, op: u8, len: usize) -> Self {
-        self.commands.insert(op, len);
-        self
-    }
+pub struct ParseOptions<'a> {
+    pub charset: &'a [&'a str],
+    pub extension_op: u8,
+    pub eof_op: u8,
+    pub newline_op: u8,
+    pub commands: std::collections::HashMap<u8, usize>,
 }
 
 pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
     let mut parts = vec![];
+    let mut out_buf = String::new();
     while !buf.is_empty() {
         let op = buf.read_u8()?;
 
@@ -38,7 +27,18 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
             break;
         }
 
+        if op == options.newline_op {
+            out_buf.push('\n');
+            continue;
+        }
+
         if let Some(len) = options.commands.get(&op) {
+            if !out_buf.is_empty() {
+                let mut next_buf = String::new();
+                std::mem::swap(&mut out_buf, &mut next_buf);
+                parts.push(Part::String(next_buf));
+            }
+
             let mut params = vec![0u8; *len];
             buf.read_exact(&mut params)?;
             parts.push(Part::Command { op, params });
@@ -47,8 +47,11 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
             if op == options.extension_op {
                 c += buf.read_u8()? as usize;
             }
-            parts.push(Part::Literal(c));
+            out_buf.push_str(options.charset.get(c).unwrap_or(&"�"));
         }
+    }
+    if !out_buf.is_empty() {
+        parts.push(Part::String(out_buf));
     }
     Ok(parts)
 }
@@ -74,4 +77,22 @@ pub fn parse_entry(
         },
         &options,
     )
+}
+
+pub fn parse_modcard56_effect(
+    parts: Vec<Part>,
+    print_var_command: u8,
+) -> rom::Modcard56EffectTemplate {
+    parts
+        .into_iter()
+        .flat_map(|part| match part {
+            Part::String(s) => vec![rom::Modcard56EffectTemplatePart::String(s)],
+            Part::Command { op, params } if op == print_var_command => {
+                vec![rom::Modcard56EffectTemplatePart::PrintVar(
+                    params[2] as usize,
+                )]
+            }
+            _ => vec![],
+        })
+        .collect()
 }

@@ -58,15 +58,7 @@ pub static B4BE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099d8,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe8;
 const EREADER_COMMAND: u8 = 0xff;
-
-lazy_static! {
-    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe4, 0xe5)
-            .with_command(NEWLINE_COMMAND, 0)
-            .with_command(EREADER_COMMAND, 2);
-}
 
 pub struct Assets {
     element_icons: [image::RgbaImage; 13],
@@ -83,6 +75,14 @@ impl Assets {
         rom: &[u8],
         wram: &[u8],
     ) -> Self {
+        let text_parse_options = rom::text::ParseOptions {
+            charset,
+            extension_op: 0xe4,
+            eof_op: 0xe5,
+            newline_op: 0xe8,
+            commands: std::collections::HashMap::from([(EREADER_COMMAND, 2)]),
+        };
+
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -134,15 +134,13 @@ impl Assets {
                                     &mapper.get(pointer)[..4],
                                 )),
                                 i,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�").to_string()
-                                            }
+                                            rom::text::Part::String(s) => s,
                                             rom::text::Part::Command {
                                                 op: EREADER_COMMAND,
                                                 params,
@@ -151,18 +149,13 @@ impl Assets {
                                                     &mapper
                                                         .get(0x02001770 + params[1] as u32 * 0x10),
                                                     0,
-                                                    &TEXT_PARSE_OPTIONS,
+                                                    &text_parse_options,
                                                 ) {
                                                     parts
                                                         .into_iter()
                                                         .flat_map(|part| {
                                                             match part {
-                                                                rom::text::Part::Literal(c) => {
-                                                                    charset
-                                                                        .get(c)
-                                                                        .unwrap_or(&"�")
-                                                                        .to_string()
-                                                                }
+                                                                rom::text::Part::String(s) => s,
                                                                 _ => "".to_string(),
                                                             }
                                                             .chars()
@@ -228,18 +221,17 @@ impl Assets {
                                     &mapper.get(offsets.ncp_names_pointer)[..4],
                                 )),
                                 i / 4,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
-                                        match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
+                                        match &part {
+                                            rom::text::Part::String(s) => s,
                                             _ => "",
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {

@@ -71,15 +71,7 @@ pub static BR6E_00: Offsets = Offsets {
     modcard_details_names_pointer:  0,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe9;
 const PRINT_VAR_COMMAND: u8 = 0xfa;
-
-lazy_static! {
-    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe4, 0xe6)
-            .with_command(NEWLINE_COMMAND, 0)
-            .with_command(PRINT_VAR_COMMAND, 3);
-}
 
 pub struct Assets {
     element_icons: [image::RgbaImage; 11],
@@ -90,6 +82,14 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+        let text_parse_options = rom::text::ParseOptions {
+            charset,
+            extension_op: 0xe4,
+            eof_op: 0xe6,
+            newline_op: 0xe9,
+            commands: std::collections::HashMap::from([(PRINT_VAR_COMMAND, 3)]),
+        };
+
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -140,18 +140,17 @@ impl Assets {
                                     &mapper.get(pointer)[..4],
                                 )),
                                 i,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
-                                            _ => "",
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
@@ -207,18 +206,17 @@ impl Assets {
                                     &mapper.get(offsets.ncp_names_pointer)[..4],
                                 )),
                                 i / 4,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
-                                            _ => "",
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
@@ -276,28 +274,23 @@ impl Assets {
                                         &mapper.get(offsets.modcard_names_pointer)[..4],
                                     )),
                                     i,
-                                    &TEXT_PARSE_OPTIONS,
+                                    &text_parse_options,
                                 ) {
                                     parts
                                         .into_iter()
                                         .flat_map(|part| {
                                             match part {
-                                                rom::text::Part::Literal(c) => {
-                                                    charset.get(c).unwrap_or(&"�")
-                                                }
-                                                rom::text::Part::Command {
-                                                    op: NEWLINE_COMMAND,
-                                                    ..
-                                                } => " ",
-                                                _ => "",
+                                                rom::text::Part::String(s) => s,
+                                                _ => "".to_string(),
                                             }
                                             .chars()
+                                            .collect::<Vec<_>>()
                                         })
                                         .collect::<String>()
                                 } else {
                                     "???".to_string()
                                 }
-                            },
+                            }.replace("\n", " "),
                             mb: buf[1],
                             effects: buf[3..]
                                 .chunks(3)
@@ -314,37 +307,24 @@ impl Assets {
                                                         [..4],
                                                 )),
                                                 id as usize,
-                                                &TEXT_PARSE_OPTIONS,
+                                                &text_parse_options,
                                             ) {
-                                                parts
+                                                rom::text::parse_modcard56_effect(parts, PRINT_VAR_COMMAND)
                                                     .into_iter()
-                                                    .flat_map(|part| {
-                                                        match part {
-                                                            rom::text::Part::Literal(c) => charset
-                                                                .get(c)
-                                                                .unwrap_or(&"�")
-                                                                .to_string(),
-                                                            rom::text::Part::Command {
-                                                                op: PRINT_VAR_COMMAND,
-                                                                params,
-                                                            } => {
-                                                                if params[2] == 1 {
-                                                                    let mut parameter =
-                                                                        parameter as u32;
-                                                                    if id == 0x00 || id == 0x02 {
-                                                                        parameter = parameter * 10;
-                                                                    }
-                                                                    format!("{}", parameter)
-                                                                } else {
-                                                                    "".to_string()
-                                                                }
+                                                    .flat_map(|p| match p {
+                                                        rom::Modcard56EffectTemplatePart::String(s) => s,
+                                                        rom::Modcard56EffectTemplatePart::PrintVar(v) => if v == 1 {
+                                                            let mut parameter =
+                                                                parameter as u32;
+                                                            if id == 0x00 || id == 0x02 {
+                                                                parameter = parameter * 10;
                                                             }
-                                                            _ => "".to_string(),
-                                                        }
-                                                        .chars()
-                                                        .collect::<Vec<_>>()
-                                                    })
-                                                    .collect::<String>()
+                                                            format!("{}", parameter)
+                                                        } else {
+                                                            "".to_string()
+                                                        },
+                                                    }.chars().collect::<Vec<_>>())
+                                                    .collect()
                                             } else {
                                                 "???".to_string()
                                             }

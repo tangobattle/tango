@@ -25,13 +25,6 @@ pub static BR4J_00: Offsets = Offsets {
     emblem_icon_palette_pointers:   0x080219f4,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe8;
-
-lazy_static! {
-    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe4, 0xe5).with_command(NEWLINE_COMMAND, 0);
-}
-
 pub struct Assets {
     element_icons: [image::RgbaImage; 13],
     chips: [rom::Chip; 389],
@@ -40,6 +33,14 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+        let text_parse_options = rom::text::ParseOptions {
+            charset,
+            extension_op: 0xe4,
+            eof_op: 0xe5,
+            newline_op: 0xe8,
+            commands: std::collections::HashMap::new(),
+        };
+
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -91,18 +92,17 @@ impl Assets {
                                     &mapper.get(pointer)[..4],
                                 )),
                                 i,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
-                                            _ => "",
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
@@ -152,18 +152,17 @@ impl Assets {
                                 &mapper.get(offsets.navi_names_pointer)[..4],
                             )),
                             id,
-                            &TEXT_PARSE_OPTIONS,
+                            &text_parse_options,
                         ) {
                             parts
                                 .into_iter()
                                 .flat_map(|part| {
                                     match part {
-                                        rom::text::Part::Literal(c) => {
-                                            charset.get(c).unwrap_or(&"�")
-                                        }
-                                        _ => "",
+                                        rom::text::Part::String(s) => s,
+                                        _ => "".to_string(),
                                     }
                                     .chars()
+                                    .collect::<Vec<_>>()
                                 })
                                 .collect::<String>()
                         } else {

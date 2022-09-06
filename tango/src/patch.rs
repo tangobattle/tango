@@ -54,7 +54,7 @@ where
                             if let Some(t) = v.t {
                                 vec![rom::Modcard56EffectTemplatePart::String(t)]
                             } else if let Some(p) = v.p {
-                                vec![rom::Modcard56EffectTemplatePart::PrintVar(p)]
+                                vec![rom::Modcard56EffectTemplatePart::PrintVar(p as usize)]
                             } else {
                                 vec![]
                             }

@@ -28,13 +28,6 @@ pub static AREJ_00: Offsets = Offsets {
     chip_icon_palette_pointer:      0x08015e40,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe8;
-
-lazy_static! {
-    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe5, 0xe7).with_command(NEWLINE_COMMAND, 0);
-}
-
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
     chips: [rom::Chip; 240],
@@ -42,6 +35,14 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+        let text_parse_options = rom::text::ParseOptions {
+            charset,
+            extension_op: 0xe5,
+            eof_op: 0xe7,
+            newline_op: 0xe8,
+            commands: std::collections::HashMap::new(),
+        };
+
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -87,18 +88,17 @@ impl Assets {
                                     &mapper.get(offsets.chip_names_pointer)[..4],
                                 )),
                                 i,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
-                                            _ => "",
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {

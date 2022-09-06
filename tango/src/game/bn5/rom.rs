@@ -71,17 +71,8 @@ pub static BRKE_00: Offsets = Offsets {
     modcard_details_names_pointer:  0x08137900,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe9;
 const PRINT_VAR_COMMAND: u8 = 0xfa;
 const EREADER_COMMAND: u8 = 0xff;
-
-lazy_static! {
-    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe4, 0xe6)
-            .with_command(NEWLINE_COMMAND, 0)
-            .with_command(PRINT_VAR_COMMAND, 3)
-            .with_command(EREADER_COMMAND, 2);
-}
 
 pub struct Assets {
     element_icons: [image::RgbaImage; 13],
@@ -92,6 +83,17 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+        let text_parse_options = rom::text::ParseOptions {
+            charset,
+            extension_op: 0xe4,
+            eof_op: 0xe6,
+            newline_op: 0xe9,
+            commands: std::collections::HashMap::from([
+                (PRINT_VAR_COMMAND, 3),
+                (EREADER_COMMAND, 2),
+            ]),
+        };
+
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -142,15 +144,13 @@ impl Assets {
                                     &mapper.get(pointer)[..4],
                                 )),
                                 i,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�").to_string()
-                                            }
+                                            rom::text::Part::String(s) => s,
                                             rom::text::Part::Command {
                                                 op: EREADER_COMMAND,
                                                 params,
@@ -159,18 +159,13 @@ impl Assets {
                                                     &mapper
                                                         .get(0x02001d14 + params[1] as u32 * 0x10),
                                                     0,
-                                                    &TEXT_PARSE_OPTIONS,
+                                                    &text_parse_options,
                                                 ) {
                                                     parts
                                                         .into_iter()
                                                         .flat_map(|part| {
                                                             match part {
-                                                                rom::text::Part::Literal(c) => {
-                                                                    charset
-                                                                        .get(c)
-                                                                        .unwrap_or(&"�")
-                                                                        .to_string()
-                                                                }
+                                                                rom::text::Part::String(s) => s,
                                                                 _ => "".to_string(),
                                                             }
                                                             .chars()
@@ -240,18 +235,17 @@ impl Assets {
                                     &mapper.get(offsets.ncp_names_pointer)[..4],
                                 )),
                                 i / 4,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
                                         match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
-                                            _ => "",
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
@@ -305,28 +299,24 @@ impl Assets {
                                 &mapper.get(offsets.modcard_names_pointer)[..4],
                             )),
                             i,
-                            &TEXT_PARSE_OPTIONS,
+                            &text_parse_options,
                         ) {
                             parts
                                 .into_iter()
                                 .flat_map(|part| {
                                     match part {
-                                        rom::text::Part::Literal(c) => {
-                                            charset.get(c).unwrap_or(&"�")
-                                        }
-                                        rom::text::Part::Command {
-                                            op: NEWLINE_COMMAND,
-                                            ..
-                                        } => " ",
-                                        _ => "",
+                                        rom::text::Part::String(s) => s,
+                                        _ => "".to_string(),
                                     }
                                     .chars()
+                                    .collect::<Vec<_>>()
                                 })
                                 .collect::<String>()
                         } else {
                             "???".to_string()
                         }
-                    },
+                    }
+                    .replace("\n", " "),
                     mb: buf[1],
                     effects: buf[3..]
                         .chunks(3)
@@ -341,20 +331,19 @@ impl Assets {
                                             &mapper.get(offsets.modcard_details_names_pointer)[..4],
                                         )),
                                         id as usize,
-                                        &TEXT_PARSE_OPTIONS,
+                                        &text_parse_options,
                                     ) {
-                                        parts
+                                        rom::text::parse_modcard56_effect(parts, PRINT_VAR_COMMAND)
                                             .into_iter()
-                                            .flat_map(|part| {
-                                                match part {
-                                                    rom::text::Part::Literal(c) => {
-                                                        charset.get(c).unwrap_or(&"�").to_string()
+                                            .flat_map(|p| {
+                                                match p {
+                                                    rom::Modcard56EffectTemplatePart::String(s) => {
+                                                        s
                                                     }
-                                                    rom::text::Part::Command {
-                                                        op: PRINT_VAR_COMMAND,
-                                                        params,
-                                                    } => {
-                                                        if params[2] == 1 {
+                                                    rom::Modcard56EffectTemplatePart::PrintVar(
+                                                        v,
+                                                    ) => {
+                                                        if v == 1 {
                                                             let mut parameter = parameter as u32;
                                                             if id == 0x00 || id == 0x02 {
                                                                 parameter = parameter * 10;
@@ -364,12 +353,11 @@ impl Assets {
                                                             "".to_string()
                                                         }
                                                     }
-                                                    _ => "".to_string(),
                                                 }
                                                 .chars()
                                                 .collect::<Vec<_>>()
                                             })
-                                            .collect::<String>()
+                                            .collect()
                                     } else {
                                         "???".to_string()
                                     }

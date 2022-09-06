@@ -82,7 +82,7 @@ pub struct Style {
 #[derive(Debug, Clone)]
 pub enum Modcard56EffectTemplatePart {
     String(String),
-    PrintVar(u32),
+    PrintVar(usize),
 }
 
 pub type Modcard56EffectTemplate = Vec<Modcard56EffectTemplatePart>;

@@ -61,13 +61,6 @@ pub static A3XE_00: Offsets = Offsets {
     key_items_names_pointer:        0x08027ab8,
 };
 
-const NEWLINE_COMMAND: u8 = 0xe8;
-
-lazy_static! {
-    pub static ref TEXT_PARSE_OPTIONS: rom::text::ParseOptions =
-        rom::text::ParseOptions::new(0xe5, 0xe7).with_command(NEWLINE_COMMAND, 0);
-}
-
 pub struct Assets {
     element_icons: [image::RgbaImage; 5],
     chips: [rom::Chip; 374],
@@ -77,6 +70,14 @@ pub struct Assets {
 
 impl Assets {
     pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
+        let text_parse_options = rom::text::ParseOptions {
+            charset,
+            extension_op: 0xe5,
+            eof_op: 0xe7,
+            newline_op: 0xe8,
+            commands: std::collections::HashMap::new(),
+        };
+
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -129,18 +130,17 @@ impl Assets {
                                     &mapper.get(pointer)[..4],
                                 )),
                                 i,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
-                                        match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
+                                        match &part {
+                                            rom::text::Part::String(s) => s,
                                             _ => "",
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
@@ -196,18 +196,17 @@ impl Assets {
                                     &mapper.get(offsets.ncp_names_pointer)[..4],
                                 )),
                                 i / 4,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
-                                        match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
+                                        match &part {
+                                            rom::text::Part::String(s) => s,
                                             _ => "",
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
@@ -259,18 +258,17 @@ impl Assets {
                                     &mapper.get(offsets.key_items_names_pointer)[..4],
                                 )),
                                 128 + typ * 5 + element,
-                                &TEXT_PARSE_OPTIONS,
+                                &text_parse_options,
                             ) {
                                 parts
                                     .into_iter()
                                     .flat_map(|part| {
-                                        match part {
-                                            rom::text::Part::Literal(c) => {
-                                                charset.get(c).unwrap_or(&"�")
-                                            }
+                                        match &part {
+                                            rom::text::Part::String(s) => s,
                                             _ => "",
                                         }
                                         .chars()
+                                        .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
                             } else {
