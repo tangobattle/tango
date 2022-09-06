@@ -118,10 +118,8 @@ impl save::Save for Save {
         })))
     }
 
-    // fn view_navi(&self) -> Option<save::NaviView> {
-    //     Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
-    //         save: self,
-    //     })))
+    // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
+    //     Some(Box::new(NaviView { save: self }))
     // }
 
     fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
@@ -282,11 +280,11 @@ impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
     }
 }
 
-pub struct Navi4dot556View<'a> {
+pub struct NaviView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::Navi4dot556View<'a> for Navi4dot556View<'a> {
+impl<'a> save::NaviView<'a> for NaviView<'a> {
     fn navi(&self) -> usize {
         self.save.buf[0x2940] as usize
     }

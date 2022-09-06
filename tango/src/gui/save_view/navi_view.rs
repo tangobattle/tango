@@ -14,17 +14,17 @@ impl State {
     }
 }
 
-pub fn show_navi4dot556<'a>(
+pub fn show<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     _lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    navi4dot556_view: &Box<dyn save::Navi4dot556View<'a> + 'a>,
+    navi_view: &Box<dyn save::NaviView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
-    let navi = if let Some(navi) = assets.navi4dot556(navi4dot556_view.navi()) {
+    let navi = if let Some(navi) = assets.navi(navi_view.navi()) {
         navi
     } else {
         return;
@@ -57,28 +57,4 @@ pub fn show_navi4dot556<'a>(
                 );
             });
         });
-}
-
-pub fn show<'a>(
-    ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
-    font_families: &gui::FontFamilies,
-    lang: &unic_langid::LanguageIdentifier,
-    game_lang: &unic_langid::LanguageIdentifier,
-    navi_view: &save::NaviView,
-    assets: &Box<dyn rom::Assets + Send + Sync>,
-    state: &mut State,
-) {
-    match navi_view {
-        save::NaviView::Navi4dot556(navi4dot556_view) => show_navi4dot556(
-            ui,
-            clipboard,
-            font_families,
-            lang,
-            game_lang,
-            navi4dot556_view,
-            assets,
-            state,
-        ),
-    }
 }

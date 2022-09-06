@@ -88,7 +88,7 @@ pub enum Modcard56EffectTemplatePart {
 pub type Modcard56EffectTemplate = Vec<Modcard56EffectTemplatePart>;
 
 #[derive(Clone, Debug)]
-pub struct Navi4dot556 {
+pub struct Navi {
     pub name: String,
     pub emblem: image::RgbaImage,
 }
@@ -126,11 +126,11 @@ pub trait Assets {
     fn num_styles(&self) -> usize {
         0
     }
-    fn navi4dot556(&self, id: usize) -> Option<&Navi4dot556> {
+    fn navi(&self, id: usize) -> Option<&Navi> {
         let _ = id;
         None
     }
-    fn num_navis4dot556s(&self) -> usize {
+    fn num_navis(&self) -> usize {
         0
     }
 }

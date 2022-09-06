@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, Navi4dot556View as _};
+use crate::save::{self, NaviView as _};
 
 const SRAM_START_OFFSET: usize = 0x0100;
 const SRAM_SIZE: usize = 0x6710;
@@ -130,10 +130,8 @@ impl save::Save for Save {
         }
     }
 
-    // fn view_navi(&self) -> Option<save::NaviView> {
-    //     Some(save::NaviView::Navi4dot556(Box::new(Navi4dot556View {
-    //         save: self,
-    //     })))
+    // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
+    //     Some(Box::new(NaviView { save: self }))
     // }
 
     fn as_raw_wram(&self) -> &[u8] {
@@ -167,7 +165,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn equipped_folder_index(&self) -> usize {
         let navi_stats_offset = self
             .save
-            .navi_stats_offset(Navi4dot556View { save: self.save }.navi());
+            .navi_stats_offset(NaviView { save: self.save }.navi());
         self.save.buf[navi_stats_offset + 0x2d] as usize
     }
 
@@ -178,7 +176,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
         let navi_stats_offset = self
             .save
-            .navi_stats_offset(Navi4dot556View { save: self.save }.navi());
+            .navi_stats_offset(NaviView { save: self.save }.navi());
         let idx = self.save.buf[navi_stats_offset + 0x2e + folder_index];
         if idx >= 30 {
             None
@@ -190,7 +188,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]> {
         let navi_stats_offset = self
             .save
-            .navi_stats_offset(Navi4dot556View { save: self.save }.navi());
+            .navi_stats_offset(NaviView { save: self.save }.navi());
         let idx1 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00];
         let idx2 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01];
         if idx1 == 0xff || idx2 == 0xff {
@@ -284,11 +282,11 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         })
     }
 }
-pub struct Navi4dot556View<'a> {
+pub struct NaviView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::Navi4dot556View<'a> for Navi4dot556View<'a> {
+impl<'a> save::NaviView<'a> for NaviView<'a> {
     fn navi(&self) -> usize {
         self.save.buf[0x1b81] as usize
     }

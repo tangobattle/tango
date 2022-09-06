@@ -99,10 +99,6 @@ pub enum ModcardsView<'a> {
     Modcard56s(Box<dyn Modcard56sView<'a> + 'a>),
 }
 
-pub enum NaviView<'a> {
-    Navi4dot556(Box<dyn Navi4dot556View<'a> + 'a>),
-}
-
 pub trait Save
 where
     Self: SaveClone,
@@ -126,7 +122,7 @@ where
         None
     }
 
-    fn view_navi(&self) -> Option<NaviView> {
+    fn view_navi(&self) -> Option<Box<dyn NaviView + '_>> {
         None
     }
 }
@@ -192,7 +188,7 @@ pub trait Modcard4sView<'a> {
     fn modcard(&self, slot: usize) -> Option<Modcard>;
 }
 
-pub trait Navi4dot556View<'a> {
+pub trait NaviView<'a> {
     fn navi(&self) -> usize;
 }
 
