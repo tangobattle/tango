@@ -177,7 +177,7 @@ where
         &self,
         _rom: &[u8],
         _wram: &[u8],
-        _overrides: &patch::SaveeditOverrides,
+        _overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error> {
         anyhow::bail!("not implemented");
     }

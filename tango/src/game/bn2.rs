@@ -52,7 +52,7 @@ impl game::Game for EXE2Impl {
         &self,
         rom: &[u8],
         save: &[u8],
-        overrides: &patch::SaveeditOverrides,
+        overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         let override_charset = overrides
             .charset
@@ -117,7 +117,7 @@ impl game::Game for BN2Impl {
         &self,
         rom: &[u8],
         save: &[u8],
-        overrides: &patch::SaveeditOverrides,
+        overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         let override_charset = overrides
             .charset

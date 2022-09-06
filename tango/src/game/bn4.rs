@@ -65,7 +65,7 @@ impl game::Game for EXE4RSImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::SaveeditOverrides,
+        overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         let override_charset = overrides
             .charset
@@ -148,7 +148,7 @@ impl game::Game for EXE4BMImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::SaveeditOverrides,
+        overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         let override_charset = overrides
             .charset
@@ -231,7 +231,7 @@ impl game::Game for BN4RSImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::SaveeditOverrides,
+        overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         let override_charset = overrides
             .charset
@@ -314,7 +314,7 @@ impl game::Game for BN4BMImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::SaveeditOverrides,
+        overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         let override_charset = overrides
             .charset

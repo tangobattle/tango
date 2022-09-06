@@ -70,7 +70,7 @@ where
 
 #[derive(serde::Deserialize, Default, Debug, Clone)]
 #[serde(default)]
-pub struct SaveeditOverrides {
+pub struct ROMOverrides {
     #[serde(deserialize_with = "deserialize_option_language_identifier")]
     pub language: Option<unic_langid::LanguageIdentifier>,
     pub charset: Option<Vec<String>>,
@@ -84,13 +84,13 @@ pub struct SaveeditOverrides {
 #[derive(serde::Deserialize)]
 struct VersionMetadata {
     #[serde(default)]
-    pub saveedit_overrides: SaveeditOverrides,
+    pub saveedit_overrides: ROMOverrides,
     pub netplay_compatibility: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Version {
-    pub saveedit_overrides: SaveeditOverrides,
+    pub saveedit_overrides: ROMOverrides,
     pub netplay_compatibility: String,
     pub supported_games: std::collections::HashSet<&'static (dyn game::Game + Send + Sync)>,
 }
