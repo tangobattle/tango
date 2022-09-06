@@ -2,7 +2,7 @@ pub mod bps;
 
 use serde::Deserialize;
 
-use crate::{config, game, scanner};
+use crate::{config, game, rom, scanner};
 
 #[derive(serde::Deserialize)]
 struct Metadata {
@@ -33,12 +33,52 @@ where
     }
 }
 
+fn deserialize_option_vec_modcard56_effect_template<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<rom::Modcard56EffectTemplate>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(serde::Deserialize)]
+    struct ShortTemplate {
+        t: Option<String>,
+        p: Option<u32>,
+    }
+
+    if let Some(ts) = Option::<Vec<Vec<ShortTemplate>>>::deserialize(deserializer)? {
+        Ok(Some(
+            ts.into_iter()
+                .map(|t| {
+                    t.into_iter()
+                        .flat_map(|v| {
+                            if let Some(t) = v.t {
+                                vec![rom::Modcard56EffectTemplatePart::String(t)]
+                            } else if let Some(p) = v.p {
+                                vec![rom::Modcard56EffectTemplatePart::PrintVar(p)]
+                            } else {
+                                vec![]
+                            }
+                        })
+                        .collect()
+                })
+                .collect(),
+        ))
+    } else {
+        Ok(None)
+    }
+}
+
 #[derive(serde::Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct SaveeditOverrides {
     #[serde(deserialize_with = "deserialize_option_language_identifier")]
     pub language: Option<unic_langid::LanguageIdentifier>,
     pub charset: Option<Vec<String>>,
+    pub chip_names: Option<Vec<String>>,
+    pub navicust_part_names: Option<Vec<String>>,
+    pub modcard56_names: Option<Vec<String>>,
+    #[serde(deserialize_with = "deserialize_option_vec_modcard56_effect_template")]
+    pub modcard56_effects: Option<Vec<rom::Modcard56EffectTemplate>>,
 }
 
 #[derive(serde::Deserialize)]

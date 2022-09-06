@@ -79,6 +79,14 @@ pub struct Style {
     pub extra_ncp_color: Option<NavicustPartColor>,
 }
 
+#[derive(Debug, Clone)]
+pub enum Modcard56EffectTemplatePart {
+    String(String),
+    PrintVar(u32),
+}
+
+pub type Modcard56EffectTemplate = Vec<Modcard56EffectTemplatePart>;
+
 #[derive(Clone, Debug)]
 pub struct Navi4dot556 {
     pub name: String,
