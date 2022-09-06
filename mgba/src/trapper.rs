@@ -92,10 +92,6 @@ impl Trapper {
         }
 
         for (addr, handler) in handlers {
-            if addr == 0 {
-                // TODO: Delete me
-                continue;
-            }
             match trapper_c_struct.r#impl.traps.entry(addr) {
                 std::collections::hash_map::Entry::Occupied(_) => {
                     panic!("attempting to install a second trap at 0x{:08x}", addr);

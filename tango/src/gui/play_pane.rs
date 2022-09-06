@@ -924,10 +924,7 @@ fn show_lobby_table(
                                 let (family, _) = selection.game.family_and_variant();
                                 ui.label(
                                     i18n::LOCALES
-                                        .lookup(
-                                            &config.language,
-                                            &format!("game-{}", family), // TODO: Show patch
-                                        )
+                                        .lookup(&config.language, &format!("game-{}", family))
                                         .unwrap(),
                                 );
                                 if let Some((patch_name, version, _)) = selection.patch.as_ref() {
@@ -952,10 +949,7 @@ fn show_lobby_table(
                                     let (family, _) = game.family_and_variant();
                                     ui.label(
                                         i18n::LOCALES
-                                            .lookup(
-                                                &config.language,
-                                                &format!("game-{}", family), // TODO: Show patch
-                                            )
+                                            .lookup(&config.language, &format!("game-{}", family))
                                             .unwrap(),
                                     );
                                     if let Some(pi) = game_info.patch.as_ref() {
