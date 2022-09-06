@@ -28,13 +28,13 @@ fn show_effect(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, is_deb
         });
 }
 
-pub fn show_modcards4<'a>(
+pub fn show_modcard4s<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    modcards4_view: &Box<dyn save::Modcards4View<'a> + 'a>,
+    modcard4s_view: &Box<dyn save::Modcard4sView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
     _state: &mut State,
 ) {
@@ -49,7 +49,7 @@ pub fn show_modcards4<'a>(
             let _ = clipboard.set_text(
                 (0..6)
                     .map(|i| {
-                        let modcard = modcards4_view.modcard(i);
+                        let modcard = modcard4s_view.modcard(i);
                         if let Some(modcard) = modcard {
                             if modcard.enabled {
                                 format!("{:03}", modcard.id)
@@ -73,7 +73,7 @@ pub fn show_modcards4<'a>(
         .striped(true)
         .body(|body| {
             body.rows(41.0, 6, |i, mut row| {
-                let modcard = modcards4_view.modcard(i);
+                let modcard = modcard4s_view.modcard(i);
                 if let Some((modcard, info)) = modcard
                     .as_ref()
                     .and_then(|modcard| assets.modcard4(modcard.id).map(|info| (modcard, info)))
@@ -146,19 +146,19 @@ pub fn show_modcards4<'a>(
         });
 }
 
-pub fn show_modcards56<'a>(
+pub fn show_modcard56s<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    modcards56_view: &Box<dyn save::Modcards56View<'a> + 'a>,
+    modcard56s_view: &Box<dyn save::Modcard56sView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
     _state: &mut State,
 ) {
-    let items = (0..modcards56_view.count())
+    let items = (0..modcard56s_view.count())
         .map(|slot| {
-            let modcard = modcards56_view.modcard(slot);
+            let modcard = modcard56s_view.modcard(slot);
             let effects = modcard
                 .as_ref()
                 .and_then(|item| assets.modcard56(item.id))
@@ -303,23 +303,23 @@ pub fn show<'a>(
     state: &mut State,
 ) {
     match modcards_view {
-        save::ModcardsView::Modcards4(modcards4_view) => show_modcards4(
+        save::ModcardsView::Modcard4s(modcard4s_view) => show_modcard4s(
             ui,
             clipboard,
             font_families,
             lang,
             game_lang,
-            modcards4_view,
+            modcard4s_view,
             assets,
             state,
         ),
-        save::ModcardsView::Modcards56(modcards56_view) => show_modcards56(
+        save::ModcardsView::Modcard56s(modcard56s_view) => show_modcard56s(
             ui,
             clipboard,
             font_families,
             lang,
             game_lang,
-            modcards56_view,
+            modcard56s_view,
             assets,
             state,
         ),

@@ -210,7 +210,7 @@ impl rom::Assets for Assets {
         self.navis4dot556.get(id)
     }
 
-    fn num_navis4dot556(&self) -> usize {
+    fn num_navis4dot556s(&self) -> usize {
         self.navis4dot556.len()
     }
 }

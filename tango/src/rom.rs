@@ -101,14 +101,14 @@ pub trait Assets {
         let _ = id;
         None
     }
-    fn num_modcards56(&self) -> usize {
+    fn num_modcard56s(&self) -> usize {
         0
     }
     fn modcard4(&self, id: usize) -> Option<&Modcard4> {
         let _ = id;
         None
     }
-    fn num_modcards4(&self) -> usize {
+    fn num_modcard4s(&self) -> usize {
         0
     }
     fn navicust_part(&self, id: usize, variant: usize) -> Option<&NavicustPart> {
@@ -130,7 +130,7 @@ pub trait Assets {
         let _ = id;
         None
     }
-    fn num_navis4dot556(&self) -> usize {
+    fn num_navis4dot556s(&self) -> usize {
         0
     }
 }

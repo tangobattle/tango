@@ -296,7 +296,7 @@ impl rom::Assets for Assets {
         self.modcards.get(id)
     }
 
-    fn num_modcards4(&self) -> usize {
+    fn num_modcard4s(&self) -> usize {
         self.navicust_parts.len()
     }
 }

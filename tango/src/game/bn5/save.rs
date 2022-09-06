@@ -113,7 +113,7 @@ impl save::Save for Save {
     }
 
     fn view_modcards(&self) -> Option<save::ModcardsView> {
-        Some(save::ModcardsView::Modcards56(Box::new(Modcards56View {
+        Some(save::ModcardsView::Modcard56s(Box::new(Modcard56sView {
             save: self,
         })))
     }
@@ -192,11 +192,11 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 }
 
-pub struct Modcards56View<'a> {
+pub struct Modcard56sView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::Modcards56View<'a> for Modcards56View<'a> {
+impl<'a> save::Modcard56sView<'a> for Modcard56sView<'a> {
     fn count(&self) -> usize {
         self.save.buf[0x79a0] as usize
     }

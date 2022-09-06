@@ -78,7 +78,7 @@ pub struct Assets {
     element_icons: [image::RgbaImage; 13],
     chips: [rom::Chip; 411],
     navicust_parts: [rom::NavicustPart; 192],
-    modcards56: [rom::Modcard56; 112],
+    modcard56s: [rom::Modcard56; 112],
 }
 
 impl Assets {
@@ -280,7 +280,7 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
-            modcards56: [rom::Modcard56 {
+            modcard56s: [rom::Modcard56 {
                 name: "".to_string(),
                 mb: 0,
                 effects: vec![],
@@ -397,11 +397,11 @@ impl rom::Assets for Assets {
     }
 
     fn modcard56(&self, id: usize) -> Option<&rom::Modcard56> {
-        self.modcards56.get(id)
+        self.modcard56s.get(id)
     }
 
-    fn num_modcards56(&self) -> usize {
-        self.modcards56.len()
+    fn num_modcard56s(&self) -> usize {
+        self.modcard56s.len()
     }
 }
 

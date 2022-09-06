@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::rom;
+use crate::{patch, rom};
 
 pub struct Offsets {
     chip_data: u32,
@@ -77,21 +77,28 @@ pub struct Assets {
     element_icons: [image::RgbaImage; 11],
     chips: [rom::Chip; 411],
     navicust_parts: [rom::NavicustPart; 188],
-    modcards56: Option<[rom::Modcard56; 118]>,
-}
-
-pub struct AssetLoadOptions<'a> {
-    pub charset: &'a [&'a str],
-    pub chip_names: &'a Option<Vec<String>>,
-    pub navicust_part_names: &'a Option<Vec<String>>,
-    pub modcard56_names: &'a Option<Vec<String>>,
-    pub modcard56_effect_names: &'a Option<Vec<rom::Modcard56EffectTemplate>>,
+    modcard56s: Option<[rom::Modcard56; 118]>,
 }
 
 impl Assets {
-    pub fn new(offsets: &Offsets, rom: &[u8], wram: &[u8], options: AssetLoadOptions) -> Self {
+    pub fn new(
+        offsets: &Offsets,
+        rom: &[u8],
+        wram: &[u8],
+        default_charset: &[&str],
+        overrides: &patch::ROMOverrides,
+    ) -> Self {
+        let override_charset = overrides
+            .charset
+            .as_ref()
+            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+
         let text_parse_options = rom::text::ParseOptions {
-            charset: options.charset,
+            charset: if let Some(charset) = override_charset.as_ref() {
+                charset
+            } else {
+                default_charset
+            },
             extension_op: 0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
@@ -137,8 +144,11 @@ impl Assets {
                 .map(|i| {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {
-                        name: if let Some(chip_names) = options.chip_names.as_ref() {
-                            chip_names.get(i).cloned().unwrap_or("???".to_string())
+                        name: if let Some(chips) = overrides.chips.as_ref() {
+                            chips
+                                .get(i)
+                                .map(|chip| chip.name.clone())
+                                .unwrap_or("???".to_string())
                         } else {
                             let i = i % 0x100;
                             let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
@@ -208,12 +218,10 @@ impl Assets {
                 .map(|i| {
                     let buf = &mapper.get(offsets.ncp_data)[i * 0x10..(i + 1) * 0x10];
                     rom::NavicustPart {
-                        name: if let Some(navicust_part_names) =
-                            options.navicust_part_names.as_ref()
-                        {
-                            navicust_part_names
+                        name: if let Some(navicust_parts) = overrides.navicust_parts.as_ref() {
+                            navicust_parts
                                 .get(i / 4)
-                                .cloned()
+                                .map(|ncp| ncp.name.clone())
                                 .unwrap_or("???".to_string())
                         } else {
                             if let Ok(parts) = rom::text::parse_entry(
@@ -268,7 +276,7 @@ impl Assets {
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
-            modcards56: if offsets.modcard_data != 0 {
+            modcard56s: if offsets.modcard_data != 0 {
                 Some(
                     [rom::Modcard56 {
                         name: "".to_string(),
@@ -283,8 +291,11 @@ impl Assets {
                             ..byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2])
                                 as usize];
                         rom::Modcard56 {
-                            name: if let Some(modcard56_names) = options.modcard56_names.as_ref() {
-                                modcard56_names.get(i).cloned().unwrap_or("???".to_string())
+                            name: if let Some(modcard56s) = overrides.modcard56s.as_ref() {
+                                modcard56s
+                                    .get(i)
+                                    .map(|modcard| modcard.name.clone())
+                                    .unwrap_or("???".to_string())
                             } else {
                                 if let Ok(parts) = rom::text::parse_entry(
                                     &mapper.get(byteorder::LittleEndian::read_u32(
@@ -317,12 +328,12 @@ impl Assets {
                                     let parameter = chunk[1];
                                     rom::Modcard56Effect {
                                         id,
-                                        name: if let Some(modcard56_effect_names) =
-                                            options.modcard56_effect_names.as_ref()
+                                        name: if let Some(modcard56_effects) =
+                                            overrides.modcard56_effects.as_ref()
                                         {
-                                            modcard56_effect_names
+                                            modcard56_effects
                                                 .get(id as usize)
-                                                .cloned()
+                                                .map(|effect| effect.name_template.clone())
                                                 .unwrap_or_else(|| {
                                                     vec![rom::Modcard56EffectTemplatePart::String(
                                                         "???".to_string(),
@@ -409,13 +420,13 @@ impl rom::Assets for Assets {
     }
 
     fn modcard56(&self, id: usize) -> Option<&rom::Modcard56> {
-        self.modcards56
+        self.modcard56s
             .as_ref()
-            .and_then(|modcards56| modcards56.get(id))
+            .and_then(|modcard56s| modcard56s.get(id))
     }
 
-    fn num_modcards56(&self) -> usize {
-        self.modcards56
+    fn num_modcard56s(&self) -> usize {
+        self.modcard56s
             .as_ref()
             .map(|modcards| modcards.len())
             .unwrap_or(0)

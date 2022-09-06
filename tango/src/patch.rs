@@ -33,39 +33,51 @@ where
     }
 }
 
-fn deserialize_option_vec_modcard56_effect_template<'de, D>(
+fn deserialize_modcard56_effect_template<'de, D>(
     deserializer: D,
-) -> Result<Option<Vec<rom::Modcard56EffectTemplate>>, D::Error>
+) -> Result<rom::Modcard56EffectTemplate, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     #[derive(serde::Deserialize)]
-    struct ShortTemplate {
+    struct ShortTemplatePart {
         t: Option<String>,
         p: Option<u32>,
     }
 
-    if let Some(ts) = Option::<Vec<Vec<ShortTemplate>>>::deserialize(deserializer)? {
-        Ok(Some(
-            ts.into_iter()
-                .map(|t| {
-                    t.into_iter()
-                        .flat_map(|v| {
-                            if let Some(t) = v.t {
-                                vec![rom::Modcard56EffectTemplatePart::String(t)]
-                            } else if let Some(p) = v.p {
-                                vec![rom::Modcard56EffectTemplatePart::PrintVar(p as usize)]
-                            } else {
-                                vec![]
-                            }
-                        })
-                        .collect()
-                })
-                .collect(),
-        ))
-    } else {
-        Ok(None)
-    }
+    Ok(Vec::<ShortTemplatePart>::deserialize(deserializer)?
+        .into_iter()
+        .flat_map(|v| {
+            if let Some(t) = v.t {
+                vec![rom::Modcard56EffectTemplatePart::String(t)]
+            } else if let Some(p) = v.p {
+                vec![rom::Modcard56EffectTemplatePart::PrintVar(p as usize)]
+            } else {
+                vec![]
+            }
+        })
+        .collect())
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct ChipOverride {
+    pub name: String,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct NavicustPartOverride {
+    pub name: String,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Modcard56Override {
+    pub name: String,
+}
+
+#[derive(serde::Deserialize, Debug, Clone)]
+pub struct Modcard56EffectOverride {
+    #[serde(deserialize_with = "deserialize_modcard56_effect_template")]
+    pub name_template: rom::Modcard56EffectTemplate,
 }
 
 #[derive(serde::Deserialize, Default, Debug, Clone)]
@@ -74,11 +86,10 @@ pub struct ROMOverrides {
     #[serde(deserialize_with = "deserialize_option_language_identifier")]
     pub language: Option<unic_langid::LanguageIdentifier>,
     pub charset: Option<Vec<String>>,
-    pub chip_names: Option<Vec<String>>,
-    pub navicust_part_names: Option<Vec<String>>,
-    pub modcard56_names: Option<Vec<String>>,
-    #[serde(deserialize_with = "deserialize_option_vec_modcard56_effect_template")]
-    pub modcard56_effect_names: Option<Vec<rom::Modcard56EffectTemplate>>,
+    pub chips: Option<Vec<ChipOverride>>,
+    pub navicust_parts: Option<Vec<NavicustPartOverride>>,
+    pub modcard56s: Option<Vec<Modcard56Override>>,
+    pub modcard56_effects: Option<Vec<Modcard56EffectOverride>>,
 }
 
 #[derive(serde::Deserialize, Debug)]

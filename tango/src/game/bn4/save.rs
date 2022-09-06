@@ -155,7 +155,7 @@ impl save::Save for Save {
     }
 
     fn view_modcards(&self) -> Option<save::ModcardsView> {
-        Some(save::ModcardsView::Modcards4(Box::new(Modcards4View {
+        Some(save::ModcardsView::Modcard4s(Box::new(Modcard4sView {
             save: self,
         })))
     }
@@ -269,11 +269,11 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     }
 }
 
-pub struct Modcards4View<'a> {
+pub struct Modcard4sView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::Modcards4View<'a> for Modcards4View<'a> {
+impl<'a> save::Modcard4sView<'a> for Modcard4sView<'a> {
     fn modcard(&self, slot: usize) -> Option<save::Modcard> {
         let mut id = self.save.buf[self.save.shift + 0x464c + slot] as usize;
         let enabled = if id < 0x85 {

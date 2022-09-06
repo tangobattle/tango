@@ -69,25 +69,12 @@ impl game::Game for EXE6GImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BR5J_00,
             rom,
             wram,
-            rom::AssetLoadOptions {
-                charset: override_charset
-                    .as_ref()
-                    .map(|cs| cs.as_slice())
-                    .unwrap_or(&rom::JA_CHARSET),
-                chip_names: &overrides.chip_names,
-                navicust_part_names: &overrides.navicust_part_names,
-                modcard56_names: &overrides.modcard56_names,
-                modcard56_effect_names: &overrides.modcard56_effect_names,
-            },
+            &rom::JA_CHARSET,
+            overrides,
         )))
     }
 }
@@ -155,25 +142,12 @@ impl game::Game for EXE6FImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BR6J_00,
             rom,
             wram,
-            rom::AssetLoadOptions {
-                charset: override_charset
-                    .as_ref()
-                    .map(|cs| cs.as_slice())
-                    .unwrap_or(&rom::JA_CHARSET),
-                chip_names: &overrides.chip_names,
-                navicust_part_names: &overrides.navicust_part_names,
-                modcard56_names: &overrides.modcard56_names,
-                modcard56_effect_names: &overrides.modcard56_effect_names,
-            },
+            &rom::JA_CHARSET,
+            overrides,
         )))
     }
 }
@@ -241,25 +215,12 @@ impl game::Game for BN6GImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BR5E_00,
             rom,
             wram,
-            rom::AssetLoadOptions {
-                charset: override_charset
-                    .as_ref()
-                    .map(|cs| cs.as_slice())
-                    .unwrap_or(&rom::EN_CHARSET),
-                chip_names: &overrides.chip_names,
-                navicust_part_names: &overrides.navicust_part_names,
-                modcard56_names: &overrides.modcard56_names,
-                modcard56_effect_names: &overrides.modcard56_effect_names,
-            },
+            &rom::EN_CHARSET,
+            overrides,
         )))
     }
 }
@@ -327,25 +288,12 @@ impl game::Game for BN6FImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BR6E_00,
             rom,
             wram,
-            rom::AssetLoadOptions {
-                charset: override_charset
-                    .as_ref()
-                    .map(|cs| cs.as_slice())
-                    .unwrap_or(&rom::EN_CHARSET),
-                chip_names: &overrides.chip_names,
-                navicust_part_names: &overrides.navicust_part_names,
-                modcard56_names: &overrides.modcard56_names,
-                modcard56_effect_names: &overrides.modcard56_effect_names,
-            },
+            &rom::EN_CHARSET,
+            overrides,
         )))
     }
 }

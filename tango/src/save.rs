@@ -95,8 +95,8 @@ where
 }
 
 pub enum ModcardsView<'a> {
-    Modcards4(Box<dyn Modcards4View<'a> + 'a>),
-    Modcards56(Box<dyn Modcards56View<'a> + 'a>),
+    Modcard4s(Box<dyn Modcard4sView<'a> + 'a>),
+    Modcard56s(Box<dyn Modcard56sView<'a> + 'a>),
 }
 
 pub enum NaviView<'a> {
@@ -183,12 +183,12 @@ pub struct Modcard {
     pub enabled: bool,
 }
 
-pub trait Modcards56View<'a> {
+pub trait Modcard56sView<'a> {
     fn count(&self) -> usize;
     fn modcard(&self, slot: usize) -> Option<Modcard>;
 }
 
-pub trait Modcards4View<'a> {
+pub trait Modcard4sView<'a> {
     fn modcard(&self, slot: usize) -> Option<Modcard>;
 }
 
