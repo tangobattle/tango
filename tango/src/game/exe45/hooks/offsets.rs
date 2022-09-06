@@ -124,6 +124,8 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango ends its match here.
     pub(super) match_end_ret: u32,
+
+    pub(super) battle_start_play_music_call: u32,
 }
 
 #[rustfmt::skip]
@@ -175,5 +177,6 @@ pub static BR4J_00: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006E3E,
         comm_menu_handle_link_cable_input:      0x080443E2,
         match_end_ret:                          0x08043fb6,
+        battle_start_play_music_call:           0x0800796c,
     },
 };
