@@ -2,7 +2,7 @@ pub mod bps;
 
 use serde::Deserialize;
 
-use crate::game;
+use crate::{config, game, gui, scanner};
 
 #[derive(serde::Deserialize)]
 struct Metadata {
@@ -250,4 +250,23 @@ pub fn scan(
         );
     }
     Ok(patches)
+}
+
+pub type Scanner = scanner::Scanner<std::collections::BTreeMap<String, Patch>>;
+
+pub struct Autoupdater {
+    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+    patches_scanner: Scanner,
+}
+
+impl Autoupdater {
+    pub fn new(
+        config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
+        patches_scanner: Scanner,
+    ) -> Self {
+        Self {
+            config,
+            patches_scanner,
+        }
+    }
 }

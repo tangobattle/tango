@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::game;
+use crate::{game, scanner};
 
 #[derive(Clone)]
 pub struct ScannedSave {
@@ -224,3 +224,7 @@ pub trait DarkAIView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<u16>;
     fn secondary_chip_use_count(&self, id: usize) -> Option<u16>;
 }
+
+pub type Scanner = scanner::Scanner<
+    std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>>,
+>;

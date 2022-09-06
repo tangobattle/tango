@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n};
+use crate::{game, gui, i18n, rom, save};
 
 pub struct State {
     selection: Option<(
@@ -26,8 +26,8 @@ pub fn show(
     selection: &mut Option<gui::Selection>,
     language: &unic_langid::LanguageIdentifier,
     saves_path: &std::path::Path,
-    roms_scanner: gui::ROMsScanner,
-    saves_scanner: gui::SavesScanner,
+    roms_scanner: rom::Scanner,
+    saves_scanner: save::Scanner,
 ) {
     let roms = roms_scanner.read();
     let saves = saves_scanner.read();

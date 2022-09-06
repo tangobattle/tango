@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, discord, gui, i18n, patch, session, stats};
+use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats};
 
 pub struct State {
     tab: Tab,
@@ -40,9 +40,9 @@ pub fn show(
     replay_dump_windows: &mut gui::replay_dump_windows::State,
     clipboard: &mut arboard::Clipboard,
     audio_binder: audio::LateBinder,
-    roms_scanner: gui::ROMsScanner,
-    saves_scanner: gui::SavesScanner,
-    patches_scanner: gui::PatchesScanner,
+    roms_scanner: rom::Scanner,
+    saves_scanner: save::Scanner,
+    patches_scanner: patch::Scanner,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: &mut Option<gui::Selection>,

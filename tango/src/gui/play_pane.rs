@@ -4,7 +4,7 @@ use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
 use crate::{
-    audio, config, discord, game, gui, i18n, net, patch, randomcode, save, session, stats,
+    audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats,
 };
 
 struct LobbySelection {
@@ -26,8 +26,8 @@ struct Lobby {
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
     local_negotiated_state: Option<(net::protocol::NegotiatedState, Vec<u8>)>,
-    roms_scanner: gui::ROMsScanner,
-    patches_scanner: gui::PatchesScanner,
+    roms_scanner: rom::Scanner,
+    patches_scanner: patch::Scanner,
 }
 
 fn get_netplay_compatibility(
@@ -441,8 +441,8 @@ async fn run_connection_task(
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    roms_scanner: gui::ROMsScanner,
-    patches_scanner: gui::PatchesScanner,
+    roms_scanner: rom::Scanner,
+    patches_scanner: patch::Scanner,
     matchmaking_addr: String,
     link_code: String,
     nickname: String,
@@ -1064,9 +1064,9 @@ pub fn show(
     clipboard: &mut arboard::Clipboard,
     config: &mut config::Config,
     config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    roms_scanner: gui::ROMsScanner,
-    saves_scanner: gui::SavesScanner,
-    patches_scanner: gui::PatchesScanner,
+    roms_scanner: rom::Scanner,
+    saves_scanner: save::Scanner,
+    patches_scanner: patch::Scanner,
     audio_binder: audio::LateBinder,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: &mut Option<gui::Selection>,

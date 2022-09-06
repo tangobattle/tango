@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{config, game, gui, i18n, input, patch, save};
+use crate::{config, game, gui, i18n, input, patch, rom, save};
 
 #[derive(PartialEq, Eq)]
 enum Tab {
@@ -37,9 +37,9 @@ pub fn show(
     handle: tokio::runtime::Handle,
     font_families: &gui::FontFamilies,
     config: &mut config::Config,
-    roms_scanner: gui::ROMsScanner,
-    saves_scanner: gui::SavesScanner,
-    patches_scanner: gui::PatchesScanner,
+    roms_scanner: rom::Scanner,
+    saves_scanner: save::Scanner,
+    patches_scanner: patch::Scanner,
     window: &winit::window::Window,
     steal_input: &mut Option<gui::steal_input_window::State>,
 ) {
@@ -546,9 +546,9 @@ fn show_advanced_tab(
     ui: &mut egui::Ui,
     config: &mut config::Config,
     handle: tokio::runtime::Handle,
-    roms_scanner: gui::ROMsScanner,
-    saves_scanner: gui::SavesScanner,
-    patches_scanner: gui::PatchesScanner,
+    roms_scanner: rom::Scanner,
+    saves_scanner: save::Scanner,
+    patches_scanner: patch::Scanner,
 ) {
     egui::Grid::new("settings-window-general-grid")
         .num_columns(2)

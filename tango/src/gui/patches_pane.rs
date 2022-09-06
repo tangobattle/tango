@@ -18,7 +18,7 @@ pub fn show(
     repo_url: &str,
     patch_selection: &mut Option<String>,
     patches_path: &std::path::Path,
-    patches_scanner: gui::PatchesScanner,
+    patches_scanner: patch::Scanner,
 ) {
     ui.horizontal_top(|ui| {
         ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {

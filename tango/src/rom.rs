@@ -2,6 +2,8 @@ pub mod text;
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
+use crate::{game, scanner};
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ChipClass {
     Standard,
@@ -282,3 +284,6 @@ impl<'a> MemoryMapper<'a> {
         }
     }
 }
+
+pub type Scanner =
+    scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>>;

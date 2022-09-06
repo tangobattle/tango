@@ -17,13 +17,6 @@ mod settings_window;
 mod steal_input_window;
 mod warning;
 
-type ROMsScanner =
-    scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>>;
-type SavesScanner = scanner::Scanner<
-    std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<save::ScannedSave>>,
->;
-type PatchesScanner = scanner::Scanner<std::collections::BTreeMap<String, patch::Patch>>;
-
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub assets: Option<Box<dyn rom::Assets + Send + Sync>>,
@@ -72,9 +65,9 @@ pub struct State {
     pub session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     selection: Option<Selection>,
     pub steal_input: Option<steal_input_window::State>,
-    pub roms_scanner: ROMsScanner,
-    pub saves_scanner: SavesScanner,
-    pub patches_scanner: PatchesScanner,
+    pub roms_scanner: rom::Scanner,
+    pub saves_scanner: save::Scanner,
+    pub patches_scanner: patch::Scanner,
     pub last_mouse_motion_time: Option<std::time::Instant>,
     audio_binder: audio::LateBinder,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
