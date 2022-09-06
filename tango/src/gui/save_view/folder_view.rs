@@ -138,145 +138,248 @@ pub fn show<'a>(
         );
     });
 
-    let mut tb = egui_extras::TableBuilder::new(ui)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center));
-    if state.grouped {
-        tb = tb.column(egui_extras::Size::exact(30.0));
-    }
+    egui::ScrollArea::vertical()
+        .id_source("dark-ai-view")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            egui_extras::StripBuilder::new(ui)
+                .sizes(egui_extras::Size::exact(28.0), items.len())
+                .vertical(|mut outer_strip| {
+                    for (i, (chip, g)) in items.iter().enumerate() {
+                        outer_strip.cell(|ui| {
+                            let info = chip.as_ref().and_then(|chip| assets.chip(chip.id));
 
-    tb = tb
-        .column(egui_extras::Size::exact(28.0))
-        .column(egui_extras::Size::remainder())
-        .column(egui_extras::Size::exact(28.0))
-        .column(egui_extras::Size::exact(30.0));
-    if chips_view.chips_have_mb() {
-        tb = tb.column(egui_extras::Size::exact(50.0));
-    }
-    tb.striped(true).body(|body| {
-        body.rows(28.0, items.len(), |i, mut row| {
-            let (chip, g) = &items[i];
-            let info = chip.as_ref().and_then(|chip| assets.chip(chip.id));
-            if state.grouped {
-                row.col(|ui| {
-                    ui.strong(format!("{}x", g.count));
-                });
-            }
-            row.col(|ui| {
-                let icon = if let Some(icon) = info.map(|info| &info.icon) {
-                    icon
-                } else {
-                    return;
-                };
-
-                let chip = if let Some(chip) = chip.as_ref() {
-                    chip
-                } else {
-                    return;
-                };
-
-                ui.image(
-                    state
-                        .chip_icon_texture_cache
-                        .entry(chip.id)
-                        .or_insert_with(|| {
-                            ui.ctx().load_texture(
-                                format!("chip {}", chip.id),
-                                egui::ColorImage::from_rgba_unmultiplied(
-                                    [14, 14],
-                                    &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
-                                ),
-                                egui::TextureFilter::Nearest,
-                            )
-                        })
-                        .id(),
-                    egui::Vec2::new(28.0, 28.0),
-                );
-            });
-            row.col(|ui| {
-                ui.horizontal(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 0.0;
-                        if let Some(chip) = chip.as_ref() {
-                            ui.label(
-                                egui::RichText::new(
-                                    info.map(|info| info.name.as_str()).unwrap_or("???"),
+                            let (bg_color, fg_color) = if let Some(info) = info {
+                                let bg_color = if info.dark {
+                                    Some(if ui.visuals().dark_mode {
+                                        egui::Color32::from_rgb(0x31, 0x39, 0x5a)
+                                    } else {
+                                        egui::Color32::from_rgb(0xb5, 0x8c, 0xd6)
+                                    })
+                                } else {
+                                    match info.class {
+                                        rom::ChipClass::Standard => None,
+                                        rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
+                                            egui::Color32::from_rgb(0x52, 0x84, 0x9c)
+                                        } else {
+                                            egui::Color32::from_rgb(0xad, 0xef, 0xef)
+                                        }),
+                                        rom::ChipClass::Giga => Some(if ui.visuals().dark_mode {
+                                            egui::Color32::from_rgb(0x8c, 0x31, 0x52)
+                                        } else {
+                                            egui::Color32::from_rgb(0xf7, 0xce, 0xe7)
+                                        }),
+                                        rom::ChipClass::None => None,
+                                        rom::ChipClass::ProgramAdvance => None,
+                                    }
+                                };
+                                (
+                                    bg_color,
+                                    if bg_color.is_some() && ui.visuals().dark_mode {
+                                        Some(ui.visuals().strong_text_color())
+                                    } else {
+                                        None
+                                    },
                                 )
-                                .family(font_families.for_language(game_lang)),
-                            );
-                            ui.label(format!(" {}", chips_view.chip_codes()[chip.code] as char));
-                        } else {
-                            ui.label("???");
-                        };
-                    });
-                    if g.is_regular {
-                        egui::Frame::none()
-                            .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
-                            .rounding(egui::Rounding::same(2.0))
-                            .fill(egui::Color32::from_rgb(0xff, 0x42, 0xa5))
-                            .show(ui, |ui| {
-                                ui.label(egui::RichText::new("REG").color(egui::Color32::WHITE));
-                            });
-                    }
-                    for _ in 0..g.tag_count {
-                        egui::Frame::none()
-                            .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
-                            .rounding(egui::Rounding::same(2.0))
-                            .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
-                            .show(ui, |ui| {
-                                ui.label(egui::RichText::new("TAG").color(egui::Color32::WHITE));
-                            });
-                    }
-                });
-            });
-            row.col(|ui| {
-                let element = if let Some(element) = info.map(|info| info.element) {
-                    element
-                } else {
-                    return;
-                };
+                            } else {
+                                (None, None)
+                            };
 
-                let icon = if let Some(icon) = assets.element_icon(element) {
-                    icon
-                } else {
-                    return;
-                };
+                            let rect = ui
+                                .available_rect_before_wrap()
+                                .expand(ui.spacing().item_spacing.y);
+                            if let Some(bg_color) = bg_color {
+                                ui.painter().rect_filled(rect, 0.0, bg_color);
+                            } else if i % 2 == 0 {
+                                ui.painter()
+                                    .rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                            }
 
-                ui.image(
-                    state
-                        .element_icon_texture_cache
-                        .entry(element)
-                        .or_insert_with(|| {
-                            ui.ctx().load_texture(
-                                format!("element {}", element),
-                                egui::ColorImage::from_rgba_unmultiplied(
-                                    [14, 14],
-                                    &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
-                                ),
-                                egui::TextureFilter::Nearest,
-                            )
-                        })
-                        .id(),
-                    egui::Vec2::new(28.0, 28.0),
-                );
-            });
-            row.col(|ui| {
-                let damage = info.map(|info| info.damage).unwrap_or(0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if damage > 0 {
-                        ui.strong(format!("{}", damage));
+                            let mut sb = egui_extras::StripBuilder::new(ui)
+                                .cell_layout(egui::Layout::left_to_right(egui::Align::Center));
+
+                            if state.grouped {
+                                sb = sb.size(egui_extras::Size::exact(30.0));
+                            }
+
+                            sb = sb
+                                .size(egui_extras::Size::exact(28.0))
+                                .size(egui_extras::Size::remainder())
+                                .size(egui_extras::Size::exact(28.0))
+                                .size(egui_extras::Size::exact(30.0));
+                            if chips_view.chips_have_mb() {
+                                sb = sb.size(egui_extras::Size::exact(50.0));
+                            }
+
+                            sb.horizontal(|mut strip| {
+                                if state.grouped {
+                                    strip.cell(|ui| {
+                                        ui.strong(format!("{}x", g.count));
+                                    });
+                                }
+                                strip.cell(|ui| {
+                                    let icon = if let Some(icon) = info.map(|info| &info.icon) {
+                                        icon
+                                    } else {
+                                        return;
+                                    };
+
+                                    let chip = if let Some(chip) = chip.as_ref() {
+                                        chip
+                                    } else {
+                                        return;
+                                    };
+
+                                    ui.image(
+                                        state
+                                            .chip_icon_texture_cache
+                                            .entry(chip.id)
+                                            .or_insert_with(|| {
+                                                ui.ctx().load_texture(
+                                                    format!("chip {}", chip.id),
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        [14, 14],
+                                                        &image::imageops::crop_imm(
+                                                            icon, 1, 1, 14, 14,
+                                                        )
+                                                        .to_image(),
+                                                    ),
+                                                    egui::TextureFilter::Nearest,
+                                                )
+                                            })
+                                            .id(),
+                                        egui::Vec2::new(28.0, 28.0),
+                                    );
+                                });
+                                strip.cell(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.spacing_mut().item_spacing.x = 0.0;
+                                            if let Some(chip) = chip.as_ref() {
+                                                ui.label(
+                                                    egui::RichText::new(
+                                                        info.map(|info| info.name.as_str())
+                                                            .unwrap_or("???"),
+                                                    )
+                                                    .color(
+                                                        fg_color
+                                                            .unwrap_or(ui.visuals().text_color()),
+                                                    )
+                                                    .family(font_families.for_language(game_lang)),
+                                                );
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        " {}",
+                                                        chips_view.chip_codes()[chip.code] as char
+                                                    ))
+                                                    .color(
+                                                        fg_color
+                                                            .unwrap_or(ui.visuals().text_color()),
+                                                    ),
+                                                );
+                                            } else {
+                                                ui.label("???");
+                                            };
+                                        });
+                                        if g.is_regular {
+                                            egui::Frame::none()
+                                                .inner_margin(egui::style::Margin::symmetric(
+                                                    4.0, 0.0,
+                                                ))
+                                                .rounding(egui::Rounding::same(2.0))
+                                                .fill(egui::Color32::from_rgb(0xff, 0x42, 0xa5))
+                                                .show(ui, |ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("REG")
+                                                            .color(egui::Color32::WHITE),
+                                                    );
+                                                });
+                                        }
+                                        for _ in 0..g.tag_count {
+                                            egui::Frame::none()
+                                                .inner_margin(egui::style::Margin::symmetric(
+                                                    4.0, 0.0,
+                                                ))
+                                                .rounding(egui::Rounding::same(2.0))
+                                                .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
+                                                .show(ui, |ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("TAG")
+                                                            .color(egui::Color32::WHITE),
+                                                    );
+                                                });
+                                        }
+                                    });
+                                });
+                                strip.cell(|ui| {
+                                    let element =
+                                        if let Some(element) = info.map(|info| info.element) {
+                                            element
+                                        } else {
+                                            return;
+                                        };
+
+                                    let icon = if let Some(icon) = assets.element_icon(element) {
+                                        icon
+                                    } else {
+                                        return;
+                                    };
+
+                                    ui.image(
+                                        state
+                                            .element_icon_texture_cache
+                                            .entry(element)
+                                            .or_insert_with(|| {
+                                                ui.ctx().load_texture(
+                                                    format!("element {}", element),
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        [14, 14],
+                                                        &image::imageops::crop_imm(
+                                                            icon, 1, 1, 14, 14,
+                                                        )
+                                                        .to_image(),
+                                                    ),
+                                                    egui::TextureFilter::Nearest,
+                                                )
+                                            })
+                                            .id(),
+                                        egui::Vec2::new(28.0, 28.0),
+                                    );
+                                });
+                                strip.cell(|ui| {
+                                    let damage = info.map(|info| info.damage).unwrap_or(0);
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if damage > 0 {
+                                                ui.strong(format!("{}", damage));
+                                            }
+                                        },
+                                    );
+                                });
+                                if chips_view.chips_have_mb() {
+                                    strip.cell(|ui| {
+                                        let mb = info.map(|info| info.mb).unwrap_or(0);
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if mb > 0 {
+                                                    ui.label(
+                                                        egui::RichText::new(format!("{}MB", mb))
+                                                            .color(if bg_color.is_some() {
+                                                                ui.visuals().strong_text_color()
+                                                            } else {
+                                                                ui.visuals().text_color()
+                                                            }),
+                                                    );
+                                                }
+                                            },
+                                        );
+                                    });
+                                }
+                            });
+                        });
                     }
                 });
-            });
-            if chips_view.chips_have_mb() {
-                row.col(|ui| {
-                    let mb = info.map(|info| info.mb).unwrap_or(0);
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if mb > 0 {
-                            ui.label(format!("{}MB", mb));
-                        }
-                    });
-                });
-            }
         });
-    });
 }

@@ -151,113 +151,171 @@ fn show_table<const N: usize>(
     chip_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: &mut std::collections::HashMap<usize, egui::TextureHandle>,
 ) {
-    egui_extras::TableBuilder::new(ui)
-        .scroll(false)
-        .striped(true)
-        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(egui_extras::Size::exact(30.0))
-        .column(egui_extras::Size::exact(28.0))
-        .column(egui_extras::Size::remainder())
-        .column(egui_extras::Size::exact(28.0))
-        .column(egui_extras::Size::exact(30.0))
-        .body(|mut body| {
-            for (id, count) in std::iter::zip(chips, counts) {
-                body.row(28.0, |mut row| {
-                    row.col(|ui| {
-                        ui.strong(format!("{}x", count));
-                    });
-                    if let Some(id) = id {
-                        let info = assets.chip(*id);
-                        row.col(|ui| {
-                            let icon = if let Some(icon) = info.map(|info| &info.icon) {
-                                icon
-                            } else {
-                                return;
-                            };
+    egui_extras::StripBuilder::new(ui)
+        .sizes(egui_extras::Size::exact(28.0), chips.len())
+        .vertical(|mut outer_strip| {
+            for (i, (id, count)) in std::iter::zip(chips, counts).enumerate() {
+                outer_strip.cell(|ui| {
+                    let info = id.and_then(|id| assets.chip(id));
 
-                            ui.image(
-                                chip_icon_texture_cache
-                                    .entry(*id)
-                                    .or_insert_with(|| {
-                                        ui.ctx().load_texture(
-                                            format!("chip {}", id),
-                                            egui::ColorImage::from_rgba_unmultiplied(
-                                                [14, 14],
-                                                &image::imageops::crop_imm(icon, 1, 1, 14, 14)
-                                                    .to_image(),
-                                            ),
-                                            egui::TextureFilter::Nearest,
-                                        )
-                                    })
-                                    .id(),
-                                egui::Vec2::new(28.0, 28.0),
-                            );
-                        });
-                        row.col(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(
-                                            info.map(|info| info.name.as_str()).unwrap_or("???"),
-                                        )
-                                        .family(font_families.for_language(game_lang)),
+                    let (bg_color, fg_color) = if let Some(info) = info {
+                        let bg_color = if info.dark {
+                            Some(if ui.visuals().dark_mode {
+                                egui::Color32::from_rgb(0x31, 0x39, 0x5a)
+                            } else {
+                                egui::Color32::from_rgb(0xb5, 0x8c, 0xd6)
+                            })
+                        } else {
+                            match info.class {
+                                rom::ChipClass::Standard => None,
+                                rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
+                                    egui::Color32::from_rgb(0x52, 0x84, 0x9c)
+                                } else {
+                                    egui::Color32::from_rgb(0xad, 0xef, 0xef)
+                                }),
+                                rom::ChipClass::Giga => Some(if ui.visuals().dark_mode {
+                                    egui::Color32::from_rgb(0x8c, 0x31, 0x52)
+                                } else {
+                                    egui::Color32::from_rgb(0xf7, 0xce, 0xe7)
+                                }),
+                                rom::ChipClass::None => None,
+                                rom::ChipClass::ProgramAdvance => None,
+                            }
+                        };
+                        (
+                            bg_color,
+                            if bg_color.is_some() && ui.visuals().dark_mode {
+                                Some(ui.visuals().strong_text_color())
+                            } else {
+                                None
+                            },
+                        )
+                    } else {
+                        (None, None)
+                    };
+
+                    let rect = ui
+                        .available_rect_before_wrap()
+                        .expand(ui.spacing().item_spacing.y);
+                    if let Some(bg_color) = bg_color {
+                        ui.painter().rect_filled(rect, 0.0, bg_color);
+                    } else if i % 2 == 0 {
+                        ui.painter()
+                            .rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                    }
+
+                    egui_extras::StripBuilder::new(ui)
+                        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                        .size(egui_extras::Size::exact(30.0))
+                        .size(egui_extras::Size::exact(28.0))
+                        .size(egui_extras::Size::remainder())
+                        .size(egui_extras::Size::exact(28.0))
+                        .size(egui_extras::Size::exact(30.0))
+                        .horizontal(|mut strip| {
+                            strip.cell(|ui| {
+                                ui.strong(format!("{}x", count));
+                            });
+                            if let Some(id) = id {
+                                strip.cell(|ui| {
+                                    let icon = if let Some(icon) = info.map(|info| &info.icon) {
+                                        icon
+                                    } else {
+                                        return;
+                                    };
+
+                                    ui.image(
+                                        chip_icon_texture_cache
+                                            .entry(*id)
+                                            .or_insert_with(|| {
+                                                ui.ctx().load_texture(
+                                                    format!("chip {}", id),
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        [14, 14],
+                                                        &image::imageops::crop_imm(
+                                                            icon, 1, 1, 14, 14,
+                                                        )
+                                                        .to_image(),
+                                                    ),
+                                                    egui::TextureFilter::Nearest,
+                                                )
+                                            })
+                                            .id(),
+                                        egui::Vec2::new(28.0, 28.0),
                                     );
                                 });
-                            });
-                        });
-                        row.col(|ui| {
-                            let element = if let Some(element) = info.map(|info| info.element) {
-                                element
-                            } else {
-                                return;
-                            };
+                                strip.cell(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(
+                                                egui::RichText::new(
+                                                    info.map(|info| info.name.as_str())
+                                                        .unwrap_or("???"),
+                                                )
+                                                .color(
+                                                    fg_color.unwrap_or(ui.visuals().text_color()),
+                                                )
+                                                .family(font_families.for_language(game_lang)),
+                                            );
+                                        });
+                                    });
+                                });
+                                strip.cell(|ui| {
+                                    let element =
+                                        if let Some(element) = info.map(|info| info.element) {
+                                            element
+                                        } else {
+                                            return;
+                                        };
 
-                            let icon = if let Some(icon) = assets.element_icon(element) {
-                                icon
-                            } else {
-                                return;
-                            };
+                                    let icon = if let Some(icon) = assets.element_icon(element) {
+                                        icon
+                                    } else {
+                                        return;
+                                    };
 
-                            ui.image(
-                                element_icon_texture_cache
-                                    .entry(element)
-                                    .or_insert_with(|| {
-                                        ui.ctx().load_texture(
-                                            format!("element {}", element),
-                                            egui::ColorImage::from_rgba_unmultiplied(
-                                                [14, 14],
-                                                &image::imageops::crop_imm(icon, 1, 1, 14, 14)
-                                                    .to_image(),
-                                            ),
-                                            egui::TextureFilter::Nearest,
-                                        )
-                                    })
-                                    .id(),
-                                egui::Vec2::new(28.0, 28.0),
-                            );
+                                    ui.image(
+                                        element_icon_texture_cache
+                                            .entry(element)
+                                            .or_insert_with(|| {
+                                                ui.ctx().load_texture(
+                                                    format!("element {}", element),
+                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                        [14, 14],
+                                                        &image::imageops::crop_imm(
+                                                            icon, 1, 1, 14, 14,
+                                                        )
+                                                        .to_image(),
+                                                    ),
+                                                    egui::TextureFilter::Nearest,
+                                                )
+                                            })
+                                            .id(),
+                                        egui::Vec2::new(28.0, 28.0),
+                                    );
+                                });
+                                strip.cell(|ui| {
+                                    let damage = info.map(|info| info.damage).unwrap_or(0);
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if damage > 0 {
+                                                ui.strong(format!("{}", damage));
+                                            }
+                                        },
+                                    );
+                                });
+                            } else {
+                                strip.cell(|_ui| {});
+                                strip.cell(|ui| {
+                                    ui.weak(i18n::LOCALES.lookup(lang, "dark-ai.unset").unwrap());
+                                });
+                                strip.cell(|_ui| {});
+                                strip.cell(|_ui| {});
+                            }
                         });
-                        row.col(|ui| {
-                            let damage = info.map(|info| info.damage).unwrap_or(0);
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if damage > 0 {
-                                        ui.strong(format!("{}", damage));
-                                    }
-                                },
-                            );
-                        });
-                    } else {
-                        row.col(|_ui| {});
-                        row.col(|ui| {
-                            ui.weak(i18n::LOCALES.lookup(lang, "dark-ai.unset").unwrap());
-                        });
-                        row.col(|_ui| {});
-                        row.col(|_ui| {});
-                    }
                 });
             }
-        })
+        });
 }
 
 fn make_string<'a, const N: usize>(
