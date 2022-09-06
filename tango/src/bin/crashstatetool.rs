@@ -21,7 +21,8 @@ fn main() -> Result<(), anyhow::Error> {
  r0 = {:08x},  r1 = {:08x},  r2 = {:08x},  r3 = {:08x},
  r4 = {:08x},  r5 = {:08x},  r6 = {:08x},  r7 = {:08x},
  r8 = {:08x},  r9 = {:08x}, r10 = {:08x}, r11 = {:08x},
-r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x}
+r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x},
+cpsr = {:08x}
 
 WRAM will be dumped to: {}"#,
         state.gpr(0),
@@ -40,6 +41,7 @@ WRAM will be dumped to: {}"#,
         state.gpr(13),
         state.gpr(14),
         state.gpr(15),
+        state.cpsr(),
         wram_path.display(),
     );
 

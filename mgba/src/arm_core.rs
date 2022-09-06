@@ -10,6 +10,10 @@ impl<'a> ARMCoreRef<'a> {
         unsafe { (*self.ptr).__bindgen_anon_1.__bindgen_anon_1.gprs[r] }
     }
 
+    pub fn cpsr(&self) -> i32 {
+        unsafe { (*self.ptr).__bindgen_anon_1.__bindgen_anon_1.cpsr.packed }
+    }
+
     pub fn thumb_pc(&self) -> u32 {
         self.gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB
     }

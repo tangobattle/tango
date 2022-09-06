@@ -149,7 +149,8 @@ pub fn show(
  r0 = {:08x},  r1 = {:08x},  r2 = {:08x},  r3 = {:08x},
  r4 = {:08x},  r5 = {:08x},  r6 = {:08x},  r7 = {:08x},
  r8 = {:08x},  r9 = {:08x}, r10 = {:08x}, r11 = {:08x},
-r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x}"#,
+r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x},
+cpsr = {:08x}"#,
             core.as_ref().gba().cpu().thumb_pc(),
             core.as_ref().gba().cpu().gpr(0),
             core.as_ref().gba().cpu().gpr(1),
@@ -167,6 +168,7 @@ r12 = {:08x}, r13 = {:08x}, r14 = {:08x}, r15 = {:08x}"#,
             core.as_ref().gba().cpu().gpr(13),
             core.as_ref().gba().cpu().gpr(14),
             core.as_ref().gba().cpu().gpr(15),
+            core.as_ref().gba().cpu().cpsr(),
         );
         let state = core.save_state().unwrap();
         let crashstate_path = crashstates_path.join(format!(
