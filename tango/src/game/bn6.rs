@@ -83,7 +83,10 @@ impl game::Game for EXE6GImpl {
                     .as_ref()
                     .map(|cs| cs.as_slice())
                     .unwrap_or(&rom::JA_CHARSET),
-                ..Default::default()
+                chip_names: &overrides.chip_names,
+                navicust_part_names: &overrides.navicust_part_names,
+                modcard56_names: &overrides.modcard56_names,
+                modcard56_effect_names: &overrides.modcard56_effect_names,
             },
         )))
     }
@@ -166,7 +169,10 @@ impl game::Game for EXE6FImpl {
                     .as_ref()
                     .map(|cs| cs.as_slice())
                     .unwrap_or(&rom::JA_CHARSET),
-                ..Default::default()
+                chip_names: &overrides.chip_names,
+                navicust_part_names: &overrides.navicust_part_names,
+                modcard56_names: &overrides.modcard56_names,
+                modcard56_effect_names: &overrides.modcard56_effect_names,
             },
         )))
     }
@@ -249,7 +255,10 @@ impl game::Game for BN6GImpl {
                     .as_ref()
                     .map(|cs| cs.as_slice())
                     .unwrap_or(&rom::EN_CHARSET),
-                ..Default::default()
+                chip_names: &overrides.chip_names,
+                navicust_part_names: &overrides.navicust_part_names,
+                modcard56_names: &overrides.modcard56_names,
+                modcard56_effect_names: &overrides.modcard56_effect_names,
             },
         )))
     }
@@ -332,7 +341,10 @@ impl game::Game for BN6FImpl {
                     .as_ref()
                     .map(|cs| cs.as_slice())
                     .unwrap_or(&rom::EN_CHARSET),
-                ..Default::default()
+                chip_names: &overrides.chip_names,
+                navicust_part_names: &overrides.navicust_part_names,
+                modcard56_names: &overrides.modcard56_names,
+                modcard56_effect_names: &overrides.modcard56_effect_names,
             },
         )))
     }

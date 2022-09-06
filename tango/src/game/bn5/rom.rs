@@ -313,8 +313,8 @@ impl Assets {
                         } else {
                             "???".to_string()
                         }
-                    }
-                    .replace("\n", " "),
+                        .replace("\n", " ")
+                    },
                     mb: buf[1],
                     effects: buf[3..]
                         .chunks(3)

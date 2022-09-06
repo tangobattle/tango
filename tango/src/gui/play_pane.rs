@@ -1954,7 +1954,7 @@ pub fn show(
                             &config.language,
                             if let Some((_, _, metadata)) = selection.patch.as_ref() {
                                 if let Some(language) =
-                                    metadata.saveedit_overrides.language.as_ref()
+                                    metadata.rom_overrides.language.as_ref()
                                 {
                                     language
                                 } else {

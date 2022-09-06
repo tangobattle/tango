@@ -4,13 +4,13 @@ use serde::Deserialize;
 
 use crate::{config, game, rom, scanner};
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct Metadata {
     pub patch: PatchMetadata,
     pub versions: std::collections::HashMap<String, VersionMetadata>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct PatchMetadata {
     pub title: String,
     pub authors: Vec<String>,
@@ -81,16 +81,16 @@ pub struct ROMOverrides {
     pub modcard56_effect_names: Option<Vec<rom::Modcard56EffectTemplate>>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, Debug)]
 struct VersionMetadata {
     #[serde(default)]
-    pub saveedit_overrides: ROMOverrides,
+    pub rom_overrides: ROMOverrides,
     pub netplay_compatibility: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct Version {
-    pub saveedit_overrides: ROMOverrides,
+    pub rom_overrides: ROMOverrides,
     pub netplay_compatibility: String,
     pub supported_games: std::collections::HashSet<&'static (dyn game::Game + Send + Sync)>,
 }
@@ -251,7 +251,7 @@ pub fn scan(
             versions.insert(
                 sv,
                 Version {
-                    saveedit_overrides: version.saveedit_overrides,
+                    rom_overrides: version.rom_overrides,
                     netplay_compatibility: version.netplay_compatibility,
                     supported_games,
                 },

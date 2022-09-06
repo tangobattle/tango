@@ -39,7 +39,7 @@ impl Selection {
                 save.save.as_raw_wram(),
                 &patch
                     .as_ref()
-                    .map(|(_, _, metadata)| metadata.saveedit_overrides.clone())
+                    .map(|(_, _, metadata)| metadata.rom_overrides.clone())
                     .unwrap_or_else(|| Default::default()),
             )
             .ok();

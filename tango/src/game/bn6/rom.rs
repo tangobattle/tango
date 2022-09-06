@@ -80,13 +80,12 @@ pub struct Assets {
     modcards56: Option<[rom::Modcard56; 118]>,
 }
 
-#[derive(Default)]
 pub struct AssetLoadOptions<'a> {
     pub charset: &'a [&'a str],
-    pub chip_names: Option<Vec<String>>,
-    pub navicust_part_names: Option<Vec<String>>,
-    pub modcard56_names: Option<Vec<String>>,
-    pub modcard56_effect_names: Option<Vec<rom::Modcard56EffectTemplate>>,
+    pub chip_names: &'a Option<Vec<String>>,
+    pub navicust_part_names: &'a Option<Vec<String>>,
+    pub modcard56_names: &'a Option<Vec<String>>,
+    pub modcard56_effect_names: &'a Option<Vec<rom::Modcard56EffectTemplate>>,
 }
 
 impl Assets {
@@ -138,7 +137,9 @@ impl Assets {
                 .map(|i| {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {
-                        name: {
+                        name: if let Some(chip_names) = options.chip_names.as_ref() {
+                            chip_names.get(i).cloned().unwrap_or("???".to_string())
+                        } else {
                             let i = i % 0x100;
                             let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
 
@@ -207,7 +208,14 @@ impl Assets {
                 .map(|i| {
                     let buf = &mapper.get(offsets.ncp_data)[i * 0x10..(i + 1) * 0x10];
                     rom::NavicustPart {
-                        name: {
+                        name: if let Some(navicust_part_names) =
+                            options.navicust_part_names.as_ref()
+                        {
+                            navicust_part_names
+                                .get(i / 4)
+                                .cloned()
+                                .unwrap_or("???".to_string())
+                        } else {
                             if let Ok(parts) = rom::text::parse_entry(
                                 &mapper.get(byteorder::LittleEndian::read_u32(
                                     &mapper.get(offsets.ncp_names_pointer)[..4],
@@ -275,7 +283,9 @@ impl Assets {
                             ..byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2])
                                 as usize];
                         rom::Modcard56 {
-                            name: {
+                            name: if let Some(modcard56_names) = options.modcard56_names.as_ref() {
+                                modcard56_names.get(i).cloned().unwrap_or("???".to_string())
+                            } else {
                                 if let Ok(parts) = rom::text::parse_entry(
                                     &mapper.get(byteorder::LittleEndian::read_u32(
                                         &mapper.get(offsets.modcard_names_pointer)[..4],
@@ -294,10 +304,11 @@ impl Assets {
                                             .collect::<Vec<_>>()
                                         })
                                         .collect::<String>()
+                                        .replace("\n", " ")
                                 } else {
                                     "???".to_string()
                                 }
-                            }.replace("\n", " "),
+                            },
                             mb: buf[1],
                             effects: buf[3..]
                                 .chunks(3)
@@ -306,7 +317,18 @@ impl Assets {
                                     let parameter = chunk[1];
                                     rom::Modcard56Effect {
                                         id,
-                                        name: {
+                                        name: if let Some(modcard56_effect_names) =
+                                            options.modcard56_effect_names.as_ref()
+                                        {
+                                            modcard56_effect_names
+                                                .get(id as usize)
+                                                .cloned()
+                                                .unwrap_or_else(|| {
+                                                    vec![rom::Modcard56EffectTemplatePart::String(
+                                                        "???".to_string(),
+                                                    )]
+                                                })
+                                        } else {
                                             if let Ok(parts) = rom::text::parse_entry(
                                                 &mapper.get(byteorder::LittleEndian::read_u32(
                                                     &mapper
@@ -316,26 +338,36 @@ impl Assets {
                                                 id as usize,
                                                 &text_parse_options,
                                             ) {
-                                                rom::text::parse_modcard56_effect(parts, PRINT_VAR_COMMAND)
-                                                    .into_iter()
-                                                    .flat_map(|p| match p {
-                                                        rom::Modcard56EffectTemplatePart::String(s) => s,
-                                                        rom::Modcard56EffectTemplatePart::PrintVar(v) => if v == 1 {
-                                                            let mut parameter =
-                                                                parameter as u32;
-                                                            if id == 0x00 || id == 0x02 {
-                                                                parameter = parameter * 10;
-                                                            }
-                                                            format!("{}", parameter)
-                                                        } else {
-                                                            "".to_string()
-                                                        },
-                                                    }.chars().collect::<Vec<_>>())
-                                                    .collect()
+                                                rom::text::parse_modcard56_effect(
+                                                    parts,
+                                                    PRINT_VAR_COMMAND,
+                                                )
                                             } else {
-                                                "???".to_string()
+                                                vec![rom::Modcard56EffectTemplatePart::String(
+                                                    "???".to_string(),
+                                                )]
                                             }
-                                        },
+                                        }
+                                        .into_iter()
+                                        .flat_map(|p| {
+                                            match p {
+                                                rom::Modcard56EffectTemplatePart::String(s) => s,
+                                                rom::Modcard56EffectTemplatePart::PrintVar(v) => {
+                                                    if v == 1 {
+                                                        let mut parameter = parameter as u32;
+                                                        if id == 0x00 || id == 0x02 {
+                                                            parameter = parameter * 10;
+                                                        }
+                                                        format!("{}", parameter)
+                                                    } else {
+                                                        "".to_string()
+                                                    }
+                                                }
+                                            }
+                                            .chars()
+                                            .collect::<Vec<_>>()
+                                        })
+                                        .collect(),
                                         parameter,
                                         is_debuff: chunk[2] == 1,
                                         is_ability: id > 0x15,

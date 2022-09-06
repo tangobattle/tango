@@ -328,7 +328,7 @@ pub fn show(
                                 save_state.wram(),
                                 &patch
                                     .as_ref()
-                                    .map(|(_, _, metadata)| metadata.saveedit_overrides.clone())
+                                    .map(|(_, _, metadata)| metadata.rom_overrides.clone())
                                     .unwrap_or_default(),
                             ) {
                                 Ok(assets) => Some(assets),
@@ -444,9 +444,7 @@ pub fn show(
                             font_families,
                             language,
                             if let Some((_, _, metadata)) = selection.patch.as_ref() {
-                                if let Some(language) =
-                                    metadata.saveedit_overrides.language.as_ref()
-                                {
+                                if let Some(language) = metadata.rom_overrides.language.as_ref() {
                                     language
                                 } else {
                                     &game_language
