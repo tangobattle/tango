@@ -750,36 +750,87 @@ fn show_lobby_table(
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) {
     let row_height = ui.text_style_height(&egui::TextStyle::Body);
+    let spacing_x = ui.spacing().item_spacing.x;
     let spacing_y = ui.spacing().item_spacing.y;
-    egui_extras::TableBuilder::new(ui)
-        .column(egui_extras::Size::remainder())
-        .column(egui_extras::Size::exact(200.0))
-        .column(egui_extras::Size::exact(200.0))
-        .header(row_height, |mut header| {
-            header.col(|_ui| {});
-            header.col(|ui| {
-                ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        if ui
-                            .button(format!(
-                                "🚶 {}",
-                                i18n::LOCALES
-                                    .lookup(&config.language, "play-leave")
-                                    .unwrap()
-                            ))
-                            .clicked()
-                        {
-                            cancellation_token.cancel();
-                        }
+    egui_extras::StripBuilder::new(ui)
+        .size(egui_extras::Size::exact(row_height + spacing_y))
+        .size(egui_extras::Size::exact(
+            if lobby
+                .selection
+                .as_ref()
+                .map(|s| s.patch.is_some())
+                .unwrap_or(false)
+                || lobby
+                    .remote_settings
+                    .game_info
+                    .as_ref()
+                    .map(|gi| gi.patch.is_some())
+                    .unwrap_or(false)
+            {
+                row_height * 2.0 + spacing_y * 0.5
+            } else {
+                row_height
+            },
+        ))
+        .size(egui_extras::Size::exact(row_height + spacing_y))
+        .size(egui_extras::Size::exact(row_height + spacing_y))
+        .size(egui_extras::Size::exact(row_height + spacing_y))
+        .vertical(|mut outer_strip| {
+            const CELL_WIDTH: f32 = 200.0;
+            outer_strip.strip(|sb| {
+                sb.size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .horizontal(|mut strip| {
+                        strip.cell(|_ui| {});
+                        strip.cell(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Min),
+                                    |ui| {
+                                        if ui
+                                            .button(format!(
+                                                "🚶 {}",
+                                                i18n::LOCALES
+                                                    .lookup(&config.language, "play-leave")
+                                                    .unwrap()
+                                            ))
+                                            .clicked()
+                                        {
+                                            cancellation_token.cancel();
+                                        }
 
-                        ui.horizontal_top(|ui| {
-                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                                ui.set_width(ui.available_width());
-                                ui.strong(
-                                    i18n::LOCALES.lookup(&config.language, "play-you").unwrap(),
+                                        ui.horizontal_top(|ui| {
+                                            ui.with_layout(
+                                                egui::Layout::left_to_right(egui::Align::Min),
+                                                |ui| {
+                                                    ui.set_width(ui.available_width());
+                                                    ui.strong(
+                                                        i18n::LOCALES
+                                                            .lookup(&config.language, "play-you")
+                                                            .unwrap(),
+                                                    );
+                                                    if lobby.local_negotiated_state.is_some()
+                                                        || lobby.sender.is_none()
+                                                    {
+                                                        ui.label(egui::RichText::new("✅").color(
+                                                            egui::Color32::from_rgb(
+                                                                0x4c, 0xaf, 0x50,
+                                                            ),
+                                                        ));
+                                                    }
+                                                },
+                                            );
+                                        });
+                                    },
                                 );
-                                if lobby.local_negotiated_state.is_some() || lobby.sender.is_none()
-                                {
+                            });
+                        });
+                        strip.cell(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.strong(lobby.remote_settings.nickname.clone());
+                                ui.small(format!("{}ms", lobby.latencies.median().as_millis()));
+                                if lobby.remote_commitment.is_some() {
                                     ui.label(
                                         egui::RichText::new("✅")
                                             .color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
@@ -788,101 +839,91 @@ fn show_lobby_table(
                             });
                         });
                     });
-                });
             });
-            header.col(|ui| {
-                ui.horizontal(|ui| {
-                    ui.strong(lobby.remote_settings.nickname.clone());
-                    if lobby.remote_commitment.is_some() {
-                        ui.label(
-                            egui::RichText::new("✅")
-                                .color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
-                        );
-                    }
-                });
-            });
-        })
-        .body(|mut body| {
-            body.row(
-                if lobby
-                    .selection
-                    .as_ref()
-                    .map(|s| s.patch.is_some())
-                    .unwrap_or(false)
-                    || lobby
-                        .remote_settings
-                        .game_info
-                        .as_ref()
-                        .map(|gi| gi.patch.is_some())
-                        .unwrap_or(false)
-                {
-                    row_height * 2.0 + spacing_y * 0.5
-                } else {
-                    row_height
-                },
-                |mut row| {
-                    row.col(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.strong(
-                                i18n::LOCALES
-                                    .lookup(&config.language, "play-details-game")
-                                    .unwrap(),
-                            );
 
-                            if let Some(selection) = lobby.selection.as_ref() {
-                                if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
-                                    if let Some(remote_game) = game::find_by_family_and_variant(
-                                        &remote_gi.family_and_variant.0,
-                                        remote_gi.family_and_variant.1,
-                                    ) {
-                                        if !roms.contains_key(&remote_game) {
-                                            gui::warning::show(
-                                                ui,
-                                                i18n::LOCALES
-                                                    .lookup_with_args(
-                                                        &config.language,
-                                                        "lobby-issue-missing-rom",
-                                                        &std::collections::HashMap::from([(
-                                                            "game_name",
-                                                            i18n::LOCALES
-                                                                .lookup(
-                                                                    &config.language,
-                                                                    &format!(
-                                                                        "game-{}.variant-{}",
-                                                                        remote_game
-                                                                            .family_and_variant()
-                                                                            .0,
-                                                                        remote_game
-                                                                            .family_and_variant()
-                                                                            .1
-                                                                    ),
-                                                                )
-                                                                .unwrap()
-                                                                .into(),
-                                                        )]),
-                                                    )
-                                                    .unwrap(),
-                                            );
-                                        } else if get_netplay_compatibility(
-                                            selection.game,
-                                            selection.patch.as_ref().map(|(name, version, _)| {
-                                                (name.to_owned(), version.clone())
-                                            }),
-                                            patches,
-                                        ) != get_netplay_compatibility(
-                                            remote_game,
-                                            remote_gi
-                                                .patch
-                                                .as_ref()
-                                                .map(|pi| (pi.name.to_owned(), pi.version.clone())),
-                                            patches,
+            outer_strip.strip(|sb| {
+                sb.size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.strong(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "play-details-game")
+                                        .unwrap(),
+                                );
+
+                                if let Some(selection) = lobby.selection.as_ref() {
+                                    if let Some(remote_gi) =
+                                        lobby.remote_settings.game_info.as_ref()
+                                    {
+                                        if let Some(remote_game) = game::find_by_family_and_variant(
+                                            &remote_gi.family_and_variant.0,
+                                            remote_gi.family_and_variant.1,
                                         ) {
+                                            if !roms.contains_key(&remote_game) {
+                                                gui::warning::show(
+                                                    ui,
+                                                    i18n::LOCALES
+                                                        .lookup_with_args(
+                                                            &config.language,
+                                                            "lobby-issue-missing-rom",
+                                                            &std::collections::HashMap::from([(
+                                                                "game_name",
+                                                                i18n::LOCALES
+                                                                    .lookup(
+                                                                        &config.language,
+                                                                        &format!(
+                                                                            "game-{}.variant-{}",
+                                                                            remote_game
+                                                                                .family_and_variant(
+                                                                                )
+                                                                                .0,
+                                                                            remote_game
+                                                                                .family_and_variant(
+                                                                                )
+                                                                                .1
+                                                                        ),
+                                                                    )
+                                                                    .unwrap()
+                                                                    .into(),
+                                                            )]),
+                                                        )
+                                                        .unwrap(),
+                                                );
+                                            } else if get_netplay_compatibility(
+                                                selection.game,
+                                                selection.patch.as_ref().map(
+                                                    |(name, version, _)| {
+                                                        (name.to_owned(), version.clone())
+                                                    },
+                                                ),
+                                                patches,
+                                            ) != get_netplay_compatibility(
+                                                remote_game,
+                                                remote_gi.patch.as_ref().map(|pi| {
+                                                    (pi.name.to_owned(), pi.version.clone())
+                                                }),
+                                                patches,
+                                            ) {
+                                                gui::warning::show(
+                                                    ui,
+                                                    i18n::LOCALES
+                                                        .lookup(
+                                                            &config.language,
+                                                            "lobby-issue-incompatible",
+                                                        )
+                                                        .unwrap(),
+                                                );
+                                            }
+                                        } else {
                                             gui::warning::show(
                                                 ui,
                                                 i18n::LOCALES
                                                     .lookup(
                                                         &config.language,
-                                                        "lobby-issue-incompatible",
+                                                        "lobby-issue-no-remote-game-selected",
                                                     )
                                                     .unwrap(),
                                             );
@@ -904,60 +945,25 @@ fn show_lobby_table(
                                         i18n::LOCALES
                                             .lookup(
                                                 &config.language,
-                                                "lobby-issue-no-remote-game-selected",
+                                                "lobby-issue-no-local-game-selected",
                                             )
                                             .unwrap(),
                                     );
                                 }
-                            } else {
-                                gui::warning::show(
-                                    ui,
-                                    i18n::LOCALES
-                                        .lookup(
-                                            &config.language,
-                                            "lobby-issue-no-local-game-selected",
-                                        )
-                                        .unwrap(),
-                                );
-                            }
+                            });
                         });
-                    });
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            if let Some(selection) = lobby.selection.as_ref() {
-                                let (family, _) = selection.game.family_and_variant();
-                                ui.label(
-                                    i18n::LOCALES
-                                        .lookup(&config.language, &format!("game-{}", family))
-                                        .unwrap(),
-                                );
-                                if let Some((patch_name, version, _)) = selection.patch.as_ref() {
-                                    ui.label(format!("{} v{}", patch_name, version));
-                                }
-                            } else {
-                                ui.label(
-                                    i18n::LOCALES
-                                        .lookup(&config.language, "play-no-game")
-                                        .unwrap(),
-                                );
-                            }
-                        });
-                    });
-                    row.col(|ui| {
-                        ui.vertical(|ui| {
-                            if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
-                                let (family, variant) = &game_info.family_and_variant;
-                                if let Some(game) =
-                                    game::find_by_family_and_variant(&family, *variant)
-                                {
-                                    let (family, _) = game.family_and_variant();
+                        strip.cell(|ui| {
+                            ui.vertical(|ui| {
+                                if let Some(selection) = lobby.selection.as_ref() {
+                                    let (family, _) = selection.game.family_and_variant();
                                     ui.label(
                                         i18n::LOCALES
                                             .lookup(&config.language, &format!("game-{}", family))
                                             .unwrap(),
                                     );
-                                    if let Some(pi) = game_info.patch.as_ref() {
-                                        ui.label(format!("{} v{}", pi.name, pi.version));
+                                    if let Some((patch_name, version, _)) = selection.patch.as_ref()
+                                    {
+                                        ui.label(format!("{} v{}", patch_name, version));
                                     }
                                 } else {
                                     ui.label(
@@ -966,132 +972,220 @@ fn show_lobby_table(
                                             .unwrap(),
                                     );
                                 }
-                            } else {
-                                ui.label(
-                                    i18n::LOCALES
-                                        .lookup(&config.language, "play-no-game")
-                                        .unwrap(),
-                                );
-                            }
+                            });
                         });
-                    });
-                },
-            );
-
-            body.row(row_height, |mut row| {
-                row.col(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.strong(
-                            i18n::LOCALES
-                                .lookup(&config.language, "play-details-match-type")
-                                .unwrap(),
-                        );
-                        if lobby.selection.is_some()
-                            && lobby.remote_settings.game_info.is_some()
-                            && lobby.match_type != lobby.remote_settings.match_type
-                        {
-                            gui::warning::show(
-                                ui,
-                                i18n::LOCALES
-                                    .lookup(&config.language, "lobby-issue-match-type-mismatch")
-                                    .unwrap(),
-                            );
-                        }
-                    });
-                });
-                row.col(|ui| {
-                    let game = lobby.selection.as_ref().map(|selection| selection.game);
-                    ui.add_enabled_ui(game.is_some(), |ui| {
-                        egui::ComboBox::new("start-match-type-combobox", "")
-                            .width(150.0)
-                            .selected_text(if let Some(game) = game.as_ref() {
-                                i18n::LOCALES
-                                    .lookup(
-                                        &config.language,
-                                        &format!(
-                                            "game-{}.match-type-{}-{}",
-                                            game.family_and_variant().0,
-                                            lobby.match_type.0,
-                                            lobby.match_type.1
-                                        ),
-                                    )
-                                    .unwrap()
-                            } else {
-                                "".to_string()
-                            })
-                            .show_ui(ui, |ui| {
-                                if let Some(game) = game {
-                                    let mut match_type = lobby.match_type;
-                                    for (typ, subtype_count) in
-                                        game.match_types().iter().enumerate()
+                        strip.cell(|ui| {
+                            ui.vertical(|ui| {
+                                if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
+                                    let (family, variant) = &game_info.family_and_variant;
+                                    if let Some(game) =
+                                        game::find_by_family_and_variant(&family, *variant)
                                     {
-                                        for subtype in 0..*subtype_count {
-                                            ui.selectable_value(
-                                                &mut match_type,
-                                                (typ as u8, subtype as u8),
-                                                i18n::LOCALES
-                                                    .lookup(
-                                                        &config.language,
-                                                        &format!(
-                                                            "game-{}.match-type-{}-{}",
-                                                            game.family_and_variant().0,
-                                                            typ,
-                                                            subtype
-                                                        ),
-                                                    )
-                                                    .unwrap(),
-                                            );
+                                        let (family, _) = game.family_and_variant();
+                                        ui.label(
+                                            i18n::LOCALES
+                                                .lookup(
+                                                    &config.language,
+                                                    &format!("game-{}", family),
+                                                )
+                                                .unwrap(),
+                                        );
+                                        if let Some(pi) = game_info.patch.as_ref() {
+                                            ui.label(format!("{} v{}", pi.name, pi.version));
                                         }
-                                        config.default_match_type = match_type.0;
+                                    } else {
+                                        ui.label(
+                                            i18n::LOCALES
+                                                .lookup(&config.language, "play-no-game")
+                                                .unwrap(),
+                                        );
                                     }
-                                    if match_type != lobby.match_type {
-                                        handle.block_on(async {
-                                            let _ = lobby.set_match_type(match_type).await;
-                                        });
-                                    }
+                                } else {
+                                    ui.label(
+                                        i18n::LOCALES
+                                            .lookup(&config.language, "play-no-game")
+                                            .unwrap(),
+                                    );
                                 }
                             });
+                        });
                     });
-                });
-                row.col(|ui| {
-                    ui.label(
-                        if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
-                            i18n::LOCALES
-                                .lookup(
-                                    &config.language,
-                                    &format!(
-                                        "game-{}.match-type-{}-{}",
-                                        game_info.family_and_variant.0,
-                                        lobby.remote_settings.match_type.0,
-                                        lobby.remote_settings.match_type.1,
-                                    ),
-                                )
-                                .unwrap()
-                        } else {
-                            "".to_string()
-                        },
-                    );
-                });
             });
 
-            body.row(row_height, |mut row| {
-                row.col(|ui| {
-                    ui.strong(
-                        i18n::LOCALES
-                            .lookup(&config.language, "play-details-reveal-setup")
-                            .unwrap(),
-                    );
-                });
-                row.col(|ui| {
-                    let mut checked = lobby.reveal_setup;
-                    ui.checkbox(&mut checked, "");
-                    handle.block_on(async {
-                        let _ = lobby.set_reveal_setup(checked).await;
+            outer_strip.strip(|sb| {
+                sb.size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.strong(
+                                    i18n::LOCALES
+                                        .lookup(&config.language, "play-details-match-type")
+                                        .unwrap(),
+                                );
+                                if lobby.selection.is_some()
+                                    && lobby.remote_settings.game_info.is_some()
+                                    && lobby.match_type != lobby.remote_settings.match_type
+                                {
+                                    gui::warning::show(
+                                        ui,
+                                        i18n::LOCALES
+                                            .lookup(
+                                                &config.language,
+                                                "lobby-issue-match-type-mismatch",
+                                            )
+                                            .unwrap(),
+                                    );
+                                }
+                            });
+                        });
+                        strip.cell(|ui| {
+                            let game = lobby.selection.as_ref().map(|selection| selection.game);
+                            ui.add_enabled_ui(game.is_some(), |ui| {
+                                egui::ComboBox::new("start-match-type-combobox", "")
+                                    .width(150.0)
+                                    .selected_text(if let Some(game) = game.as_ref() {
+                                        i18n::LOCALES
+                                            .lookup(
+                                                &config.language,
+                                                &format!(
+                                                    "game-{}.match-type-{}-{}",
+                                                    game.family_and_variant().0,
+                                                    lobby.match_type.0,
+                                                    lobby.match_type.1
+                                                ),
+                                            )
+                                            .unwrap()
+                                    } else {
+                                        "".to_string()
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        if let Some(game) = game {
+                                            let mut match_type = lobby.match_type;
+                                            for (typ, subtype_count) in
+                                                game.match_types().iter().enumerate()
+                                            {
+                                                for subtype in 0..*subtype_count {
+                                                    ui.selectable_value(
+                                                        &mut match_type,
+                                                        (typ as u8, subtype as u8),
+                                                        i18n::LOCALES
+                                                            .lookup(
+                                                                &config.language,
+                                                                &format!(
+                                                                    "game-{}.match-type-{}-{}",
+                                                                    game.family_and_variant().0,
+                                                                    typ,
+                                                                    subtype
+                                                                ),
+                                                            )
+                                                            .unwrap(),
+                                                    );
+                                                }
+                                                config.default_match_type = match_type.0;
+                                            }
+                                            if match_type != lobby.match_type {
+                                                handle.block_on(async {
+                                                    let _ = lobby.set_match_type(match_type).await;
+                                                });
+                                            }
+                                        }
+                                    });
+                            });
+                        });
+                        strip.cell(|ui| {
+                            ui.label(
+                                if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
+                                    i18n::LOCALES
+                                        .lookup(
+                                            &config.language,
+                                            &format!(
+                                                "game-{}.match-type-{}-{}",
+                                                game_info.family_and_variant.0,
+                                                lobby.remote_settings.match_type.0,
+                                                lobby.remote_settings.match_type.1,
+                                            ),
+                                        )
+                                        .unwrap()
+                                } else {
+                                    "".to_string()
+                                },
+                            );
+                        });
                     });
-                });
-                row.col(|ui| {
-                    ui.checkbox(&mut lobby.remote_settings.reveal_setup.clone(), "");
-                });
+            });
+
+            outer_strip.strip(|sb| {
+                sb.size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .size(egui_extras::Size::exact(CELL_WIDTH))
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-details-reveal-setup")
+                                    .unwrap(),
+                            );
+                        });
+                        strip.cell(|ui| {
+                            let mut checked = lobby.reveal_setup;
+                            ui.checkbox(&mut checked, "");
+                            handle.block_on(async {
+                                let _ = lobby.set_reveal_setup(checked).await;
+                            });
+                        });
+                        strip.cell(|ui| {
+                            ui.checkbox(&mut lobby.remote_settings.reveal_setup.clone(), "");
+                        });
+                    });
+            });
+
+            outer_strip.strip(|sb| {
+                sb.size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(CELL_WIDTH * 2.0 + spacing_x))
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "play-details-input-delay")
+                                    .unwrap(),
+                            );
+                        });
+                        strip.cell(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.add(
+                                    egui::DragValue::new(&mut config.input_delay)
+                                        .speed(1)
+                                        .clamp_range(2..=10),
+                                );
+                                if ui
+                                    .button(
+                                        i18n::LOCALES
+                                            .lookup(
+                                                &config.language,
+                                                "play-details-input-delay.suggest",
+                                            )
+                                            .unwrap(),
+                                    )
+                                    .clicked()
+                                {
+                                    config.input_delay = std::cmp::min(
+                                        10,
+                                        std::cmp::max(
+                                            2,
+                                            ((lobby.latencies.median() * 60).as_nanos()
+                                                / std::time::Duration::from_secs(1).as_nanos())
+                                                as i32
+                                                + 1
+                                                - 2,
+                                        ),
+                                    )
+                                        as u32;
+                                }
+                            });
+                        });
+                    });
             });
         });
 }

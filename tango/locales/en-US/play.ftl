@@ -14,6 +14,8 @@ play-cancel = Cancel
 play-details-game = Game
 play-details-match-type = Match type
 play-details-reveal-setup = Reveal setup
+play-details-input-delay = Input delay
+    .suggest = Suggest
 
 play-connection-task =
     .starting = Starting connection...
