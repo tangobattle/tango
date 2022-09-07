@@ -193,7 +193,7 @@ struct Lobby {
     patches_scanner: patch::Scanner,
 }
 
-fn get_netplay_compatibility(
+pub fn get_netplay_compatibility(
     game: &'static (dyn game::Game + Send + Sync),
     patch: Option<(&str, &semver::Version)>,
     patches: &std::collections::BTreeMap<String, patch::Patch>,
@@ -207,6 +207,19 @@ fn get_netplay_compatibility(
     } else {
         Some(game.family_and_variant().0.to_string())
     }
+}
+
+pub fn get_netplay_compatibility_from_game_info(
+    g: &net::protocol::GameInfo,
+    patches: &std::collections::BTreeMap<String, patch::Patch>,
+) -> Option<String> {
+    game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1).and_then(|game| {
+        get_netplay_compatibility(
+            game,
+            g.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
+            patches,
+        )
+    })
 }
 
 fn are_settings_compatible(
@@ -276,21 +289,10 @@ fn are_settings_compatible(
             patches: &std::collections::BTreeMap<String, patch::Patch>,
         ) -> Self {
             Self {
-                netplay_compatibility: settings.game_info.as_ref().and_then(|g| {
-                    game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1).and_then(
-                        |game| {
-                            if roms.contains_key(&game) {
-                                get_netplay_compatibility(
-                                    game,
-                                    g.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
-                                    patches,
-                                )
-                            } else {
-                                None
-                            }
-                        },
-                    )
-                }),
+                netplay_compatibility: settings
+                    .game_info
+                    .as_ref()
+                    .and_then(|gi| get_netplay_compatibility_from_game_info(gi, patches)),
                 match_type: settings.match_type,
             }
         }
@@ -1188,6 +1190,29 @@ fn show_bottom_pane(
     link_code: &mut String,
     show_save_select: &mut Option<gui::save_select_view::State>,
 ) {
+    let error_window_open = {
+        if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref() {
+            let mut open = true;
+            egui::Window::new("")
+                .id(egui::Id::new("connection-failed-window"))
+                .open(&mut open)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(ui.ctx(), |ui| {
+                    // TODO: Localization
+                    ui.label(format!("{:?}", err));
+                });
+            open
+        } else {
+            false
+        }
+    };
+
+    if !error_window_open {
+        if let Some(ConnectionTask::Failed(_)) = connection_task.as_ref() {
+            *connection_task = None;
+        }
+    }
+
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
 
@@ -1319,29 +1344,6 @@ fn show_bottom_pane(
                         } else {
                             (None, None)
                         };
-
-                        let error_window_open = {
-                            if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref() {
-                                let mut open = true;
-                                egui::Window::new("")
-                                    .id(egui::Id::new("connection-failed-window"))
-                                    .open(&mut open)
-                                    .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                                    .show(ui.ctx(), |ui| {
-                                        // TODO: Localization
-                                        ui.label(format!("{:?}", err));
-                                    });
-                                open
-                            } else {
-                                false
-                            }
-                        };
-
-                        if !error_window_open {
-                            if let Some(ConnectionTask::Failed(_)) = connection_task.as_ref() {
-                                *connection_task = None;
-                            }
-                        }
 
                         let mut submitted = false;
                         if cancellation_token.is_none() {
@@ -1729,6 +1731,12 @@ pub fn show(
                     &config.saves_path(),
                     roms_scanner.clone(),
                     saves_scanner.clone(),
+                    patches_scanner.clone(),
+                    if let Some(lobby) = lobby.as_ref() {
+                        Some(&lobby.remote_settings)
+                    } else {
+                        None
+                    },
                 );
             } else {
                 ui.horizontal_top(|ui| {

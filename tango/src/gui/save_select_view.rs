@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, gui, i18n, rom, save};
+use crate::{game, gui, i18n, net, patch, rom, save};
 
 pub struct State {
     selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>,
@@ -20,9 +20,27 @@ pub fn show(
     saves_path: &std::path::Path,
     roms_scanner: rom::Scanner,
     saves_scanner: save::Scanner,
+    patches_scanner: patch::Scanner,
+    remote_settings: Option<&net::protocol::Settings>,
 ) {
     let roms = roms_scanner.read();
     let saves = saves_scanner.read();
+    let patches = patches_scanner.read();
+
+    let mut netplay_compatibilities = game::GAMES
+        .iter()
+        .map(|game| (*game, std::collections::HashSet::from([game.family_and_variant().0])))
+        .collect::<std::collections::HashMap<_, _>>();
+    for metadata in patches.values() {
+        for version in metadata.versions.values() {
+            for game in version.supported_games.iter() {
+                netplay_compatibilities
+                    .get_mut(game)
+                    .unwrap()
+                    .insert(&version.netplay_compatibility);
+            }
+        }
+    }
 
     ui.vertical(|ui| {
         let games = game::sorted_all_games(language);
@@ -136,7 +154,34 @@ pub fn show(
                                 .as_ref()
                                 .map(|selection| selection.game == *game)
                                 .unwrap_or(false);
+
+                            let warning = (|| {
+                                if let Some(gi) = remote_settings
+                                    .as_ref()
+                                    .and_then(|settings| settings.game_info.as_ref())
+                                {
+                                    // TODO: Check local ROM.
+                                    // TODO: Check remote ROM.
+
+                                    if let Some(netplay_compatibility) =
+                                        gui::play_pane::get_netplay_compatibility_from_game_info(gi, &patches)
+                                    {
+                                        if !netplay_compatibilities
+                                            .get(game)
+                                            .map(|nc| nc.contains(netplay_compatibility.as_str()))
+                                            .unwrap_or(false)
+                                        {
+                                            return Some(gui::play_pane::Warning::Incompatible);
+                                        }
+                                    }
+                                }
+                                None
+                            })();
+
                             let mut layout_job = egui::text::LayoutJob::default();
+                            if warning.is_some() {
+                                gui::warning::append_to_layout_job(ui, &mut layout_job);
+                            }
                             layout_job.append(
                                 &i18n::LOCALES
                                     .lookup(language, &format!("game-{}.variant-{}", family, variant))
