@@ -1718,7 +1718,7 @@ pub fn show(
                                                         selection.game.family_and_variant();
                                                     layout_job.append(
                                                         &format!(
-                                                            "{}",
+                                                            "{} ",
                                                             selection
                                                                 .save
                                                                 .path
@@ -1739,16 +1739,18 @@ pub fn show(
                                                         ),
                                                     );
                                                     layout_job.append(
-                                                        &i18n::LOCALES
-                                                            .lookup(
-                                                                &config.language,
-                                                                &format!(
-                                                                    "game-{}.variant-{}",
-                                                                    family, variant
-                                                                ),
-                                                            )
-                                                            .unwrap(),
-                                                        5.0,
+                                                        &format!("{}",
+                                                            &i18n::LOCALES
+                                                                .lookup(
+                                                                    &config.language,
+                                                                    &format!(
+                                                                        "game-{}.variant-{}",
+                                                                        family, variant
+                                                                    ),
+                                                                )
+                                                                .unwrap(),
+                                                        ),
+                                                        0.0,
                                                         egui::TextFormat::simple(
                                                             ui.style()
                                                                 .text_styles
