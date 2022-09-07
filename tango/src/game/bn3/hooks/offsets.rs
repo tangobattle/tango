@@ -91,6 +91,8 @@ pub(super) struct ROMOffsets {
     ///
     /// Tango ends its match here.
     pub(super) match_end_ret: u32,
+
+    pub(super) battle_start_play_music_call: u32,
 }
 
 #[rustfmt::skip]
@@ -138,6 +140,7 @@ pub static A3XE_00: Offsets = Offsets {
         link_is_p2_ret:                             0x0800354c,
         comm_menu_init_ret:                         0x0803e08a,
         match_end_ret:                              0x08006958,
+        battle_start_play_music_call:               0x080076b4,
     },
 };
 
@@ -168,6 +171,7 @@ pub static A6BE_00: Offsets = Offsets {
         link_is_p2_ret:                             0x0800354c,
         comm_menu_init_ret:                         0x0803e0a2,
         match_end_ret:                              0x08006958,
+        battle_start_play_music_call:               0x080076b4,
     },
 };
 
@@ -198,6 +202,7 @@ pub static A3XJ_01: Offsets = Offsets {
         link_is_p2_ret:                             0x080034e0,
         comm_menu_init_ret:                         0x0803e532,
         match_end_ret:                              0x080068ec,
+        battle_start_play_music_call:               0x08007648,
     },
 };
 
@@ -228,5 +233,6 @@ pub static A6BJ_01: Offsets = Offsets {
         link_is_p2_ret:                             0x080034e0,
         comm_menu_init_ret:                         0x0803e54a,
         match_end_ret:                              0x080068ec,
+        battle_start_play_music_call:               0x08007648,
     },
 };
