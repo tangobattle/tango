@@ -3,9 +3,7 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{
-    audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats,
-};
+use crate::{audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats};
 
 struct LobbySelection {
     pub game: &'static (dyn game::Game + Send + Sync),
@@ -33,11 +31,11 @@ struct Lobby {
 
 fn get_netplay_compatibility(
     game: &'static (dyn game::Game + Send + Sync),
-    patch: Option<(String, semver::Version)>,
+    patch: Option<(&str, &semver::Version)>,
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) -> Option<String> {
     if let Some(patch) = patch.as_ref() {
-        patches.get(&patch.0).and_then(|p| {
+        patches.get(patch.0).and_then(|p| {
             p.versions
                 .get(&patch.1)
                 .map(|vinfo| vinfo.netplay_compatibility.clone())
@@ -115,24 +113,19 @@ fn are_settings_compatible(
         ) -> Self {
             Self {
                 netplay_compatibility: settings.game_info.as_ref().and_then(|g| {
-                    if let Some(game) = game::find_by_family_and_variant(
-                        g.family_and_variant.0.as_str(),
-                        g.family_and_variant.1,
-                    ) {
-                        if roms.contains_key(&game) {
-                            get_netplay_compatibility(
-                                game,
-                                g.patch
-                                    .as_ref()
-                                    .map(|pi| (pi.name.to_string(), pi.version.clone())),
-                                patches,
-                            )
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
+                    game::find_by_family_and_variant(g.family_and_variant.0.as_str(), g.family_and_variant.1).and_then(
+                        |game| {
+                            if roms.contains_key(&game) {
+                                get_netplay_compatibility(
+                                    game,
+                                    g.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
+                                    patches,
+                                )
+                            } else {
+                                None
+                            }
+                        },
+                    )
                 }),
                 match_type: settings.match_type,
             }
@@ -205,12 +198,13 @@ impl Lobby {
                 let (family, variant) = selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
-                    patch: selection.patch.as_ref().map(|(name, version, _)| {
-                        net::protocol::PatchInfo {
+                    patch: selection
+                        .patch
+                        .as_ref()
+                        .map(|(name, version, _)| net::protocol::PatchInfo {
                             name: name.clone(),
                             version: version.clone(),
-                        }
-                    }),
+                        }),
                 }
             }),
             available_games: roms
@@ -228,10 +222,7 @@ impl Lobby {
         }
     }
 
-    async fn send_settings(
-        &mut self,
-        settings: net::protocol::Settings,
-    ) -> Result<(), anyhow::Error> {
+    async fn send_settings(&mut self, settings: net::protocol::Settings) -> Result<(), anyhow::Error> {
         let sender = if let Some(sender) = self.sender.as_mut() {
             sender
         } else {
@@ -270,10 +261,7 @@ impl Lobby {
         Ok(())
     }
 
-    async fn set_local_selection(
-        &mut self,
-        selection: &Option<gui::Selection>,
-    ) -> Result<(), anyhow::Error> {
+    async fn set_local_selection(&mut self, selection: &Option<gui::Selection>) -> Result<(), anyhow::Error> {
         if selection.as_ref().map(|selection| {
             (
                 selection.game,
@@ -312,12 +300,13 @@ impl Lobby {
                 let (family, variant) = selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
-                    patch: selection.patch.as_ref().map(|(name, version, _)| {
-                        net::protocol::PatchInfo {
+                    patch: selection
+                        .patch
+                        .as_ref()
+                        .map(|(name, version, _)| net::protocol::PatchInfo {
                             name: name.clone(),
                             version: version.clone(),
-                        }
-                    }),
+                        }),
                 }
             }),
             match_type,
@@ -350,46 +339,30 @@ impl Lobby {
         )
     }
 
-    fn set_remote_settings(
-        &mut self,
-        settings: net::protocol::Settings,
-        patches_path: &std::path::Path,
-    ) {
+    fn set_remote_settings(&mut self, settings: net::protocol::Settings, patches_path: &std::path::Path) {
         let roms = self.roms_scanner.read();
 
         let old_reveal_setup = self.remote_settings.reveal_setup;
         self.remote_rom = settings.game_info.as_ref().and_then(|gi| {
-            game::find_by_family_and_variant(&gi.family_and_variant.0, gi.family_and_variant.1)
-                .and_then(|game| {
-                    roms.get(&game).and_then(|rom| {
-                        if let Some(pi) = gi.patch.as_ref() {
-                            let (rom_code, revision) = game.rom_code_and_revision();
+            game::find_by_family_and_variant(&gi.family_and_variant.0, gi.family_and_variant.1).and_then(|game| {
+                roms.get(&game).and_then(|rom| {
+                    if let Some(pi) = gi.patch.as_ref() {
+                        let (rom_code, revision) = game.rom_code_and_revision();
 
-                            let rom = match patch::apply_patch_from_disk(
-                                &rom,
-                                game,
-                                patches_path,
-                                &pi.name,
-                                &pi.version,
-                            ) {
-                                Ok(r) => r,
-                                Err(e) => {
-                                    log::error!(
-                                        "failed to apply patch {}: {:?}: {:?}",
-                                        pi.name,
-                                        (rom_code, revision),
-                                        e
-                                    );
-                                    return None;
-                                }
-                            };
+                        let rom = match patch::apply_patch_from_disk(&rom, game, patches_path, &pi.name, &pi.version) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("failed to apply patch {}: {:?}: {:?}", pi.name, (rom_code, revision), e);
+                                return None;
+                            }
+                        };
 
-                            Some(rom)
-                        } else {
-                            Some(rom.clone())
-                        }
-                    })
+                        Some(rom)
+                    } else {
+                        Some(rom.clone())
+                    }
                 })
+            })
         });
 
         self.remote_settings = settings;
@@ -739,11 +712,7 @@ fn show_lobby_table(
     egui_extras::StripBuilder::new(ui)
         .size(egui_extras::Size::exact(row_height + spacing_y))
         .size(egui_extras::Size::exact(
-            if lobby
-                .selection
-                .as_ref()
-                .map(|s| s.patch.is_some())
-                .unwrap_or(false)
+            if lobby.selection.as_ref().map(|s| s.patch.is_some()).unwrap_or(false)
                 || lobby
                     .remote_settings
                     .game_info
@@ -769,45 +738,30 @@ fn show_lobby_table(
                         strip.cell(|_ui| {});
                         strip.cell(|ui| {
                             ui.horizontal(|ui| {
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Min),
-                                    |ui| {
-                                        if ui
-                                            .button(format!(
-                                                "🚶 {}",
-                                                i18n::LOCALES
-                                                    .lookup(&config.language, "play-leave")
-                                                    .unwrap()
-                                            ))
-                                            .clicked()
-                                        {
-                                            cancellation_token.cancel();
-                                        }
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                    if ui
+                                        .button(format!(
+                                            "🚶 {}",
+                                            i18n::LOCALES.lookup(&config.language, "play-leave").unwrap()
+                                        ))
+                                        .clicked()
+                                    {
+                                        cancellation_token.cancel();
+                                    }
 
-                                        ui.horizontal_top(|ui| {
-                                            ui.with_layout(
-                                                egui::Layout::left_to_right(egui::Align::Min),
-                                                |ui| {
-                                                    ui.set_width(ui.available_width());
-                                                    ui.strong(
-                                                        i18n::LOCALES
-                                                            .lookup(&config.language, "play-you")
-                                                            .unwrap(),
-                                                    );
-                                                    if lobby.local_negotiated_state.is_some()
-                                                        || lobby.sender.is_none()
-                                                    {
-                                                        ui.label(egui::RichText::new("✅").color(
-                                                            egui::Color32::from_rgb(
-                                                                0x4c, 0xaf, 0x50,
-                                                            ),
-                                                        ));
-                                                    }
-                                                },
-                                            );
+                                    ui.horizontal_top(|ui| {
+                                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                                            ui.set_width(ui.available_width());
+                                            ui.strong(i18n::LOCALES.lookup(&config.language, "play-you").unwrap());
+                                            if lobby.local_negotiated_state.is_some() || lobby.sender.is_none() {
+                                                ui.label(
+                                                    egui::RichText::new("✅")
+                                                        .color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
+                                                );
+                                            }
                                         });
-                                    },
-                                );
+                                    });
+                                });
                             });
                         });
                         strip.cell(|ui| {
@@ -816,8 +770,7 @@ fn show_lobby_table(
                                 ui.small(format!("{}ms", lobby.latencies.median().as_millis()));
                                 if lobby.remote_commitment.is_some() {
                                     ui.label(
-                                        egui::RichText::new("✅")
-                                            .color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
+                                        egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)),
                                     );
                                 }
                             });
@@ -832,16 +785,10 @@ fn show_lobby_table(
                     .horizontal(|mut strip| {
                         strip.cell(|ui| {
                             ui.horizontal(|ui| {
-                                ui.strong(
-                                    i18n::LOCALES
-                                        .lookup(&config.language, "play-details-game")
-                                        .unwrap(),
-                                );
+                                ui.strong(i18n::LOCALES.lookup(&config.language, "play-details-game").unwrap());
 
                                 if let Some(selection) = lobby.selection.as_ref() {
-                                    if let Some(remote_gi) =
-                                        lobby.remote_settings.game_info.as_ref()
-                                    {
+                                    if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
                                         if let Some(remote_game) = game::find_by_family_and_variant(
                                             &remote_gi.family_and_variant.0,
                                             remote_gi.family_and_variant.1,
@@ -860,14 +807,8 @@ fn show_lobby_table(
                                                                         &config.language,
                                                                         &format!(
                                                                             "game-{}.variant-{}",
-                                                                            remote_game
-                                                                                .family_and_variant(
-                                                                                )
-                                                                                .0,
-                                                                            remote_game
-                                                                                .family_and_variant(
-                                                                                )
-                                                                                .1
+                                                                            remote_game.family_and_variant().0,
+                                                                            remote_game.family_and_variant().1
                                                                         ),
                                                                     )
                                                                     .unwrap()
@@ -878,26 +819,20 @@ fn show_lobby_table(
                                                 );
                                             } else if get_netplay_compatibility(
                                                 selection.game,
-                                                selection.patch.as_ref().map(
-                                                    |(name, version, _)| {
-                                                        (name.to_owned(), version.clone())
-                                                    },
-                                                ),
+                                                selection
+                                                    .patch
+                                                    .as_ref()
+                                                    .map(|(name, version, _)| (name.as_str(), version)),
                                                 patches,
                                             ) != get_netplay_compatibility(
                                                 remote_game,
-                                                remote_gi.patch.as_ref().map(|pi| {
-                                                    (pi.name.to_owned(), pi.version.clone())
-                                                }),
+                                                remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
                                                 patches,
                                             ) {
                                                 gui::warning::show(
                                                     ui,
                                                     i18n::LOCALES
-                                                        .lookup(
-                                                            &config.language,
-                                                            "lobby-issue-incompatible",
-                                                        )
+                                                        .lookup(&config.language, "lobby-issue-incompatible")
                                                         .unwrap(),
                                                 );
                                             }
@@ -905,10 +840,7 @@ fn show_lobby_table(
                                             gui::warning::show(
                                                 ui,
                                                 i18n::LOCALES
-                                                    .lookup(
-                                                        &config.language,
-                                                        "lobby-issue-no-remote-game-selected",
-                                                    )
+                                                    .lookup(&config.language, "lobby-issue-no-remote-game-selected")
                                                     .unwrap(),
                                             );
                                         }
@@ -916,10 +848,7 @@ fn show_lobby_table(
                                         gui::warning::show(
                                             ui,
                                             i18n::LOCALES
-                                                .lookup(
-                                                    &config.language,
-                                                    "lobby-issue-no-remote-game-selected",
-                                                )
+                                                .lookup(&config.language, "lobby-issue-no-remote-game-selected")
                                                 .unwrap(),
                                         );
                                     }
@@ -927,10 +856,7 @@ fn show_lobby_table(
                                     gui::warning::show(
                                         ui,
                                         i18n::LOCALES
-                                            .lookup(
-                                                &config.language,
-                                                "lobby-issue-no-local-game-selected",
-                                            )
+                                            .lookup(&config.language, "lobby-issue-no-local-game-selected")
                                             .unwrap(),
                                     );
                                 }
@@ -945,16 +871,11 @@ fn show_lobby_table(
                                             .lookup(&config.language, &format!("game-{}", family))
                                             .unwrap(),
                                     );
-                                    if let Some((patch_name, version, _)) = selection.patch.as_ref()
-                                    {
+                                    if let Some((patch_name, version, _)) = selection.patch.as_ref() {
                                         ui.label(format!("{} v{}", patch_name, version));
                                     }
                                 } else {
-                                    ui.label(
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "play-no-game")
-                                            .unwrap(),
-                                    );
+                                    ui.label(i18n::LOCALES.lookup(&config.language, "play-no-game").unwrap());
                                 }
                             });
                         });
@@ -962,34 +883,21 @@ fn show_lobby_table(
                             ui.vertical(|ui| {
                                 if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
                                     let (family, variant) = &game_info.family_and_variant;
-                                    if let Some(game) =
-                                        game::find_by_family_and_variant(&family, *variant)
-                                    {
+                                    if let Some(game) = game::find_by_family_and_variant(&family, *variant) {
                                         let (family, _) = game.family_and_variant();
                                         ui.label(
                                             i18n::LOCALES
-                                                .lookup(
-                                                    &config.language,
-                                                    &format!("game-{}", family),
-                                                )
+                                                .lookup(&config.language, &format!("game-{}", family))
                                                 .unwrap(),
                                         );
                                         if let Some(pi) = game_info.patch.as_ref() {
                                             ui.label(format!("{} v{}", pi.name, pi.version));
                                         }
                                     } else {
-                                        ui.label(
-                                            i18n::LOCALES
-                                                .lookup(&config.language, "play-no-game")
-                                                .unwrap(),
-                                        );
+                                        ui.label(i18n::LOCALES.lookup(&config.language, "play-no-game").unwrap());
                                     }
                                 } else {
-                                    ui.label(
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "play-no-game")
-                                            .unwrap(),
-                                    );
+                                    ui.label(i18n::LOCALES.lookup(&config.language, "play-no-game").unwrap());
                                 }
                             });
                         });
@@ -1015,10 +923,7 @@ fn show_lobby_table(
                                     gui::warning::show(
                                         ui,
                                         i18n::LOCALES
-                                            .lookup(
-                                                &config.language,
-                                                "lobby-issue-match-type-mismatch",
-                                            )
+                                            .lookup(&config.language, "lobby-issue-match-type-mismatch")
                                             .unwrap(),
                                     );
                                 }
@@ -1047,9 +952,7 @@ fn show_lobby_table(
                                     .show_ui(ui, |ui| {
                                         if let Some(game) = game {
                                             let mut match_type = lobby.match_type;
-                                            for (typ, subtype_count) in
-                                                game.match_types().iter().enumerate()
-                                            {
+                                            for (typ, subtype_count) in game.match_types().iter().enumerate() {
                                                 for subtype in 0..*subtype_count {
                                                     ui.selectable_value(
                                                         &mut match_type,
@@ -1079,23 +982,21 @@ fn show_lobby_table(
                             });
                         });
                         strip.cell(|ui| {
-                            ui.label(
-                                if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
-                                    i18n::LOCALES
-                                        .lookup(
-                                            &config.language,
-                                            &format!(
-                                                "game-{}.match-type-{}-{}",
-                                                game_info.family_and_variant.0,
-                                                lobby.remote_settings.match_type.0,
-                                                lobby.remote_settings.match_type.1,
-                                            ),
-                                        )
-                                        .unwrap()
-                                } else {
-                                    "".to_string()
-                                },
-                            );
+                            ui.label(if let Some(game_info) = lobby.remote_settings.game_info.as_ref() {
+                                i18n::LOCALES
+                                    .lookup(
+                                        &config.language,
+                                        &format!(
+                                            "game-{}.match-type-{}-{}",
+                                            game_info.family_and_variant.0,
+                                            lobby.remote_settings.match_type.0,
+                                            lobby.remote_settings.match_type.1,
+                                        ),
+                                    )
+                                    .unwrap()
+                            } else {
+                                "".to_string()
+                            });
                         });
                     });
             });
@@ -1146,10 +1047,7 @@ fn show_lobby_table(
                                 if ui
                                     .button(
                                         i18n::LOCALES
-                                            .lookup(
-                                                &config.language,
-                                                "play-details-input-delay.suggest",
-                                            )
+                                            .lookup(&config.language, "play-details-input-delay.suggest")
                                             .unwrap(),
                                     )
                                     .clicked()
@@ -1164,8 +1062,7 @@ fn show_lobby_table(
                                                 + 1
                                                 - 2,
                                         ),
-                                    )
-                                        as u32;
+                                    ) as u32;
                                 }
                             });
                         });
@@ -1583,122 +1480,137 @@ pub fn show(
                 .inner_margin(egui::style::Margin::symmetric(0.0, 0.0)),
         )
         .show_inside(ui, |ui| {
-            let is_ready = connection_task
+            let lobby = connection_task.as_ref().and_then(|task| match task {
+                ConnectionTask::InProgress { state, .. } => match state {
+                    ConnectionState::InLobby(lobby) => Some(lobby.blocking_lock()),
+                    _ => None,
+                },
+                _ => None,
+            });
+
+            let is_ready = lobby
                 .as_ref()
-                .map(|task| match task {
-                    ConnectionTask::InProgress { state, .. } => match state {
-                        ConnectionState::InLobby(lobby) => {
-                            lobby.blocking_lock().local_negotiated_state.is_some()
-                        }
-                        _ => false,
-                    },
-                    _ => false,
-                })
+                .map(|lobby| lobby.local_negotiated_state.is_some())
                 .unwrap_or(false);
 
             ui.add_enabled_ui(!is_ready, |ui| {
                 if ui
                     .horizontal(|ui| {
                         ui.with_layout(
-                            egui::Layout::right_to_left(egui::Align::Center)
-                                .with_cross_justify(true),
+                            egui::Layout::right_to_left(egui::Align::Center).with_cross_justify(true),
                             |ui| {
                                 ui.add({
                                     let text = egui::RichText::new(
-                                        i18n::LOCALES
-                                            .lookup(&config.language, "select-save.select-button")
-                                            .unwrap(),
+                                        i18n::LOCALES.lookup(&config.language, "select-save.select").unwrap(),
                                     );
 
                                     if state.show_save_select.is_some() {
-                                        egui::Button::new(
-                                            text.color(
-                                                ui.ctx().style().visuals.selection.stroke.color,
-                                            ),
-                                        )
-                                        .fill(ui.ctx().style().visuals.selection.bg_fill)
+                                        egui::Button::new(text.color(ui.ctx().style().visuals.selection.stroke.color))
+                                            .fill(ui.ctx().style().visuals.selection.bg_fill)
                                     } else {
                                         egui::Button::new(text)
                                     }
                                 }) | ui
                                     .vertical_centered_justified(|ui| {
-                                        let mut layouter =
-                                            |ui: &egui::Ui, _: &str, _wrap_width: f32| {
-                                                let mut layout_job =
-                                                    egui::text::LayoutJob::default();
-                                                if let Some(selection) = selection.as_ref() {
-                                                    let (family, variant) =
-                                                        selection.game.family_and_variant();
-                                                    layout_job.append(
-                                                        &format!(
-                                                            "{} ",
-                                                            selection
-                                                                .save
-                                                                .path
-                                                                .strip_prefix(&config.saves_path())
-                                                                .unwrap_or(
-                                                                    selection.save.path.as_path()
-                                                                )
-                                                                .display()
-                                                        ),
-                                                        0.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Body)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
+                                        let mut layouter = |ui: &egui::Ui, _: &str, _wrap_width: f32| {
+                                            let mut layout_job = egui::text::LayoutJob::default();
+                                            if let Some(selection) = selection.as_ref() {
+                                                let (family, variant) = selection.game.family_and_variant();
+                                                let patches = patches_scanner.read();
+                                                if let Some(lobby) = lobby.as_ref() {
+                                                    let local_netplay_compatibility = get_netplay_compatibility(
+                                                        selection.game,
+                                                        selection
+                                                            .patch
+                                                            .as_ref()
+                                                            .map(|(name, version, _)| (name.as_str(), version)),
+                                                        &patches,
                                                     );
-                                                    layout_job.append(
-                                                        &format!(
-                                                            "{}",
-                                                            &i18n::LOCALES
-                                                                .lookup(
-                                                                    &config.language,
-                                                                    &format!(
-                                                                        "game-{}.variant-{}",
-                                                                        family, variant
-                                                                    ),
-                                                                )
-                                                                .unwrap(),
-                                                        ),
-                                                        0.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Small)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
-                                                    );
-                                                } else {
-                                                    layout_job.append(
+
+                                                    let remote_netplay_compatibility =
+                                                        lobby.remote_settings.game_info.as_ref().and_then(|g| {
+                                                            game::find_by_family_and_variant(
+                                                                g.family_and_variant.0.as_str(),
+                                                                g.family_and_variant.1,
+                                                            )
+                                                            .and_then(|game| {
+                                                                if roms.contains_key(&game) {
+                                                                    get_netplay_compatibility(
+                                                                        game,
+                                                                        g.patch
+                                                                            .as_ref()
+                                                                            .map(|pi| (pi.name.as_str(), &pi.version)),
+                                                                        &patches,
+                                                                    )
+                                                                } else {
+                                                                    None
+                                                                }
+                                                            })
+                                                        });
+
+                                                    if local_netplay_compatibility != remote_netplay_compatibility {
+                                                        gui::warning::append_to_layout_job(ui, &mut layout_job);
+                                                    }
+                                                }
+                                                layout_job.append(
+                                                    &format!(
+                                                        "{} ",
+                                                        selection
+                                                            .save
+                                                            .path
+                                                            .strip_prefix(&config.saves_path())
+                                                            .unwrap_or(selection.save.path.as_path())
+                                                            .display()
+                                                    ),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Body)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                                layout_job.append(
+                                                    &format!(
+                                                        "{}",
                                                         &i18n::LOCALES
                                                             .lookup(
                                                                 &config.language,
-                                                                "select-save.no-save-selected",
+                                                                &format!("game-{}.variant-{}", family, variant),
                                                             )
                                                             .unwrap(),
-                                                        0.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Body)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
-                                                    );
-                                                }
-                                                ui.fonts().layout_job(layout_job)
-                                            };
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut String::new())
-                                                .layouter(&mut layouter),
-                                        )
+                                                    ),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Small)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                            } else {
+                                                layout_job.append(
+                                                    &i18n::LOCALES
+                                                        .lookup(&config.language, "select-save.no-save-selected")
+                                                        .unwrap(),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Body)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+                                            }
+                                            ui.fonts().layout_job(layout_job)
+                                        };
+                                        ui.add(egui::TextEdit::singleline(&mut String::new()).layouter(&mut layouter))
                                     })
                                     .inner
                             },
@@ -1719,9 +1631,9 @@ pub fn show(
                                 saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                             }
                         });
-                        Some(gui::save_select_view::State::new(selection.as_ref().map(
-                            |selection| (selection.game, Some(selection.save.path.to_path_buf())),
-                        )))
+                        Some(gui::save_select_view::State::new(selection.as_ref().map(|selection| {
+                            (selection.game, Some(selection.save.path.to_path_buf()))
+                        })))
                     } else {
                         None
                     };
@@ -1769,28 +1681,16 @@ pub fn show(
                             &selection
                                 .as_ref()
                                 .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
-                                .unwrap_or(
-                                    &i18n::LOCALES
-                                        .lookup(&config.language, "play-no-patch")
-                                        .unwrap(),
-                                ),
+                                .unwrap_or(&i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap()),
                             0.0,
                             egui::TextFormat::simple(
-                                ui.style()
-                                    .text_styles
-                                    .get(&egui::TextStyle::Body)
-                                    .unwrap()
-                                    .clone(),
+                                ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                 ui.visuals().text_color(),
                             ),
                         );
                         egui::ComboBox::from_id_source("patch-select-combobox")
                             .selected_text(layout_job)
-                            .width(
-                                ui.available_width()
-                                    - ui.spacing().item_spacing.x
-                                    - PATCH_VERSION_COMBOBOX_WIDTH,
-                            )
+                            .width(ui.available_width() - ui.spacing().item_spacing.x - PATCH_VERSION_COMBOBOX_WIDTH)
                             .show_ui(ui, |ui| {
                                 let selection = if let Some(selection) = selection.as_mut() {
                                     selection
@@ -1800,23 +1700,14 @@ pub fn show(
                                 {
                                     let mut layout_job = egui::text::LayoutJob::default();
                                     layout_job.append(
-                                        &i18n::LOCALES
-                                            .lookup(&config.language, "play-no-patch")
-                                            .unwrap(),
+                                        &i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap(),
                                         0.0,
                                         egui::TextFormat::simple(
-                                            ui.style()
-                                                .text_styles
-                                                .get(&egui::TextStyle::Body)
-                                                .unwrap()
-                                                .clone(),
+                                            ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                             ui.visuals().text_color(),
                                         ),
                                     );
-                                    if ui
-                                        .selectable_label(selection.patch.is_none(), layout_job)
-                                        .clicked()
-                                    {
+                                    if ui.selectable_label(selection.patch.is_none(), layout_job).clicked() {
                                         *selection = gui::Selection::new(
                                             selection.game.clone(),
                                             selection.save.clone(),
@@ -1832,18 +1723,13 @@ pub fn show(
                                         *name,
                                         0.0,
                                         egui::TextFormat::simple(
-                                            ui.style()
-                                                .text_styles
-                                                .get(&egui::TextStyle::Body)
-                                                .unwrap()
-                                                .clone(),
+                                            ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                             ui.visuals().text_color(),
                                         ),
                                     );
                                     if ui
                                         .selectable_label(
-                                            selection.patch.as_ref().map(|(name, _, _)| name)
-                                                == Some(*name),
+                                            selection.patch.as_ref().map(|(name, _, _)| name) == Some(*name),
                                             layout_job,
                                         )
                                         .clicked()
@@ -1851,15 +1737,11 @@ pub fn show(
                                         *patch_selection = Some(name.to_string());
 
                                         let rom = roms.get(&selection.game).unwrap().clone();
-                                        let (rom_code, revision) =
-                                            selection.game.rom_code_and_revision();
+                                        let (rom_code, revision) = selection.game.rom_code_and_revision();
                                         let version = *supported_versions.first().unwrap();
 
                                         let version_metadata = if let Some(version_metadata) =
-                                            patches
-                                                .get(*name)
-                                                .and_then(|p| p.versions.get(version))
-                                                .cloned()
+                                            patches.get(*name).and_then(|p| p.versions.get(version)).cloned()
                                         {
                                             version_metadata
                                         } else {
@@ -1888,11 +1770,7 @@ pub fn show(
                                         *selection = gui::Selection::new(
                                             selection.game.clone(),
                                             selection.save.clone(),
-                                            Some((
-                                                (*name).clone(),
-                                                version.clone(),
-                                                version_metadata,
-                                            )),
+                                            Some(((*name).clone(), version.clone(), version_metadata)),
                                             rom,
                                         );
                                     }
@@ -1911,31 +1789,19 @@ pub fn show(
                                 layout_job.append(
                                     &selection
                                         .as_ref()
-                                        .and_then(|s| {
-                                            s.patch
-                                                .as_ref()
-                                                .map(|(_, version, _)| version.to_string())
-                                        })
+                                        .and_then(|s| s.patch.as_ref().map(|(_, version, _)| version.to_string()))
                                         .unwrap_or("".to_string()),
                                     0.0,
                                     egui::TextFormat::simple(
-                                        ui.style()
-                                            .text_styles
-                                            .get(&egui::TextStyle::Body)
-                                            .unwrap()
-                                            .clone(),
+                                        ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                         ui.visuals().text_color(),
                                     ),
                                 );
                                 egui::ComboBox::from_id_source("patch-version-select-combobox")
-                                    .width(
-                                        PATCH_VERSION_COMBOBOX_WIDTH
-                                            - ui.spacing().item_spacing.x * 2.0,
-                                    )
+                                    .width(PATCH_VERSION_COMBOBOX_WIDTH - ui.spacing().item_spacing.x * 2.0)
                                     .selected_text(layout_job)
                                     .show_ui(ui, |ui| {
-                                        let selection = if let Some(selection) = selection.as_mut()
-                                        {
+                                        let selection = if let Some(selection) = selection.as_mut() {
                                             selection
                                         } else {
                                             return;
@@ -1961,34 +1827,22 @@ pub fn show(
                                                 &version.to_string(),
                                                 0.0,
                                                 egui::TextFormat::simple(
-                                                    ui.style()
-                                                        .text_styles
-                                                        .get(&egui::TextStyle::Body)
-                                                        .unwrap()
-                                                        .clone(),
+                                                    ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                                     ui.visuals().text_color(),
                                                 ),
                                             );
 
-                                            if ui
-                                                .selectable_label(&patch.1 == *version, layout_job)
-                                                .clicked()
-                                            {
-                                                let rom =
-                                                    roms.get(&selection.game).unwrap().clone();
-                                                let (rom_code, revision) =
-                                                    selection.game.rom_code_and_revision();
+                                            if ui.selectable_label(&patch.1 == *version, layout_job).clicked() {
+                                                let rom = roms.get(&selection.game).unwrap().clone();
+                                                let (rom_code, revision) = selection.game.rom_code_and_revision();
 
-                                                let version_metadata =
-                                                    if let Some(version_metadata) = patches
-                                                        .get(&patch.0)
-                                                        .and_then(|p| p.versions.get(version))
-                                                        .cloned()
-                                                    {
-                                                        version_metadata
-                                                    } else {
-                                                        return;
-                                                    };
+                                                let version_metadata = if let Some(version_metadata) =
+                                                    patches.get(&patch.0).and_then(|p| p.versions.get(version)).cloned()
+                                                {
+                                                    version_metadata
+                                                } else {
+                                                    return;
+                                                };
 
                                                 let rom = match patch::apply_patch_from_disk(
                                                     &rom,
@@ -2012,11 +1866,7 @@ pub fn show(
                                                 *selection = gui::Selection::new(
                                                     selection.game.clone(),
                                                     selection.save.clone(),
-                                                    Some((
-                                                        patch.0.clone(),
-                                                        (*version).clone(),
-                                                        version_metadata,
-                                                    )),
+                                                    Some((patch.0.clone(), (*version).clone(), version_metadata)),
                                                     rom,
                                                 );
                                             }

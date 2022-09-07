@@ -22,7 +22,7 @@ play-connection-task-signaling = マッチメイキングサーバーに接続�
 play-connection-task-waiting = 相手方の接続待機中…
 
 select-save = セーブファイルを選択
-    .select-button = 選択
+    .select = 選択
     .no-save-selected = セーブファイルが選択されていません
     .return-to-games-list = 作品一覧へ戻る
     .open-folder = フォルダを開く

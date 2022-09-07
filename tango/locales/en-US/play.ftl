@@ -22,7 +22,7 @@ play-connection-task-signaling = Connecting to matchmaking server...
 play-connection-task-waiting = Waiting for opponent...
 
 select-save = Select save
-    .select-button = Select
+    .select = Select
     .no-save-selected = No save selected
     .return-to-games-list = Return to games list
     .open-folder = Open folder
