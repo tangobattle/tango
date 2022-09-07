@@ -365,33 +365,17 @@ impl Lobby {
                         if let Some(pi) = gi.patch.as_ref() {
                             let (rom_code, revision) = game.rom_code_and_revision();
 
-                            let bps = match std::fs::read(
-                                patches_path
-                                    .join(&pi.name)
-                                    .join(format!("v{}", pi.version))
-                                    .join(format!(
-                                        "{}_{:02}.bps",
-                                        std::str::from_utf8(rom_code).unwrap(),
-                                        revision
-                                    )),
+                            let rom = match patch::apply_patch_from_disk(
+                                &rom,
+                                game,
+                                patches_path,
+                                &pi.name,
+                                &pi.version,
                             ) {
-                                Ok(bps) => bps,
+                                Ok(r) => r,
                                 Err(e) => {
                                     log::error!(
-                                        "failed to load patch {} to {:?}: {:?}",
-                                        pi.name,
-                                        (rom_code, revision),
-                                        e
-                                    );
-                                    return None;
-                                }
-                            };
-
-                            let rom = match patch::bps::apply(&rom, &bps) {
-                                Ok(r) => r.to_vec(),
-                                Err(e) => {
-                                    log::error!(
-                                        "failed to apply patch {} to {:?}: {:?}",
+                                        "failed to apply patch {}: {:?}: {:?}",
                                         pi.name,
                                         (rom_code, revision),
                                         e
@@ -1857,34 +1841,17 @@ pub fn show(
                                             return;
                                         };
 
-                                        let bps = match std::fs::read(
-                                            config
-                                                .patches_path()
-                                                .join(name)
-                                                .join(format!("v{}", version))
-                                                .join(format!(
-                                                    "{}_{:02}.bps",
-                                                    std::str::from_utf8(rom_code).unwrap(),
-                                                    revision
-                                                )),
+                                        let rom = match patch::apply_patch_from_disk(
+                                            &rom,
+                                            selection.game,
+                                            &config.patches_path(),
+                                            &name,
+                                            &version,
                                         ) {
-                                            Ok(bps) => bps,
+                                            Ok(r) => r,
                                             Err(e) => {
                                                 log::error!(
-                                                    "failed to load patch {} to {:?}: {:?}",
-                                                    name,
-                                                    (rom_code, revision),
-                                                    e
-                                                );
-                                                return;
-                                            }
-                                        };
-
-                                        let rom = match patch::bps::apply(&rom, &bps) {
-                                            Ok(r) => r.to_vec(),
-                                            Err(e) => {
-                                                log::error!(
-                                                    "failed to apply patch {} to {:?}: {:?}",
+                                                    "failed to apply patch {}: {:?}: {:?}",
                                                     name,
                                                     (rom_code, revision),
                                                     e
@@ -1976,31 +1943,14 @@ pub fn show(
                                                         return;
                                                     };
 
-                                                let bps = match std::fs::read(
-                                                    config
-                                                        .patches_path()
-                                                        .join(&patch.0)
-                                                        .join(format!("v{}", version))
-                                                        .join(format!(
-                                                            "{}_{:02}.bps",
-                                                            std::str::from_utf8(rom_code).unwrap(),
-                                                            revision
-                                                        )),
+                                                let rom = match patch::apply_patch_from_disk(
+                                                    &rom,
+                                                    selection.game,
+                                                    &config.patches_path(),
+                                                    &patch.0,
+                                                    &version,
                                                 ) {
-                                                    Ok(bps) => bps,
-                                                    Err(e) => {
-                                                        log::error!(
-                                                            "failed to load patch {}: {:?}: {:?}",
-                                                            patch.0,
-                                                            (rom_code, revision),
-                                                            e
-                                                        );
-                                                        return;
-                                                    }
-                                                };
-
-                                                let rom = match patch::bps::apply(&rom, &bps) {
-                                                    Ok(r) => r.to_vec(),
+                                                    Ok(r) => r,
                                                     Err(e) => {
                                                         log::error!(
                                                             "failed to apply patch {}: {:?}: {:?}",

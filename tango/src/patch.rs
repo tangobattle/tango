@@ -388,3 +388,24 @@ impl Autoupdater {
         }
     }
 }
+
+pub fn apply_patch_from_disk(
+    rom: &[u8],
+    game: &'static (dyn game::Game + Send + Sync),
+    patches_path: &std::path::Path,
+    patch_name: &str,
+    patch_version: &semver::Version,
+) -> Result<Vec<u8>, anyhow::Error> {
+    let (rom_code, revision) = game.rom_code_and_revision();
+    let raw = std::fs::read(
+        patches_path
+            .join(&patch_name)
+            .join(format!("v{}", patch_version))
+            .join(format!(
+                "{}_{:02}.bps",
+                std::str::from_utf8(rom_code).unwrap(),
+                revision
+            )),
+    )?;
+    Ok(bps::apply(rom, &raw)?)
+}

@@ -283,33 +283,17 @@ pub fn show(
 
                                 let (rom_code, revision) = game.rom_code_and_revision();
 
-                                let bps = match std::fs::read(
-                                    patches_path
-                                        .join(&patch_info.name)
-                                        .join(format!("v{}", version))
-                                        .join(format!(
-                                            "{}_{:02}.bps",
-                                            std::str::from_utf8(rom_code).unwrap(),
-                                            revision
-                                        )),
+                                rom = match patch::apply_patch_from_disk(
+                                    &rom,
+                                    game,
+                                    patches_path,
+                                    &patch_info.name,
+                                    &version,
                                 ) {
-                                    Ok(bps) => bps,
+                                    Ok(r) => r,
                                     Err(e) => {
                                         log::error!(
-                                            "failed to load patch {} to {:?}: {:?}",
-                                            patch_info.name,
-                                            (rom_code, revision),
-                                            e
-                                        );
-                                        continue;
-                                    }
-                                };
-
-                                rom = match patch::bps::apply(&rom, &bps) {
-                                    Ok(r) => r.to_vec(),
-                                    Err(e) => {
-                                        log::error!(
-                                            "failed to apply patch {} to {:?}: {:?}",
+                                            "failed to apply patch {}: {:?}: {:?}",
                                             patch_info.name,
                                             (rom_code, revision),
                                             e
