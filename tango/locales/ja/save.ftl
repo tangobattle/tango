@@ -1,20 +1,18 @@
-save =
-    .cover = カバー
-    .navi = ナビ
-    .navicust = ナビカスとマイザー
-    .folder = チップフォルダ
-    .modcards = 改造カード
-    .dark-ai = ダークソウルAI
+save-tab-cover = カバー
+save-tab-navi = ナビ
+save-tab-navicust = ナビカスとマイザー
+save-tab-folder = チップフォルダ
+save-tab-modcards = 改造カード
+save-tab-dark-ai = ダークソウルAI
 
 save-cover-description = このタブは意図的に空白のままになっています。
 
 save-group = チップをグループ化
 
-dark-ai =
-    .secondary-standard-chips = スタンダードチップ（二次）
-    .standard-chips = スタンダードチップ
-    .mega-chips = メガチップ
-    .giga-chip = ギガチップ
-    .combos = コンボ
-    .program-advance = プログラムアドバンス
-    .unset = 未設定
+dark-ai-secondary-standard-chips = スタンダードチップ（二次）
+dark-ai-standard-chips = スタンダードチップ
+dark-ai-mega-chips = メガチップ
+dark-ai-giga-chip = ギガチップ
+dark-ai-combos = コンボ
+dark-ai-program-advance = プログラムアドバンス
+dark-ai-unset = 未設定

@@ -1,3 +1,2 @@
-escape =
-    .settings = 設定
-    .end-game = ゲーム終了
+escape-settings = 設定
+escape-end-game = ゲーム終了

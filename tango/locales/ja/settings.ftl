@@ -1,11 +1,13 @@
 settings = 設定
-    .general = 一般設定
-    .input = 入力
-    .graphics = グラフィックス
-    .audio = オーディオ
-    .netplay = ネットプレー
-    .advanced = 詳細設定
-    .about = Tangoについて
+
+settings-tab-general = 一般設定
+settings-tab-input = 入力
+settings-tab-graphics = グラフィックス
+settings-tab-audio = オーディオ
+settings-tab-netplay = ネットプレー
+settings-tab-patches = パッチ
+settings-tab-advanced = 詳細設定
+settings-tab-about = Tangoについて
 
 settings-theme = テーマ
     .light = ライト
@@ -32,6 +34,8 @@ settings-input-delay = 入力遅延
 settings-max-queue-length = 最大キューの長
 settings-matchmaking-endpoint = マッチメイキング エンドポイント
 settings-replaycollector-endpoint = リプレイコレクターエンドポイント
+settings-patch-repo = パッチリポジトリ
+settings-enable-patch-autoupdate = 自動更新
 settings-data-path = データ経路
     .open = 開く
     .change = 変更
