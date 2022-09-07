@@ -837,7 +837,7 @@ fn show_lobby_table(
                                             *patch_name == pi.name
                                                 && patch_metadata.versions.keys().any(|v| v == &pi.version)
                                         }) {
-                                            return Some(Warning::NoRemotePatch(pi.name.clone(), pi.version.clone()));
+                                            return Some(Warning::NoLocalPatch(pi.name.clone(), pi.version.clone()));
                                         }
                                     }
 
@@ -1576,7 +1576,7 @@ pub fn show(
                                                                     .keys()
                                                                     .any(|v| v == &pi.version)
                                                         }) {
-                                                            return Some(Warning::NoRemotePatch(
+                                                            return Some(Warning::NoLocalPatch(
                                                                 pi.name.clone(),
                                                                 pi.version.clone(),
                                                             ));
