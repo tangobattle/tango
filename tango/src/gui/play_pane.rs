@@ -91,6 +91,84 @@ impl Warning {
     }
 }
 
+fn make_warning(
+    lobby: &Lobby,
+    roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
+    patches: &std::collections::BTreeMap<String, patch::Patch>,
+) -> Option<Warning> {
+    let selection = if let Some(selection) = lobby.selection.as_ref() {
+        selection
+    } else {
+        return Some(Warning::NoLocalSelection);
+    };
+
+    let remote_gi = if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
+        remote_gi
+    } else {
+        return Some(Warning::NoRemoteSelection);
+    };
+
+    let remote_game = if let Some(remote_game) =
+        game::find_by_family_and_variant(&remote_gi.family_and_variant.0, remote_gi.family_and_variant.1)
+    {
+        remote_game
+    } else {
+        return Some(Warning::UnrecognizedGame);
+    };
+
+    if !roms.contains_key(&remote_game) {
+        return Some(Warning::NoLocalROM(remote_game));
+    }
+
+    if !lobby
+        .remote_settings
+        .available_games
+        .iter()
+        .any(|(family, variant)| selection.game.family_and_variant() == (family, *variant))
+    {
+        return Some(Warning::NoRemoteROM(selection.game));
+    }
+
+    if let Some(pi) = remote_gi.patch.as_ref() {
+        if !patches.iter().any(|(patch_name, patch_metadata)| {
+            *patch_name == pi.name && patch_metadata.versions.keys().any(|v| v == &pi.version)
+        }) {
+            return Some(Warning::NoLocalPatch(pi.name.clone(), pi.version.clone()));
+        }
+    }
+
+    if let Some((patch_name, patch_version, _)) = selection.patch.as_ref() {
+        if !lobby
+            .remote_settings
+            .available_patches
+            .iter()
+            .any(|(name, versions)| patch_name == name && versions.iter().any(|v| v == patch_version))
+        {
+            return Some(Warning::NoRemotePatch(patch_name.clone(), patch_version.clone()));
+        }
+    }
+
+    let local_netplay_compatibility = get_netplay_compatibility(
+        selection.game,
+        selection
+            .patch
+            .as_ref()
+            .map(|(name, version, _)| (name.as_str(), version)),
+        &patches,
+    );
+
+    let remote_netplay_compatibility = get_netplay_compatibility(
+        remote_game,
+        remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
+        &patches,
+    );
+
+    if local_netplay_compatibility != remote_netplay_compatibility {
+        return Some(Warning::Incompatible);
+    }
+
+    None
+}
 struct LobbySelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub save: Box<dyn save::Save + Send + Sync>,
@@ -873,75 +951,7 @@ fn show_lobby_table(
                             ui.horizontal(|ui| {
                                 ui.strong(i18n::LOCALES.lookup(&config.language, "play-details-game").unwrap());
 
-                                if let Some(warning) = (|| {
-                                    let selection = if let Some(selection) = lobby.selection.as_ref() {
-                                        selection
-                                    } else {
-                                        return Some(Warning::NoLocalSelection);
-                                    };
-
-                                    let remote_gi = if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
-                                        remote_gi
-                                    } else {
-                                        return Some(Warning::NoRemoteSelection);
-                                    };
-
-                                    let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
-                                        &remote_gi.family_and_variant.0,
-                                        remote_gi.family_and_variant.1,
-                                    ) {
-                                        remote_game
-                                    } else {
-                                        return Some(Warning::UnrecognizedGame);
-                                    };
-
-                                    if !roms.contains_key(&remote_game) {
-                                        return Some(Warning::NoLocalROM(remote_game));
-                                    };
-
-                                    if !lobby.remote_settings.available_games.iter().any(|(family, variant)| {
-                                        selection.game.family_and_variant() == (family, *variant)
-                                    }) {
-                                        return Some(Warning::NoRemoteROM(selection.game));
-                                    }
-
-                                    if let Some(pi) = remote_gi.patch.as_ref() {
-                                        if !patches.iter().any(|(patch_name, patch_metadata)| {
-                                            *patch_name == pi.name
-                                                && patch_metadata.versions.keys().any(|v| v == &pi.version)
-                                        }) {
-                                            return Some(Warning::NoLocalPatch(pi.name.clone(), pi.version.clone()));
-                                        }
-                                    }
-
-                                    if let Some((patch_name, patch_version, _)) = selection.patch.as_ref() {
-                                        if !lobby.remote_settings.available_patches.iter().any(|(name, versions)| {
-                                            patch_name == name && versions.iter().any(|v| v == patch_version)
-                                        }) {
-                                            return Some(Warning::NoRemotePatch(
-                                                patch_name.clone(),
-                                                patch_version.clone(),
-                                            ));
-                                        }
-                                    }
-
-                                    if get_netplay_compatibility(
-                                        selection.game,
-                                        selection
-                                            .patch
-                                            .as_ref()
-                                            .map(|(name, version, _)| (name.as_str(), version)),
-                                        patches,
-                                    ) != get_netplay_compatibility(
-                                        remote_game,
-                                        remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
-                                        patches,
-                                    ) {
-                                        return Some(Warning::Incompatible);
-                                    }
-
-                                    return None;
-                                })() {
+                                if let Some(warning) = make_warning(&lobby, &roms, &patches) {
                                     gui::warning::show(ui, warning.description(&config.language));
                                 }
                             });
@@ -1606,98 +1616,11 @@ pub fn show(
                                                 let (family, variant) = selection.game.family_and_variant();
                                                 let patches = patches_scanner.read();
 
-                                                let warning = (|| {
-                                                    let lobby = if let Some(lobby) = lobby.as_ref() {
-                                                        lobby
-                                                    } else {
-                                                        return None;
-                                                    };
-
-                                                    let remote_gi = if let Some(remote_gi) =
-                                                        lobby.remote_settings.game_info.as_ref()
-                                                    {
-                                                        remote_gi
-                                                    } else {
-                                                        return None;
-                                                    };
-
-                                                    let remote_game = if let Some(remote_game) =
-                                                        game::find_by_family_and_variant(
-                                                            &remote_gi.family_and_variant.0,
-                                                            remote_gi.family_and_variant.1,
-                                                        ) {
-                                                        remote_game
-                                                    } else {
-                                                        return Some(Warning::UnrecognizedGame);
-                                                    };
-
-                                                    if !roms.contains_key(&remote_game) {
-                                                        return Some(Warning::NoLocalROM(remote_game));
-                                                    }
-
-                                                    if !lobby.remote_settings.available_games.iter().any(
-                                                        |(family, variant)| {
-                                                            selection.game.family_and_variant() == (family, *variant)
-                                                        },
-                                                    ) {
-                                                        return Some(Warning::NoRemoteROM(selection.game));
-                                                    }
-
-                                                    if let Some(pi) = remote_gi.patch.as_ref() {
-                                                        if !patches.iter().any(|(patch_name, patch_metadata)| {
-                                                            *patch_name == pi.name
-                                                                && patch_metadata
-                                                                    .versions
-                                                                    .keys()
-                                                                    .any(|v| v == &pi.version)
-                                                        }) {
-                                                            return Some(Warning::NoLocalPatch(
-                                                                pi.name.clone(),
-                                                                pi.version.clone(),
-                                                            ));
-                                                        }
-                                                    }
-
-                                                    if let Some((patch_name, patch_version, _)) =
-                                                        selection.patch.as_ref()
-                                                    {
-                                                        if !lobby.remote_settings.available_patches.iter().any(
-                                                            |(name, versions)| {
-                                                                patch_name == name
-                                                                    && versions.iter().any(|v| v == patch_version)
-                                                            },
-                                                        ) {
-                                                            return Some(Warning::NoRemotePatch(
-                                                                patch_name.clone(),
-                                                                patch_version.clone(),
-                                                            ));
-                                                        }
-                                                    }
-
-                                                    let local_netplay_compatibility = get_netplay_compatibility(
-                                                        selection.game,
-                                                        selection
-                                                            .patch
-                                                            .as_ref()
-                                                            .map(|(name, version, _)| (name.as_str(), version)),
-                                                        &patches,
-                                                    );
-
-                                                    let remote_netplay_compatibility = get_netplay_compatibility(
-                                                        remote_game,
-                                                        remote_gi
-                                                            .patch
-                                                            .as_ref()
-                                                            .map(|pi| (pi.name.as_str(), &pi.version)),
-                                                        &patches,
-                                                    );
-
-                                                    if local_netplay_compatibility != remote_netplay_compatibility {
-                                                        return Some(Warning::Incompatible);
-                                                    }
-
-                                                    return None;
-                                                })();
+                                                let warning = if let Some(lobby) = lobby.as_ref() {
+                                                    make_warning(&lobby, &roms, &patches)
+                                                } else {
+                                                    None
+                                                };
 
                                                 if warning.is_some() {
                                                     layout_job.append(
