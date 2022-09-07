@@ -1623,27 +1623,29 @@ pub fn show(
                                                 };
 
                                                 if warning.is_some() {
-                                                    layout_job.append(
-                                                        &format!(
-                                                            "{} ",
-                                                            selection
-                                                                .save
-                                                                .path
-                                                                .strip_prefix(&config.saves_path())
-                                                                .unwrap_or(selection.save.path.as_path())
-                                                                .display()
-                                                        ),
-                                                        0.0,
-                                                        egui::TextFormat::simple(
-                                                            ui.style()
-                                                                .text_styles
-                                                                .get(&egui::TextStyle::Body)
-                                                                .unwrap()
-                                                                .clone(),
-                                                            ui.visuals().text_color(),
-                                                        ),
-                                                    );
+                                                    gui::warning::append_to_layout_job(ui, &mut layout_job);
                                                 }
+
+                                                layout_job.append(
+                                                    &format!(
+                                                        "{} ",
+                                                        selection
+                                                            .save
+                                                            .path
+                                                            .strip_prefix(&config.saves_path())
+                                                            .unwrap_or(selection.save.path.as_path())
+                                                            .display()
+                                                    ),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Body)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
                                                 layout_job.append(
                                                     &format!(
                                                         "{}",
