@@ -43,9 +43,7 @@ async fn create_data_channel(
 }
 
 pub struct PendingConnection {
-    signaling_stream: tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
+    signaling_stream: tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
     dc: datachannel_wrapper::DataChannel,
     event_rx: tokio::sync::mpsc::Receiver<datachannel_wrapper::PeerConnectionEvent>,
     peer_conn: datachannel_wrapper::PeerConnection,
@@ -99,8 +97,7 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
                     .urls
                     .into_iter()
                     .flat_map(|url| {
-                        let colon_idx = if let Some(colon_idx) = url.chars().position(|c| c == ':')
-                        {
+                        let colon_idx = if let Some(colon_idx) = url.chars().position(|c| c == ':') {
                             colon_idx
                         } else {
                             return vec![];
@@ -110,15 +107,11 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
                         let rest = &url[colon_idx + 1..];
 
                         // libdatachannel doesn't support TURN over TCP: in fact, it explodes!
-                        if url.chars().skip_while(|c| *c != '?').collect::<String>()
-                            == "?transport=tcp"
-                        {
+                        if url.chars().skip_while(|c| *c != '?').collect::<String>() == "?transport=tcp" {
                             return vec![];
                         }
 
-                        if let (Some(username), Some(credential)) =
-                            (&ice_server.username, &ice_server.credential)
-                        {
+                        if let (Some(username), Some(credential)) = (&ice_server.username, &ice_server.credential) {
                             vec![format!(
                                 "{}:{}:{}@{}",
                                 proto,
@@ -160,13 +153,7 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
 impl PendingConnection {
     pub async fn connect(
         mut self,
-    ) -> Result<
-        (
-            datachannel_wrapper::DataChannel,
-            datachannel_wrapper::PeerConnection,
-        ),
-        anyhow::Error,
-    > {
+    ) -> Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), anyhow::Error> {
         loop {
             let raw = if let Some(raw) = self.signaling_stream.try_next().await? {
                 raw
@@ -189,15 +176,11 @@ impl PendingConnection {
 
                     self.peer_conn
                         .set_local_description(datachannel_wrapper::SdpType::Rollback)?;
-                    self.peer_conn.set_remote_description(
-                        datachannel_wrapper::SessionDescription {
+                    self.peer_conn
+                        .set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Offer,
-                            sdp: datachannel_wrapper::sdp::parse_sdp(
-                                &offer.sdp.to_string(),
-                                false,
-                            )?,
-                        },
-                    )?;
+                            sdp: datachannel_wrapper::sdp::parse_sdp(&offer.sdp.to_string(), false)?,
+                        })?;
 
                     let local_description = self.peer_conn.local_description().unwrap();
                     self.signaling_stream
@@ -218,12 +201,11 @@ impl PendingConnection {
                 Some(tango_protos::matchmaking::packet::Which::Answer(answer)) => {
                     log::info!("received an answer, this is the impolite side");
 
-                    self.peer_conn.set_remote_description(
-                        datachannel_wrapper::SessionDescription {
+                    self.peer_conn
+                        .set_remote_description(datachannel_wrapper::SessionDescription {
                             sdp_type: datachannel_wrapper::SdpType::Answer,
                             sdp: datachannel_wrapper::sdp::parse_sdp(&answer.sdp, false)?,
-                        },
-                    )?;
+                        })?;
                     break;
                 }
                 p => {
@@ -236,18 +218,12 @@ impl PendingConnection {
 
         log::debug!(
             "local sdp (type = {:?}): {}",
-            self.peer_conn
-                .local_description()
-                .expect("local sdp")
-                .sdp_type,
+            self.peer_conn.local_description().expect("local sdp").sdp_type,
             self.peer_conn.local_description().expect("local sdp").sdp
         );
         log::debug!(
             "remote sdp (type = {:?}): {}",
-            self.peer_conn
-                .remote_description()
-                .expect("remote sdp")
-                .sdp_type,
+            self.peer_conn.remote_description().expect("remote sdp").sdp_type,
             self.peer_conn.remote_description().expect("remote sdp").sdp
         );
 

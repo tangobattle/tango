@@ -40,10 +40,8 @@ fn show_emulator(
     let video_filter = video::filter_by_name(video_filter).unwrap_or(Box::new(video::NullFilter));
 
     // Apply stupid video scaling filter that only mint wants 🥴
-    let (vbuf_width, vbuf_height) = video_filter.output_size((
-        mgba::gba::SCREEN_WIDTH as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-    ));
+    let (vbuf_width, vbuf_height) =
+        video_filter.output_size((mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize));
 
     let vbuf = if !vbuf
         .as_ref()
@@ -59,14 +57,10 @@ fn show_emulator(
     video_filter.apply(
         &session.lock_vbuf(),
         bytemuck::cast_slice_mut(&mut vbuf.image.pixels[..]),
-        (
-            mgba::gba::SCREEN_WIDTH as usize,
-            mgba::gba::SCREEN_HEIGHT as usize,
-        ),
+        (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
     );
 
-    vbuf.texture
-        .set(vbuf.image.clone(), egui::TextureFilter::Nearest);
+    vbuf.texture.set(vbuf.image.clone(), egui::TextureFilter::Nearest);
 
     let mut scaling_factor = std::cmp::max_by(
         std::cmp::min_by(
@@ -79,9 +73,7 @@ fn show_emulator(
         |a, b| a.partial_cmp(b).unwrap(),
     );
     if max_scale > 0 {
-        scaling_factor = std::cmp::min_by(scaling_factor, max_scale as f32, |a, b| {
-            a.partial_cmp(b).unwrap()
-        });
+        scaling_factor = std::cmp::min_by(scaling_factor, max_scale as f32, |a, b| a.partial_cmp(b).unwrap());
     }
     ui.image(
         &vbuf.texture,
@@ -109,10 +101,7 @@ pub fn show(
 ) {
     session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
-    if ctx
-        .input_mut()
-        .consume_key(egui::Modifiers::NONE, egui::Key::Escape)
-    {
+    if ctx.input_mut().consume_key(egui::Modifiers::NONE, egui::Key::Escape) {
         *show_escape_window = if show_escape_window.is_some() {
             None
         } else {
@@ -128,10 +117,7 @@ pub fn show(
                 language,
                 Some(discord::make_game_info(
                     game_info.game,
-                    game_info
-                        .patch
-                        .as_ref()
-                        .map(|(name, version)| (name.as_str(), version)),
+                    game_info.patch.as_ref().map(|(name, version)| (name.as_str(), version)),
                     language,
                 )),
             )));
@@ -147,10 +133,7 @@ pub fn show(
                 language,
                 Some(discord::make_game_info(
                     game_info.game,
-                    game_info
-                        .patch
-                        .as_ref()
-                        .map(|(name, version)| (name.as_str(), version)),
+                    game_info.patch.as_ref().map(|(name, version)| (name.as_str(), version)),
                     language,
                 )),
             )));
@@ -162,17 +145,11 @@ pub fn show(
 
     match session.mode() {
         session::Mode::SinglePlayer(_) => {
-            session.set_fps_target(
-                if input_mapping
-                    .speed_up
-                    .iter()
-                    .any(|c| c.is_active(&input_state))
-                {
-                    session::EXPECTED_FPS * 3.0
-                } else {
-                    session::EXPECTED_FPS
-                },
-            );
+            session.set_fps_target(if input_mapping.speed_up.iter().any(|c| c.is_active(&input_state)) {
+                session::EXPECTED_FPS * 3.0
+            } else {
+                session::EXPECTED_FPS
+            });
         }
         session::Mode::Replayer => {
             replay_controls_window::show(ctx, session, language, last_mouse_motion_time);

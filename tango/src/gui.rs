@@ -227,15 +227,9 @@ impl FontFamilies {
         let mut lang = lang.clone();
         lang.maximize();
         match lang.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
-                self.jpan.clone()
-            }
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
-                self.hans.clone()
-            }
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
-                self.hant.clone()
-            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => self.jpan.clone(),
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => self.hans.clone(),
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => self.hant.clone(),
             _ => self.latn.clone(),
         }
     }
@@ -263,15 +257,9 @@ pub fn show(
         language.maximize();
 
         let primary_font = match language.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => {
-                "NotoSansJP-Regular"
-            }
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => {
-                "NotoSansSC-Regular"
-            }
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => {
-                "NotoSansTC-Regular"
-            }
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => "NotoSansJP-Regular",
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => "NotoSansSC-Regular",
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => "NotoSansTC-Regular",
             _ => "NotoSans-Regular",
         };
 
@@ -292,29 +280,14 @@ pub fn show(
             families: std::collections::BTreeMap::from([
                 (egui::FontFamily::Proportional, proportional),
                 (egui::FontFamily::Monospace, monospace),
-                (
-                    state.font_families.jpan.clone(),
-                    vec!["NotoSansJP-Regular".to_string()],
-                ),
-                (
-                    state.font_families.hans.clone(),
-                    vec!["NotoSansSC-Regular".to_string()],
-                ),
-                (
-                    state.font_families.hant.clone(),
-                    vec!["NotoSansTC-Regular".to_string()],
-                ),
-                (
-                    state.font_families.latn.clone(),
-                    vec!["NotoSans-Regular".to_string()],
-                ),
+                (state.font_families.jpan.clone(), vec!["NotoSansJP-Regular".to_string()]),
+                (state.font_families.hans.clone(), vec!["NotoSansSC-Regular".to_string()]),
+                (state.font_families.hant.clone(), vec!["NotoSansTC-Regular".to_string()]),
+                (state.font_families.latn.clone(), vec!["NotoSans-Regular".to_string()]),
             ]),
         });
         state.current_language = Some(config.language.clone());
-        log::info!(
-            "language was changed to {}",
-            state.current_language.as_ref().unwrap()
-        );
+        log::info!("language was changed to {}", state.current_language.as_ref().unwrap());
     }
 
     ctx.set_visuals(match config.theme {
@@ -369,11 +342,7 @@ pub fn show(
     );
 
     if let Some(session) = state.session.lock().as_ref() {
-        window.set_title(
-            &i18n::LOCALES
-                .lookup(&config.language, "window-title.running")
-                .unwrap(),
-        );
+        window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title.running").unwrap());
         session_view::show(
             ctx,
             &config.language,
@@ -385,18 +354,12 @@ pub fn show(
             &config.crashstates_path(),
             &state.last_mouse_motion_time,
             &mut state.show_escape_window,
-            state
-                .session_view
-                .get_or_insert_with(|| session_view::State::new()),
+            state.session_view.get_or_insert_with(|| session_view::State::new()),
             &mut state.discord_client,
         );
     } else {
         state.session_view = None;
-        window.set_title(
-            &i18n::LOCALES
-                .lookup(&config.language, "window-title")
-                .unwrap(),
-        );
+        window.set_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap());
         main_view::show(
             ctx,
             &state.font_families,

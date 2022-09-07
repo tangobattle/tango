@@ -221,6 +221,5 @@ pub trait DarkAIView<'a> {
     fn secondary_chip_use_count(&self, id: usize) -> Option<u16>;
 }
 
-pub type Scanner = scanner::Scanner<
-    std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>>,
->;
+pub type Scanner =
+    scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<ScannedSave>>>;

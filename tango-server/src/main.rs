@@ -68,16 +68,11 @@ async fn handle_matchmaking_request(
     if !hyper_tungstenite::is_upgrade_request(&request) {
         return Ok(hyper::Response::builder()
             .status(hyper::StatusCode::BAD_REQUEST)
-            .body(
-                hyper::StatusCode::BAD_REQUEST
-                    .canonical_reason()
-                    .unwrap()
-                    .into(),
-            )?);
+            .body(hyper::StatusCode::BAD_REQUEST.canonical_reason().unwrap().into())?);
     }
 
-    let skip_hello = request.headers().get("X-Tango-Skip-Hello")
-        == Some(&hyper::header::HeaderValue::from_static("skip"));
+    let skip_hello =
+        request.headers().get("X-Tango-Skip-Hello") == Some(&hyper::header::HeaderValue::from_static("skip"));
 
     let (response, websocket) = hyper_tungstenite::upgrade(
         &mut request,

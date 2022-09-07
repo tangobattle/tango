@@ -61,14 +61,9 @@ impl State {
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            let slice2 = std::slice::from_raw_parts_mut(
-                ptr,
-                std::mem::size_of::<mgba_sys::GBASerializedState>(),
-            );
+            let slice2 = std::slice::from_raw_parts_mut(ptr, std::mem::size_of::<mgba_sys::GBASerializedState>());
             slice2.copy_from_slice(slice);
-            Self(Box::from_raw(
-                ptr as *mut _ as *mut mgba_sys::GBASerializedState,
-            ))
+            Self(Box::from_raw(ptr as *mut _ as *mut mgba_sys::GBASerializedState))
         }
     }
 }

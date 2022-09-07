@@ -47,10 +47,7 @@ impl super::Backend for Backend {
         let client = reqwest::Client::new();
 
         let resp = client
-            .get(format!(
-                "https://api.opentok.com/session/{}",
-                opentok_session_id
-            ))
+            .get(format!("https://api.opentok.com/session/{}", opentok_session_id))
             .header("X-OPENTOK-AUTH", token)
             .header("Accept", "application/json")
             .send()
@@ -68,13 +65,11 @@ impl super::Backend for Backend {
         Ok(session
             .ice_servers
             .into_iter()
-            .map(
-                |ice_server| tango_protos::matchmaking::packet::hello::IceServer {
-                    credential: ice_server.credential,
-                    username: ice_server.username,
-                    urls: vec![ice_server.url],
-                },
-            )
+            .map(|ice_server| tango_protos::matchmaking::packet::hello::IceServer {
+                credential: ice_server.credential,
+                username: ice_server.username,
+                urls: vec![ice_server.url],
+            })
             .collect())
     }
 }

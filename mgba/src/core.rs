@@ -117,10 +117,7 @@ impl<'a> CoreRef<'a> {
     pub fn game_title(&self) -> String {
         let mut title = [0u8; 16];
         unsafe {
-            (*self.ptr).getGameTitle.unwrap()(
-                self.ptr,
-                title.as_mut_ptr() as *mut _ as *mut std::os::raw::c_char,
-            )
+            (*self.ptr).getGameTitle.unwrap()(self.ptr, title.as_mut_ptr() as *mut _ as *mut std::os::raw::c_char)
         }
         let cstr = match std::ffi::CString::new(title) {
             Ok(r) => r,
@@ -134,12 +131,7 @@ impl<'a> CoreRef<'a> {
 
     pub fn game_code(&self) -> String {
         let mut code = [0u8; 12];
-        unsafe {
-            (*self.ptr).getGameCode.unwrap()(
-                self.ptr,
-                code.as_mut_ptr() as *mut _ as *mut std::os::raw::c_char,
-            )
-        }
+        unsafe { (*self.ptr).getGameCode.unwrap()(self.ptr, code.as_mut_ptr() as *mut _ as *mut std::os::raw::c_char) }
         let cstr = match std::ffi::CString::new(code) {
             Ok(r) => r,
             Err(err) => {
@@ -225,12 +217,7 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn load_state(&mut self, state: &state::State) -> anyhow::Result<()> {
-        if !unsafe {
-            (*self.ptr).loadState.unwrap()(
-                self.ptr,
-                &*state.0 as *const _ as *const std::os::raw::c_void,
-            )
-        } {
+        if !unsafe { (*self.ptr).loadState.unwrap()(self.ptr, &*state.0 as *const _ as *const std::os::raw::c_void) } {
             anyhow::bail!("failed to load state");
         }
         Ok(())
@@ -243,13 +230,8 @@ impl<'a> CoreMutRef<'a> {
             if ptr.is_null() {
                 std::alloc::handle_alloc_error(layout);
             }
-            let mut state = state::State(Box::from_raw(
-                ptr as *mut _ as *mut mgba_sys::GBASerializedState,
-            ));
-            if !(*self.ptr).saveState.unwrap()(
-                self.ptr,
-                &mut *state.0 as *mut _ as *mut std::os::raw::c_void,
-            ) {
+            let mut state = state::State(Box::from_raw(ptr as *mut _ as *mut mgba_sys::GBASerializedState));
+            if !(*self.ptr).saveState.unwrap()(self.ptr, &mut *state.0 as *mut _ as *mut std::os::raw::c_void) {
                 anyhow::bail!("failed to save state");
             }
             Ok(state)

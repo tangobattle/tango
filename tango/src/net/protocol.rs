@@ -4,18 +4,13 @@ pub const VERSION: u8 = 0x30;
 
 lazy_static! {
     static ref BINCODE_OPTIONS: bincode::config::WithOtherLimit<
-        bincode::config::WithOtherIntEncoding<
-            bincode::config::DefaultOptions,
-            bincode::config::VarintEncoding,
-        >,
+        bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding>,
         bincode::config::Bounded,
     > = bincode::DefaultOptions::new()
         .with_varint_encoding()
         .with_limit(64 * 1024);
-    static ref STATE_BINCODE_OPTIONS: bincode::config::WithOtherIntEncoding<
-        bincode::config::DefaultOptions,
-        bincode::config::VarintEncoding,
-    > = bincode::DefaultOptions::new().with_varint_encoding();
+    static ref STATE_BINCODE_OPTIONS: bincode::config::WithOtherIntEncoding<bincode::config::DefaultOptions, bincode::config::VarintEncoding> =
+        bincode::DefaultOptions::new().with_varint_encoding();
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]

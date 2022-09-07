@@ -11,9 +11,7 @@ pub struct Hooks {
 
 impl Hooks {
     fn munger(&self) -> munger::Munger {
-        munger::Munger {
-            offsets: self.offsets,
-        }
+        munger::Munger { offsets: self.offsets }
     }
 }
 
@@ -289,10 +287,7 @@ impl game::Hooks for Hooks {
                         }
 
                         round_state.end_round().await.expect("end round");
-                        match_
-                            .advance_shadow_until_round_end()
-                            .await
-                            .expect("advance shadow");
+                        match_.advance_shadow_until_round_end().await.expect("advance shadow");
                     });
                 })
             }),
@@ -316,10 +311,7 @@ impl game::Hooks for Hooks {
                         }
 
                         round_state.end_round().await.expect("end round");
-                        match_
-                            .advance_shadow_until_round_end()
-                            .await
-                            .expect("advance shadow");
+                        match_.advance_shadow_until_round_end().await.expect("advance shadow");
                     });
                 })
             }),
@@ -365,9 +357,7 @@ impl game::Hooks for Hooks {
                                 }
                             };
 
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(0, round.local_player_index() as i32);
+                            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
                         });
                     }),
                 )
@@ -504,10 +494,7 @@ impl game::Hooks for Hooks {
         ]
     }
 
-    fn shadow_traps(
-        &self,
-        shadow_state: shadow::State,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let shadow_state = shadow_state.clone();
             let munger = self.munger();
@@ -690,9 +677,7 @@ impl game::Hooks for Hooks {
                             }
                         };
 
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, round.remote_player_index() as i32);
+                        core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
                     }),
                 )
             },
@@ -753,10 +738,8 @@ impl game::Hooks for Hooks {
                         }
 
                         if round.take_input_injected() {
-                            shadow_state.set_applied_state(
-                                core.save_state().expect("save state"),
-                                round.current_tick(),
-                            );
+                            shadow_state
+                                .set_applied_state(core.save_state().expect("save state"), round.current_tick());
                         }
                     }),
                 )
@@ -813,10 +796,7 @@ impl game::Hooks for Hooks {
         ]
     }
 
-    fn replayer_traps(
-        &self,
-        replayer_state: replayer::State,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let munger = self.munger();
             let replayer_state = replayer_state.clone();
@@ -837,13 +817,10 @@ impl game::Hooks for Hooks {
                     Some(ip) => ip,
                     None => {
                         let mut rx = [
-                            0x05, 0x00, 0x00, 0xfc, 0x00, 0x00, 0x00, 0xfc, 0x00, 0xfc, 0x00, 0x00,
-                            0xff, 0xff, 0xff, 0xff,
+                            0x05, 0x00, 0x00, 0xfc, 0x00, 0x00, 0x00, 0xfc, 0x00, 0xfc, 0x00, 0x00, 0xff, 0xff, 0xff,
+                            0xff,
                         ];
-                        byteorder::LittleEndian::write_u32(
-                            &mut rx[0xc..0x10],
-                            munger.packet_seqnum(core),
-                        );
+                        byteorder::LittleEndian::write_u32(&mut rx[0xc..0x10], munger.packet_seqnum(core));
                         munger.set_rx_packet(core, 0, &rx);
                         munger.set_rx_packet(core, 1, &rx);
                         return;
@@ -972,9 +949,7 @@ impl game::Hooks for Hooks {
                         let current_tick = replayer_state.current_tick();
 
                         if current_tick == replayer_state.commit_tick() {
-                            replayer_state.set_committed_state(
-                                core.save_state().expect("save committed state"),
-                            );
+                            replayer_state.set_committed_state(core.save_state().expect("save committed state"));
                         }
 
                         let ip = match replayer_state.peek_input_pair() {
@@ -1003,13 +978,10 @@ impl game::Hooks for Hooks {
                             return;
                         }
 
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+                        core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
                         if current_tick == replayer_state.dirty_tick() {
-                            replayer_state
-                                .set_dirty_state(core.save_state().expect("save dirty state"));
+                            replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
                         }
                     }),
                 )

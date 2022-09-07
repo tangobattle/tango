@@ -60,9 +60,8 @@ pub fn show(
             let mut sa = egui::ScrollArea::vertical().auto_shrink([true, false]);
             if jumping {
                 if let Ok(jump_to) = u32::from_str_radix(&state.jump_to, 16) {
-                    sa = sa.vertical_scroll_offset(
-                        (row_height + ui.spacing().item_spacing.y) * (jump_to / 0x10) as f32,
-                    );
+                    sa =
+                        sa.vertical_scroll_offset((row_height + ui.spacing().item_spacing.y) * (jump_to / 0x10) as f32);
                 }
             }
 
@@ -73,15 +72,9 @@ pub fn show(
                     .vertical(|mut outer_strip| {
                         for i in range {
                             outer_strip.cell(|ui| {
-                                let rect = ui
-                                    .available_rect_before_wrap()
-                                    .expand(ui.spacing().item_spacing.y);
+                                let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
                                 if i % 2 == 0 {
-                                    ui.painter().rect_filled(
-                                        rect,
-                                        0.0,
-                                        ui.visuals().faint_bg_color,
-                                    );
+                                    ui.painter().rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
                                 }
 
                                 egui_extras::StripBuilder::new(ui)
@@ -92,15 +85,9 @@ pub fn show(
                                     .horizontal(|mut strip| {
                                         let offset = i * 16;
                                         strip.cell(|ui| {
-                                            ui.label(
-                                                egui::RichText::new(format!("{:08x}", offset))
-                                                    .monospace()
-                                                    .weak(),
-                                            );
+                                            ui.label(egui::RichText::new(format!("{:08x}", offset)).monospace().weak());
                                         });
-                                        let bs = audio_guard
-                                            .core_mut()
-                                            .raw_read_range::<16>(offset as u32, -1);
+                                        let bs = audio_guard.core_mut().raw_read_range::<16>(offset as u32, -1);
                                         strip.cell(|ui| {
                                             ui.add(
                                                 egui::TextEdit::singleline(
@@ -118,15 +105,9 @@ pub fn show(
 
                                         strip.cell(|ui| {
                                             ui.monospace(
-                                                bs.map(|b| {
-                                                    if b >= 32 && b < 127 {
-                                                        b as char
-                                                    } else {
-                                                        '.'
-                                                    }
-                                                })
-                                                .iter()
-                                                .collect::<String>(),
+                                                bs.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
+                                                    .iter()
+                                                    .collect::<String>(),
                                             );
                                         });
                                     });

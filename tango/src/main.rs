@@ -72,20 +72,13 @@ fn main() -> Result<(), anyhow::Error> {
         Ok(f) => f,
         Err(e) => {
             rfd::MessageDialog::new()
-                .set_title(
-                    &i18n::LOCALES
-                        .lookup(&config.language, "window-title")
-                        .unwrap(),
-                )
+                .set_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap())
                 .set_description(
                     &i18n::LOCALES
                         .lookup_with_args(
                             &config.language,
                             "crash-no-log",
-                            &std::collections::HashMap::from([(
-                                "error",
-                                format!("{:?}", e).into(),
-                            )]),
+                            &std::collections::HashMap::from([("error", format!("{:?}", e).into())]),
                         )
                         .unwrap(),
                 )
@@ -96,11 +89,7 @@ fn main() -> Result<(), anyhow::Error> {
     };
 
     let status = std::process::Command::new(std::env::current_exe()?)
-        .args(
-            std::env::args_os()
-                .skip(1)
-                .collect::<Vec<std::ffi::OsString>>(),
-        )
+        .args(std::env::args_os().skip(1).collect::<Vec<std::ffi::OsString>>())
         .env(TANGO_CHILD_ENV_VAR, "1")
         .stderr(log_file)
         .spawn()?
@@ -114,10 +103,7 @@ fn main() -> Result<(), anyhow::Error> {
                     .lookup_with_args(
                         &config.language,
                         "crash",
-                        &std::collections::HashMap::from([(
-                            "path",
-                            format!("{}", log_path.display()).into(),
-                        )]),
+                        &std::collections::HashMap::from([("path", format!("{}", log_path.display()).into())]),
                     )
                     .unwrap(),
             )
@@ -133,9 +119,7 @@ fn main() -> Result<(), anyhow::Error> {
 }
 
 fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
+    let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
 
     mgba::log::init();
 
@@ -181,18 +165,14 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         .unwrap();
     let gl_window = unsafe { gl_window.make_current().unwrap() };
 
-    let gl = std::sync::Arc::new(unsafe {
-        glow::Context::from_loader_function(|s| gl_window.get_proc_address(s))
-    });
+    let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
     unsafe {
         gl.clear_color(0.0, 0.0, 0.0, 1.0);
         gl.clear(glow::COLOR_BUFFER_BIT);
     }
     gl_window.swap_buffers().unwrap();
 
-    log::info!("GL version: {}", unsafe {
-        gl.get_parameter_string(glow::VERSION)
-    });
+    log::info!("GL version: {}", unsafe { gl.get_parameter_string(glow::VERSION) });
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
 
@@ -215,8 +195,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         log::info!("selected audio config: {:?}", audio_supported_config);
 
         let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
-        let stream =
-            audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
+        let stream = audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
         stream.play()?;
 
         (audio_device, stream)
@@ -285,8 +264,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         patches_scanner.clone(),
     );
 
-    let mut patch_autoupdater =
-        patch::Autoupdater::new(config_arc.clone(), patches_scanner.clone());
+    let mut patch_autoupdater = patch::Autoupdater::new(config_arc.clone(), patches_scanner.clone());
     patch_autoupdater.set_enabled(handle.clone(), config_arc.read().enable_patch_autoupdate);
 
     egui_glow.egui_ctx.set_request_repaint_callback({
@@ -303,8 +281,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         let mut redraw = || {
             let repaint_after = egui_glow.run(gl_window.window(), |ctx| {
                 ctx.set_pixels_per_point(
-                    gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32
-                        / 100.0,
+                    gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32 / 100.0,
                 );
                 gui::show(
                     ctx,
@@ -319,9 +296,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             if repaint_after.is_zero() {
                 gl_window.window().request_redraw();
                 control_flow.set_poll();
-            } else if let Some(repaint_after_instant) =
-                std::time::Instant::now().checked_add(repaint_after)
-            {
+            } else if let Some(repaint_after_instant) = std::time::Instant::now().checked_add(repaint_after) {
                 control_flow.set_wait_until(repaint_after_instant);
             } else {
                 control_flow.set_wait();
@@ -338,12 +313,10 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
         match event {
             winit::event::Event::WindowEvent {
-                event: window_event,
-                ..
+                event: window_event, ..
             } => {
                 match window_event {
-                    winit::event::WindowEvent::MouseInput { .. }
-                    | winit::event::WindowEvent::CursorMoved { .. } => {
+                    winit::event::WindowEvent::MouseInput { .. } | winit::event::WindowEvent::CursorMoved { .. } => {
                         state.last_mouse_motion_time = Some(std::time::Instant::now());
                         if state.steal_input.is_none() {
                             egui_glow.on_event(&window_event);
@@ -423,8 +396,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                 controllers.insert(which, controller);
                                 input_state.handle_controller_connected(
                                     which,
-                                    sdl2::sys::SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX
-                                        as usize,
+                                    sdl2::sys::SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_MAX as usize,
                                 );
                             }
                         }
@@ -434,9 +406,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                 input_state.handle_controller_disconnected(which);
                             }
                         }
-                        sdl2::event::Event::ControllerAxisMotion {
-                            axis, value, which, ..
-                        } => {
+                        sdl2::event::Event::ControllerAxisMotion { axis, value, which, .. } => {
                             if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
                                 if let Some(steal_input) = state.steal_input.take() {
                                     steal_input.run_callback(
@@ -451,21 +421,15 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                         &mut config.input_mapping,
                                     );
                                 } else {
-                                    input_state.handle_controller_axis_motion(
-                                        which,
-                                        axis as usize,
-                                        value,
-                                    );
+                                    input_state.handle_controller_axis_motion(which, axis as usize, value);
                                 }
                             }
                             input_state.handle_controller_axis_motion(which, axis as usize, value);
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                             if let Some(steal_input) = state.steal_input.take() {
-                                steal_input.run_callback(
-                                    input::PhysicalInput::Button(button),
-                                    &mut config.input_mapping,
-                                );
+                                steal_input
+                                    .run_callback(input::PhysicalInput::Button(button), &mut config.input_mapping);
                             } else {
                                 input_state.handle_controller_button_down(which, button);
                             }

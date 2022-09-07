@@ -76,10 +76,7 @@ pub fn show(
         ui.horizontal(|ui| {
             if streamer_mode
                 && ui
-                    .selectable_label(
-                        state.tab == None,
-                        i18n::LOCALES.lookup(lang, "save-tab-cover").unwrap(),
-                    )
+                    .selectable_label(state.tab == None, i18n::LOCALES.lookup(lang, "save-tab-cover").unwrap())
                     .clicked()
             {
                 state.tab = None;
@@ -189,11 +186,7 @@ pub fn show(
                     egui::Layout::centered_and_justified(egui::Direction::LeftToRight)
                         .with_main_align(egui::Align::Center),
                     |ui| {
-                        ui.label(
-                            i18n::LOCALES
-                                .lookup(lang, "save-cover-description")
-                                .unwrap(),
-                        );
+                        ui.label(i18n::LOCALES.lookup(lang, "save-cover-description").unwrap());
                     },
                 );
             }

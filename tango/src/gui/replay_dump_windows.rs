@@ -67,10 +67,7 @@ pub fn show(
     state.children.retain(|id, state| {
         let mut open = true;
         let mut open2 = open;
-        let path = state
-            .path
-            .strip_prefix(replays_path)
-            .unwrap_or(state.path.as_path());
+        let path = state.path.strip_prefix(replays_path).unwrap_or(state.path.as_path());
         egui::Window::new(format!("{}", path.display()))
             .id(egui::Id::new(format!("replay-dump-window-{}", id)))
             .open(&mut open)
@@ -80,36 +77,20 @@ pub fn show(
                     egui::Grid::new(format!("replay-dump-window-{}-grid", id))
                         .num_columns(2)
                         .show(ui, |ui| {
-                            ui.strong(
-                                i18n::LOCALES
-                                    .lookup(language, "replays-export-path")
-                                    .unwrap(),
-                            );
+                            ui.strong(i18n::LOCALES.lookup(language, "replays-export-path").unwrap());
                             ui.horizontal(|ui| {
                                 ui.add(
-                                    egui::TextEdit::singleline(&mut format!(
-                                        "{}",
-                                        state.output_path.display()
-                                    ))
-                                    .desired_width(300.0)
-                                    .interactive(false),
+                                    egui::TextEdit::singleline(&mut format!("{}", state.output_path.display()))
+                                        .desired_width(300.0)
+                                        .interactive(false),
                                 );
 
                                 if ui
-                                    .button(
-                                        i18n::LOCALES
-                                            .lookup(language, "replays-export-path.change")
-                                            .unwrap(),
-                                    )
+                                    .button(i18n::LOCALES.lookup(language, "replays-export-path.change").unwrap())
                                     .clicked()
                                 {
                                     if let Some(path) = rfd::FileDialog::new()
-                                        .set_directory(
-                                            state
-                                                .output_path
-                                                .parent()
-                                                .unwrap_or(&std::path::PathBuf::new()),
-                                        )
+                                        .set_directory(state.output_path.parent().unwrap_or(&std::path::PathBuf::new()))
                                         .set_file_name(
                                             state
                                                 .output_path
@@ -126,26 +107,12 @@ pub fn show(
                             });
                             ui.end_row();
 
-                            ui.strong(
-                                i18n::LOCALES
-                                    .lookup(language, "replays-export-scale-factor")
-                                    .unwrap(),
-                            );
-                            ui.add(
-                                egui::DragValue::new(&mut state.scale)
-                                    .speed(1)
-                                    .clamp_range(1..=10),
-                            );
+                            ui.strong(i18n::LOCALES.lookup(language, "replays-export-scale-factor").unwrap());
+                            ui.add(egui::DragValue::new(&mut state.scale).speed(1).clamp_range(1..=10));
                             ui.end_row();
 
-                            ui.strong(
-                                i18n::LOCALES
-                                    .lookup(language, "replays-export-disable-bgm")
-                                    .unwrap(),
-                            );
-                            ui.add(
-                                egui::Checkbox::new(&mut state.disable_bgm, "")
-                            );
+                            ui.strong(i18n::LOCALES.lookup(language, "replays-export-disable-bgm").unwrap());
+                            ui.add(egui::Checkbox::new(&mut state.disable_bgm, ""));
                             ui.end_row();
                         });
                 });
@@ -154,11 +121,8 @@ pub fn show(
                     match result {
                         Ok(()) => {
                             ui.add(
-                                egui::widgets::ProgressBar::new(1.0).text(
-                                    i18n::LOCALES
-                                        .lookup(language, "replays-export-success")
-                                        .unwrap(),
-                                ),
+                                egui::widgets::ProgressBar::new(1.0)
+                                    .text(i18n::LOCALES.lookup(language, "replays-export-success").unwrap()),
                             );
                             if ui
                                 .button(format!(
@@ -178,19 +142,14 @@ pub fn show(
                                     .lookup_with_args(
                                         language,
                                         "replays-export-error",
-                                        &std::collections::HashMap::from([(
-                                            "error",
-                                            format!("{:?}", e).into(),
-                                        )]),
+                                        &std::collections::HashMap::from([("error", format!("{:?}", e).into())]),
                                     )
                                     .unwrap(),
                             );
                             if ui
                                 .button(format!(
                                     "{}",
-                                    i18n::LOCALES
-                                        .lookup(language, "replays-export-confirm-error")
-                                        .unwrap()
+                                    i18n::LOCALES.lookup(language, "replays-export-confirm-error").unwrap()
                                 ))
                                 .clicked()
                             {
@@ -213,9 +172,7 @@ pub fn show(
                     if ui
                         .button(format!(
                             "❎ {}",
-                            i18n::LOCALES
-                                .lookup(language, "replays-export-cancel")
-                                .unwrap(),
+                            i18n::LOCALES.lookup(language, "replays-export-cancel").unwrap(),
                         ))
                         .clicked()
                     {

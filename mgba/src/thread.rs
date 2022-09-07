@@ -19,8 +19,7 @@ struct ThreadImpl {
     core: core::Core,
     raw: mgba_sys::mCoreThread,
     frame_callback: Option<Box<dyn Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static>>,
-    current_callback:
-        std::cell::RefCell<Option<Box<dyn Fn(crate::core::CoreMutRef<'_>) + Send + Sync>>>,
+    current_callback: std::cell::RefCell<Option<Box<dyn Fn(crate::core::CoreMutRef<'_>) + Send + Sync>>>,
 }
 
 unsafe impl Send for ThreadImpl {}
@@ -93,17 +92,12 @@ impl Thread {
         Thread(std::sync::Arc::new(parking_lot::Mutex::new(t)))
     }
 
-    pub fn set_frame_callback(
-        &self,
-        f: impl Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static,
-    ) {
+    pub fn set_frame_callback(&self, f: impl Fn(core::CoreMutRef, &[u8], InThreadHandle) + Send + 'static) {
         self.0.lock().frame_callback = Some(Box::new(f));
     }
 
     pub fn handle(&self) -> Handle {
-        Handle {
-            thread: self.0.clone(),
-        }
+        Handle { thread: self.0.clone() }
     }
 
     pub fn start(&self) -> anyhow::Result<()> {

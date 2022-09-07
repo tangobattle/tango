@@ -25,17 +25,13 @@ where
     D: serde::Deserializer<'de>,
 {
     if let Some(buf) = Option::<String>::deserialize(deserializer)? {
-        buf.parse()
-            .map(|v| Some(v))
-            .map_err(serde::de::Error::custom)
+        buf.parse().map(|v| Some(v)).map_err(serde::de::Error::custom)
     } else {
         Ok(None)
     }
 }
 
-fn deserialize_modcard56_effect_template<'de, D>(
-    deserializer: D,
-) -> Result<rom::Modcard56EffectTemplate, D::Error>
+fn deserialize_modcard56_effect_template<'de, D>(deserializer: D) -> Result<rom::Modcard56EffectTemplate, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -118,8 +114,7 @@ pub struct Patch {
 }
 
 lazy_static! {
-    static ref PATCH_FILENAME_REGEX: regex::Regex =
-        regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
+    static ref PATCH_FILENAME_REGEX: regex::Regex = regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
 }
 
 pub fn update(
@@ -130,19 +125,12 @@ pub fn update(
     let _ = repo.remote_delete("origin");
     let mut remote = repo.remote("origin", url)?;
     remote.fetch(&["main"], None, None)?;
-    let treeish = repo
-        .find_reference("refs/remotes/origin/main")?
-        .peel_to_tree()?;
-    repo.checkout_tree(
-        treeish.as_object(),
-        Some(git2::build::CheckoutBuilder::new().force()),
-    )?;
+    let treeish = repo.find_reference("refs/remotes/origin/main")?.peel_to_tree()?;
+    repo.checkout_tree(treeish.as_object(), Some(git2::build::CheckoutBuilder::new().force()))?;
     Ok(scan(path)?)
 }
 
-pub fn scan(
-    path: &std::path::Path,
-) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
+pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
     let mut patches = std::collections::BTreeMap::new();
     for entry in std::fs::read_dir(path)? {
         let entry = match entry {
@@ -159,12 +147,7 @@ pub fn scan(
             continue;
         };
 
-        if entry
-            .file_type()
-            .ok()
-            .map(|ft| !ft.is_dir())
-            .unwrap_or(false)
-        {
+        if entry.file_type().ok().map(|ft| !ft.is_dir()).unwrap_or(false) {
             continue;
         }
 
@@ -211,14 +194,13 @@ pub fn scan(
                 continue;
             }
 
-            let read_version_dir =
-                match std::fs::read_dir(entry.path().join(format!("v{}", sv.to_string()))) {
-                    Ok(read_version_dir) => read_version_dir,
-                    Err(e) => {
-                        log::warn!("{}: {}", entry.path().display(), e);
-                        continue;
-                    }
-                };
+            let read_version_dir = match std::fs::read_dir(entry.path().join(format!("v{}", sv.to_string()))) {
+                Ok(read_version_dir) => read_version_dir,
+                Err(e) => {
+                    log::warn!("{}: {}", entry.path().display(), e);
+                    continue;
+                }
+            };
 
             let mut supported_games = std::collections::HashSet::new();
 
@@ -248,9 +230,7 @@ pub fn scan(
                 let rom_id = captures.get(1).unwrap().as_str().to_string();
                 let revision = captures.get(2).unwrap().as_str().parse::<u8>().unwrap();
 
-                let game = if let Some(game) =
-                    game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision)
-                {
+                let game = if let Some(game) = game::find_by_rom_info(rom_id.as_bytes().try_into().unwrap(), revision) {
                     game
                 } else {
                     continue;
@@ -312,10 +292,7 @@ pub struct Autoupdater {
 }
 
 impl Autoupdater {
-    pub fn new(
-        config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-        patches_scanner: Scanner,
-    ) -> Self {
+    pub fn new(config: std::sync::Arc<parking_lot::RwLock<config::Config>>, patches_scanner: Scanner) -> Self {
         Self {
             config,
             patches_scanner,
@@ -351,13 +328,11 @@ impl Autoupdater {
                     let patches_scanner = patches_scanner.clone();
                     let _ = tokio::runtime::Handle::current()
                         .spawn_blocking(move || {
-                            patches_scanner.rescan(move || {
-                                match update(&repo_url, &patches_path) {
-                                    Ok(patches) => Some(patches),
-                                    Err(e) => {
-                                        log::error!("failed to update patches: {:?}", e);
-                                        return None;
-                                    }
+                            patches_scanner.rescan(move || match update(&repo_url, &patches_path) {
+                                Ok(patches) => Some(patches),
+                                Err(e) => {
+                                    log::error!("failed to update patches: {:?}", e);
+                                    return None;
                                 }
                             });
                             log::info!("patch autoupdate completed");

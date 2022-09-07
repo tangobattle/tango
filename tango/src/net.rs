@@ -19,10 +19,7 @@ pub enum Error {
 }
 
 pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(), Error> {
-    sender
-        .send_hello()
-        .await
-        .map_err(|e| Error::Other(e.into()))?;
+    sender.send_hello().await.map_err(|e| Error::Other(e.into()))?;
 
     let hello = match receiver.receive().await.map_err(|_| Error::ExpectedHello)? {
         protocol::Packet::Hello(hello) => hello,
@@ -55,10 +52,7 @@ impl Sender {
         match self.dc_tx.send(p.serialize().unwrap().as_slice()).await {
             Ok(()) => Ok(()),
             Err(datachannel_wrapper::Error::Closed) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::UnexpectedEof,
-                    "unexpected eof",
-                ));
+                return Err(std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "unexpected eof"));
             }
             Err(e) => {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
@@ -74,18 +68,15 @@ impl Sender {
     }
 
     pub async fn send_ping(&mut self, ts: std::time::SystemTime) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Ping(protocol::Ping { ts }))
-            .await
+        self.send_packet(&protocol::Packet::Ping(protocol::Ping { ts })).await
     }
 
     pub async fn send_pong(&mut self, ts: std::time::SystemTime) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Pong(protocol::Pong { ts }))
-            .await
+        self.send_packet(&protocol::Packet::Pong(protocol::Pong { ts })).await
     }
 
     pub async fn send_settings(&mut self, settings: protocol::Settings) -> std::io::Result<()> {
-        self.send_packet(&protocol::Packet::Settings(settings))
-            .await
+        self.send_packet(&protocol::Packet::Settings(settings)).await
     }
 
     pub async fn send_commit(&mut self, commitment: [u8; 16]) -> std::io::Result<()> {

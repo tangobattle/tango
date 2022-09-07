@@ -156,11 +156,7 @@ pub fn bgr555_to_rgba(c: u16) -> image::Rgba<u8> {
 pub fn read_palette(raw: &[u8]) -> [image::Rgba<u8>; 16] {
     [image::Rgba([0, 0, 0, 0])]
         .into_iter()
-        .chain((1..16).map(|i| {
-            bgr555_to_rgba(byteorder::LittleEndian::read_u16(
-                &raw[(i * 2)..((i + 1) * 2)],
-            ))
-        }))
+        .chain((1..16).map(|i| bgr555_to_rgba(byteorder::LittleEndian::read_u16(&raw[(i * 2)..((i + 1) * 2)]))))
         .collect::<Vec<_>>()
         .try_into()
         .unwrap()
@@ -186,12 +182,7 @@ pub fn merge_tiles(tiles: &[PalettedImage], cols: usize) -> PalettedImage {
     for (i, tile) in tiles.iter().enumerate() {
         let x = i % cols;
         let y = i / cols;
-        image::imageops::replace(
-            &mut img,
-            tile,
-            (x * TILE_WIDTH) as i64,
-            (y * TILE_HEIGHT) as i64,
-        );
+        image::imageops::replace(&mut img, tile, (x * TILE_WIDTH) as i64, (y * TILE_HEIGHT) as i64);
     }
     img
 }
@@ -200,10 +191,7 @@ pub fn apply_palette(paletted: PalettedImage, palette: &[image::Rgba<u8>; 16]) -
     image::ImageBuffer::from_vec(
         paletted.width(),
         paletted.height(),
-        paletted
-            .into_iter()
-            .flat_map(|v| palette[*v as usize].0)
-            .collect(),
+        paletted.into_iter().flat_map(|v| palette[*v as usize].0).collect(),
     )
     .unwrap()
 }
@@ -221,10 +209,7 @@ pub fn unlz77(mut r: &[u8]) -> std::io::Result<Vec<u8>> {
 
     let header = r.read_u32::<byteorder::LittleEndian>()?;
     if (header & 0xff) != 0x10 {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "invalid header",
-        ));
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
     }
 
     let n = (header >> 8) as usize;
@@ -282,9 +267,7 @@ impl<'a> MemoryMapper<'a> {
                 self.unlz77_cache
                     .borrow_mut()
                     .entry(start)
-                    .or_insert_with(|| {
-                        unlz77(&self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec()
-                    })
+                    .or_insert_with(|| unlz77(&self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec())
                     .clone(),
             )
         } else {
@@ -293,5 +276,4 @@ impl<'a> MemoryMapper<'a> {
     }
 }
 
-pub type Scanner =
-    scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>>;
+pub type Scanner = scanner::Scanner<std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>>;

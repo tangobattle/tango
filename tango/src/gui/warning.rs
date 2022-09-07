@@ -10,11 +10,7 @@ pub fn append_to_layout_job(ui: &egui::Ui, layout_job: &mut egui::text::LayoutJo
         &format!("{} ", TEXT),
         0.0,
         egui::TextFormat::simple(
-            ui.style()
-                .text_styles
-                .get(&egui::TextStyle::Body)
-                .unwrap()
-                .clone(),
+            ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
             COLOR,
         ),
     );

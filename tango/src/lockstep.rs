@@ -127,12 +127,7 @@ where
 
         let peeked = self
             .local_queue
-            .range(
-                ..std::cmp::max(
-                    self.local_queue.len() as isize - self.local_delay as isize,
-                    0,
-                ) as usize,
-            )
+            .range(..std::cmp::max(self.local_queue.len() as isize - self.local_delay as isize, 0) as usize)
             .cloned()
             .collect();
 

@@ -101,11 +101,8 @@ impl Assets {
                     (0..5)
                         .map(|i| {
                             rom::apply_palette(
-                                rom::read_merged_tiles(
-                                    &buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4],
-                                    2,
-                                )
-                                .unwrap(),
+                                rom::read_merged_tiles(&buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4], 2)
+                                    .unwrap(),
                                 &palette,
                             )
                         })
@@ -124,9 +121,7 @@ impl Assets {
                             let i = i % 0x100;
 
                             if let Ok(parts) = rom::text::parse_entry(
-                                &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(pointer)[..4],
-                                )),
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
                                 i,
                                 &text_parse_options,
                             ) {
@@ -147,19 +142,14 @@ impl Assets {
                         },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
-                                &mapper
-                                    .get(byteorder::LittleEndian::read_u32(&buf[0x14..0x14 + 4]))
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x14..0x14 + 4]))
                                     [..rom::TILE_BYTES * 4],
                                 2,
                             )
                             .unwrap(),
                             &chip_icon_palette,
                         ),
-                        codes: buf[0x00..0x06]
-                            .iter()
-                            .cloned()
-                            .filter(|code| *code != 0xff)
-                            .collect(),
+                        codes: buf[0x00..0x06].iter().cloned().filter(|code| *code != 0xff).collect(),
                         element: buf[0x06] as usize,
                         class: if flags & 0x02 != 0 {
                             rom::ChipClass::Giga
@@ -171,8 +161,7 @@ impl Assets {
                         dark: false,
                         mb: buf[0x0a],
                         damage: {
-                            let damage =
-                                byteorder::LittleEndian::read_u16(&buf[0x0c..0x0c + 2]) as u32;
+                            let damage = byteorder::LittleEndian::read_u16(&buf[0x0c..0x0c + 2]) as u32;
                             if damage < 1000 {
                                 damage
                             } else {
@@ -228,15 +217,13 @@ impl Assets {
                         compressed_bitmap: image::ImageBuffer::from_vec(
                             5,
                             5,
-                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49]
-                                .to_vec(),
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49].to_vec(),
                         )
                         .unwrap(),
                         uncompressed_bitmap: image::ImageBuffer::from_vec(
                             5,
                             5,
-                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49]
-                                .to_vec(),
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49].to_vec(),
                         )
                         .unwrap(),
                     }

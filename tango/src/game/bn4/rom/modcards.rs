@@ -1,8 +1,6 @@
 use crate::rom;
 
-pub fn for_language(
-    language: &unic_langid::LanguageIdentifier,
-) -> Option<&'static [rom::Modcard4; 133]> {
+pub fn for_language(language: &unic_langid::LanguageIdentifier) -> Option<&'static [rom::Modcard4; 133]> {
     if language.matches(&unic_langid::langid!("ja"), false, true) {
         Some(JA_MODCARDS)
     } else if language.matches(&unic_langid::langid!("en"), false, true) {

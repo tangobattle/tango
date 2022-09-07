@@ -75,10 +75,6 @@ impl<'a> GBAMutRef<'a> {
     }
 }
 
-pub fn audio_calculate_ratio(
-    input_sample_rate: f32,
-    desired_fps: f32,
-    desired_sample_rate: f32,
-) -> f32 {
+pub fn audio_calculate_ratio(input_sample_rate: f32, desired_fps: f32, desired_sample_rate: f32) -> f32 {
     unsafe { mgba_sys::GBAAudioCalculateRatio(input_sample_rate, desired_fps, desired_sample_rate) }
 }

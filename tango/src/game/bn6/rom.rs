@@ -127,11 +127,8 @@ impl Assets {
                     (0..11)
                         .map(|i| {
                             rom::apply_palette(
-                                rom::read_merged_tiles(
-                                    &buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4],
-                                    2,
-                                )
-                                .unwrap(),
+                                rom::read_merged_tiles(&buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4], 2)
+                                    .unwrap(),
                                 &palette,
                             )
                         })
@@ -145,18 +142,13 @@ impl Assets {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {
                         name: if let Some(chips) = overrides.chips.as_ref() {
-                            chips
-                                .get(i)
-                                .map(|chip| chip.name.clone())
-                                .unwrap_or("???".to_string())
+                            chips.get(i).map(|chip| chip.name.clone()).unwrap_or("???".to_string())
                         } else {
                             let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
                             let i = i % 0x100;
 
                             if let Ok(parts) = rom::text::parse_entry(
-                                &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(pointer)[..4],
-                                )),
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
                                 i,
                                 &text_parse_options,
                             ) {
@@ -177,19 +169,14 @@ impl Assets {
                         },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
-                                &mapper
-                                    .get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
                                     [..rom::TILE_BYTES * 4],
                                 2,
                             )
                             .unwrap(),
                             &chip_icon_palette,
                         ),
-                        codes: buf[0x00..0x04]
-                            .iter()
-                            .cloned()
-                            .filter(|code| *code != 0xff)
-                            .collect(),
+                        codes: buf[0x00..0x04].iter().cloned().filter(|code| *code != 0xff).collect(),
                         element: buf[0x06] as usize,
                         class: [
                             rom::ChipClass::Standard,
@@ -201,8 +188,7 @@ impl Assets {
                         dark: false,
                         mb: buf[0x08],
                         damage: {
-                            let damage =
-                                byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
+                            let damage = byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
                             if damage < 1000 {
                                 damage
                             } else {
@@ -260,15 +246,13 @@ impl Assets {
                         compressed_bitmap: image::ImageBuffer::from_vec(
                             7,
                             7,
-                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49]
-                                .to_vec(),
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49].to_vec(),
                         )
                         .unwrap(),
                         uncompressed_bitmap: image::ImageBuffer::from_vec(
                             7,
                             7,
-                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49]
-                                .to_vec(),
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49].to_vec(),
                         )
                         .unwrap(),
                     }
@@ -286,10 +270,8 @@ impl Assets {
                     .into_iter()
                     .chain((1..118).map(|i| {
                         let buf = mapper.get(offsets.modcard_data);
-                        let buf = &buf[byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2])
-                            as usize
-                            ..byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2])
-                                as usize];
+                        let buf = &buf[byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize
+                            ..byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize];
                         rom::Modcard56 {
                             name: if let Some(modcard56s) = overrides.modcard56s.as_ref() {
                                 modcard56s
@@ -328,35 +310,24 @@ impl Assets {
                                     let parameter = chunk[1];
                                     rom::Modcard56Effect {
                                         id,
-                                        name: if let Some(modcard56_effects) =
-                                            overrides.modcard56_effects.as_ref()
-                                        {
+                                        name: if let Some(modcard56_effects) = overrides.modcard56_effects.as_ref() {
                                             modcard56_effects
                                                 .get(id as usize)
                                                 .map(|effect| effect.name_template.clone())
                                                 .unwrap_or_else(|| {
-                                                    vec![rom::Modcard56EffectTemplatePart::String(
-                                                        "???".to_string(),
-                                                    )]
+                                                    vec![rom::Modcard56EffectTemplatePart::String("???".to_string())]
                                                 })
                                         } else {
                                             if let Ok(parts) = rom::text::parse_entry(
                                                 &mapper.get(byteorder::LittleEndian::read_u32(
-                                                    &mapper
-                                                        .get(offsets.modcard_details_names_pointer)
-                                                        [..4],
+                                                    &mapper.get(offsets.modcard_details_names_pointer)[..4],
                                                 )),
                                                 id as usize,
                                                 &text_parse_options,
                                             ) {
-                                                rom::text::parse_modcard56_effect(
-                                                    parts,
-                                                    PRINT_VAR_COMMAND,
-                                                )
+                                                rom::text::parse_modcard56_effect(parts, PRINT_VAR_COMMAND)
                                             } else {
-                                                vec![rom::Modcard56EffectTemplatePart::String(
-                                                    "???".to_string(),
-                                                )]
+                                                vec![rom::Modcard56EffectTemplatePart::String("???".to_string())]
                                             }
                                         }
                                         .into_iter()
@@ -420,16 +391,11 @@ impl rom::Assets for Assets {
     }
 
     fn modcard56(&self, id: usize) -> Option<&rom::Modcard56> {
-        self.modcard56s
-            .as_ref()
-            .and_then(|modcard56s| modcard56s.get(id))
+        self.modcard56s.as_ref().and_then(|modcard56s| modcard56s.get(id))
     }
 
     fn num_modcard56s(&self) -> usize {
-        self.modcard56s
-            .as_ref()
-            .map(|modcards| modcards.len())
-            .unwrap_or(0)
+        self.modcard56s.as_ref().map(|modcards| modcards.len()).unwrap_or(0)
     }
 }
 

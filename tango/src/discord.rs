@@ -15,9 +15,7 @@ pub fn make_game_info(
     language: &unic_langid::LanguageIdentifier,
 ) -> GameInfo {
     let family = game.family_and_variant().0.to_string();
-    let mut title = i18n::LOCALES
-        .lookup(language, &format!("game-{}", family))
-        .unwrap();
+    let mut title = i18n::LOCALES.lookup(language, &format!("game-{}", family)).unwrap();
     if let Some((patch_name, patch_version)) = patch.as_ref() {
         title.push_str(&format!(" + {} v{}", patch_name, patch_version));
     }

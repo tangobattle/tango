@@ -34,13 +34,11 @@ pub fn show(
                     let repo_url = repo_url.to_owned();
                     let patches_path = patches_path.to_path_buf();
                     move || {
-                        patches_scanner.rescan(move || {
-                            match patch::update(&repo_url, &patches_path) {
-                                Ok(patches) => Some(patches),
-                                Err(e) => {
-                                    log::error!("failed to update patches: {:?}", e);
-                                    return None;
-                                }
+                        patches_scanner.rescan(move || match patch::update(&repo_url, &patches_path) {
+                            Ok(patches) => Some(patches),
+                            Err(e) => {
+                                log::error!("failed to update patches: {:?}", e);
+                                return None;
                             }
                         });
                     }
@@ -91,143 +89,96 @@ pub fn show(
                             if ui
                                 .button(format!(
                                     "📂 {}",
-                                    i18n::LOCALES
-                                        .lookup(language, "patches-open-folder")
-                                        .unwrap(),
+                                    i18n::LOCALES.lookup(language, "patches-open-folder").unwrap(),
                                 ))
                                 .clicked()
                             {
                                 let _ = open::that(&patch.path);
                             }
 
+                            ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.with_layout(
+                                        egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
+                                        |ui| {
+                                            ui.heading(&patch.title);
+                                            if let Some((version, _)) = latest_version_and_info.as_ref() {
+                                                ui.label(version.to_string());
+                                            }
+                                        },
+                                    );
+                                });
+                            });
+                        });
+                        egui::Grid::new("patch-info-grid").num_columns(2).show(ui, |ui| {
                             ui.with_layout(
-                                egui::Layout::top_down_justified(egui::Align::Min),
+                                egui::Layout::left_to_right(egui::Align::Min).with_cross_justify(true),
                                 |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.with_layout(
-                                            egui::Layout::left_to_right(egui::Align::Max)
-                                                .with_main_wrap(true),
-                                            |ui| {
-                                                ui.heading(&patch.title);
-                                                if let Some((version, _)) =
-                                                    latest_version_and_info.as_ref()
-                                                {
-                                                    ui.label(version.to_string());
-                                                }
-                                            },
-                                        );
-                                    });
+                                    ui.strong(i18n::LOCALES.lookup(language, "patches-details-authors").unwrap());
                                 },
                             );
-                        });
-                        egui::Grid::new("patch-info-grid")
-                            .num_columns(2)
-                            .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                for author in patch.authors.iter() {
+                                    let name = author.display_name.as_ref().unwrap_or(&author.addr);
+                                    if author.addr == "" {
+                                        ui.label(name);
+                                    } else {
+                                        ui.hyperlink_to(name, format!("mailto:{}", author.addr));
+                                    }
+                                }
+                            });
+                            ui.end_row();
+
+                            ui.with_layout(
+                                egui::Layout::left_to_right(egui::Align::Min).with_cross_justify(true),
+                                |ui| {
+                                    ui.strong(i18n::LOCALES.lookup(language, "patches-details-license").unwrap());
+                                },
+                            );
+                            if let Some(license) = patch.license.as_ref() {
+                                ui.label(license);
+                            } else {
+                                ui.label(
+                                    i18n::LOCALES
+                                        .lookup(language, "patches-details-license.all-rights-reserved")
+                                        .unwrap(),
+                                );
+                            }
+                            ui.end_row();
+
+                            if let Some(source) = patch.source.as_ref() {
                                 ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Min)
-                                        .with_cross_justify(true),
+                                    egui::Layout::left_to_right(egui::Align::Min).with_cross_justify(true),
                                     |ui| {
-                                        ui.strong(
-                                            i18n::LOCALES
-                                                .lookup(language, "patches-details-authors")
-                                                .unwrap(),
-                                        );
+                                        ui.strong(i18n::LOCALES.lookup(language, "patches-details-source").unwrap());
+                                    },
+                                );
+                                ui.hyperlink_to("🌐", source);
+                                ui.end_row();
+                            }
+
+                            if let Some((_, version_info)) = latest_version_and_info.as_ref() {
+                                ui.with_layout(
+                                    egui::Layout::left_to_right(egui::Align::Min).with_cross_justify(true),
+                                    |ui| {
+                                        ui.strong(i18n::LOCALES.lookup(language, "patches-details-games").unwrap());
                                     },
                                 );
                                 ui.vertical(|ui| {
-                                    for author in patch.authors.iter() {
-                                        let name =
-                                            author.display_name.as_ref().unwrap_or(&author.addr);
-                                        if author.addr == "" {
-                                            ui.label(name);
-                                        } else {
-                                            ui.hyperlink_to(
-                                                name,
-                                                format!("mailto:{}", author.addr),
-                                            );
-                                        }
+                                    let mut games = version_info.supported_games.iter().cloned().collect::<Vec<_>>();
+                                    game::sort_games(language, &mut games);
+                                    for game in games.iter() {
+                                        let (family, variant) = game.family_and_variant();
+                                        ui.label(
+                                            i18n::LOCALES
+                                                .lookup(language, &format!("game-{}.variant-{}", family, variant))
+                                                .unwrap(),
+                                        );
                                     }
                                 });
                                 ui.end_row();
-
-                                ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Min)
-                                        .with_cross_justify(true),
-                                    |ui| {
-                                        ui.strong(
-                                            i18n::LOCALES
-                                                .lookup(language, "patches-details-license")
-                                                .unwrap(),
-                                        );
-                                    },
-                                );
-                                if let Some(license) = patch.license.as_ref() {
-                                    ui.label(license);
-                                } else {
-                                    ui.label(
-                                        i18n::LOCALES
-                                            .lookup(
-                                                language,
-                                                "patches-details-license.all-rights-reserved",
-                                            )
-                                            .unwrap(),
-                                    );
-                                }
-                                ui.end_row();
-
-                                if let Some(source) = patch.source.as_ref() {
-                                    ui.with_layout(
-                                        egui::Layout::left_to_right(egui::Align::Min)
-                                            .with_cross_justify(true),
-                                        |ui| {
-                                            ui.strong(
-                                                i18n::LOCALES
-                                                    .lookup(language, "patches-details-source")
-                                                    .unwrap(),
-                                            );
-                                        },
-                                    );
-                                    ui.hyperlink_to("🌐", source);
-                                    ui.end_row();
-                                }
-
-                                if let Some((_, version_info)) = latest_version_and_info.as_ref() {
-                                    ui.with_layout(
-                                        egui::Layout::left_to_right(egui::Align::Min)
-                                            .with_cross_justify(true),
-                                        |ui| {
-                                            ui.strong(
-                                                i18n::LOCALES
-                                                    .lookup(language, "patches-details-games")
-                                                    .unwrap(),
-                                            );
-                                        },
-                                    );
-                                    ui.vertical(|ui| {
-                                        let mut games = version_info
-                                            .supported_games
-                                            .iter()
-                                            .cloned()
-                                            .collect::<Vec<_>>();
-                                        game::sort_games(language, &mut games);
-                                        for game in games.iter() {
-                                            let (family, variant) = game.family_and_variant();
-                                            ui.label(
-                                                i18n::LOCALES
-                                                    .lookup(
-                                                        language,
-                                                        &format!(
-                                                            "game-{}.variant-{}",
-                                                            family, variant
-                                                        ),
-                                                    )
-                                                    .unwrap(),
-                                            );
-                                        }
-                                    });
-                                    ui.end_row();
-                                }
-                            });
+                            }
+                        });
                         ui.separator();
 
                         egui::ScrollArea::vertical()

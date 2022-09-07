@@ -34,17 +34,11 @@ impl game::Game for EXE2Impl {
         &hooks::AE2J_01
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::new(data)?))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(data)?))
     }
 
@@ -99,17 +93,11 @@ impl game::Game for BN2Impl {
         &hooks::AE2E_00
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::new(data)?))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(data)?))
     }
 

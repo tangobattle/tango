@@ -20,9 +20,8 @@ where
     D: serde::Deserializer<'de>,
 {
     let buf = String::deserialize(deserializer)?;
-    sdl2::controller::Button::from_string(&buf).ok_or_else(|| {
-        serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 button")
-    })
+    sdl2::controller::Button::from_string(&buf)
+        .ok_or_else(|| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 button"))
 }
 
 fn serialize_sdl2_axis<S>(v: &sdl2::controller::Axis, serializer: S) -> Result<S::Ok, S::Error>
@@ -37,9 +36,8 @@ where
     D: serde::Deserializer<'de>,
 {
     let buf = String::deserialize(deserializer)?;
-    sdl2::controller::Axis::from_string(&buf).ok_or_else(|| {
-        serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 axis")
-    })
+    sdl2::controller::Axis::from_string(&buf)
+        .ok_or_else(|| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&buf), &"valid sdl2 axis"))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -53,10 +51,7 @@ pub enum PhysicalInput {
         sdl2::controller::Button,
     ),
     Axis {
-        #[serde(
-            serialize_with = "serialize_sdl2_axis",
-            deserialize_with = "deserialize_sdl2_axis"
-        )]
+        #[serde(serialize_with = "serialize_sdl2_axis", deserialize_with = "deserialize_sdl2_axis")]
         axis: sdl2::controller::Axis,
         direction: AxisDirection,
     },
@@ -74,9 +69,7 @@ impl PhysicalInput {
     pub fn is_active(&self, input: &State) -> bool {
         match *self {
             PhysicalInput::Key(key) => input.is_key_held(key),
-            PhysicalInput::Button(button) => input
-                .iter_controllers()
-                .any(|(_, c)| c.is_button_held(button)),
+            PhysicalInput::Button(button) => input.iter_controllers().any(|(_, c)| c.is_button_held(button)),
             PhysicalInput::Axis { axis, direction } => input.iter_controllers().any(|(_, c)| {
                 let v = c.axis(axis as usize);
                 match direction {

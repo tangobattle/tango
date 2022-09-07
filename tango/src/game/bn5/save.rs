@@ -113,9 +113,7 @@ impl save::Save for Save {
     }
 
     fn view_modcards(&self) -> Option<save::ModcardsView> {
-        Some(save::ModcardsView::Modcard56s(Box::new(Modcard56sView {
-            save: self,
-        })))
+        Some(save::ModcardsView::Modcard56s(Box::new(Modcard56sView { save: self })))
     }
 
     // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
@@ -133,10 +131,7 @@ impl save::Save for Save {
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE].copy_from_slice(&self.buf);
-        save::mask_save(
-            &mut buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE],
-            MASK_OFFSET,
-        );
+        save::mask_save(&mut buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE], MASK_OFFSET);
         buf
     }
 }
@@ -264,9 +259,7 @@ impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
             return None;
         }
         let offset = 0x7340 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(
-            &self.save.buf[offset..offset + 2],
-        ))
+        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
     }
 
     fn secondary_chip_use_count(&self, id: usize) -> Option<u16> {
@@ -274,9 +267,7 @@ impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
             return None;
         }
         let offset = 0x2340 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(
-            &self.save.buf[offset..offset + 2],
-        ))
+        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
     }
 }
 

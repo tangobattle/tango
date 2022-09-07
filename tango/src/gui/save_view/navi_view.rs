@@ -43,8 +43,7 @@ pub fn show<'a>(
                                 "emblem",
                                 egui::ColorImage::from_rgba_unmultiplied(
                                     [15, 15],
-                                    &image::imageops::crop_imm(&navi.emblem, 1, 0, 15, 15)
-                                        .to_image(),
+                                    &image::imageops::crop_imm(&navi.emblem, 1, 0, 15, 15).to_image(),
                                 ),
                                 egui::TextureFilter::Nearest,
                             )
@@ -52,9 +51,7 @@ pub fn show<'a>(
                         .id(),
                     egui::Vec2::new(30.0, 30.0),
                 );
-                ui.heading(
-                    egui::RichText::new(&navi.name).family(font_families.for_language(game_lang)),
-                );
+                ui.heading(egui::RichText::new(&navi.name).family(font_families.for_language(game_lang)));
             });
         });
 }

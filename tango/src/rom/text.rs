@@ -56,11 +56,7 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
     Ok(parts)
 }
 
-pub fn parse_entry(
-    buf: &[u8],
-    i: usize,
-    options: &ParseOptions,
-) -> Result<Vec<Part>, std::io::Error> {
+pub fn parse_entry(buf: &[u8], i: usize, options: &ParseOptions) -> Result<Vec<Part>, std::io::Error> {
     let offset = byteorder::LittleEndian::read_u16(&buf[i * 2..(i + 1) * 2]) as usize;
     let next_offset = byteorder::LittleEndian::read_u16(&buf[(i + 1) * 2..(i + 2) * 2]) as usize;
     parse(
@@ -79,18 +75,13 @@ pub fn parse_entry(
     )
 }
 
-pub fn parse_modcard56_effect(
-    parts: Vec<Part>,
-    print_var_command: u8,
-) -> rom::Modcard56EffectTemplate {
+pub fn parse_modcard56_effect(parts: Vec<Part>, print_var_command: u8) -> rom::Modcard56EffectTemplate {
     parts
         .into_iter()
         .flat_map(|part| match part {
             Part::String(s) => vec![rom::Modcard56EffectTemplatePart::String(s)],
             Part::Command { op, params } if op == print_var_command => {
-                vec![rom::Modcard56EffectTemplatePart::PrintVar(
-                    params[2] as usize,
-                )]
+                vec![rom::Modcard56EffectTemplatePart::PrintVar(params[2] as usize)]
             }
             _ => vec![],
         })

@@ -6,9 +6,7 @@ pub struct PeerConnection {
 }
 
 impl PeerConnection {
-    pub fn new(
-        config: RtcConfig,
-    ) -> anyhow::Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>)> {
+    pub fn new(config: RtcConfig) -> anyhow::Result<(Self, tokio::sync::mpsc::Receiver<PeerConnectionEvent>)> {
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1);
         let (data_channel_tx, data_channel_rx) = tokio::sync::mpsc::channel(1);
         let pch = PeerConnectionHandler {
@@ -26,11 +24,7 @@ impl PeerConnection {
         ))
     }
 
-    pub fn create_data_channel(
-        &mut self,
-        label: &str,
-        dc_init: DataChannelInit,
-    ) -> anyhow::Result<DataChannel> {
+    pub fn create_data_channel(&mut self, label: &str, dc_init: DataChannelInit) -> anyhow::Result<DataChannel> {
         let (message_tx, message_rx) = tokio::sync::mpsc::channel(1);
         let (open_tx, open_rx) = tokio::sync::oneshot::channel();
         let state = std::sync::Arc::new(tokio::sync::Mutex::new(DataChannelState {
@@ -42,14 +36,8 @@ impl PeerConnection {
             open_tx: Some(open_tx),
             state: state.clone(),
         };
-        let dc = self
-            .peer_conn
-            .create_data_channel_ex(label, dch, &dc_init)?;
-        Ok(DataChannel {
-            dc,
-            message_rx,
-            state,
-        })
+        let dc = self.peer_conn.create_data_channel_ex(label, dch, &dc_init)?;
+        Ok(DataChannel { dc, message_rx, state })
     }
 
     pub async fn accept(&mut self) -> Option<DataChannel> {
@@ -124,9 +112,7 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
     }
 
     fn on_candidate(&mut self, cand: IceCandidate) {
-        let _ = self
-            .event_tx
-            .blocking_send(PeerConnectionEvent::IceCandidate(cand));
+        let _ = self.event_tx.blocking_send(PeerConnectionEvent::IceCandidate(cand));
     }
 
     fn on_connection_state_change(&mut self, state: ConnectionState) {
@@ -158,11 +144,9 @@ impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
 
     fn on_data_channel(&mut self, dc: Box<datachannel::RtcDataChannel<Self::DCH>>) {
         let (message_rx, state) = self.pending_dc_receiver.take().unwrap();
-        let _ = self.data_channel_tx.blocking_send(DataChannel {
-            dc,
-            message_rx,
-            state,
-        });
+        let _ = self
+            .data_channel_tx
+            .blocking_send(DataChannel { dc, message_rx, state });
     }
 }
 struct DataChannelState {
@@ -190,8 +174,7 @@ async fn dc_send(
         open_rx.await.map_err(|_| Error::Closed)?;
     }
 
-    dc.send(msg)
-        .map_err(|e| Error::UnderlyingError(format!("{:?}", e)))?;
+    dc.send(msg).map_err(|e| Error::UnderlyingError(format!("{:?}", e)))?;
     Ok(())
 }
 
@@ -288,11 +271,7 @@ impl datachannel::DataChannelHandler for DataChannelHandler {
     }
 
     fn on_message(&mut self, msg: &[u8]) {
-        let _ = self
-            .message_tx
-            .as_mut()
-            .unwrap()
-            .blocking_send(msg.to_vec());
+        let _ = self.message_tx.as_mut().unwrap().blocking_send(msg.to_vec());
     }
 
     fn on_buffered_amount_low(&mut self) {}

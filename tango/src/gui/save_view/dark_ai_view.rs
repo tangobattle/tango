@@ -37,10 +37,7 @@ struct MaterializedDarkAI {
 }
 
 impl MaterializedDarkAI {
-    fn new(
-        dark_ai_view: &Box<dyn save::DarkAIView + '_>,
-        assets: &Box<dyn rom::Assets + Send + Sync>,
-    ) -> Self {
+    fn new(dark_ai_view: &Box<dyn save::DarkAIView + '_>, assets: &Box<dyn rom::Assets + Send + Sync>) -> Self {
         let mut use_counts = vec![];
         loop {
             if let Some(count) = dark_ai_view.chip_use_count(use_counts.len()) {
@@ -194,14 +191,11 @@ fn show_table<const N: usize>(
                         (None, None)
                     };
 
-                    let rect = ui
-                        .available_rect_before_wrap()
-                        .expand(ui.spacing().item_spacing.y);
+                    let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
                     if let Some(bg_color) = bg_color {
                         ui.painter().rect_filled(rect, 0.0, bg_color);
                     } else if i % 2 == 0 {
-                        ui.painter()
-                            .rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                        ui.painter().rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
                     }
 
                     egui_extras::StripBuilder::new(ui)
@@ -231,10 +225,7 @@ fn show_table<const N: usize>(
                                                     format!("chip {}", id),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(
-                                                            icon, 1, 1, 14, 14,
-                                                        )
-                                                        .to_image(),
+                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
                                                 )
@@ -248,24 +239,20 @@ fn show_table<const N: usize>(
                                         ui.horizontal(|ui| {
                                             ui.label(
                                                 egui::RichText::new(
-                                                    info.map(|info| info.name.as_str())
-                                                        .unwrap_or("???"),
+                                                    info.map(|info| info.name.as_str()).unwrap_or("???"),
                                                 )
-                                                .color(
-                                                    fg_color.unwrap_or(ui.visuals().text_color()),
-                                                )
+                                                .color(fg_color.unwrap_or(ui.visuals().text_color()))
                                                 .family(font_families.for_language(game_lang)),
                                             );
                                         });
                                     });
                                 });
                                 strip.cell(|ui| {
-                                    let element =
-                                        if let Some(element) = info.map(|info| info.element) {
-                                            element
-                                        } else {
-                                            return;
-                                        };
+                                    let element = if let Some(element) = info.map(|info| info.element) {
+                                        element
+                                    } else {
+                                        return;
+                                    };
 
                                     let icon = if let Some(icon) = assets.element_icon(element) {
                                         icon
@@ -281,10 +268,7 @@ fn show_table<const N: usize>(
                                                     format!("element {}", element),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(
-                                                            icon, 1, 1, 14, 14,
-                                                        )
-                                                        .to_image(),
+                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
                                                 )
@@ -295,14 +279,11 @@ fn show_table<const N: usize>(
                                 });
                                 strip.cell(|ui| {
                                     let damage = info.map(|info| info.damage).unwrap_or(0);
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            if damage > 0 {
-                                                ui.strong(format!("{}", damage));
-                                            }
-                                        },
-                                    );
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if damage > 0 {
+                                            ui.strong(format!("{}", damage));
+                                        }
+                                    });
                                 });
                             } else {
                                 strip.cell(|_ui| {});
@@ -365,21 +346,9 @@ pub fn show<'a>(
                     SECONDARY_STANDARD_CHIP_COUNTS,
                     assets,
                 )
-                .chain(make_string(
-                    &materialized.standard_chips,
-                    STANDARD_CHIP_COUNTS,
-                    assets,
-                ))
-                .chain(make_string(
-                    &materialized.mega_chips,
-                    MEGA_CHIP_COUNTS,
-                    assets,
-                ))
-                .chain(make_string(
-                    &[materialized.giga_chip],
-                    GIGA_CHIP_COUNTS,
-                    assets,
-                ))
+                .chain(make_string(&materialized.standard_chips, STANDARD_CHIP_COUNTS, assets))
+                .chain(make_string(&materialized.mega_chips, MEGA_CHIP_COUNTS, assets))
+                .chain(make_string(&[materialized.giga_chip], GIGA_CHIP_COUNTS, assets))
                 .chain(make_string(&[None; 8], COMBO_COUNTS, assets))
                 .chain(make_string(
                     &[materialized.program_advance],
@@ -396,34 +365,23 @@ pub fn show<'a>(
         .id_source("dark-ai-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.push_id(
-                egui::Id::new("dark-ai-view-secondary-standard-chips"),
-                |ui| {
-                    ui.strong(
-                        i18n::LOCALES
-                            .lookup(lang, "dark-ai-secondary-standard-chips")
-                            .unwrap(),
-                    );
-                    show_table(
-                        ui,
-                        &materialized.secondary_standard_chips,
-                        SECONDARY_STANDARD_CHIP_COUNTS,
-                        assets,
-                        font_families,
-                        lang,
-                        game_lang,
-                        &mut state.chip_icon_texture_cache,
-                        &mut state.element_icon_texture_cache,
-                    );
-                },
-            );
+            ui.push_id(egui::Id::new("dark-ai-view-secondary-standard-chips"), |ui| {
+                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-secondary-standard-chips").unwrap());
+                show_table(
+                    ui,
+                    &materialized.secondary_standard_chips,
+                    SECONDARY_STANDARD_CHIP_COUNTS,
+                    assets,
+                    font_families,
+                    lang,
+                    game_lang,
+                    &mut state.chip_icon_texture_cache,
+                    &mut state.element_icon_texture_cache,
+                );
+            });
 
             ui.push_id(egui::Id::new("dark-ai-view-standard-chips"), |ui| {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(lang, "dark-ai-standard-chips")
-                        .unwrap(),
-                );
+                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-standard-chips").unwrap());
                 show_table(
                     ui,
                     &materialized.standard_chips,
@@ -483,11 +441,7 @@ pub fn show<'a>(
             });
 
             ui.push_id(egui::Id::new("dark-ai-view-program-advance"), |ui| {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(lang, "dark-ai-program-advance")
-                        .unwrap(),
-                );
+                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-program-advance").unwrap());
                 show_table(
                     ui,
                     &[materialized.program_advance],

@@ -9,10 +9,7 @@ impl RealIPGetter {
         Self { use_x_real_ip }
     }
 
-    pub fn get_remote_real_ip(
-        &self,
-        request: &hyper::Request<hyper::Body>,
-    ) -> Option<std::net::IpAddr> {
+    pub fn get_remote_real_ip(&self, request: &hyper::Request<hyper::Body>) -> Option<std::net::IpAddr> {
         if !self.use_x_real_ip {
             return Some(request.remote_addr().ip());
         }

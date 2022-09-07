@@ -14,15 +14,12 @@ lazy_static! {
             filter: &mut *MLOG_FILTER.lock(),
         }));
     static ref LOG_FUNC: send_wrapper::SendWrapper<parking_lot::Mutex<Box<dyn Fn(i32, u32, String)>>> =
-        send_wrapper::SendWrapper::new(parking_lot::Mutex::new(Box::new(
-            &|category, _level, message| {
-                let category_name =
-                    unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }
-                        .to_str()
-                        .unwrap();
-                log::info!("{}: {}", category_name, message);
-            }
-        )));
+        send_wrapper::SendWrapper::new(parking_lot::Mutex::new(Box::new(&|category, _level, message| {
+            let category_name = unsafe { std::ffi::CStr::from_ptr(mgba_sys::mLogCategoryName(category)) }
+                .to_str()
+                .unwrap();
+            log::info!("{}: {}", category_name, message);
+        })));
 }
 
 unsafe extern "C" fn c_log<VaList>(

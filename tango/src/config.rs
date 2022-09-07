@@ -17,19 +17,14 @@ impl Default for Theme {
     }
 }
 
-fn serialize_language_identifier<S>(
-    v: &unic_langid::LanguageIdentifier,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
+fn serialize_language_identifier<S>(v: &unic_langid::LanguageIdentifier, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
     serializer.serialize_str(&v.to_string())
 }
 
-fn deserialize_language_identifier<'de, D>(
-    deserializer: D,
-) -> Result<unic_langid::LanguageIdentifier, D::Error>
+fn deserialize_language_identifier<'de, D>(deserializer: D) -> Result<unic_langid::LanguageIdentifier, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -104,8 +99,8 @@ const DATA_DIR_NAME: &str = "Tango Testing";
 
 impl Config {
     pub fn system_defaults() -> Result<Self, anyhow::Error> {
-        let user_dirs = directories_next::UserDirs::new()
-            .ok_or_else(|| anyhow::anyhow!("could not get user directories"))?;
+        let user_dirs =
+            directories_next::UserDirs::new().ok_or_else(|| anyhow::anyhow!("could not get user directories"))?;
 
         let tango_data_dir = user_dirs
             .document_dir()

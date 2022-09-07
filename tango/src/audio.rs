@@ -40,19 +40,14 @@ impl LateBinder {
         self.sample_rate
     }
 
-    pub fn bind(
-        &self,
-        stream: Option<Box<dyn Stream + Send + 'static>>,
-    ) -> Result<Binding, BindingError> {
+    pub fn bind(&self, stream: Option<Box<dyn Stream + Send + 'static>>) -> Result<Binding, BindingError> {
         let mut stream_guard = self.stream.lock();
         if stream_guard.is_some() {
             return Err(BindingError::AlreadyBound);
         }
 
         *stream_guard = stream;
-        Ok(Binding {
-            binder: self.clone(),
-        })
+        Ok(Binding { binder: self.clone() })
     }
 }
 
@@ -80,10 +75,7 @@ pub struct MGBAStream {
 
 impl MGBAStream {
     pub fn new(handle: mgba::thread::Handle, sample_rate: u32) -> MGBAStream {
-        Self {
-            handle,
-            sample_rate,
-        }
+        Self { handle, sample_rate }
     }
 }
 
@@ -106,10 +98,7 @@ impl Stream for MGBAStream {
 
         let available = {
             let mut left = core.audio_channel(0);
-            left.set_rates(
-                clock_rate as f64,
-                self.sample_rate as f64 * faux_clock as f64,
-            );
+            left.set_rates(clock_rate as f64, self.sample_rate as f64 * faux_clock as f64);
             let mut available = left.samples_avail() as usize;
             if available > frame_count {
                 available = frame_count;
@@ -119,10 +108,7 @@ impl Stream for MGBAStream {
         };
 
         let mut right = core.audio_channel(1);
-        right.set_rates(
-            clock_rate as f64,
-            self.sample_rate as f64 * faux_clock as f64,
-        );
+        right.set_rates(clock_rate as f64, self.sample_rate as f64 * faux_clock as f64);
         right.read_samples(&mut linear_buf[1..], available as i32, true);
 
         available as usize

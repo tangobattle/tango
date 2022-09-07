@@ -76,15 +76,12 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::open_memory(&local_rom))?;
-        core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(&local_save))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&local_rom))?;
+        core.as_mut().load_save(mgba::vfile::VFile::open_memory(&local_save))?;
 
         let joyflags = Arc::new(std::sync::atomic::AtomicU32::new(0));
 
-        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
-            .unwrap();
+        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
@@ -150,11 +147,7 @@ impl Session {
         });
 
         thread.start()?;
-        thread
-            .handle()
-            .lock_audio()
-            .sync_mut()
-            .set_fps_target(EXPECTED_FPS);
+        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
@@ -207,13 +200,9 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::open_memory(rom))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(rom))?;
 
-        let save_vf = mgba::vfile::VFile::open(
-            save_path,
-            mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR,
-        )?;
+        let save_vf = mgba::vfile::VFile::open(save_path, mgba::vfile::flags::O_CREAT | mgba::vfile::flags::O_RDWR)?;
 
         core.as_mut().load_save(save_vf)?;
 
@@ -227,11 +216,7 @@ impl Session {
         let thread = mgba::thread::Thread::new(core);
 
         thread.start()?;
-        thread
-            .handle()
-            .lock_audio()
-            .sync_mut()
-            .set_fps_target(EXPECTED_FPS);
+        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
@@ -286,8 +271,7 @@ impl Session {
         let mut core = mgba::core::Core::new_gba("tango")?;
         core.enable_video_buffer();
 
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&rom))?;
 
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
@@ -318,11 +302,7 @@ impl Session {
 
         thread.start()?;
         thread.handle().pause();
-        thread
-            .handle()
-            .lock_audio()
-            .sync_mut()
-            .set_fps_target(EXPECTED_FPS);
+        thread.handle().lock_audio().sync_mut().set_fps_target(EXPECTED_FPS);
 
         let audio_binding = audio_binder.bind(Some(Box::new(audio::MGBAStream::new(
             thread.handle(),
@@ -331,8 +311,7 @@ impl Session {
 
         let local_state = replay.local_state.clone();
         thread.handle().run_on_core(move |mut core| {
-            core.load_state(local_state.as_ref().unwrap())
-                .expect("load state");
+            core.load_state(local_state.as_ref().unwrap()).expect("load state");
         });
         thread.handle().unpause();
 
@@ -440,8 +419,7 @@ impl Session {
     }
 
     pub fn set_joyflags(&self, joyflags: u32) {
-        self.joyflags
-            .store(joyflags, std::sync::atomic::Ordering::Relaxed);
+        self.joyflags.store(joyflags, std::sync::atomic::Ordering::Relaxed);
     }
 
     pub fn game_info(&self) -> &GameInfo {

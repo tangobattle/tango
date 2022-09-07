@@ -6,15 +6,10 @@ pub struct InnerState {
     disable_bgm: bool,
     current_tick: u32,
     local_player_index: u8,
-    input_pairs:
-        std::collections::VecDeque<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>>,
+    input_pairs: std::collections::VecDeque<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>>,
     output_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
     apply_shadow_input: Box<
-        dyn FnMut(
-                lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
-            ) -> anyhow::Result<Vec<u8>>
-            + Sync
-            + Send,
+        dyn FnMut(lockstep::Pair<lockstep::Input, lockstep::PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send,
     >,
     local_packet: Option<lockstep::Packet>,
     commit_tick: u32,
@@ -89,15 +84,11 @@ impl InnerState {
         });
     }
 
-    pub fn peek_input_pair(
-        &self,
-    ) -> Option<&lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>> {
+    pub fn peek_input_pair(&self) -> Option<&lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>> {
         self.input_pairs.front()
     }
 
-    pub fn pop_input_pair(
-        &mut self,
-    ) -> Option<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>> {
+    pub fn pop_input_pair(&mut self) -> Option<lockstep::Pair<lockstep::PartialInput, lockstep::PartialInput>> {
         self.input_pairs.pop_front()
     }
 
@@ -218,51 +209,47 @@ impl State {
             tick: ip.local.local_tick,
             packet: ip.local.packet.clone(),
         });
-        State(std::sync::Arc::new(parking_lot::Mutex::new(Some(
-            InnerState {
-                disable_bgm: false,
-                current_tick: 0,
-                local_player_index,
-                input_pairs: input_pairs
-                    .iter()
-                    .map(|ip| lockstep::Pair {
-                        local: lockstep::PartialInput {
-                            local_tick: ip.local.local_tick,
-                            remote_tick: ip.local.remote_tick,
-                            joyflags: ip.local.joyflags,
-                        },
-                        remote: lockstep::PartialInput {
-                            local_tick: ip.remote.local_tick,
-                            remote_tick: ip.remote.remote_tick,
-                            joyflags: ip.remote.joyflags,
-                        },
-                    })
-                    .collect(),
-                apply_shadow_input: Box::new({
-                    let mut iq = input_pairs
-                        .into_iter()
-                        .collect::<std::collections::VecDeque<_>>();
-                    move |_| {
-                        let ip = if let Some(ip) = iq.pop_front() {
-                            ip
-                        } else {
-                            anyhow::bail!("no more committed inputs");
-                        };
-                        Ok(ip.remote.packet)
-                    }
-                }),
-                output_pairs: vec![],
-                local_packet,
-                commit_tick,
-                committed_state: None,
-                dirty_tick: 0,
-                dirty_state: None,
-                round_result: None,
-                phase: RoundPhase::InProgress,
-                error: None,
-                on_round_ended: Some(on_round_ended),
-            },
-        ))))
+        State(std::sync::Arc::new(parking_lot::Mutex::new(Some(InnerState {
+            disable_bgm: false,
+            current_tick: 0,
+            local_player_index,
+            input_pairs: input_pairs
+                .iter()
+                .map(|ip| lockstep::Pair {
+                    local: lockstep::PartialInput {
+                        local_tick: ip.local.local_tick,
+                        remote_tick: ip.local.remote_tick,
+                        joyflags: ip.local.joyflags,
+                    },
+                    remote: lockstep::PartialInput {
+                        local_tick: ip.remote.local_tick,
+                        remote_tick: ip.remote.remote_tick,
+                        joyflags: ip.remote.joyflags,
+                    },
+                })
+                .collect(),
+            apply_shadow_input: Box::new({
+                let mut iq = input_pairs.into_iter().collect::<std::collections::VecDeque<_>>();
+                move |_| {
+                    let ip = if let Some(ip) = iq.pop_front() {
+                        ip
+                    } else {
+                        anyhow::bail!("no more committed inputs");
+                    };
+                    Ok(ip.remote.packet)
+                }
+            }),
+            output_pairs: vec![],
+            local_packet,
+            commit_tick,
+            committed_state: None,
+            dirty_tick: 0,
+            dirty_state: None,
+            round_result: None,
+            phase: RoundPhase::InProgress,
+            error: None,
+            on_round_ended: Some(on_round_ended),
+        }))))
     }
 
     pub fn lock_inner(&self) -> parking_lot::MappedMutexGuard<'_, InnerState> {
@@ -305,11 +292,7 @@ impl Fastforwarder {
         dirty_tick: u32,
         last_local_packet: &[u8],
         apply_shadow_input: Box<
-            dyn FnMut(
-                    lockstep::Pair<lockstep::Input, lockstep::PartialInput>,
-                ) -> anyhow::Result<Vec<u8>>
-                + Sync
-                + Send,
+            dyn FnMut(lockstep::Pair<lockstep::Input, lockstep::PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send,
         >,
     ) -> anyhow::Result<FastforwardResult> {
         self.core.as_mut().load_state(state)?;
@@ -355,10 +338,7 @@ impl Fastforwarder {
             let mut inner_state = self.state.0.lock();
             if let Some(_) = inner_state.as_ref().expect("state").error {
                 let state = inner_state.take().expect("state");
-                return Err(anyhow::format_err!(
-                    "replayer: {}",
-                    state.error.expect("error")
-                ));
+                return Err(anyhow::format_err!("replayer: {}", state.error.expect("error")));
             }
         }
     }

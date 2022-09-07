@@ -46,9 +46,7 @@ impl Round {
         self.first_committed_state.is_some()
     }
 
-    pub fn take_shadow_input(
-        &mut self,
-    ) -> Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
+    pub fn take_shadow_input(&mut self) -> Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
         self.pending_shadow_input.take()
     }
 
@@ -60,9 +58,7 @@ impl Round {
         self.pending_remote_packet.clone()
     }
 
-    pub fn peek_shadow_input(
-        &mut self,
-    ) -> &Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
+    pub fn peek_shadow_input(&mut self) -> &Option<lockstep::Pair<lockstep::Input, lockstep::PartialInput>> {
         &self.pending_shadow_input
     }
 
@@ -151,10 +147,7 @@ impl State {
             battle::BattleResult::Win => 0,
             battle::BattleResult::Loss => 1,
         };
-        log::info!(
-            "starting shadow round: local_player_index = {}",
-            local_player_index
-        );
+        log::info!("starting shadow round: local_player_index = {}", local_player_index);
         round_state.round = Some(Round {
             current_tick: 0,
             local_player_index,
@@ -191,15 +184,12 @@ impl Shadow {
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
 
-        core.as_mut()
-            .load_rom(mgba::vfile::VFile::open_memory(rom))?;
-        core.as_mut()
-            .load_save(mgba::vfile::VFile::open_memory(save))?;
+        core.as_mut().load_rom(mgba::vfile::VFile::open_memory(rom))?;
+        core.as_mut().load_save(mgba::vfile::VFile::open_memory(save))?;
 
         let state = State::new(match_type, is_offerer, rng, battle_result);
 
-        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision())
-            .unwrap();
+        let game = game::find_by_rom_info(&core.as_mut().rom_code(), core.as_mut().rom_revision()).unwrap();
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
@@ -249,18 +239,9 @@ impl Shadow {
 
             let round_state = self.state.lock_round_state();
             if round_state.round.is_none() {
-                let applied_state = self
-                    .state
-                    .0
-                    .applied_state
-                    .lock()
-                    .take()
-                    .expect("applied state");
+                let applied_state = self.state.0.applied_state.lock().take().expect("applied state");
 
-                self.core
-                    .as_mut()
-                    .load_state(&applied_state.state)
-                    .expect("load state");
+                self.core.as_mut().load_state(&applied_state.state).expect("load state");
                 return Ok(());
             }
         }
@@ -274,10 +255,7 @@ impl Shadow {
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
             round.pending_shadow_input = Some(ip);
-            round
-                .pending_remote_packet
-                .clone()
-                .expect("pending remote packet")
+            round.pending_remote_packet.clone().expect("pending remote packet")
         };
         self.hooks.prepare_for_fastforward(self.core.as_mut());
         loop {
@@ -285,17 +263,13 @@ impl Shadow {
             if let Some(err) = self.state.0.error.lock().take() {
                 return Err(anyhow::format_err!("shadow: {}", err));
             }
-            let applied_state =
-                if let Some(applied_state) = self.state.0.applied_state.lock().take() {
-                    applied_state
-                } else {
-                    continue;
-                };
+            let applied_state = if let Some(applied_state) = self.state.0.applied_state.lock().take() {
+                applied_state
+            } else {
+                continue;
+            };
 
-            self.core
-                .as_mut()
-                .load_state(&applied_state.state)
-                .expect("load state");
+            self.core.as_mut().load_state(&applied_state.state).expect("load state");
             let mut round_state = self.state.lock_round_state();
             let round = round_state.round.as_mut().expect("round");
             round.current_tick = applied_state.tick;

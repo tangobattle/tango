@@ -17,21 +17,15 @@ struct Session {
 
 pub struct Server {
     sessions: std::sync::Arc<
-        tokio::sync::Mutex<
-            std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<Session>>>,
-        >,
+        tokio::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<tokio::sync::Mutex<Session>>>>,
     >,
     iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
 }
 
 impl Server {
-    pub fn new(
-        iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>,
-    ) -> Server {
+    pub fn new(iceconfig_backend: Option<Box<dyn iceconfig::Backend + Send + Sync + 'static>>) -> Server {
         Server {
-            sessions: std::sync::Arc::new(
-                tokio::sync::Mutex::new(std::collections::HashMap::new()),
-            ),
+            sessions: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             iceconfig_backend,
         }
     }
@@ -166,13 +160,9 @@ impl Server {
                                 session.sinks[me]
                                     .send(tungstenite::Message::Binary(
                                         tango_protos::matchmaking::Packet {
-                                            which: Some(
-                                                tango_protos::matchmaking::packet::Which::Offer(
-                                                    tango_protos::matchmaking::packet::Offer {
-                                                        sdp: offer_sdp,
-                                                    },
-                                                ),
-                                            ),
+                                            which: Some(tango_protos::matchmaking::packet::Which::Offer(
+                                                tango_protos::matchmaking::packet::Offer { sdp: offer_sdp },
+                                            )),
                                         }
                                         .encode_to_vec(),
                                     ))
@@ -180,9 +170,7 @@ impl Server {
                             }
                         }
                         Some(tango_protos::matchmaking::packet::Which::Offer(_)) => {
-                            anyhow::bail!(
-                                "received offer from client: only the server may send offers"
-                            );
+                            anyhow::bail!("received offer from client: only the server may send offers");
                         }
                         Some(tango_protos::matchmaking::packet::Which::Answer(answer)) => {
                             let session = match session.as_ref() {
@@ -195,13 +183,9 @@ impl Server {
                             session.sinks[0]
                                 .send(tungstenite::Message::Binary(
                                     tango_protos::matchmaking::Packet {
-                                        which: Some(
-                                            tango_protos::matchmaking::packet::Which::Answer(
-                                                tango_protos::matchmaking::packet::Answer {
-                                                    sdp: answer.sdp,
-                                                },
-                                            ),
-                                        ),
+                                        which: Some(tango_protos::matchmaking::packet::Which::Answer(
+                                            tango_protos::matchmaking::packet::Answer { sdp: answer.sdp },
+                                        )),
                                     }
                                     .encode_to_vec(),
                                 ))

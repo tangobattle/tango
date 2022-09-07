@@ -34,10 +34,7 @@ impl game::Game for EXE1Impl {
         &hooks::AREJ_00
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         if save.game_info()
             != &(save::GameInfo {
@@ -49,10 +46,7 @@ impl game::Game for EXE1Impl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
@@ -112,10 +106,7 @@ impl game::Game for BN1Impl {
         &hooks::AREE_00
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         if save.game_info()
             != &(save::GameInfo {
@@ -127,10 +118,7 @@ impl game::Game for BN1Impl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {

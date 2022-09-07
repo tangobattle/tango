@@ -146,9 +146,7 @@ impl Match {
         self.shadow.lock().advance_until_round_end()
     }
 
-    pub async fn advance_shadow_until_first_committed_state(
-        &self,
-    ) -> anyhow::Result<mgba::state::State> {
+    pub async fn advance_shadow_until_first_committed_state(&self) -> anyhow::Result<mgba::state::State> {
         self.shadow.lock().advance_until_first_committed_state()
     }
 
@@ -263,10 +261,7 @@ impl Match {
             BattleResult::Win => 0,
             BattleResult::Loss => 1,
         };
-        log::info!(
-            "starting round: local_player_index = {}",
-            local_player_index
-        );
+        log::info!("starting round: local_player_index = {}", local_player_index);
         let replay_filename = self.replays_path.join(
             format!(
                 "{}-{}-{}-vs-{}-round{}-p{}.tangoreplay",
@@ -291,8 +286,7 @@ impl Match {
 
         log::info!("preparing round state");
 
-        let (first_state_committed_local_packet, first_state_committed_rx) =
-            tokio::sync::oneshot::channel();
+        let (first_state_committed_local_packet, first_state_committed_rx) = tokio::sync::oneshot::channel();
 
         let (input_delay, max_queue_length) = {
             let config = self.config.read();
@@ -510,16 +504,10 @@ impl Round {
                         remote_tick,
                         joyflags: {
                             let mut joyflags = 0;
-                            if self.last_committed_remote_input.joyflags
-                                & mgba::input::keys::A as u16
-                                != 0
-                            {
+                            if self.last_committed_remote_input.joyflags & mgba::input::keys::A as u16 != 0 {
                                 joyflags |= mgba::input::keys::A as u16;
                             }
-                            if self.last_committed_remote_input.joyflags
-                                & mgba::input::keys::B as u16
-                                != 0
-                            {
+                            if self.last_committed_remote_input.joyflags & mgba::input::keys::B as u16 != 0 {
                                 joyflags |= mgba::input::keys::B as u16;
                             }
                             joyflags
@@ -580,8 +568,7 @@ impl Round {
             self.last_committed_remote_input = ip.remote.clone();
         }
 
-        core.load_state(&ff_result.dirty_state.state)
-            .expect("load dirty state");
+        core.load_state(&ff_result.dirty_state.state).expect("load dirty state");
         self.committed_state = Some(ff_result.committed_state);
 
         self.dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
@@ -632,11 +619,7 @@ impl Round {
                         })()
                         .await
                         {
-                            log::error!(
-                                "failed to submit replay {}: {:?}",
-                                replay_path.display(),
-                                e
-                            );
+                            log::error!("failed to submit replay {}: {:?}", replay_path.display(), e);
                         }
                     }
                 });

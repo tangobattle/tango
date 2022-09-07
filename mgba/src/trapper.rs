@@ -26,11 +26,7 @@ unsafe impl Send for Impl {}
 
 const TRAPPER_IMM: i32 = 0xef;
 
-unsafe extern "C" fn c_trapper_init(
-    _cpu: *mut std::os::raw::c_void,
-    _cpu_component: *mut mgba_sys::mCPUComponent,
-) {
-}
+unsafe extern "C" fn c_trapper_init(_cpu: *mut std::os::raw::c_void, _cpu_component: *mut mgba_sys::mCPUComponent) {}
 
 unsafe extern "C" fn c_trapper_deinit(_cpu_component: *mut mgba_sys::mCPUComponent) {}
 
@@ -41,8 +37,8 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
     };
     let arm_core = gba.cpu_mut();
     let components = arm_core.components_mut();
-    let trapper = &mut *(components[mgba_sys::mCPUComponentType_CPU_COMPONENT_MISC_1 as usize]
-        as *mut _ as *mut TrapperCStruct);
+    let trapper =
+        &mut *(components[mgba_sys::mCPUComponentType_CPU_COMPONENT_MISC_1 as usize] as *mut _ as *mut TrapperCStruct);
     if imm == TRAPPER_IMM {
         let r#impl = &mut trapper.r#impl;
         let caller = arm_core.as_ref().gpr(15) as u32 - mgba_sys::WordSize_WORD_SIZE_THUMB * 2;
@@ -59,10 +55,7 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
 }
 
 impl Trapper {
-    pub fn new(
-        mut core: core::CoreMutRef,
-        handlers: Vec<(u32, Box<dyn FnMut(core::CoreMutRef)>)>,
-    ) -> Self {
+    pub fn new(mut core: core::CoreMutRef, handlers: Vec<(u32, Box<dyn FnMut(core::CoreMutRef)>)>) -> Self {
         let mut cpu_component = unsafe { std::mem::zeroed::<mgba_sys::mCPUComponent>() };
         cpu_component.init = Some(c_trapper_init);
         cpu_component.deinit = Some(c_trapper_deinit);

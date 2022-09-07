@@ -42,16 +42,8 @@ impl Munger {
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x3, -1, 0x04);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x11, -1, 0x01);
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x14, -1, 0x01);
-        core.raw_write_8(
-            self.offsets.ewram.submenu_control + 0x14,
-            -1,
-            match_type * 2 + 1,
-        );
-        core.raw_write_8(
-            self.offsets.ewram.submenu_control + 0x15,
-            -1,
-            battle_settings,
-        ); //Changed
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x14, -1, match_type * 2 + 1);
+        core.raw_write_8(self.offsets.ewram.submenu_control + 0x15, -1, battle_settings); //Changed
         core.raw_write_8(self.offsets.ewram.submenu_control + 0x16, -1, background);
         //Changed
     }
@@ -80,12 +72,7 @@ impl Munger {
         core.raw_read_32(self.offsets.ewram.rng3_state, -1)
     }
 
-    pub(super) fn set_rx_packet(
-        &self,
-        mut core: mgba::core::CoreMutRef,
-        index: u32,
-        packet: &[u8; 0x10],
-    ) {
+    pub(super) fn set_rx_packet(&self, mut core: mgba::core::CoreMutRef, index: u32, packet: &[u8; 0x10]) {
         core.raw_write_range(self.offsets.ewram.rx_packet_arr + index * 0x10, -1, packet)
     }
 

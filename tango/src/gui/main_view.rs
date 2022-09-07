@@ -55,9 +55,7 @@ pub fn show(
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                     if ui
                         .selectable_label(show_settings.is_some(), "⚙️")
-                        .on_hover_text_at_pointer(
-                            i18n::LOCALES.lookup(&config.language, "settings").unwrap(),
-                        )
+                        .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "settings").unwrap())
                         .clicked()
                     {
                         *show_settings = if show_settings.is_none() {
@@ -71,36 +69,27 @@ pub fn show(
                             ui.set_width(ui.available_width());
 
                             ui.selectable_value(&mut state.tab, Tab::Play, "🎮")
-                                .on_hover_text_at_pointer(
-                                    i18n::LOCALES.lookup(&config.language, "play").unwrap(),
-                                );
+                                .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "play").unwrap());
 
                             if ui
                                 .selectable_value(&mut state.tab, Tab::Replays, "📽️")
-                                .on_hover_text_at_pointer(
-                                    i18n::LOCALES.lookup(&config.language, "replays").unwrap(),
-                                )
+                                .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "replays").unwrap())
                                 .clicked()
                             {
-                                state
-                                    .replays_pane
-                                    .rescan(handle.clone(), &config.replays_path());
+                                state.replays_pane.rescan(handle.clone(), &config.replays_path());
                             }
 
                             if ui
                                 .selectable_value(&mut state.tab, Tab::Patches, "🩹")
-                                .on_hover_text_at_pointer(
-                                    i18n::LOCALES.lookup(&config.language, "patches").unwrap(),
-                                )
+                                .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "patches").unwrap())
                                 .clicked()
                             {
                                 handle.spawn_blocking({
                                     let patches_scanner = patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
-                                        patches_scanner.rescan(move || {
-                                            Some(patch::scan(&patches_path).unwrap_or_default())
-                                        });
+                                        patches_scanner
+                                            .rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
                                     }
                                 });
                             }

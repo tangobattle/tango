@@ -64,9 +64,7 @@ pub fn apply(src: &[u8], mut patch: &[u8]) -> Result<Vec<u8>, Error> {
 
     // string "BPS1"
     let mut header = [0u8; 4];
-    patch
-        .read_exact(&mut header)
-        .map_err(|_| Error::UnexpectedPatchEOF)?;
+    patch.read_exact(&mut header).map_err(|_| Error::UnexpectedPatchEOF)?;
     if &header != b"BPS1" {
         return Err(Error::InvalidHeader);
     }
@@ -121,26 +119,20 @@ pub fn apply(src: &[u8], mut patch: &[u8]) -> Result<Vec<u8>, Error> {
                 // source read
                 tgt.get_mut(tgt_offset..tgt_offset + len)
                     .ok_or(Error::UnexpectedTargetEOF)?
-                    .copy_from_slice(
-                        src.get(tgt_offset..tgt_offset + len)
-                            .ok_or(Error::UnexpectedPatchEOF)?,
-                    );
+                    .copy_from_slice(src.get(tgt_offset..tgt_offset + len).ok_or(Error::UnexpectedPatchEOF)?);
             }
             1 => {
                 // target read
                 let mut buf = vec![0u8; len];
-                patch
-                    .read_exact(&mut buf)
-                    .map_err(|_| Error::UnexpectedPatchEOF)?;
+                patch.read_exact(&mut buf).map_err(|_| Error::UnexpectedPatchEOF)?;
                 tgt.get_mut(tgt_offset..tgt_offset + len)
                     .ok_or(Error::UnexpectedTargetEOF)?
                     .copy_from_slice(&buf);
             }
             2 => {
                 // source copy
-                src_rel_offset = (src_rel_offset as isize
-                    + read_signed_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?)
-                    as usize;
+                src_rel_offset =
+                    (src_rel_offset as isize + read_signed_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?) as usize;
                 tgt.get_mut(tgt_offset..tgt_offset + len)
                     .ok_or(Error::UnexpectedTargetEOF)?
                     .copy_from_slice(
@@ -151,9 +143,8 @@ pub fn apply(src: &[u8], mut patch: &[u8]) -> Result<Vec<u8>, Error> {
             }
             3 => {
                 // target copy
-                tgt_rel_offset = (tgt_rel_offset as isize
-                    + read_signed_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?)
-                    as usize;
+                tgt_rel_offset =
+                    (tgt_rel_offset as isize + read_signed_vlq(&mut patch).ok_or(Error::UnexpectedPatchEOF)?) as usize;
 
                 // This has to be done byte by byte, because newer output bytes may refer to older ones.
                 for i in tgt_offset..tgt_offset + len {

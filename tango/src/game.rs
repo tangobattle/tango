@@ -54,9 +54,7 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
-pub fn scan_roms(
-    path: &std::path::Path,
-) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
     for entry in walkdir::WalkDir::new(path) {
@@ -99,34 +97,22 @@ pub fn scan_roms(
     roms
 }
 
-pub fn sort_games(
-    lang: &unic_langid::LanguageIdentifier,
-    games: &mut [&'static (dyn Game + Send + Sync)],
-) {
+pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static (dyn Game + Send + Sync)]) {
     games.sort_by_key(|g| {
         (
-            if g.language().matches(lang, true, true) {
-                0
-            } else {
-                1
-            },
+            if g.language().matches(lang, true, true) { 0 } else { 1 },
             g.family_and_variant(),
         )
     });
 }
 
-pub fn sorted_all_games(
-    lang: &unic_langid::LanguageIdentifier,
-) -> Vec<&'static (dyn Game + Send + Sync)> {
+pub fn sorted_all_games(lang: &unic_langid::LanguageIdentifier) -> Vec<&'static (dyn Game + Send + Sync)> {
     let mut games = GAMES.to_vec();
     sort_games(lang, &mut games);
     games
 }
 
-pub fn find_by_family_and_variant(
-    family: &str,
-    variant: u8,
-) -> Option<&'static (dyn Game + Send + Sync)> {
+pub fn find_by_family_and_variant(family: &str, variant: u8) -> Option<&'static (dyn Game + Send + Sync)> {
     GAMES
         .iter()
         .find(|game| game.family_and_variant() == (family, variant))
@@ -169,10 +155,7 @@ where
     fn match_types(&self) -> &[usize];
     fn hooks(&self) -> &'static (dyn Hooks + Send + Sync);
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn save::Save + Send + Sync>, anyhow::Error>;
     fn load_rom_assets(
         &self,
         _rom: &[u8],
@@ -188,15 +171,9 @@ pub trait Hooks {
 
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
-    fn replayer_traps(
-        &self,
-        replayer_state: replayer::State,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
-    fn shadow_traps(
-        &self,
-        shadow_state: shadow::State,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
 
     fn primary_traps(
         &self,

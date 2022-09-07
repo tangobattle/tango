@@ -138,9 +138,7 @@ where
         self.keys_held.contains(&key)
     }
 
-    pub fn iter_controllers(
-        &self,
-    ) -> impl std::iter::Iterator<Item = (&u32, &ControllerState<ST>)> {
+    pub fn iter_controllers(&self) -> impl std::iter::Iterator<Item = (&u32, &ControllerState<ST>)> {
         self.controllers.iter()
     }
 

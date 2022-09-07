@@ -25,10 +25,7 @@ fn main() {
 
     let mgba_dst = cfg.build();
 
-    println!(
-        "cargo:rustc-link-search=native={}/build",
-        mgba_dst.display()
-    );
+    println!("cargo:rustc-link-search=native={}/build", mgba_dst.display());
     println!("cargo:rustc-link-lib=static=mgba");
     match target_os.as_str() {
         "macos" => {
@@ -72,13 +69,11 @@ fn main() {
 
     let mut flags = None;
     for line in std::io::BufReader::new(flags_file).lines() {
-        flags = Some(
-            if let Some(rest) = line.unwrap().strip_prefix("C_DEFINES = ") {
-                shell_words::split(rest).unwrap()
-            } else {
-                continue;
-            },
-        )
+        flags = Some(if let Some(rest) = line.unwrap().strip_prefix("C_DEFINES = ") {
+            shell_words::split(rest).unwrap()
+        } else {
+            continue;
+        })
     }
 
     let bindings = bindgen::Builder::default()

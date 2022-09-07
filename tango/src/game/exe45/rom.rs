@@ -63,11 +63,8 @@ impl Assets {
                     (0..13)
                         .map(|i| {
                             rom::apply_palette(
-                                rom::read_merged_tiles(
-                                    &buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4],
-                                    2,
-                                )
-                                .unwrap(),
+                                rom::read_merged_tiles(&buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4], 2)
+                                    .unwrap(),
                                 &palette,
                             )
                         })
@@ -86,9 +83,7 @@ impl Assets {
                             let i = i % 0x100;
 
                             if let Ok(parts) = rom::text::parse_entry(
-                                &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(pointer)[..4],
-                                )),
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
                                 i,
                                 &text_parse_options,
                             ) {
@@ -109,8 +104,7 @@ impl Assets {
                         },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
-                                &mapper
-                                    .get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
                                     [..rom::TILE_BYTES * 4],
                                 2,
                             )
@@ -129,8 +123,7 @@ impl Assets {
                         dark: (flags & 0x20) != 0,
                         mb: buf[0x06],
                         damage: {
-                            let damage =
-                                byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
+                            let damage = byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
                             if damage < 1000 {
                                 damage
                             } else {
@@ -171,16 +164,14 @@ impl Assets {
                         rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(offsets.emblem_icons_pointers)
-                                        [id * 4..(id + 1) * 4],
+                                    &mapper.get(offsets.emblem_icons_pointers)[id * 4..(id + 1) * 4],
                                 ))[..rom::TILE_BYTES * 4],
                                 2,
                             )
                             .unwrap(),
                             &rom::read_palette(
                                 &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(offsets.emblem_icon_palette_pointers)
-                                        [id * 4..(id + 1) * 4],
+                                    &mapper.get(offsets.emblem_icon_palette_pointers)[id * 4..(id + 1) * 4],
                                 ))[..32],
                             ),
                         )

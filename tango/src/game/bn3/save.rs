@@ -50,10 +50,8 @@ impl Save {
             const WHITE: u32 = checksum_start_for_variant(Variant::White);
             const BLUE: u32 = checksum_start_for_variant(Variant::Blue);
             GameInfo {
-                variant: match byteorder::LittleEndian::read_u32(
-                    &buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4],
-                )
-                .checked_sub(compute_raw_checksum(&buf))
+                variant: match byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
+                    .checked_sub(compute_raw_checksum(&buf))
                 {
                     Some(WHITE) => Variant::White,
                     Some(BLUE) => Variant::Blue,
@@ -157,8 +155,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
         Some(save::Chip {
             id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]) as usize,
-            code: byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..offset + 4])
-                as usize,
+            code: byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..offset + 4]) as usize,
         })
     }
 }

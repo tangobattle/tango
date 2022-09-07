@@ -15,8 +15,7 @@ struct Selection {
 }
 
 pub struct State {
-    replays_scanner:
-        scanner::Scanner<std::collections::BTreeMap<std::path::PathBuf, (bool, replay::Metadata)>>,
+    replays_scanner: scanner::Scanner<std::collections::BTreeMap<std::path::PathBuf, (bool, replay::Metadata)>>,
     selection: Option<Selection>,
 }
 
@@ -106,8 +105,8 @@ pub fn show(
             .show(ui, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     for (path, (_is_complete, metadata)) in replays.iter().rev() {
-                        let ts = if let Some(ts) = std::time::UNIX_EPOCH
-                            .checked_add(std::time::Duration::from_millis(metadata.ts))
+                        let ts = if let Some(ts) =
+                            std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(metadata.ts))
                         {
                             ts
                         } else {
@@ -132,10 +131,9 @@ pub fn show(
                             continue;
                         };
 
-                        let game = if let Some(game) = game::find_by_family_and_variant(
-                            game_info.rom_family.as_str(),
-                            game_info.rom_variant as u8,
-                        ) {
+                        let game = if let Some(game) =
+                            game::find_by_family_and_variant(game_info.rom_family.as_str(), game_info.rom_variant as u8)
+                        {
                             game
                         } else {
                             continue;
@@ -155,11 +153,7 @@ pub fn show(
                                 .to_string(),
                             0.0,
                             egui::TextFormat::simple(
-                                ui.style()
-                                    .text_styles
-                                    .get(&egui::TextStyle::Body)
-                                    .unwrap()
-                                    .clone(),
+                                ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                 text_color,
                             ),
                         );
@@ -167,11 +161,7 @@ pub fn show(
                             "\n",
                             0.0,
                             egui::TextFormat::simple(
-                                ui.style()
-                                    .text_styles
-                                    .get(&egui::TextStyle::Body)
-                                    .unwrap()
-                                    .clone(),
+                                ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                 text_color,
                             ),
                         );
@@ -186,10 +176,7 @@ pub fn show(
                                             i18n::LOCALES
                                                 .lookup(
                                                     language,
-                                                    &format!(
-                                                        "game-{}.short",
-                                                        game.family_and_variant().0
-                                                    ),
+                                                    &format!("game-{}.short", game.family_and_variant().0),
                                                 )
                                                 .unwrap()
                                                 .into(),
@@ -201,11 +188,7 @@ pub fn show(
                                 .unwrap(),
                             0.0,
                             egui::TextFormat::simple(
-                                ui.style()
-                                    .text_styles
-                                    .get(&egui::TextStyle::Small)
-                                    .unwrap()
-                                    .clone(),
+                                ui.style().text_styles.get(&egui::TextStyle::Small).unwrap().clone(),
                                 text_color,
                             ),
                         );
@@ -214,11 +197,7 @@ pub fn show(
                             let mut f = match std::fs::File::open(&path) {
                                 Ok(f) => f,
                                 Err(e) => {
-                                    log::error!(
-                                        "failed to load replay {}: {:?}",
-                                        path.display(),
-                                        e
-                                    );
+                                    log::error!("failed to load replay {}: {:?}", path.display(), e);
                                     continue;
                                 }
                             };
@@ -226,11 +205,7 @@ pub fn show(
                             let replay = match replay::Replay::decode(&mut f) {
                                 Ok(replay) => replay,
                                 Err(e) => {
-                                    log::error!(
-                                        "failed to load replay {}: {:?}",
-                                        path.display(),
-                                        e
-                                    );
+                                    log::error!("failed to load replay {}: {:?}", path.display(), e);
                                     continue;
                                 }
                             };
@@ -244,11 +219,7 @@ pub fn show(
                             let save = match game.save_from_wram(save_state.wram()) {
                                 Ok(save) => save,
                                 Err(e) => {
-                                    log::error!(
-                                        "failed to load replay {}: {:?}",
-                                        path.display(),
-                                        e
-                                    );
+                                    log::error!("failed to load replay {}: {:?}", path.display(), e);
                                     continue;
                                 }
                             };
@@ -266,20 +237,17 @@ pub fn show(
                                     continue;
                                 };
 
-                                let version = if let Ok(version) =
-                                    semver::Version::parse(&patch_info.version)
-                                {
+                                let version = if let Ok(version) = semver::Version::parse(&patch_info.version) {
                                     version
                                 } else {
                                     continue;
                                 };
 
-                                let version_meta =
-                                    if let Some(version_meta) = patch.versions.get(&version) {
-                                        version_meta
-                                    } else {
-                                        continue;
-                                    };
+                                let version_meta = if let Some(version_meta) = patch.versions.get(&version) {
+                                    version_meta
+                                } else {
+                                    continue;
+                                };
 
                                 let (rom_code, revision) = game.rom_code_and_revision();
 
@@ -351,10 +319,7 @@ pub fn show(
                 ui.vertical(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         if ui
-                            .button(format!(
-                                "▶️ {}",
-                                i18n::LOCALES.lookup(language, "replays-play").unwrap()
-                            ))
+                            .button(format!("▶️ {}", i18n::LOCALES.lookup(language, "replays-play").unwrap()))
                             .clicked()
                         {
                             handle.spawn_blocking({
@@ -403,8 +368,7 @@ pub fn show(
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                             ui.horizontal(|ui| {
                                 ui.with_layout(
-                                    egui::Layout::left_to_right(egui::Align::Max)
-                                        .with_main_wrap(true),
+                                    egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
                                     |ui| {
                                         ui.heading(&format!(
                                             "{}",

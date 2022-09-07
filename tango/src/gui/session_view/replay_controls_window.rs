@@ -26,22 +26,14 @@ pub fn show(
             ui.horizontal(|ui| {
                 if ui
                     .selectable_label(paused, "⏸️")
-                    .on_hover_text(
-                        i18n::LOCALES
-                            .lookup(language, "replay-viewer-pause")
-                            .unwrap(),
-                    )
+                    .on_hover_text(i18n::LOCALES.lookup(language, "replay-viewer-pause").unwrap())
                     .clicked()
                 {
                     session.set_paused(!paused);
                 }
                 if ui
                     .button("⏯️")
-                    .on_hover_text(
-                        i18n::LOCALES
-                            .lookup(language, "replay-viewer-step")
-                            .unwrap(),
-                    )
+                    .on_hover_text(i18n::LOCALES.lookup(language, "replay-viewer-step").unwrap())
                     .clicked()
                 {
                     session.frame_step();
@@ -50,11 +42,7 @@ pub fn show(
                 ui.add(egui::Separator::default().vertical());
                 ui.label("🐢");
                 ui.add(egui::Slider::new(&mut speed, 0.5..=10.0).step_by(0.25))
-                    .on_hover_text(
-                        i18n::LOCALES
-                            .lookup(language, "replay-viewer-speed")
-                            .unwrap(),
-                    );
+                    .on_hover_text(i18n::LOCALES.lookup(language, "replay-viewer-speed").unwrap());
                 ui.label("🐇");
                 session.set_fps_target(speed * session::EXPECTED_FPS);
             });

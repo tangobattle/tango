@@ -46,8 +46,7 @@ pub async fn export(
     let mut core = mgba::core::Core::new_gba("tango")?;
     core.enable_video_buffer();
 
-    core.as_mut()
-        .load_rom(mgba::vfile::VFile::open_memory(&rom))?;
+    core.as_mut().load_rom(mgba::vfile::VFile::open_memory(&rom))?;
     core.as_mut().reset();
 
     let game_info = replay
@@ -64,11 +63,8 @@ pub async fn export(
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state =
-        replayer::State::new(replay.local_player_index, input_pairs, 0, Box::new(|| {}));
-    replayer_state
-        .lock_inner()
-        .set_disable_bgm(settings.disable_bgm);
+    let replayer_state = replayer::State::new(replay.local_player_index, input_pairs, 0, Box::new(|| {}));
+    replayer_state.lock_inner().set_disable_bgm(settings.disable_bgm);
     let game = game::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8)
         .ok_or(anyhow::anyhow!("game not found"))?;
 
@@ -85,12 +81,9 @@ pub async fn export(
     #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    let filter =
-        video::filter_by_name(&settings.video_filter).ok_or(anyhow::anyhow!("unknown filter"))?;
-    let (vbuf_width, vbuf_height) = filter.output_size((
-        mgba::gba::SCREEN_WIDTH as usize,
-        mgba::gba::SCREEN_HEIGHT as usize,
-    ));
+    let filter = video::filter_by_name(&settings.video_filter).ok_or(anyhow::anyhow!("unknown filter"))?;
+    let (vbuf_width, vbuf_height) =
+        filter.output_size((mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize));
     let mut emu_vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
     let mut vbuf = vec![0u8; (vbuf_width * vbuf_height * 4) as usize];
 
@@ -143,9 +136,7 @@ pub async fn export(
     loop {
         {
             let replayer_state = replayer_state.lock_inner();
-            if (!replay.is_complete && replayer_state.input_pairs_left() == 0)
-                || replayer_state.is_round_ended()
-            {
+            if (!replay.is_complete && replayer_state.input_pairs_left() == 0) || replayer_state.is_round_ended() {
                 break;
             }
         }
@@ -180,31 +171,15 @@ pub async fn export(
         filter.apply(
             &emu_vbuf,
             &mut vbuf,
-            (
-                mgba::gba::SCREEN_WIDTH as usize,
-                mgba::gba::SCREEN_HEIGHT as usize,
-            ),
+            (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
         );
 
-        video_child
-            .stdin
-            .as_mut()
-            .unwrap()
-            .write_all(vbuf.as_slice())
-            .await?;
+        video_child.stdin.as_mut().unwrap().write_all(vbuf.as_slice()).await?;
 
         let mut audio_bytes = vec![0u8; samples.len() * 2];
         byteorder::LittleEndian::write_i16_into(samples, &mut audio_bytes[..]);
-        audio_child
-            .stdin
-            .as_mut()
-            .unwrap()
-            .write_all(&audio_bytes)
-            .await?;
-        progress_callback(
-            total - replayer_state.lock_inner().input_pairs_left(),
-            total,
-        );
+        audio_child.stdin.as_mut().unwrap().write_all(&audio_bytes).await?;
+        progress_callback(total - replayer_state.lock_inner().input_pairs_left(), total);
     }
 
     video_child.stdin = None;

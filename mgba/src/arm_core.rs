@@ -74,8 +74,8 @@ impl<'a> ARMCoreMutRef<'a> {
     fn thumb_write_pc(&self) {
         unsafe {
             // uint32_t pc = cpu->gprs[ARM_PC] & -WORD_SIZE_THUMB;
-            let mut pc = (self.as_ref().gpr(mgba_sys::ARM_PC as usize)
-                & -(mgba_sys::WordSize_WORD_SIZE_THUMB as i32)) as u32;
+            let mut pc =
+                (self.as_ref().gpr(mgba_sys::ARM_PC as usize) & -(mgba_sys::WordSize_WORD_SIZE_THUMB as i32)) as u32;
 
             // cpu->memory.setActiveRegion(cpu, pc);
             (*self.ptr).memory.setActiveRegion.unwrap()(self.ptr, pc as u32);

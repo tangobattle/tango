@@ -54,8 +54,7 @@ impl Save {
 
         save::mask_save(&mut buf[..], MASK_OFFSET);
 
-        let shift =
-            byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
+        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             anyhow::bail!("invalid shift of {}", shift);
         }
@@ -69,24 +68,23 @@ impl Save {
             const RED_SUN: u32 = checksum_start_for_variant(Variant::RedSun);
             const BLUE_MOON: u32 = checksum_start_for_variant(Variant::BlueMoon);
 
-            let (variant, region) = match byteorder::LittleEndian::read_u32(
-                &buf[shift + CHECKSUM_OFFSET..shift + CHECKSUM_OFFSET + 4],
-            )
-            .checked_sub(compute_raw_checksum(&buf, shift))
-            {
-                Some(RED_SUN) => (Variant::RedSun, Region::US),
-                Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
-                Some(c) => match c.checked_sub(buf[0] as u32) {
-                    Some(RED_SUN) => (Variant::RedSun, Region::JP),
-                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
-                    _ => {
+            let (variant, region) =
+                match byteorder::LittleEndian::read_u32(&buf[shift + CHECKSUM_OFFSET..shift + CHECKSUM_OFFSET + 4])
+                    .checked_sub(compute_raw_checksum(&buf, shift))
+                {
+                    Some(RED_SUN) => (Variant::RedSun, Region::US),
+                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
+                    Some(c) => match c.checked_sub(buf[0] as u32) {
+                        Some(RED_SUN) => (Variant::RedSun, Region::JP),
+                        Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
+                        _ => {
+                            anyhow::bail!("unknown game, bad checksum");
+                        }
+                    },
+                    None => {
                         anyhow::bail!("unknown game, bad checksum");
                     }
-                },
-                None => {
-                    anyhow::bail!("unknown game, bad checksum");
-                }
-            };
+                };
 
             GameInfo {
                 variant,
@@ -94,11 +92,7 @@ impl Save {
             }
         };
 
-        let save = Self {
-            buf,
-            shift,
-            game_info,
-        };
+        let save = Self { buf, shift, game_info };
 
         Ok(save)
     }
@@ -109,30 +103,22 @@ impl Save {
             .and_then(|buf| buf.try_into().ok())
             .ok_or(anyhow::anyhow!("save is wrong size"))?;
 
-        let shift =
-            byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
+        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
         if shift > 0x1fc || (shift & 3) != 0 {
             anyhow::bail!("invalid shift of {}", shift);
         }
 
-        Ok(Self {
-            buf,
-            game_info,
-            shift,
-        })
+        Ok(Self { buf, game_info, shift })
     }
 
     #[allow(dead_code)]
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(
-            &self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
-        )
+        byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4])
     }
 
     #[allow(dead_code)]
     pub fn compute_checksum(&self) -> u32 {
-        compute_raw_checksum(&self.buf[self.shift..], self.shift)
-            + checksum_start_for_variant(self.game_info.variant)
+        compute_raw_checksum(&self.buf[self.shift..], self.shift) + checksum_start_for_variant(self.game_info.variant)
             - if self.game_info.region == Region::JP {
                 self.buf[0] as u32
             } else {
@@ -155,9 +141,7 @@ impl save::Save for Save {
     }
 
     fn view_modcards(&self) -> Option<save::ModcardsView> {
-        Some(save::ModcardsView::Modcard4s(Box::new(Modcard4sView {
-            save: self,
-        })))
+        Some(save::ModcardsView::Modcard4s(Box::new(Modcard4sView { save: self })))
     }
 
     fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
@@ -299,9 +283,7 @@ impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
             return None;
         }
         let offset = 0x6f50 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(
-            &self.save.buf[offset..offset + 2],
-        ))
+        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
     }
 
     fn secondary_chip_use_count(&self, id: usize) -> Option<u16> {
@@ -309,8 +291,6 @@ impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
             return None;
         }
         let offset = 0x1bb0 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(
-            &self.save.buf[offset..offset + 2],
-        ))
+        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
     }
 }

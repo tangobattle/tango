@@ -51,12 +51,7 @@ fn navicust_part_colors(color: &rom::NavicustPartColor) -> (egui::Color32, egui:
     }
 }
 
-fn show_part_name(
-    ui: &mut egui::Ui,
-    name: egui::RichText,
-    is_enabled: bool,
-    color: &rom::NavicustPartColor,
-) {
+fn show_part_name(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, color: &rom::NavicustPartColor) {
     egui::Frame::none()
         .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
         .rounding(egui::Rounding::same(2.0))
@@ -132,12 +127,7 @@ pub fn show<'a>(
     });
 
     if let Some(style) = navicust_view.style() {
-        ui.label(
-            assets
-                .style(style)
-                .map(|style| style.name.as_str())
-                .unwrap_or(""),
-        );
+        ui.label(assets.style(style).map(|style| style.name.as_str()).unwrap_or(""));
     }
 
     ui.horizontal(|ui| {

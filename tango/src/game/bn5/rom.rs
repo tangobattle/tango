@@ -88,10 +88,7 @@ impl Assets {
             extension_op: 0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
-            commands: std::collections::HashMap::from([
-                (PRINT_VAR_COMMAND, 3),
-                (EREADER_COMMAND, 2),
-            ]),
+            commands: std::collections::HashMap::from([(PRINT_VAR_COMMAND, 3), (EREADER_COMMAND, 2)]),
         };
 
         let mapper = rom::MemoryMapper::new(rom, wram);
@@ -116,11 +113,8 @@ impl Assets {
                     (0..13)
                         .map(|i| {
                             rom::apply_palette(
-                                rom::read_merged_tiles(
-                                    &buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4],
-                                    2,
-                                )
-                                .unwrap(),
+                                rom::read_merged_tiles(&buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4], 2)
+                                    .unwrap(),
                                 &palette,
                             )
                         })
@@ -138,9 +132,7 @@ impl Assets {
                             let i = i % 0x100;
 
                             if let Ok(parts) = rom::text::parse_entry(
-                                &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(pointer)[..4],
-                                )),
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
                                 i,
                                 &text_parse_options,
                             ) {
@@ -154,8 +146,7 @@ impl Assets {
                                                 params,
                                             } => {
                                                 if let Ok(parts) = rom::text::parse_entry(
-                                                    &mapper
-                                                        .get(0x02001d14 + params[1] as u32 * 0x10),
+                                                    &mapper.get(0x02001d14 + params[1] as u32 * 0x10),
                                                     0,
                                                     &text_parse_options,
                                                 ) {
@@ -186,19 +177,14 @@ impl Assets {
                         },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
-                                &mapper
-                                    .get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
                                     [..rom::TILE_BYTES * 4],
                                 2,
                             )
                             .unwrap(),
                             &chip_icon_palette,
                         ),
-                        codes: buf[0x00..0x04]
-                            .iter()
-                            .cloned()
-                            .filter(|code| *code != 0xff)
-                            .collect(),
+                        codes: buf[0x00..0x04].iter().cloned().filter(|code| *code != 0xff).collect(),
                         element: buf[0x06] as usize,
                         class: [
                             rom::ChipClass::Standard,
@@ -210,8 +196,7 @@ impl Assets {
                         dark: false,
                         mb: buf[0x08],
                         damage: {
-                            let damage =
-                                byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
+                            let damage = byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
                             if damage < 1000 {
                                 damage
                             } else {
@@ -264,15 +249,13 @@ impl Assets {
                         compressed_bitmap: image::ImageBuffer::from_vec(
                             5,
                             5,
-                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49]
-                                .to_vec(),
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x08..0x0c]))[..49].to_vec(),
                         )
                         .unwrap(),
                         uncompressed_bitmap: image::ImageBuffer::from_vec(
                             5,
                             5,
-                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49]
-                                .to_vec(),
+                            mapper.get(byteorder::LittleEndian::read_u32(&buf[0x0c..0x10]))[..49].to_vec(),
                         )
                         .unwrap(),
                     }
@@ -335,12 +318,8 @@ impl Assets {
                                             .into_iter()
                                             .flat_map(|p| {
                                                 match p {
-                                                    rom::Modcard56EffectTemplatePart::String(s) => {
-                                                        s
-                                                    }
-                                                    rom::Modcard56EffectTemplatePart::PrintVar(
-                                                        v,
-                                                    ) => {
+                                                    rom::Modcard56EffectTemplatePart::String(s) => s,
+                                                    rom::Modcard56EffectTemplatePart::PrintVar(v) => {
                                                         if v == 1 {
                                                             let mut parameter = parameter as u32;
                                                             if id == 0x00 || id == 0x02 {

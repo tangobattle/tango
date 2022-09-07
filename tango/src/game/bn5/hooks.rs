@@ -9,9 +9,7 @@ pub struct Hooks {
 
 impl Hooks {
     fn munger(&self) -> munger::Munger {
-        munger::Munger {
-            offsets: self.offsets,
-        }
+        munger::Munger { offsets: self.offsets }
     }
 }
 
@@ -244,10 +242,7 @@ impl game::Hooks for Hooks {
 
                             let mut round_state = match_.lock_round_state().await;
                             round_state.end_round().await.expect("end round");
-                            match_
-                                .advance_shadow_until_round_end()
-                                .await
-                                .expect("advance shadow");
+                            match_.advance_shadow_until_round_end().await.expect("advance shadow");
                         });
                     }),
                 )
@@ -289,9 +284,7 @@ impl game::Hooks for Hooks {
                             let round_state = match_.lock_round_state().await;
                             let round = round_state.round.as_ref().expect("round");
 
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(0, round.local_player_index() as i32);
+                            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
                         });
                     }),
                 )
@@ -314,9 +307,7 @@ impl game::Hooks for Hooks {
                             let round_state = match_.lock_round_state().await;
                             let round = round_state.round.as_ref().expect("round");
 
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(0, round.local_player_index() as i32);
+                            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
                         });
                     }),
                 )
@@ -350,15 +341,8 @@ impl game::Hooks for Hooks {
 
                             let mut rng = match_.lock_rng().await;
                             let (battle_settings, background) =
-                                random_battle_settings_and_background(
-                                    match_.match_type().1 == 1,
-                                    &mut *rng,
-                                );
-                            munger.set_battle_settings_and_background(
-                                core,
-                                battle_settings,
-                                background,
-                            );
+                                random_battle_settings_and_background(match_.match_type().1 == 1, &mut *rng);
+                            munger.set_battle_settings_and_background(core, battle_settings, background);
                         });
                     }),
                 )
@@ -384,10 +368,7 @@ impl game::Hooks for Hooks {
                         handle.block_on(async {
                             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                            munger.set_copy_data_input_state(
-                                core,
-                                if match_.lock().await.is_some() { 2 } else { 4 },
-                            );
+                            munger.set_copy_data_input_state(core, if match_.lock().await.is_some() { 2 } else { 4 });
                         });
                     }),
                 )
@@ -455,10 +436,7 @@ impl game::Hooks for Hooks {
                                     munger.rng2_state(core),
                                     munger.rng3_state(core),
                                 );
-                                log::info!(
-                                    "battle state committed on {}",
-                                    round.current_tick()
-                                );
+                                log::info!("battle state committed on {}", round.current_tick());
                             }
 
                             let game_current_tick = munger.current_tick(core);
@@ -471,7 +449,7 @@ impl game::Hooks for Hooks {
                             }
 
                             'abort: loop {
-                                    if let Err(e) = round
+                                if let Err(e) = round
                                     .add_local_input_and_fastforward(
                                         core,
                                         joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
@@ -533,10 +511,7 @@ impl game::Hooks for Hooks {
         ]
     }
 
-    fn shadow_traps(
-        &self,
-        shadow_state: shadow::State,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let munger = self.munger();
@@ -629,9 +604,7 @@ impl game::Hooks for Hooks {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
 
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, round.remote_player_index() as i32);
+                        core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
                     }),
                 )
             },
@@ -643,9 +616,7 @@ impl game::Hooks for Hooks {
                         let mut round_state = shadow_state.lock_round_state();
                         let round = round_state.round.as_mut().expect("round");
 
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, round.remote_player_index() as i32);
+                        core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
                     }),
                 )
             },
@@ -667,15 +638,9 @@ impl game::Hooks for Hooks {
                     self.offsets.rom.comm_menu_init_battle_entry,
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
-                        let (battle_settings, background) = random_battle_settings_and_background(
-                            shadow_state.match_type().1 == 1,
-                            &mut *rng,
-                        );
-                        munger.set_battle_settings_and_background(
-                            core,
-                            battle_settings,
-                            background,
-                        );
+                        let (battle_settings, background) =
+                            random_battle_settings_and_background(shadow_state.match_type().1 == 1, &mut *rng);
+                        munger.set_battle_settings_and_background(core, battle_settings, background);
                     }),
                 )
             },
@@ -777,10 +742,8 @@ impl game::Hooks for Hooks {
                         }
 
                         if round.take_input_injected() {
-                            shadow_state.set_applied_state(
-                                core.save_state().expect("save state"),
-                                round.current_tick(),
-                            );
+                            shadow_state
+                                .set_applied_state(core.save_state().expect("save state"), round.current_tick());
                         }
                     }),
                 )
@@ -875,10 +838,7 @@ impl game::Hooks for Hooks {
                             ));
                         }
 
-                        round.set_remote_packet(
-                            round.current_tick() + 1,
-                            munger.tx_packet(core).to_vec(),
-                        );
+                        round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
                         round.set_input_injected();
                     }),
                 )
@@ -910,10 +870,7 @@ impl game::Hooks for Hooks {
         ]
     }
 
-    fn replayer_traps(
-        &self,
-        replayer_state: replayer::State,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let replayer_state = replayer_state.clone();
@@ -995,16 +952,11 @@ impl game::Hooks for Hooks {
 
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != current_tick {
-                            panic!(
-                                "round tick = {} but game tick = {}",
-                                current_tick, game_current_tick
-                            );
+                            panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
                         }
 
                         if current_tick == replayer_state.commit_tick() {
-                            replayer_state.set_committed_state(
-                                core.save_state().expect("save committed state"),
-                            );
+                            replayer_state.set_committed_state(core.save_state().expect("save committed state"));
                         }
 
                         let ip = match replayer_state.peek_input_pair() {
@@ -1033,13 +985,10 @@ impl game::Hooks for Hooks {
                             return;
                         }
 
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+                        core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
                         if current_tick == replayer_state.dirty_tick() {
-                            replayer_state
-                                .set_dirty_state(core.save_state().expect("save dirty state"));
+                            replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
                         }
                     }),
                 )
@@ -1059,10 +1008,7 @@ impl game::Hooks for Hooks {
 
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != current_tick {
-                            panic!(
-                                "round tick = {} but game tick = {}",
-                                current_tick, game_current_tick
-                            );
+                            panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
                         }
 
                         let ip = match replayer_state.pop_input_pair() {
@@ -1136,14 +1082,10 @@ impl game::Hooks for Hooks {
 
                         let game_current_tick = munger.current_tick(core);
                         if game_current_tick != current_tick {
-                            panic!(
-                                "round tick = {} but game tick = {}",
-                                current_tick, game_current_tick
-                            );
+                            panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
                         }
 
-                        replayer_state
-                            .set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
+                        replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
                     }),
                 )
             },

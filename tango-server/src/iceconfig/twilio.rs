@@ -83,9 +83,7 @@ impl super::Backend for Backend {
 
         let claims = Claims {
             jti: format!("{}-{}", self.api_sid, now),
-            grants: Grants {
-                video: VideoGrants {},
-            },
+            grants: Grants { video: VideoGrants {} },
             iat: now,
             exp: now + 3600,
             iss: self.api_sid.clone(),
@@ -122,13 +120,11 @@ impl super::Backend for Backend {
             .network_traversal_service
             .ice_servers
             .into_iter()
-            .map(
-                |ice_server| tango_protos::matchmaking::packet::hello::IceServer {
-                    credential: Some(ice_server.credential),
-                    username: Some(ice_server.username),
-                    urls: vec![ice_server.urls],
-                },
-            )
+            .map(|ice_server| tango_protos::matchmaking::packet::hello::IceServer {
+                credential: Some(ice_server.credential),
+                username: Some(ice_server.username),
+                urls: vec![ice_server.urls],
+            })
             .collect::<Vec<_>>();
         ice_servers.push(tango_protos::matchmaking::packet::hello::IceServer {
             credential: None,

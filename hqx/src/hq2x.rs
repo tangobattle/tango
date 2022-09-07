@@ -1,244 +1,244 @@
-use common::{UncheckedDst, diff, rgb_to_yuv, yuv_diff, interp1, interp10, interp2, interp6, interp7, interp9};
+use common::{diff, interp1, interp10, interp2, interp6, interp7, interp9, rgb_to_yuv, yuv_diff, UncheckedDst};
 
 macro_rules! pixel00_0 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = $w[5];
-    }
+    };
 }
 macro_rules! pixel00_10 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp1($w[5], $w[1]);
-    }
+    };
 }
 macro_rules! pixel00_11 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp1($w[5], $w[4]);
-    }
+    };
 }
 macro_rules! pixel00_12 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp1($w[5], $w[2]);
-    }
+    };
 }
 macro_rules! pixel00_20 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp2($w[5], $w[4], $w[2]);
-    }
+    };
 }
 macro_rules! pixel00_21 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp2($w[5], $w[1], $w[2]);
-    }
+    };
 }
 macro_rules! pixel00_22 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp2($w[5], $w[1], $w[4]);
-    }
+    };
 }
 macro_rules! pixel00_60 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp6($w[5], $w[2], $w[4]);
-    }
+    };
 }
 macro_rules! pixel00_61 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp6($w[5], $w[4], $w[2]);
-    }
+    };
 }
 macro_rules! pixel00_70 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp7($w[5], $w[4], $w[2]);
-    }
+    };
 }
 macro_rules! pixel00_90 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp9($w[5], $w[4], $w[2]);
-    }
+    };
 }
 macro_rules! pixel00_100 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize] = interp10($w[5], $w[4], $w[2]);
-    }
+    };
 }
 macro_rules! pixel01_0 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = $w[5];
-    }
+    };
 }
 macro_rules! pixel01_10 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp1($w[5], $w[3]);
-    }
+    };
 }
 macro_rules! pixel01_11 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp1($w[5], $w[2]);
-    }
+    };
 }
 macro_rules! pixel01_12 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp1($w[5], $w[6]);
-    }
+    };
 }
 macro_rules! pixel01_20 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp2($w[5], $w[2], $w[6]);
-    }
+    };
 }
 macro_rules! pixel01_21 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp2($w[5], $w[3], $w[6]);
-    }
+    };
 }
 macro_rules! pixel01_22 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp2($w[5], $w[3], $w[2]);
-    }
+    };
 }
 macro_rules! pixel01_60 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp6($w[5], $w[6], $w[2]);
-    }
+    };
 }
 macro_rules! pixel01_61 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp6($w[5], $w[2], $w[6]);
-    }
+    };
 }
 macro_rules! pixel01_70 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp7($w[5], $w[2], $w[6]);
-    }
+    };
 }
 macro_rules! pixel01_90 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp9($w[5], $w[2], $w[6]);
-    }
+    };
 }
 macro_rules! pixel01_100 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[$dst_index as usize + 1] = interp10($w[5], $w[2], $w[6]);
-    }
+    };
 }
 macro_rules! pixel10_0 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = $w[5];
-    }
+    };
 }
 macro_rules! pixel10_10 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp1($w[5], $w[7]);
-    }
+    };
 }
 macro_rules! pixel10_11 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp1($w[5], $w[8]);
-    }
+    };
 }
 macro_rules! pixel10_12 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp1($w[5], $w[4]);
-    }
+    };
 }
 macro_rules! pixel10_20 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp2($w[5], $w[8], $w[4]);
-    }
+    };
 }
 macro_rules! pixel10_21 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp2($w[5], $w[7], $w[4]);
-    }
+    };
 }
 macro_rules! pixel10_22 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp2($w[5], $w[7], $w[8]);
-    }
+    };
 }
 macro_rules! pixel10_60 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp6($w[5], $w[4], $w[8]);
-    }
+    };
 }
 macro_rules! pixel10_61 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp6($w[5], $w[8], $w[4]);
-    }
+    };
 }
 macro_rules! pixel10_70 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp7($w[5], $w[8], $w[4]);
-    }
+    };
 }
 macro_rules! pixel10_90 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp9($w[5], $w[8], $w[4]);
-    }
+    };
 }
 macro_rules! pixel10_100 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements) as usize] = interp10($w[5], $w[8], $w[4]);
-    }
+    };
 }
 macro_rules! pixel11_0 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = $w[5];
-    }
+    };
 }
 macro_rules! pixel11_10 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp1($w[5], $w[9]);
-    }
+    };
 }
 macro_rules! pixel11_11 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp1($w[5], $w[6]);
-    }
+    };
 }
 macro_rules! pixel11_12 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp1($w[5], $w[8]);
-    }
+    };
 }
 macro_rules! pixel11_20 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp2($w[5], $w[6], $w[8]);
-    }
+    };
 }
 macro_rules! pixel11_21 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp2($w[5], $w[9], $w[8]);
-    }
+    };
 }
 macro_rules! pixel11_22 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp2($w[5], $w[9], $w[6]);
-    }
+    };
 }
 macro_rules! pixel11_60 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp6($w[5], $w[8], $w[6]);
-    }
+    };
 }
 macro_rules! pixel11_61 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp6($w[5], $w[6], $w[8]);
-    }
+    };
 }
 macro_rules! pixel11_70 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp7($w[5], $w[6], $w[8]);
-    }
+    };
 }
 macro_rules! pixel11_90 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp9($w[5], $w[6], $w[8]);
-    }
+    };
 }
 macro_rules! pixel11_100 {
     ($dst:ident, $dst_index:ident, $dst_row_elements:ident, $w:ident) => {
         $dst[($dst_index + $dst_row_elements + 1) as usize] = interp10($w[5], $w[6], $w[8]);
-    }
+    };
 }
 
 pub fn calculate(src: &[u32], dst: &mut [u32], width: usize, height: usize) {
@@ -246,14 +246,7 @@ pub fn calculate(src: &[u32], dst: &mut [u32], width: usize, height: usize) {
     inner(src, row_bytes_l, dst, row_bytes_l * 2, width, height);
 }
 
-pub fn inner(
-    src: &[u32],
-    src_row_bytes: usize,
-    dst: &mut [u32],
-    dst_row_bytes: usize,
-    width: usize,
-    height: usize,
-) {
+pub fn inner(src: &[u32], src_row_bytes: usize, dst: &mut [u32], dst_row_bytes: usize, width: usize, height: usize) {
     let dst = unsafe { UncheckedDst::from_mut(dst) };
     let mut w = [0; 10];
     let src_row_elements = (src_row_bytes >> 2) as isize;
@@ -311,8 +304,7 @@ pub fn inner(
             }
 
             match pattern {
-                0 | 1 | 4 | 32 | 128 | 5 | 132 | 160 | 33 | 129 | 36 | 133 | 164 | 161 | 37
-                | 165 => {
+                0 | 1 | 4 | 32 | 128 | 5 | 132 | 160 | 33 | 129 | 36 | 133 | 164 | 161 | 37 | 165 => {
                     pixel00_20!(dst, dst_index, dst_row_elements, w);
                     pixel01_20!(dst, dst_index, dst_row_elements, w);
                     pixel10_20!(dst, dst_index, dst_row_elements, w);

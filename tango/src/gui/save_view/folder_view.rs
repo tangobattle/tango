@@ -39,9 +39,7 @@ pub fn show<'a>(
         .collect::<Vec<_>>();
 
     if !chips_view.regular_chip_is_in_place() {
-        if let Some(regular_chip_index) =
-            chips_view.regular_chip_index(chips_view.equipped_folder_index())
-        {
+        if let Some(regular_chip_index) = chips_view.regular_chip_index(chips_view.equipped_folder_index()) {
             let spliced = chips.splice(0..1, vec![]).collect::<Vec<_>>();
             chips.splice(regular_chip_index..regular_chip_index + 1, spliced);
         }
@@ -77,9 +75,7 @@ pub fn show<'a>(
                     chip,
                     GroupedChip {
                         count: 1,
-                        is_regular: chips_view
-                            .regular_chip_index(chips_view.equipped_folder_index())
-                            == Some(i),
+                        is_regular: chips_view.regular_chip_index(chips_view.equipped_folder_index()) == Some(i),
                         tag_count: if chips_view
                             .tag_chip_indexes(chips_view.equipped_folder_index())
                             .map_or(false, |is| is.contains(&i))
@@ -132,10 +128,7 @@ pub fn show<'a>(
                     .join("\n"),
             );
         }
-        ui.checkbox(
-            &mut state.grouped,
-            i18n::LOCALES.lookup(lang, "save-group").unwrap(),
-        );
+        ui.checkbox(&mut state.grouped, i18n::LOCALES.lookup(lang, "save-group").unwrap());
     });
 
     egui::ScrollArea::vertical()
@@ -185,14 +178,11 @@ pub fn show<'a>(
                                 (None, None)
                             };
 
-                            let rect = ui
-                                .available_rect_before_wrap()
-                                .expand(ui.spacing().item_spacing.y);
+                            let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
                             if let Some(bg_color) = bg_color {
                                 ui.painter().rect_filled(rect, 0.0, bg_color);
                             } else if i % 2 == 0 {
-                                ui.painter()
-                                    .rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                                ui.painter().rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
                             }
 
                             let mut sb = egui_extras::StripBuilder::new(ui)
@@ -239,10 +229,7 @@ pub fn show<'a>(
                                                     format!("chip {}", chip.id),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(
-                                                            icon, 1, 1, 14, 14,
-                                                        )
-                                                        .to_image(),
+                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
                                                 )
@@ -258,13 +245,9 @@ pub fn show<'a>(
                                             if let Some(chip) = chip.as_ref() {
                                                 ui.label(
                                                     egui::RichText::new(
-                                                        info.map(|info| info.name.as_str())
-                                                            .unwrap_or("???"),
+                                                        info.map(|info| info.name.as_str()).unwrap_or("???"),
                                                     )
-                                                    .color(
-                                                        fg_color
-                                                            .unwrap_or(ui.visuals().text_color()),
-                                                    )
+                                                    .color(fg_color.unwrap_or(ui.visuals().text_color()))
                                                     .family(font_families.for_language(game_lang)),
                                                 );
                                                 ui.label(
@@ -272,10 +255,7 @@ pub fn show<'a>(
                                                         " {}",
                                                         chips_view.chip_codes()[chip.code] as char
                                                     ))
-                                                    .color(
-                                                        fg_color
-                                                            .unwrap_or(ui.visuals().text_color()),
-                                                    ),
+                                                    .color(fg_color.unwrap_or(ui.visuals().text_color())),
                                                 );
                                             } else {
                                                 ui.label("???");
@@ -283,41 +263,30 @@ pub fn show<'a>(
                                         });
                                         if g.is_regular {
                                             egui::Frame::none()
-                                                .inner_margin(egui::style::Margin::symmetric(
-                                                    4.0, 0.0,
-                                                ))
+                                                .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
                                                 .rounding(egui::Rounding::same(2.0))
                                                 .fill(egui::Color32::from_rgb(0xff, 0x42, 0xa5))
                                                 .show(ui, |ui| {
-                                                    ui.label(
-                                                        egui::RichText::new("REG")
-                                                            .color(egui::Color32::WHITE),
-                                                    );
+                                                    ui.label(egui::RichText::new("REG").color(egui::Color32::WHITE));
                                                 });
                                         }
                                         for _ in 0..g.tag_count {
                                             egui::Frame::none()
-                                                .inner_margin(egui::style::Margin::symmetric(
-                                                    4.0, 0.0,
-                                                ))
+                                                .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
                                                 .rounding(egui::Rounding::same(2.0))
                                                 .fill(egui::Color32::from_rgb(0x29, 0xf7, 0x21))
                                                 .show(ui, |ui| {
-                                                    ui.label(
-                                                        egui::RichText::new("TAG")
-                                                            .color(egui::Color32::WHITE),
-                                                    );
+                                                    ui.label(egui::RichText::new("TAG").color(egui::Color32::WHITE));
                                                 });
                                         }
                                     });
                                 });
                                 strip.cell(|ui| {
-                                    let element =
-                                        if let Some(element) = info.map(|info| info.element) {
-                                            element
-                                        } else {
-                                            return;
-                                        };
+                                    let element = if let Some(element) = info.map(|info| info.element) {
+                                        element
+                                    } else {
+                                        return;
+                                    };
 
                                     let icon = if let Some(icon) = assets.element_icon(element) {
                                         icon
@@ -334,10 +303,7 @@ pub fn show<'a>(
                                                     format!("element {}", element),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(
-                                                            icon, 1, 1, 14, 14,
-                                                        )
-                                                        .to_image(),
+                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
                                                 )
@@ -348,33 +314,26 @@ pub fn show<'a>(
                                 });
                                 strip.cell(|ui| {
                                     let damage = info.map(|info| info.damage).unwrap_or(0);
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            if damage > 0 {
-                                                ui.strong(format!("{}", damage));
-                                            }
-                                        },
-                                    );
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if damage > 0 {
+                                            ui.strong(format!("{}", damage));
+                                        }
+                                    });
                                 });
                                 if chips_view.chips_have_mb() {
                                     strip.cell(|ui| {
                                         let mb = info.map(|info| info.mb).unwrap_or(0);
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                if mb > 0 {
-                                                    ui.label(
-                                                        egui::RichText::new(format!("{}MB", mb))
-                                                            .color(if bg_color.is_some() {
-                                                                ui.visuals().strong_text_color()
-                                                            } else {
-                                                                ui.visuals().text_color()
-                                                            }),
-                                                    );
-                                                }
-                                            },
-                                        );
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if mb > 0 {
+                                                ui.label(egui::RichText::new(format!("{}MB", mb)).color(
+                                                    if bg_color.is_some() {
+                                                        ui.visuals().strong_text_color()
+                                                    } else {
+                                                        ui.visuals().text_color()
+                                                    },
+                                                ));
+                                            }
+                                        });
                                     });
                                 }
                             });

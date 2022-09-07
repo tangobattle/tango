@@ -33,17 +33,11 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(bool, Metadata), std
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
     if &header != HEADER {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "invalid header",
-        ));
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
     }
 
     if r.read_u8()? != VERSION {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "invalid version",
-        ));
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid version"));
     }
 
     let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
@@ -74,17 +68,11 @@ impl Replay {
         let mut header = [0u8; 4];
         r.read_exact(&mut header)?;
         if &header != HEADER {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid header",
-            ));
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
         }
 
         if r.read_u8()? != VERSION {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "invalid version",
-            ));
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid version"));
         }
 
         let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;

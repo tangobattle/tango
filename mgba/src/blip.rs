@@ -15,14 +15,7 @@ impl<'a> BlipMutRef<'a> {
     }
 
     pub fn read_samples(&mut self, out: &mut [i16], count: i32, stereo: bool) -> i32 {
-        unsafe {
-            mgba_sys::blip_read_samples(
-                self.ptr,
-                out.as_mut_ptr(),
-                count,
-                if stereo { 1 } else { 0 },
-            )
-        }
+        unsafe { mgba_sys::blip_read_samples(self.ptr, out.as_mut_ptr(), count, if stereo { 1 } else { 0 }) }
     }
 
     pub fn clear(&mut self) {

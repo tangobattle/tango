@@ -35,8 +35,7 @@ impl Munger {
             self.offsets.ewram.tx_packet,
             -1,
             &[
-                0x40, 0xff, 0xff, 0xff, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40,
-                0x40, 0x40,
+                0x40, 0xff, 0xff, 0xff, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40,
             ],
         );
     }
@@ -53,12 +52,7 @@ impl Munger {
         core.raw_read_32(self.offsets.ewram.rng_state, -1)
     }
 
-    pub(super) fn set_rx_packet(
-        &self,
-        mut core: mgba::core::CoreMutRef,
-        index: u32,
-        packet: &[u8; 0x10],
-    ) {
+    pub(super) fn set_rx_packet(&self, mut core: mgba::core::CoreMutRef, index: u32, packet: &[u8; 0x10]) {
         core.raw_write_range(self.offsets.ewram.rx_packet_arr + index * 0x10, -1, packet)
     }
 

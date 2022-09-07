@@ -65,11 +65,8 @@ impl Assets {
                     (0..5)
                         .map(|i| {
                             rom::apply_palette(
-                                rom::read_merged_tiles(
-                                    &buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4],
-                                    2,
-                                )
-                                .unwrap(),
+                                rom::read_merged_tiles(&buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4], 2)
+                                    .unwrap(),
                                 &palette,
                             )
                         })
@@ -107,8 +104,7 @@ impl Assets {
                         },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
-                                &mapper
-                                    .get(byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4]))
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x10..0x10 + 4]))
                                     [..rom::TILE_BYTES * 4],
                                 2,
                             )

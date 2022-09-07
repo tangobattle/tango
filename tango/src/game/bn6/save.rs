@@ -122,9 +122,7 @@ impl save::Save for Save {
 
     fn view_modcards(&self) -> Option<save::ModcardsView> {
         if self.game_info.region == Region::JP {
-            Some(save::ModcardsView::Modcard56s(Box::new(Modcard56sView {
-                save: self,
-            })))
+            Some(save::ModcardsView::Modcard56s(Box::new(Modcard56sView { save: self })))
         } else {
             None
         }
@@ -141,10 +139,7 @@ impl save::Save for Save {
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE].copy_from_slice(&self.buf);
-        save::mask_save(
-            &mut buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE],
-            MASK_OFFSET,
-        );
+        save::mask_save(&mut buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE], MASK_OFFSET);
         buf
     }
 }
@@ -163,9 +158,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn equipped_folder_index(&self) -> usize {
-        let navi_stats_offset = self
-            .save
-            .navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         self.save.buf[navi_stats_offset + 0x2d] as usize
     }
 
@@ -174,9 +167,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
-        let navi_stats_offset = self
-            .save
-            .navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let idx = self.save.buf[navi_stats_offset + 0x2e + folder_index];
         if idx >= 30 {
             None
@@ -186,9 +177,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]> {
-        let navi_stats_offset = self
-            .save
-            .navi_stats_offset(NaviView { save: self.save }.navi());
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let idx1 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00];
         let idx2 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01];
         if idx1 == 0xff || idx2 == 0xff {

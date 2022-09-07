@@ -34,10 +34,7 @@ impl game::Game for EXE4RSImpl {
         &hooks::B4WJ_01
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if game_info.variant != save::Variant::RedSun
@@ -48,10 +45,7 @@ impl game::Game for EXE4RSImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
@@ -117,10 +111,7 @@ impl game::Game for EXE4BMImpl {
         &hooks::B4BJ_00
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if game_info.variant != save::Variant::BlueMoon
@@ -131,10 +122,7 @@ impl game::Game for EXE4BMImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
@@ -200,10 +188,7 @@ impl game::Game for BN4RSImpl {
         &hooks::B4WE_00
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if game_info.variant != save::Variant::RedSun
@@ -214,10 +199,7 @@ impl game::Game for BN4RSImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {
@@ -283,10 +265,7 @@ impl game::Game for BN4BMImpl {
         &hooks::B4BE_00
     }
 
-    fn parse_save(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         let save = save::Save::new(data)?;
         let game_info = save.game_info();
         if game_info.variant != save::Variant::BlueMoon
@@ -297,10 +276,7 @@ impl game::Game for BN4BMImpl {
         Ok(Box::new(save))
     }
 
-    fn save_from_wram(
-        &self,
-        data: &[u8],
-    ) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
+    fn save_from_wram(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
         Ok(Box::new(save::Save::from_wram(
             data,
             save::GameInfo {

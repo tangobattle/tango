@@ -44,20 +44,22 @@ fn interpolate2(c1: u32, w1: i32, c2: u32, w2: i32, s: i32) -> u32 {
     if c1 == c2 {
         c1
     } else {
-        (((((c1 & MASK_ALPHA) >> 24) as i32 * w1 + ((c2 & MASK_ALPHA) >> 24) as i32 * w2)
-            << (24 - s)) as u32 & MASK_ALPHA)
+        (((((c1 & MASK_ALPHA) >> 24) as i32 * w1 + ((c2 & MASK_ALPHA) >> 24) as i32 * w2) << (24 - s)) as u32
+            & MASK_ALPHA)
             + ((((c1 & MASK_2) as i32 * w1 + (c2 & MASK_2) as i32 * w2) >> s) as u32 & MASK_2)
             + ((((c1 & MASK_13) as i32 * w1 + (c2 & MASK_13) as i32 * w2) >> s) as u32 & MASK_13)
     }
 }
 
 fn interpolate3(c1: u32, w1: i32, c2: u32, w2: i32, c3: u32, w3: i32, s: i32) -> u32 {
-    (((((c1 & MASK_ALPHA) >> 24) as i32 * w1 + ((c2 & MASK_ALPHA) >> 24) as i32 * w2
-        + ((c3 & MASK_ALPHA) >> 24) as i32 * w3) << (24 - s)) as u32 & MASK_ALPHA)
-        + ((((c1 & MASK_2) as i32 * w1 + (c2 & MASK_2) as i32 * w2 + (c3 & MASK_2) as i32 * w3)
-            >> s) as u32 & MASK_2)
-        + ((((c1 & MASK_13) as i32 * w1 + (c2 & MASK_13) as i32 * w2 + (c3 & MASK_13) as i32 * w3)
-            >> s) as u32 & MASK_13)
+    (((((c1 & MASK_ALPHA) >> 24) as i32 * w1
+        + ((c2 & MASK_ALPHA) >> 24) as i32 * w2
+        + ((c3 & MASK_ALPHA) >> 24) as i32 * w3)
+        << (24 - s)) as u32
+        & MASK_ALPHA)
+        + ((((c1 & MASK_2) as i32 * w1 + (c2 & MASK_2) as i32 * w2 + (c3 & MASK_2) as i32 * w3) >> s) as u32 & MASK_2)
+        + ((((c1 & MASK_13) as i32 * w1 + (c2 & MASK_13) as i32 * w2 + (c3 & MASK_13) as i32 * w3) >> s) as u32
+            & MASK_13)
 }
 
 pub fn interp1(c1: u32, c2: u32) -> u32 {
