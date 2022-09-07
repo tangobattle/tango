@@ -35,4 +35,5 @@ cargo build --bin tango --target=x86_64-apple-darwin --release
 lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -output Tango.app/Contents/MacOS/tango
 
 # Build zip.
-zip -r "target/tango-$(python3 -c "import toml; print(toml.load(open('tango/Cargo.toml'))['package']['version'])", end='')-macos.zip" Tango.app
+mkdir -p dist
+zip -r "dist/tango-$(python3 -c "import toml; print(toml.load(open('tango/Cargo.toml'))['package']['version'])", end='')-macos.zip" Tango.app
