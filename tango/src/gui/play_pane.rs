@@ -5,6 +5,15 @@ use subtle::ConstantTimeEq;
 
 use crate::{audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats};
 
+pub enum Warning {
+    Incompatible,
+    UnrecognizedGame,
+    NoLocalROM(&'static (dyn game::Game + Send + Sync)),
+    NoLocalPatch(String, semver::Version),
+    NoRemoteROM(&'static (dyn game::Game + Send + Sync)),
+    NoRemotePatch(String, semver::Version),
+}
+
 struct LobbySelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub save: Box<dyn save::Save + Send + Sync>,
@@ -1517,59 +1526,54 @@ pub fn show(
                                             if let Some(selection) = selection.as_ref() {
                                                 let (family, variant) = selection.game.family_and_variant();
                                                 let patches = patches_scanner.read();
-                                                enum Warning {
-                                                    Incompatible,
-                                                    UnrecognizedGame,
-                                                    NoLocalROM(&'static (dyn game::Game + Send + Sync)),
-                                                }
 
                                                 let warning = if let Some(lobby) = lobby.as_ref() {
-                                                    let local_netplay_compatibility = get_netplay_compatibility(
-                                                        selection.game,
-                                                        selection
-                                                            .patch
-                                                            .as_ref()
-                                                            .map(|(name, version, _)| (name.as_str(), version)),
-                                                        &patches,
-                                                    );
-
-                                                    let remote_netplay_compatibility =
-                                                        lobby.remote_settings.game_info.as_ref().and_then(|g| {
-                                                            game::find_by_family_and_variant(
-                                                                g.family_and_variant.0.as_str(),
-                                                                g.family_and_variant.1,
-                                                            )
-                                                            .and_then(|game| {
-                                                                if roms.contains_key(&game) {
-                                                                    get_netplay_compatibility(
-                                                                        game,
-                                                                        g.patch
-                                                                            .as_ref()
-                                                                            .map(|pi| (pi.name.as_str(), &pi.version)),
-                                                                        &patches,
-                                                                    )
-                                                                } else {
-                                                                    None
-                                                                }
-                                                            })
-                                                        });
-
-                                                    if local_netplay_compatibility != remote_netplay_compatibility {
-                                                        Some(Warning::Incompatible)
-                                                    } else {
-                                                        if let Some(gi) = lobby.remote_settings.game_info.as_ref() {
-                                                            if let Some(game) = game::find_by_family_and_variant(
-                                                                &gi.family_and_variant.0,
-                                                                gi.family_and_variant.1,
-                                                            ) {
-                                                                if !roms.contains_key(&game) {
-                                                                    Some(Warning::NoLocalROM(game))
-                                                                } else {
-                                                                    None
-                                                                }
+                                                    if let Some(gi) = lobby.remote_settings.game_info.as_ref() {
+                                                        if let Some(game) = game::find_by_family_and_variant(
+                                                            &gi.family_and_variant.0,
+                                                            gi.family_and_variant.1,
+                                                        ) {
+                                                            if !roms.contains_key(&game) {
+                                                                Some(Warning::NoLocalROM(game))
                                                             } else {
-                                                                Some(Warning::UnrecognizedGame)
+                                                                None
                                                             }
+                                                        } else {
+                                                            Some(Warning::UnrecognizedGame)
+                                                        }
+                                                    } else {
+                                                        let local_netplay_compatibility = get_netplay_compatibility(
+                                                            selection.game,
+                                                            selection
+                                                                .patch
+                                                                .as_ref()
+                                                                .map(|(name, version, _)| (name.as_str(), version)),
+                                                            &patches,
+                                                        );
+
+                                                        let remote_netplay_compatibility =
+                                                            lobby.remote_settings.game_info.as_ref().and_then(|g| {
+                                                                game::find_by_family_and_variant(
+                                                                    g.family_and_variant.0.as_str(),
+                                                                    g.family_and_variant.1,
+                                                                )
+                                                                .and_then(|game| {
+                                                                    if roms.contains_key(&game) {
+                                                                        get_netplay_compatibility(
+                                                                            game,
+                                                                            g.patch.as_ref().map(|pi| {
+                                                                                (pi.name.as_str(), &pi.version)
+                                                                            }),
+                                                                            &patches,
+                                                                        )
+                                                                    } else {
+                                                                        None
+                                                                    }
+                                                                })
+                                                            });
+
+                                                        if local_netplay_compatibility != remote_netplay_compatibility {
+                                                            Some(Warning::Incompatible)
                                                         } else {
                                                             None
                                                         }
