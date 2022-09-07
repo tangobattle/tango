@@ -52,6 +52,7 @@ impl DeltaCounter {
         self.marks.push_back(d);
     }
 
+    #[allow(dead_code)]
     pub fn mean(&self) -> std::time::Duration {
         self.marks.iter().sum::<std::time::Duration>() / self.marks.len() as u32
     }
