@@ -83,23 +83,31 @@ pub fn show(
 
                         if let Some(saves) = saves.get(&game) {
                             for save in saves {
-                                if ui
-                                    .selectable_label(
-                                        selection
-                                            .as_ref()
-                                            .map(|selection| selection.save.path.as_path() == save.path.as_path())
-                                            .unwrap_or(false),
-                                        format!(
-                                            "{}",
-                                            save.path
-                                                .as_path()
-                                                .strip_prefix(saves_path)
-                                                .unwrap_or(save.path.as_path())
-                                                .display()
-                                        ),
-                                    )
-                                    .clicked()
-                                {
+                                let selected = selection
+                                    .as_ref()
+                                    .map(|selection| selection.save.path.as_path() == save.path.as_path())
+                                    .unwrap_or(false);
+                                let mut layout_job = egui::text::LayoutJob::default();
+                                layout_job.append(
+                                    &format!(
+                                        "{}",
+                                        save.path
+                                            .as_path()
+                                            .strip_prefix(saves_path)
+                                            .unwrap_or(save.path.as_path())
+                                            .display()
+                                    ),
+                                    0.0,
+                                    egui::TextFormat::simple(
+                                        ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                                        if selected {
+                                            ui.visuals().selection.stroke.color
+                                        } else {
+                                            ui.visuals().text_color()
+                                        },
+                                    ),
+                                );
+                                if ui.selectable_label(selected, layout_job).clicked() {
                                     let (game, rom, patch) = if let Some(selection) = selection.take() {
                                         if selection.game == game {
                                             (selection.game, selection.rom, selection.patch)
@@ -123,12 +131,29 @@ pub fn show(
                             .chain(games.iter().filter(|g| !roms.contains_key(*g)).map(|g| (false, g)))
                         {
                             let (family, variant) = game.family_and_variant();
-                            let text = i18n::LOCALES
-                                .lookup(language, &format!("game-{}.variant-{}", family, variant))
-                                .unwrap();
+
+                            let selected = selection
+                                .as_ref()
+                                .map(|selection| selection.game == *game)
+                                .unwrap_or(false);
+                            let mut layout_job = egui::text::LayoutJob::default();
+                            layout_job.append(
+                                &i18n::LOCALES
+                                    .lookup(language, &format!("game-{}.variant-{}", family, variant))
+                                    .unwrap(),
+                                0.0,
+                                egui::TextFormat::simple(
+                                    ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                                    if selected {
+                                        ui.visuals().selection.stroke.color
+                                    } else {
+                                        ui.visuals().text_color()
+                                    },
+                                ),
+                            );
 
                             if ui
-                                .add_enabled(available, egui::SelectableLabel::new(false, text))
+                                .add_enabled(available, egui::SelectableLabel::new(selected, layout_job))
                                 .clicked()
                             {
                                 show.as_mut().unwrap().selection = Some((*game, None));
