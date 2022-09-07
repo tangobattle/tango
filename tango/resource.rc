@@ -14,7 +14,6 @@ BEGIN
             VALUE "ProductVersion", "4.0.0.0\0"
             VALUE "FileVersion", "4.0.0.0\0"
             VALUE "OriginalFilename", "tango.exe\0"
-            VALUE "Licence", "AGPL-3.0\0"
             VALUE "Info", "https://tangobattle.com\0"
         END
     END
@@ -23,3 +22,4 @@ BEGIN
         VALUE "Translation", 0x0, 1200
     END
 END
+
