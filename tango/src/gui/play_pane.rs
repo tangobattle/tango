@@ -1,5 +1,3 @@
-use std::f32::consts::E;
-
 use fluent_templates::Loader;
 use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
@@ -16,6 +14,63 @@ pub enum Warning {
     NoLocalPatch(String, semver::Version),
     NoRemoteROM(&'static (dyn game::Game + Send + Sync)),
     NoRemotePatch(String, semver::Version),
+}
+
+impl Warning {
+    pub fn description(&self, language: &unic_langid::LanguageIdentifier) -> String {
+        match self {
+            Warning::Incompatible => i18n::LOCALES.lookup(language, "lobby-issue-incompatible").unwrap(),
+            Warning::UnrecognizedGame => i18n::LOCALES.lookup(language, "lobby-issue-unrecognized-game").unwrap(),
+            Warning::NoLocalSelection => i18n::LOCALES
+                .lookup(language, "lobby-issue-no-local-selection")
+                .unwrap(),
+            Warning::NoRemoteSelection => i18n::LOCALES
+                .lookup(language, "lobby-issue-no-remote-selection")
+                .unwrap(),
+            Warning::NoLocalROM(game) => i18n::LOCALES
+                .lookup_with_args(
+                    language,
+                    "lobby-issue-no-local-rom",
+                    &std::collections::HashMap::from([(
+                        "game_name",
+                        i18n::LOCALES
+                            .lookup(
+                                language,
+                                &format!(
+                                    "game-{}.variant-{}",
+                                    game.family_and_variant().0,
+                                    game.family_and_variant().1
+                                ),
+                            )
+                            .unwrap()
+                            .into(),
+                    )]),
+                )
+                .unwrap(),
+            Warning::NoLocalPatch(_, _) => todo!(),
+            Warning::NoRemoteROM(game) => i18n::LOCALES
+                .lookup_with_args(
+                    language,
+                    "lobby-issue-no-remote-rom",
+                    &std::collections::HashMap::from([(
+                        "game_name",
+                        i18n::LOCALES
+                            .lookup(
+                                language,
+                                &format!(
+                                    "game-{}.variant-{}",
+                                    game.family_and_variant().0,
+                                    game.family_and_variant().1
+                                ),
+                            )
+                            .unwrap()
+                            .into(),
+                    )]),
+                )
+                .unwrap(),
+            Warning::NoRemotePatch(_, _) => todo!(),
+        }
+    }
 }
 
 struct LobbySelection {
@@ -800,7 +855,7 @@ fn show_lobby_table(
                             ui.horizontal(|ui| {
                                 ui.strong(i18n::LOCALES.lookup(&config.language, "play-details-game").unwrap());
 
-                                let warning = (|| {
+                                if let Some(warning) = (|| {
                                     let selection = if let Some(selection) = lobby.selection.as_ref() {
                                         selection
                                     } else {
@@ -868,7 +923,9 @@ fn show_lobby_table(
                                     }
 
                                     return None;
-                                })();
+                                })() {
+                                    gui::warning::show(ui, warning.description(&config.language));
+                                }
                             });
                         });
                         strip.cell(|ui| {
