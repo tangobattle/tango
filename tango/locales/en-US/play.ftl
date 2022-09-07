@@ -12,6 +12,7 @@ play-you = You
 play-cancel = Cancel
 
 play-details-game = Game
+    .unrecognized = Unknown
 play-details-match-type = Match type
 play-details-reveal-setup = Reveal setup
 play-details-input-delay = Input delay
@@ -27,7 +28,9 @@ select-save = Select save
     .return-to-games-list = Return to games list
     .open-folder = Open folder
 
-lobby-issue-missing-rom = You do not have a copy of the opponent's game: {$game_name}
+lobby-issue-no-local-rom = You do not have a copy of the opponent's game: {$game_name}
+lobby-issue-no-remote-rom = The opponent does not have a copy of your game: {$game_name}
+lobby-issue-unrecognized-game = The opponent selected an unrecognized game.
 lobby-issue-no-local-game-selected = You must select a game.
 lobby-issue-no-remote-game-selected = Your opponent has not selected a game.
 lobby-issue-incompatible = The selected games are incompatible with each other.
