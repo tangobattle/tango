@@ -310,7 +310,7 @@ fn show_input_tab(
                                             i18n::LOCALES
                                                 .lookup(
                                                     lang,
-                                                    &format!("physical-input-keys.{}", raw),
+                                                    &format!("physical-input-key-{}", raw),
                                                 )
                                                 .unwrap_or(raw)
                                         }
@@ -319,13 +319,13 @@ fn show_input_tab(
                                             i18n::LOCALES
                                                 .lookup(
                                                     lang,
-                                                    &format!("physical-input-buttons.{}", raw),
+                                                    &format!("physical-input-button-{}", raw),
                                                 )
                                                 .unwrap_or(raw)
                                         }
                                         input::PhysicalInput::Axis { axis, direction } => {
                                             let raw = format!(
-                                                "{}{}",
+                                                "{}-{}",
                                                 axis.string(),
                                                 match direction {
                                                     input::AxisDirection::Positive => "plus",
@@ -335,7 +335,7 @@ fn show_input_tab(
                                             i18n::LOCALES
                                                 .lookup(
                                                     lang,
-                                                    &format!("physical-input-axes.{}", raw),
+                                                    &format!("physical-input-axis-motion-{}", raw),
                                                 )
                                                 .unwrap_or(raw)
                                         }
@@ -373,23 +373,23 @@ fn show_input_tab(
                 ui.end_row();
             };
 
-            add_row("input-button.left", |input_mapping| &mut input_mapping.left);
-            add_row("input-button.right", |input_mapping| {
+            add_row("input-button-left", |input_mapping| &mut input_mapping.left);
+            add_row("input-button-right", |input_mapping| {
                 &mut input_mapping.right
             });
-            add_row("input-button.up", |input_mapping| &mut input_mapping.up);
-            add_row("input-button.down", |input_mapping| &mut input_mapping.down);
-            add_row("input-button.a", |input_mapping| &mut input_mapping.a);
-            add_row("input-button.b", |input_mapping| &mut input_mapping.b);
-            add_row("input-button.l", |input_mapping| &mut input_mapping.l);
-            add_row("input-button.r", |input_mapping| &mut input_mapping.r);
-            add_row("input-button.start", |input_mapping| {
+            add_row("input-button-up", |input_mapping| &mut input_mapping.up);
+            add_row("input-button-down", |input_mapping| &mut input_mapping.down);
+            add_row("input-button-a", |input_mapping| &mut input_mapping.a);
+            add_row("input-button-b", |input_mapping| &mut input_mapping.b);
+            add_row("input-button-l", |input_mapping| &mut input_mapping.l);
+            add_row("input-button-r", |input_mapping| &mut input_mapping.r);
+            add_row("input-button-start", |input_mapping| {
                 &mut input_mapping.start
             });
-            add_row("input-button.select", |input_mapping| {
+            add_row("input-button-select", |input_mapping| {
                 &mut input_mapping.select
             });
-            add_row("input-button.speed-up", |input_mapping| {
+            add_row("input-button-speed-up", |input_mapping| {
                 &mut input_mapping.speed_up
             });
         });
