@@ -225,7 +225,7 @@ pub fn show(
                     if ui
                         .button(format!(
                             "💾 {}",
-                            i18n::LOCALES.lookup(language, "replays.export").unwrap()
+                            i18n::LOCALES.lookup(language, "replays-export").unwrap()
                         ))
                         .clicked()
                     {

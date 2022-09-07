@@ -90,7 +90,7 @@ pub fn show(
     if state.replays_scanner.is_scanning() {
         ui.horizontal(|ui| {
             ui.spinner();
-            ui.label(i18n::LOCALES.lookup(language, "replays.scanning").unwrap());
+            ui.label(i18n::LOCALES.lookup(language, "replays-scanning").unwrap());
         });
         return;
     }
@@ -369,7 +369,7 @@ pub fn show(
                         if ui
                             .button(format!(
                                 "▶️ {}",
-                                i18n::LOCALES.lookup(language, "replays.play").unwrap()
+                                i18n::LOCALES.lookup(language, "replays-play").unwrap()
                             ))
                             .clicked()
                         {
@@ -405,7 +405,7 @@ pub fn show(
                         if ui
                             .button(format!(
                                 "💾 {}",
-                                i18n::LOCALES.lookup(language, "replays.export").unwrap()
+                                i18n::LOCALES.lookup(language, "replays-export").unwrap()
                             ))
                             .clicked()
                         {

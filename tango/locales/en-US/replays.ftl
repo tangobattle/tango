@@ -1,7 +1,8 @@
 replays = Replays
-    .export = Export
-    .play = Play
-    .scanning = Scanning...
+
+replays-export = Export
+replays-play = Play
+replays-scanning = Scanning...
 
 replay-subtitle = {$game_family} @ {$link_code}: vs {$nickname}
 
@@ -15,7 +16,6 @@ replays-export-cancel = Cancel
 replays-export-confirm-success = Yay!
 replays-export-confirm-error = Damn!
 
-replay-viewer =
-    .pause = Pause
-    .step = Step
-    .speed = Speed
+replay-viewer-pause = Pause
+replay-viewer-step = Step
+replay-viewer-speed = Speed

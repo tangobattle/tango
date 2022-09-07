@@ -28,7 +28,7 @@ pub fn show(
                     .selectable_label(paused, "⏸️")
                     .on_hover_text(
                         i18n::LOCALES
-                            .lookup(language, "replay-viewer.pause")
+                            .lookup(language, "replay-viewer-pause")
                             .unwrap(),
                     )
                     .clicked()
@@ -39,7 +39,7 @@ pub fn show(
                     .button("⏯️")
                     .on_hover_text(
                         i18n::LOCALES
-                            .lookup(language, "replay-viewer.step")
+                            .lookup(language, "replay-viewer-step")
                             .unwrap(),
                     )
                     .clicked()
@@ -52,7 +52,7 @@ pub fn show(
                 ui.add(egui::Slider::new(&mut speed, 0.5..=10.0).step_by(0.25))
                     .on_hover_text(
                         i18n::LOCALES
-                            .lookup(language, "replay-viewer.speed")
+                            .lookup(language, "replay-viewer-speed")
                             .unwrap(),
                     );
                 ui.label("🐇");

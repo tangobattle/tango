@@ -1,3 +1,2 @@
-escape =
-    .settings = Settings
-    .end-game = End game
+escape-settings = Settings
+escape-end-game = End game

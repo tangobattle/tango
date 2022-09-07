@@ -30,7 +30,7 @@ pub fn show(
                 if ui
                     .button(
                         egui::RichText::new(
-                            i18n::LOCALES.lookup(language, "escape.settings").unwrap(),
+                            i18n::LOCALES.lookup(language, "escape-settings").unwrap(),
                         )
                         .heading(),
                     )
@@ -42,7 +42,7 @@ pub fn show(
                 if ui
                     .button(
                         egui::RichText::new(
-                            i18n::LOCALES.lookup(language, "escape.end-game").unwrap(),
+                            i18n::LOCALES.lookup(language, "escape-end-game").unwrap(),
                         )
                         .heading(),
                     )

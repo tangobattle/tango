@@ -50,7 +50,7 @@ pub fn show(
                                     i18n::LOCALES
                                         .lookup_with_args(
                                             &language,
-                                            "input-mapping.prompt",
+                                            "input-mapping-prompt",
                                             &std::collections::HashMap::from([(
                                                 "key",
                                                 i18n::LOCALES

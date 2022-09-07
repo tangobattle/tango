@@ -1,5 +1,4 @@
-input-mapping =
-    .prompt = Press input for {$key}.
+input-mapping-prompt = Press input for {$key}.
 
 input-button =
     .left = ⬅

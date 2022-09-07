@@ -1,12 +1,13 @@
 settings = Settings
-    .general = General
-    .input = Input
-    .graphics = Graphics
-    .audio = Audio
-    .netplay = Netplay
-    .patches = Patches
-    .advanced = Advanced
-    .about = About
+
+settings-tab-general = General
+settings-tab-input = Input
+settings-tab-graphics = Graphics
+settings-tab-audio = Audio
+settings-tab-netplay = Netplay
+settings-tab-patches = Patches
+settings-tab-advanced = Advanced
+settings-tab-about = About
 
 settings-theme = Theme
     .light = Light

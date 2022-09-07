@@ -825,7 +825,7 @@ fn show_lobby_table(
                         ui.horizontal(|ui| {
                             ui.strong(
                                 i18n::LOCALES
-                                    .lookup(&config.language, "play-details.game")
+                                    .lookup(&config.language, "play-details-game")
                                     .unwrap(),
                             );
 
@@ -841,7 +841,7 @@ fn show_lobby_table(
                                                 i18n::LOCALES
                                                     .lookup_with_args(
                                                         &config.language,
-                                                        "lobby-issue.missing-rom",
+                                                        "lobby-issue-missing-rom",
                                                         &std::collections::HashMap::from([(
                                                             "game_name",
                                                             i18n::LOCALES
@@ -882,7 +882,7 @@ fn show_lobby_table(
                                                 i18n::LOCALES
                                                     .lookup(
                                                         &config.language,
-                                                        "lobby-issue.incompatible",
+                                                        "lobby-issue-incompatible",
                                                     )
                                                     .unwrap(),
                                             );
@@ -893,7 +893,7 @@ fn show_lobby_table(
                                             i18n::LOCALES
                                                 .lookup(
                                                     &config.language,
-                                                    "lobby-issue.no-remote-game-selected",
+                                                    "lobby-issue-no-remote-game-selected",
                                                 )
                                                 .unwrap(),
                                         );
@@ -904,7 +904,7 @@ fn show_lobby_table(
                                         i18n::LOCALES
                                             .lookup(
                                                 &config.language,
-                                                "lobby-issue.no-remote-game-selected",
+                                                "lobby-issue-no-remote-game-selected",
                                             )
                                             .unwrap(),
                                     );
@@ -915,7 +915,7 @@ fn show_lobby_table(
                                     i18n::LOCALES
                                         .lookup(
                                             &config.language,
-                                            "lobby-issue.no-local-game-selected",
+                                            "lobby-issue-no-local-game-selected",
                                         )
                                         .unwrap(),
                                 );
@@ -983,7 +983,7 @@ fn show_lobby_table(
                     ui.horizontal(|ui| {
                         ui.strong(
                             i18n::LOCALES
-                                .lookup(&config.language, "play-details.match-type")
+                                .lookup(&config.language, "play-details-match-type")
                                 .unwrap(),
                         );
                         if lobby.selection.is_some()
@@ -993,7 +993,7 @@ fn show_lobby_table(
                             gui::warning::show(
                                 ui,
                                 i18n::LOCALES
-                                    .lookup(&config.language, "lobby-issue.match-type-mismatch")
+                                    .lookup(&config.language, "lobby-issue-match-type-mismatch")
                                     .unwrap(),
                             );
                         }
@@ -1078,7 +1078,7 @@ fn show_lobby_table(
                 row.col(|ui| {
                     ui.strong(
                         i18n::LOCALES
-                            .lookup(&config.language, "play-details.reveal-setup")
+                            .lookup(&config.language, "play-details-reveal-setup")
                             .unwrap(),
                     );
                 });

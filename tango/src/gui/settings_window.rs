@@ -59,56 +59,56 @@ pub fn show(
                     &mut state.tab,
                     Tab::General,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.general")
+                        .lookup(&config.language, "settings-tab-general")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::Input,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.input")
+                        .lookup(&config.language, "settings-tab-input")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::Graphics,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.graphics")
+                        .lookup(&config.language, "settings-tab-graphics")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::Audio,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.audio")
+                        .lookup(&config.language, "settings-tab-audio")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::Netplay,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.netplay")
+                        .lookup(&config.language, "settings-tab-netplay")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::Patches,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.patches")
+                        .lookup(&config.language, "settings-tab-patches")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::Advanced,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.advanced")
+                        .lookup(&config.language, "settings-tab-advanced")
                         .unwrap(),
                 );
                 ui.selectable_value(
                     &mut state.tab,
                     Tab::About,
                     i18n::LOCALES
-                        .lookup(&config.language, "settings.about")
+                        .lookup(&config.language, "settings-tab-about")
                         .unwrap(),
                 );
             });

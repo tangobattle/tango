@@ -307,7 +307,7 @@ fn show_table<const N: usize>(
                             } else {
                                 strip.cell(|_ui| {});
                                 strip.cell(|ui| {
-                                    ui.weak(i18n::LOCALES.lookup(lang, "dark-ai.unset").unwrap());
+                                    ui.weak(i18n::LOCALES.lookup(lang, "dark-ai-unset").unwrap());
                                 });
                                 strip.cell(|_ui| {});
                                 strip.cell(|_ui| {});
@@ -401,7 +401,7 @@ pub fn show<'a>(
                 |ui| {
                     ui.strong(
                         i18n::LOCALES
-                            .lookup(lang, "dark-ai.secondary-standard-chips")
+                            .lookup(lang, "dark-ai-secondary-standard-chips")
                             .unwrap(),
                     );
                     show_table(
@@ -421,7 +421,7 @@ pub fn show<'a>(
             ui.push_id(egui::Id::new("dark-ai-view-standard-chips"), |ui| {
                 ui.strong(
                     i18n::LOCALES
-                        .lookup(lang, "dark-ai.standard-chips")
+                        .lookup(lang, "dark-ai-standard-chips")
                         .unwrap(),
                 );
                 show_table(
@@ -438,7 +438,7 @@ pub fn show<'a>(
             });
 
             ui.push_id(egui::Id::new("dark-ai-view-mega-chips"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai.mega-chips").unwrap());
+                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-mega-chips").unwrap());
                 show_table(
                     ui,
                     &materialized.mega_chips,
@@ -453,7 +453,7 @@ pub fn show<'a>(
             });
 
             ui.push_id(egui::Id::new("dark-ai-view-giga-chip"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai.giga-chip").unwrap());
+                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-giga-chip").unwrap());
                 show_table(
                     ui,
                     &[materialized.giga_chip],
@@ -468,7 +468,7 @@ pub fn show<'a>(
             });
 
             ui.push_id(egui::Id::new("dark-ai-view-combos"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai.combos").unwrap());
+                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-combos").unwrap());
                 show_table(
                     ui,
                     &[None; 8],
@@ -485,7 +485,7 @@ pub fn show<'a>(
             ui.push_id(egui::Id::new("dark-ai-view-program-advance"), |ui| {
                 ui.strong(
                     i18n::LOCALES
-                        .lookup(lang, "dark-ai.program-advance")
+                        .lookup(lang, "dark-ai-program-advance")
                         .unwrap(),
                 );
                 show_table(

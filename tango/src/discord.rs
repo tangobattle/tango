@@ -47,7 +47,7 @@ pub fn make_looking_activity(
     // discord_presence::models::Activity {
     //     state: Some(
     //         i18n::LOCALES
-    //             .lookup(lang, "discord-presence.looking")
+    //             .lookup(lang, "discord-presence-looking")
     //             .unwrap(),
     //     ),
     //     secrets: Some(discord_presence::models::ActivitySecrets {
@@ -71,7 +71,7 @@ pub fn make_single_player_activity(
     // discord_presence::models::Activity {
     //     state: Some(
     //         i18n::LOCALES
-    //             .lookup(lang, "discord-presence.in-single-player")
+    //             .lookup(lang, "discord-presence-in-single-player")
     //             .unwrap(),
     //     ),
     //     timestamps: Some(discord_presence::models::ActivityTimestamps {
@@ -94,7 +94,7 @@ pub fn make_in_lobby_activity(
     // discord_presence::models::Activity {
     //     state: Some(
     //         i18n::LOCALES
-    //             .lookup(lang, "discord-presence.in-lobby")
+    //             .lookup(lang, "discord-presence-in-lobby")
     //             .unwrap(),
     //     ),
     //     party: Some(discord_presence::models::ActivityParty {
@@ -115,7 +115,7 @@ pub fn make_in_progress_activity(
     // discord_presence::models::Activity {
     //     state: Some(
     //         i18n::LOCALES
-    //             .lookup(lang, "discord-presence.in-progress")
+    //             .lookup(lang, "discord-presence-in-progress")
     //             .unwrap(),
     //     ),
     //     party: Some(discord_presence::models::ActivityParty {

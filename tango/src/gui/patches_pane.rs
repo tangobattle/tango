@@ -25,7 +25,7 @@ pub fn show(
             if ui
                 .button(format!(
                     "🔄 {}",
-                    i18n::LOCALES.lookup(language, "patches.update").unwrap()
+                    i18n::LOCALES.lookup(language, "patches-update").unwrap()
                 ))
                 .clicked()
             {
@@ -92,7 +92,7 @@ pub fn show(
                                 .button(format!(
                                     "📂 {}",
                                     i18n::LOCALES
-                                        .lookup(language, "patches.open-folder")
+                                        .lookup(language, "patches-open-folder")
                                         .unwrap(),
                                 ))
                                 .clicked()
@@ -129,7 +129,7 @@ pub fn show(
                                     |ui| {
                                         ui.strong(
                                             i18n::LOCALES
-                                                .lookup(language, "patches.authors")
+                                                .lookup(language, "patches-details-authors")
                                                 .unwrap(),
                                         );
                                     },
@@ -156,7 +156,7 @@ pub fn show(
                                     |ui| {
                                         ui.strong(
                                             i18n::LOCALES
-                                                .lookup(language, "patches.license")
+                                                .lookup(language, "patches-details-license")
                                                 .unwrap(),
                                         );
                                     },
@@ -166,7 +166,10 @@ pub fn show(
                                 } else {
                                     ui.label(
                                         i18n::LOCALES
-                                            .lookup(language, "patches.all-rights-reserved")
+                                            .lookup(
+                                                language,
+                                                "patches-details-license.all-rights-reserved",
+                                            )
                                             .unwrap(),
                                     );
                                 }
@@ -179,7 +182,7 @@ pub fn show(
                                         |ui| {
                                             ui.strong(
                                                 i18n::LOCALES
-                                                    .lookup(language, "patches.source")
+                                                    .lookup(language, "patches-details-source")
                                                     .unwrap(),
                                             );
                                         },
@@ -195,7 +198,7 @@ pub fn show(
                                         |ui| {
                                             ui.strong(
                                                 i18n::LOCALES
-                                                    .lookup(language, "patches.games")
+                                                    .lookup(language, "patches-details-games")
                                                     .unwrap(),
                                             );
                                         },

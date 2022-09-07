@@ -78,7 +78,7 @@ pub fn show(
                 && ui
                     .selectable_label(
                         state.tab == None,
-                        i18n::LOCALES.lookup(lang, "save.cover").unwrap(),
+                        i18n::LOCALES.lookup(lang, "save-tab-cover").unwrap(),
                     )
                     .clicked()
             {
@@ -93,11 +93,11 @@ pub fn show(
                             .lookup(
                                 lang,
                                 match tab {
-                                    Tab::Navi => "save.navi",
-                                    Tab::Navicust => "save.navicust",
-                                    Tab::Folder => "save.folder",
-                                    Tab::Modcards => "save.modcards",
-                                    Tab::DarkAI => "save.dark-ai",
+                                    Tab::Navi => "save-tab-navi",
+                                    Tab::Navicust => "save-tab-navicust",
+                                    Tab::Folder => "save-tab-folder",
+                                    Tab::Modcards => "save-tab-modcards",
+                                    Tab::DarkAI => "save-tab-dark-ai",
                                 },
                             )
                             .unwrap(),
