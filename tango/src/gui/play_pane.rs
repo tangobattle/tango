@@ -1517,7 +1517,13 @@ pub fn show(
                                             if let Some(selection) = selection.as_ref() {
                                                 let (family, variant) = selection.game.family_and_variant();
                                                 let patches = patches_scanner.read();
-                                                if let Some(lobby) = lobby.as_ref() {
+                                                enum Warning {
+                                                    Incompatible,
+                                                    UnrecognizedGame,
+                                                    NoLocalROM(&'static (dyn game::Game + Send + Sync)),
+                                                }
+
+                                                let warning = if let Some(lobby) = lobby.as_ref() {
                                                     let local_netplay_compatibility = get_netplay_compatibility(
                                                         selection.game,
                                                         selection
@@ -1549,29 +1555,51 @@ pub fn show(
                                                         });
 
                                                     if local_netplay_compatibility != remote_netplay_compatibility {
-                                                        gui::warning::append_to_layout_job(ui, &mut layout_job);
+                                                        Some(Warning::Incompatible)
+                                                    } else {
+                                                        if let Some(gi) = lobby.remote_settings.game_info.as_ref() {
+                                                            if let Some(game) = game::find_by_family_and_variant(
+                                                                &gi.family_and_variant.0,
+                                                                gi.family_and_variant.1,
+                                                            ) {
+                                                                if !roms.contains_key(&game) {
+                                                                    Some(Warning::NoLocalROM(game))
+                                                                } else {
+                                                                    None
+                                                                }
+                                                            } else {
+                                                                Some(Warning::UnrecognizedGame)
+                                                            }
+                                                        } else {
+                                                            None
+                                                        }
                                                     }
+                                                } else {
+                                                    None
+                                                };
+
+                                                if warning.is_some() {
+                                                    layout_job.append(
+                                                        &format!(
+                                                            "{} ",
+                                                            selection
+                                                                .save
+                                                                .path
+                                                                .strip_prefix(&config.saves_path())
+                                                                .unwrap_or(selection.save.path.as_path())
+                                                                .display()
+                                                        ),
+                                                        0.0,
+                                                        egui::TextFormat::simple(
+                                                            ui.style()
+                                                                .text_styles
+                                                                .get(&egui::TextStyle::Body)
+                                                                .unwrap()
+                                                                .clone(),
+                                                            ui.visuals().text_color(),
+                                                        ),
+                                                    );
                                                 }
-                                                layout_job.append(
-                                                    &format!(
-                                                        "{} ",
-                                                        selection
-                                                            .save
-                                                            .path
-                                                            .strip_prefix(&config.saves_path())
-                                                            .unwrap_or(selection.save.path.as_path())
-                                                            .display()
-                                                    ),
-                                                    0.0,
-                                                    egui::TextFormat::simple(
-                                                        ui.style()
-                                                            .text_styles
-                                                            .get(&egui::TextStyle::Body)
-                                                            .unwrap()
-                                                            .clone(),
-                                                        ui.visuals().text_color(),
-                                                    ),
-                                                );
                                                 layout_job.append(
                                                     &format!(
                                                         "{}",
