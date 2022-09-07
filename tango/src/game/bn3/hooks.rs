@@ -142,7 +142,10 @@ impl game::Hooks for Hooks {
                     let current_tick = round.current_tick();
                     if current_tick > 1 {
                         let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                        byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                        byteorder::LittleEndian::write_u32(
+                            &mut rx[4..8],
+                            current_tick.saturating_sub(2),
+                        );
                         munger.set_rx_packet(core, 0, &rx);
                         munger.set_rx_packet(core, 1, &rx);
                     }
@@ -586,7 +589,10 @@ impl game::Hooks for Hooks {
                     ip
                 } else {
                     let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                    byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                    byteorder::LittleEndian::write_u32(
+                        &mut rx[4..8],
+                        current_tick.saturating_sub(2),
+                    );
                     munger.set_rx_packet(core, 0, &rx);
                     munger.set_rx_packet(core, 1, &rx);
                     return;
@@ -940,7 +946,10 @@ impl game::Hooks for Hooks {
                     ip
                 } else {
                     let mut rx = [0x42, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-                    byteorder::LittleEndian::write_u32(&mut rx[4..8], current_tick - 2);
+                    byteorder::LittleEndian::write_u32(
+                        &mut rx[4..8],
+                        current_tick.saturating_sub(2),
+                    );
                     munger.set_rx_packet(core, 0, &rx);
                     munger.set_rx_packet(core, 1, &rx);
                     return;
