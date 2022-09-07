@@ -826,6 +826,32 @@ fn show_lobby_table(
                                         return Some(Warning::NoLocalROM(remote_game));
                                     };
 
+                                    if !lobby.remote_settings.available_games.iter().any(|(family, variant)| {
+                                        selection.game.family_and_variant() == (family, *variant)
+                                    }) {
+                                        return Some(Warning::NoRemoteROM(selection.game));
+                                    }
+
+                                    if let Some(pi) = remote_gi.patch.as_ref() {
+                                        if !patches.iter().any(|(patch_name, patch_metadata)| {
+                                            *patch_name == pi.name
+                                                && patch_metadata.versions.keys().any(|v| v == &pi.version)
+                                        }) {
+                                            return Some(Warning::NoRemotePatch(pi.name.clone(), pi.version.clone()));
+                                        }
+                                    }
+
+                                    if let Some((patch_name, patch_version, _)) = selection.patch.as_ref() {
+                                        if !lobby.remote_settings.available_patches.iter().any(|(name, versions)| {
+                                            patch_name == name && versions.iter().any(|v| v == patch_version)
+                                        }) {
+                                            return Some(Warning::NoRemotePatch(
+                                                patch_name.clone(),
+                                                patch_version.clone(),
+                                            ));
+                                        }
+                                    }
+
                                     if get_netplay_compatibility(
                                         selection.game,
                                         selection
@@ -1532,6 +1558,45 @@ pub fn show(
 
                                                     if !roms.contains_key(&remote_game) {
                                                         return Some(Warning::NoLocalROM(remote_game));
+                                                    }
+
+                                                    if !lobby.remote_settings.available_games.iter().any(
+                                                        |(family, variant)| {
+                                                            selection.game.family_and_variant() == (family, *variant)
+                                                        },
+                                                    ) {
+                                                        return Some(Warning::NoRemoteROM(selection.game));
+                                                    }
+
+                                                    if let Some(pi) = remote_gi.patch.as_ref() {
+                                                        if !patches.iter().any(|(patch_name, patch_metadata)| {
+                                                            *patch_name == pi.name
+                                                                && patch_metadata
+                                                                    .versions
+                                                                    .keys()
+                                                                    .any(|v| v == &pi.version)
+                                                        }) {
+                                                            return Some(Warning::NoRemotePatch(
+                                                                pi.name.clone(),
+                                                                pi.version.clone(),
+                                                            ));
+                                                        }
+                                                    }
+
+                                                    if let Some((patch_name, patch_version, _)) =
+                                                        selection.patch.as_ref()
+                                                    {
+                                                        if !lobby.remote_settings.available_patches.iter().any(
+                                                            |(name, versions)| {
+                                                                patch_name == name
+                                                                    && versions.iter().any(|v| v == patch_version)
+                                                            },
+                                                        ) {
+                                                            return Some(Warning::NoRemotePatch(
+                                                                patch_name.clone(),
+                                                                patch_version.clone(),
+                                                            ));
+                                                        }
                                                     }
 
                                                     let local_netplay_compatibility = get_netplay_compatibility(
