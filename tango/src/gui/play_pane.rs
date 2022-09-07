@@ -1610,17 +1610,17 @@ pub fn show(
                                     }
                                 }) | ui
                                     .vertical_centered_justified(|ui| {
+                                        let patches = patches_scanner.read();
+                                        let warning = if let Some(lobby) = lobby.as_ref() {
+                                            make_warning(&lobby, &roms, &patches)
+                                        } else {
+                                            None
+                                        };
+
                                         let mut layouter = |ui: &egui::Ui, _: &str, _wrap_width: f32| {
                                             let mut layout_job = egui::text::LayoutJob::default();
                                             if let Some(selection) = selection.as_ref() {
                                                 let (family, variant) = selection.game.family_and_variant();
-                                                let patches = patches_scanner.read();
-
-                                                let warning = if let Some(lobby) = lobby.as_ref() {
-                                                    make_warning(&lobby, &roms, &patches)
-                                                } else {
-                                                    None
-                                                };
 
                                                 if warning.is_some() {
                                                     gui::warning::append_to_layout_job(ui, &mut layout_job);
@@ -1684,7 +1684,13 @@ pub fn show(
                                             }
                                             ui.fonts().layout_job(layout_job)
                                         };
-                                        ui.add(egui::TextEdit::singleline(&mut String::new()).layouter(&mut layouter))
+                                        let mut resp = ui.add(
+                                            egui::TextEdit::singleline(&mut String::new()).layouter(&mut layouter),
+                                        );
+                                        if let Some(warning) = warning {
+                                            resp = resp.on_hover_text(warning.description(&config.language));
+                                        }
+                                        resp
                                     })
                                     .inner
                             },
