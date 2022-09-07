@@ -1797,29 +1797,54 @@ pub fn show(
                                 } else {
                                     return;
                                 };
-                                if ui
-                                    .selectable_label(
-                                        selection.patch.is_none(),
+                                {
+                                    let mut layout_job = egui::text::LayoutJob::default();
+                                    layout_job.append(
                                         &i18n::LOCALES
                                             .lookup(&config.language, "play-no-patch")
                                             .unwrap(),
-                                    )
-                                    .clicked()
-                                {
-                                    *selection = gui::Selection::new(
-                                        selection.game.clone(),
-                                        selection.save.clone(),
-                                        None,
-                                        roms.get(&selection.game).unwrap().clone(),
+                                        0.0,
+                                        egui::TextFormat::simple(
+                                            ui.style()
+                                                .text_styles
+                                                .get(&egui::TextStyle::Body)
+                                                .unwrap()
+                                                .clone(),
+                                            ui.visuals().text_color(),
+                                        ),
                                     );
+                                    if ui
+                                        .selectable_label(selection.patch.is_none(), layout_job)
+                                        .clicked()
+                                    {
+                                        *selection = gui::Selection::new(
+                                            selection.game.clone(),
+                                            selection.save.clone(),
+                                            None,
+                                            roms.get(&selection.game).unwrap().clone(),
+                                        );
+                                    }
                                 }
 
                                 for (name, (_, supported_versions)) in supported_patches.iter() {
+                                    let mut layout_job = egui::text::LayoutJob::default();
+                                    layout_job.append(
+                                        *name,
+                                        0.0,
+                                        egui::TextFormat::simple(
+                                            ui.style()
+                                                .text_styles
+                                                .get(&egui::TextStyle::Body)
+                                                .unwrap()
+                                                .clone(),
+                                            ui.visuals().text_color(),
+                                        ),
+                                    );
                                     if ui
                                         .selectable_label(
                                             selection.patch.as_ref().map(|(name, _, _)| name)
                                                 == Some(*name),
-                                            *name,
+                                            layout_job,
                                         )
                                         .clicked()
                                     {
@@ -1882,21 +1907,32 @@ pub fn show(
                                     .map(|(_, vs)| !vs.is_empty())
                                     .unwrap_or(false),
                             |ui| {
+                                let mut layout_job = egui::text::LayoutJob::default();
+                                layout_job.append(
+                                    &selection
+                                        .as_ref()
+                                        .and_then(|s| {
+                                            s.patch
+                                                .as_ref()
+                                                .map(|(_, version, _)| version.to_string())
+                                        })
+                                        .unwrap_or("".to_string()),
+                                    0.0,
+                                    egui::TextFormat::simple(
+                                        ui.style()
+                                            .text_styles
+                                            .get(&egui::TextStyle::Body)
+                                            .unwrap()
+                                            .clone(),
+                                        ui.visuals().text_color(),
+                                    ),
+                                );
                                 egui::ComboBox::from_id_source("patch-version-select-combobox")
                                     .width(
                                         PATCH_VERSION_COMBOBOX_WIDTH
                                             - ui.spacing().item_spacing.x * 2.0,
                                     )
-                                    .selected_text(
-                                        selection
-                                            .as_ref()
-                                            .and_then(|s| {
-                                                s.patch
-                                                    .as_ref()
-                                                    .map(|(_, version, _)| version.to_string())
-                                            })
-                                            .unwrap_or("".to_string()),
-                                    )
+                                    .selected_text(layout_job)
                                     .show_ui(ui, |ui| {
                                         let selection = if let Some(selection) = selection.as_mut()
                                         {
@@ -1920,11 +1956,22 @@ pub fn show(
                                         };
 
                                         for version in supported_versions.iter() {
+                                            let mut layout_job = egui::text::LayoutJob::default();
+                                            layout_job.append(
+                                                &version.to_string(),
+                                                0.0,
+                                                egui::TextFormat::simple(
+                                                    ui.style()
+                                                        .text_styles
+                                                        .get(&egui::TextStyle::Body)
+                                                        .unwrap()
+                                                        .clone(),
+                                                    ui.visuals().text_color(),
+                                                ),
+                                            );
+
                                             if ui
-                                                .selectable_label(
-                                                    &patch.1 == *version,
-                                                    version.to_string(),
-                                                )
+                                                .selectable_label(&patch.1 == *version, layout_job)
                                                 .clicked()
                                             {
                                                 let rom =
