@@ -1257,7 +1257,7 @@ fn show_bottom_pane(
                                                             i18n::LOCALES
                                                                 .lookup(
                                                                     &config.language,
-                                                                    "play-connection-task.starting",
+                                                                    "play-connection-task-starting",
                                                                 )
                                                                 .unwrap()
                                                         }
@@ -1265,7 +1265,7 @@ fn show_bottom_pane(
                                                             i18n::LOCALES
                                                                 .lookup(
                                                                     &config.language,
-                                                                    "play-connection-task.signaling",
+                                                                    "play-connection-task-signaling",
                                                                 )
                                                                 .unwrap()
                                                         }
@@ -1273,7 +1273,7 @@ fn show_bottom_pane(
                                                             i18n::LOCALES
                                                                 .lookup(
                                                                     &config.language,
-                                                                    "play-connection-task.waiting",
+                                                                    "play-connection-task-waiting",
                                                                 )
                                                                 .unwrap()
                                                         },
