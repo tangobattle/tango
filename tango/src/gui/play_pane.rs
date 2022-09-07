@@ -47,7 +47,16 @@ impl Warning {
                     )]),
                 )
                 .unwrap(),
-            Warning::NoLocalPatch(_, _) => todo!(),
+            Warning::NoLocalPatch(name, version) => i18n::LOCALES
+                .lookup_with_args(
+                    language,
+                    "lobby-issue-no-local-patch",
+                    &std::collections::HashMap::from([
+                        ("patch_name", name.clone().into()),
+                        ("patch_version", version.to_string().into()),
+                    ]),
+                )
+                .unwrap(),
             Warning::NoRemoteROM(game) => i18n::LOCALES
                 .lookup_with_args(
                     language,
@@ -68,7 +77,16 @@ impl Warning {
                     )]),
                 )
                 .unwrap(),
-            Warning::NoRemotePatch(_, _) => todo!(),
+            Warning::NoRemotePatch(name, version) => i18n::LOCALES
+                .lookup_with_args(
+                    language,
+                    "lobby-issue-no-remote-patch",
+                    &std::collections::HashMap::from([
+                        ("patch_name", name.clone().into()),
+                        ("patch_version", version.to_string().into()),
+                    ]),
+                )
+                .unwrap(),
         }
     }
 }

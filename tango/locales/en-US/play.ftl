@@ -30,6 +30,8 @@ select-save = Select save
 
 lobby-issue-no-local-rom = You do not have a copy of the opponent's game: {$game_name}
 lobby-issue-no-remote-rom = The opponent does not have a copy of your game: {$game_name}
+lobby-issue-no-local-patch = You do not have a copy of the opponent's patch: {$patch_name} v${patch_version}
+lobby-issue-no-remote-patch = The opponent does not have a copy of your patch: {$patch_name} v${patch_version}
 lobby-issue-unrecognized-game = The opponent selected an unrecognized game.
 lobby-issue-no-local-selection = You must select a game.
 lobby-issue-no-remote-selection = Your opponent has not selected a game.
