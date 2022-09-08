@@ -129,7 +129,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let audio = sdl.audio().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
-    let event_loop = glutin::event_loop::EventLoopBuilder::with_user_event().build();
+    let event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
     let mut sdl_event_loop = sdl.event_pump().unwrap();
 
     let icon = image::load_from_memory(include_bytes!("icon.png"))?;
@@ -143,11 +143,11 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             icon_width,
             icon_height,
         )?))
-        .with_inner_size(glutin::dpi::LogicalSize::new(
+        .with_inner_size(winit::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH * 3,
             mgba::gba::SCREEN_HEIGHT * 3,
         ))
-        .with_min_inner_size(glutin::dpi::LogicalSize::new(
+        .with_min_inner_size(winit::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
         ))
@@ -161,7 +161,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         .with_depth_buffer(0)
         .with_stencil_buffer(0)
         .with_vsync(true)
-        .with_srgb(false)
         .build_windowed(wb, &event_loop)
         .unwrap();
     let gl_window = unsafe { gl_window.make_current().unwrap() };
