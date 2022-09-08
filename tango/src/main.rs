@@ -173,12 +173,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let mut gfx_backend = graphics::wgpu::Backend::new(
         wb.build(&event_loop).unwrap(),
         egui_wgpu::winit::Painter::new(
-            if cfg!(windows) {
-                // Only support ANGLE and DX12 for now.
-                wgpu::Backends::GL | wgpu::Backends::DX12
-            } else {
-                wgpu::Backends::PRIMARY
-            },
+            wgpu::Backends::PRIMARY,
             wgpu::PowerPreference::LowPower,
             wgpu::DeviceDescriptor {
                 label: None,

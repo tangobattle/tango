@@ -15,4 +15,3 @@ members = [
 sdl2 = { git = "https://github.com/Rust-SDL2/rust-sdl2", rev = "bae03beaafc0040b8166d36a4bdbe570a05aa52a" }
 cmake = { git = "https://github.com/tangobattle/cmake-rs", rev = "fc9b8372f40bc611ca5df9a62dea00e8e8d3cfaa" }
 egui = { git = "https://github.com/emilk/egui", rev = "1fe08bf7e4bf845b8cb0a677a206e61d1744eb73" }
-wgpu = { git = "https://github.com/tangobattle/wgpu", rev = "ba9a49aa0b4cad4a1b52e47b1d94f572947d076b" }
