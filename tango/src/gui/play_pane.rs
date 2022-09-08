@@ -1792,7 +1792,7 @@ pub fn show(
                                 return None;
                             };
 
-                            // TODO: Check patch.
+                            // TODO: Check if the remote side has the patch.
 
                             let local_netplay_compatibilities =
                                 if let Some((patch_name, _, _)) = selection.patch.as_ref() {

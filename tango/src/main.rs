@@ -161,6 +161,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         .with_depth_buffer(0)
         .with_stencil_buffer(0)
         .with_vsync(true)
+        .with_srgb(false)
         .build_windowed(wb, &event_loop)
         .unwrap();
     let gl_window = unsafe { gl_window.make_current().unwrap() };
