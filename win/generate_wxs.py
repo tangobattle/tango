@@ -19,7 +19,7 @@ print(
         Manufacturer="Tango"
         Name="Tango"
         Version="{version.major}.{version.minor}.{version.patch}.0">
-        <Package Id="B2BBB3AD-3965-485B-9634-33323BCAA49F" InstallerVersion="200" />
+        <Package Id="*" InstallerVersion="200" />
         <Media Id="1" Cabinet="product.cab" EmbedCab="yes" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
