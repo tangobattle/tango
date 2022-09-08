@@ -6,7 +6,7 @@ license = "AGPL-3.0-or-later"
 default-run = "tango"
 
 [features]
-# default = ["wgpu"]
+default = ["wgpu"]
 cpal = ["dep:cpal"]
 wgpu = ["dep:wgpu", "dep:egui-wgpu"]
 
