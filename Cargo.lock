@@ -6697,3 +6697,8 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[patch.unused]]
+name = "wgpu"
+version = "0.13.0"
+source = "git+https://github.com/tangobattle/wgpu?rev=ba9a49aa0b4cad4a1b52e47b1d94f572947d076b#ba9a49aa0b4cad4a1b52e47b1d94f572947d076b"

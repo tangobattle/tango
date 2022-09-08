@@ -173,7 +173,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let mut gfx_backend = graphics::wgpu::Backend::new(
         wb.build(&event_loop).unwrap(),
         egui_wgpu::winit::Painter::new(
-            wgpu::Backends::PRIMARY,
+            wgpu::Backends::PRIMARY | wgpu::Backends::GL,
             wgpu::PowerPreference::LowPower,
             wgpu::DeviceDescriptor {
                 label: None,
