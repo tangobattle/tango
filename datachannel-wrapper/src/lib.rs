@@ -1,4 +1,7 @@
-pub use datachannel::*;
+pub use datachannel::{
+    sdp, ConnectionState, DataChannelInit, GatheringState, IceCandidate, Reliability, RtcConfig, SdpType,
+    SessionDescription, SignalingState,
+};
 
 pub struct PeerConnection {
     peer_conn: Box<datachannel::RtcPeerConnection<PeerConnectionHandler>>,
