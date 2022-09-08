@@ -156,23 +156,35 @@ pub fn show(
                                 .unwrap_or(false);
 
                             let warning = (|| {
-                                if let Some(gi) = remote_settings
-                                    .as_ref()
-                                    .and_then(|settings| settings.game_info.as_ref())
-                                {
-                                    // TODO: Check local ROM.
-                                    // TODO: Check remote ROM.
+                                let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
+                                    remote_settings
+                                } else {
+                                    return None;
+                                };
 
-                                    if let Some(netplay_compatibility) =
-                                        gui::play_pane::get_netplay_compatibility_from_game_info(gi, &patches)
+                                if !remote_settings
+                                    .available_games
+                                    .iter()
+                                    .any(|(family, variant)| game.family_and_variant() == (family, *variant))
+                                {
+                                    return Some(gui::play_pane::Warning::NoRemoteROM(*game));
+                                }
+
+                                let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
+                                    remote_gi
+                                } else {
+                                    return None;
+                                };
+
+                                if let Some(netplay_compatibility) =
+                                    gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, &patches)
+                                {
+                                    if !netplay_compatibilities
+                                        .get(game)
+                                        .map(|nc| nc.contains(netplay_compatibility.as_str()))
+                                        .unwrap_or(false)
                                     {
-                                        if !netplay_compatibilities
-                                            .get(game)
-                                            .map(|nc| nc.contains(netplay_compatibility.as_str()))
-                                            .unwrap_or(false)
-                                        {
-                                            return Some(gui::play_pane::Warning::Incompatible);
-                                        }
+                                        return Some(gui::play_pane::Warning::Incompatible);
                                     }
                                 }
                                 None
@@ -197,10 +209,12 @@ pub fn show(
                                 ),
                             );
 
-                            if ui
-                                .add_enabled(available, egui::SelectableLabel::new(selected, layout_job))
-                                .clicked()
-                            {
+                            let mut resp = ui.add_enabled(available, egui::SelectableLabel::new(selected, layout_job));
+                            if let Some(warning) = warning {
+                                resp = resp.on_hover_text(warning.description(language));
+                            }
+
+                            if resp.clicked() {
                                 show.as_mut().unwrap().selection = Some((*game, None));
                             }
                         }
