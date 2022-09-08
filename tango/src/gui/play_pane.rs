@@ -233,7 +233,6 @@ pub fn get_netplay_compatibility_from_game_info(
 fn are_settings_compatible(
     local_settings: &net::protocol::Settings,
     remote_settings: &net::protocol::Settings,
-    roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) -> bool {
     let local_game_info = if let Some(gi) = local_settings.game_info.as_ref() {
@@ -291,11 +290,7 @@ fn are_settings_compatible(
     }
 
     impl SimplifiedSettings {
-        fn new(
-            settings: &net::protocol::Settings,
-            roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
-            patches: &std::collections::BTreeMap<String, patch::Patch>,
-        ) -> Self {
+        fn new(settings: &net::protocol::Settings, patches: &std::collections::BTreeMap<String, patch::Patch>) -> Self {
             Self {
                 netplay_compatibility: settings
                     .game_info
@@ -306,8 +301,8 @@ fn are_settings_compatible(
         }
     }
 
-    let local_simplified_settings = SimplifiedSettings::new(&local_settings, roms, patches);
-    let remote_simplified_settings = SimplifiedSettings::new(&remote_settings, roms, patches);
+    let local_simplified_settings = SimplifiedSettings::new(&local_settings, patches);
+    let remote_simplified_settings = SimplifiedSettings::new(&remote_settings, patches);
 
     local_simplified_settings.netplay_compatibility.is_some()
         && remote_simplified_settings.netplay_compatibility.is_some()
@@ -508,7 +503,6 @@ impl Lobby {
         are_settings_compatible(
             &self.make_local_settings(),
             &self.remote_settings,
-            &self.roms_scanner.read(),
             &self.patches_scanner.read(),
         )
     }
@@ -1388,7 +1382,6 @@ fn show_bottom_pane(
                                     && are_settings_compatible(
                                         &lobby.make_local_settings(),
                                         &lobby.remote_settings,
-                                        &roms,
                                         &patches,
                                     )
                                     && lobby.sender.is_some(),
