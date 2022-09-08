@@ -23,27 +23,19 @@ print(
         <Media Id="1" Cabinet="product.cab" EmbedCab="yes" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
-            <Directory Id="DesktopFolder" Name="Desktop">
-                <Component Id="ApplicationShortcutDesktop" Guid="*">
-                    <Shortcut
-                        Id="ApplicationDesktopShortcut"
-                        Name="Tango"
-                        Target="[INSTALLFOLDER]Tango.exe"
-                        WorkingDirectory="INSTALLFOLDER" />
-                    <RegistryValue
-                        Root="HKCU"
-                        Key="Software\Tango\Tango"
-                        Name="installed"
-                        Type="integer"
-                        Value="1"
-                        KeyPath="yes" />
-                </Component>
-            </Directory>
-
             <Directory Id="ProgramFiles64Folder">
                 <Directory Id="INSTALLFOLDER" Name="Tango">
                     <Component Id="tango.exe" Guid="*">
-                        <File Source="tango.exe" KeyPath="yes" />
+                        <File Source="tango.exe" KeyPath="yes">
+                            <Shortcut
+                                Id="DesktopShortcut"
+                                Directory="DesktopFolder"
+                                Name="Tango"
+                                WorkingDirectory="INSTALLFOLDER"
+                                Icon="tango.exe"
+                                IconIndex="0"
+                                Advertise="yes" />
+                        </File>
                     </Component>
                     <Component Id="libstdc++-6.dll" Guid="*">
                         <File Source="libstdc++-6.dll" KeyPath="yes" />
@@ -75,7 +67,6 @@ print(
             <ComponentRef Id="libgcc_s_seh-1.dll" />
             <ComponentRef Id="libwinpthread-1.dll" />
             <ComponentRef Id="ffmpeg.exe" />
-            <ComponentRef Id="ApplicationShortcutDesktop" />
         </Feature>
     </Product>
 </Wix>
