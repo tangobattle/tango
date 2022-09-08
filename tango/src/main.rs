@@ -172,7 +172,11 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     }
     gl_window.swap_buffers().unwrap();
 
-    log::info!("GL version: {}", unsafe { gl.get_parameter_string(glow::VERSION) });
+    log::info!(
+        "GL version: {}, extensions: {:?}",
+        unsafe { gl.get_parameter_string(glow::VERSION) },
+        gl.supported_extensions()
+    );
 
     let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
 

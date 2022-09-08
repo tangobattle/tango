@@ -49,6 +49,12 @@ pub enum Mode {
     Replayer,
 }
 
+fn fix_vbuf_alpha(vbuf: &mut [u8]) {
+    for chunk in vbuf.chunks_mut(4) {
+        chunk[3] = 0xff;
+    }
+}
+
 impl Session {
     pub fn new_pvp(
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
@@ -166,6 +172,7 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
+                fix_vbuf_alpha(&mut *vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
             });
@@ -237,6 +244,7 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
+                fix_vbuf_alpha(&mut *vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
 
@@ -330,6 +338,7 @@ impl Session {
             thread.set_frame_callback(move |_core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
+                fix_vbuf_alpha(&mut *vbuf);
                 emu_tps_counter.lock().mark();
 
                 if !replay_is_complete && replayer_state.lock_inner().input_pairs_left() == 0 {
