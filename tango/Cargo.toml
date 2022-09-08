@@ -6,7 +6,9 @@ license = "AGPL-3.0-or-later"
 default-run = "tango"
 
 [features]
+default = ["wgpu"]
 cpal = ["dep:cpal"]
+wgpu = ["dep:wgpu", "dep:egui-wgpu"]
 
 [dependencies]
 anyhow = "1.0"
@@ -52,6 +54,7 @@ thiserror = "1.0"
 egui = { version = "0.19", features = [] }
 glow = "0.11"
 egui_glow = { version = "0.19", features = ["winit", "clipboard", "links"] }
+egui-wgpu = { version = "0.19", features = ["winit"], optional = true }
 glutin = { version = "0.29", features = ["serde"] }
 cpal = { version = "0.13", optional = true }
 fluent-bundle = "0.15"
@@ -85,6 +88,7 @@ itertools = "0.10"
 reqwest = { version = "0.11", features = ["stream"] }
 oneshot = "0.1"
 winit = "0.27"
+wgpu = { version = "0.13", optional = true }
 
 [build-dependencies]
 embed-resource = "1.7"

@@ -34,6 +34,61 @@ enum UserEvent {
     RequestRepaint,
 }
 
+trait GraphicsBackend {
+    fn window(&self) -> &winit::window::Window;
+    fn swap_buffers(&self);
+    fn resize(&self, size: winit::dpi::PhysicalSize<u32>);
+    fn paint(&mut self);
+    fn clear(&self);
+    fn egui_ctx(&self) -> &egui::Context;
+    fn run(&mut self, run_ui: impl FnMut(&winit::window::Window, &egui::Context)) -> std::time::Duration;
+    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool;
+}
+
+struct GlutinGraphicsBackend {
+    gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, winit::window::Window>,
+    gl: std::sync::Arc<glow::Context>,
+    egui_glow: egui_glow::EguiGlow,
+}
+
+impl GraphicsBackend for GlutinGraphicsBackend {
+    fn window(&self) -> &winit::window::Window {
+        self.gl_window.window()
+    }
+
+    fn swap_buffers(&self) {
+        self.gl_window.swap_buffers().unwrap()
+    }
+
+    fn resize(&self, size: winit::dpi::PhysicalSize<u32>) {
+        self.gl_window.resize(size)
+    }
+
+    fn paint(&mut self) {
+        self.egui_glow.paint(self.gl_window.window());
+    }
+
+    fn clear(&self) {
+        unsafe {
+            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            self.gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+    }
+
+    fn egui_ctx(&self) -> &egui::Context {
+        &self.egui_glow.egui_ctx
+    }
+
+    fn run(&mut self, mut run_ui: impl FnMut(&winit::window::Window, &egui::Context)) -> std::time::Duration {
+        let window = self.gl_window.window();
+        self.egui_glow.run(window, |ui| run_ui(window, ui))
+    }
+
+    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
+        self.egui_glow.on_event(event)
+    }
+}
+
 fn main() -> Result<(), anyhow::Error> {
     std::env::set_var("RUST_BACKTRACE", "1");
 
@@ -157,28 +212,41 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             None
         });
 
-    let gl_window = glutin::ContextBuilder::new()
-        .with_depth_buffer(0)
-        .with_stencil_buffer(0)
-        .with_vsync(true)
-        .build_windowed(wb, &event_loop)
-        .unwrap();
-    let gl_window = unsafe { gl_window.make_current().unwrap() };
+    let mut gfx_backend = {
+        let gl_window = glutin::ContextBuilder::new()
+            .with_depth_buffer(0)
+            .with_stencil_buffer(0)
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap();
+        let gl_window = unsafe { gl_window.make_current().unwrap() };
 
-    let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
-    unsafe {
-        gl.clear_color(0.0, 0.0, 0.0, 1.0);
-        gl.clear(glow::COLOR_BUFFER_BIT);
-    }
-    gl_window.swap_buffers().unwrap();
+        let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
+        unsafe {
+            gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+        gl_window.swap_buffers().unwrap();
 
-    log::info!(
-        "GL version: {}, extensions: {:?}",
-        unsafe { gl.get_parameter_string(glow::VERSION) },
-        gl.supported_extensions()
-    );
+        log::info!(
+            "GL version: {}, extensions: {:?}",
+            unsafe { gl.get_parameter_string(glow::VERSION) },
+            gl.supported_extensions()
+        );
 
-    let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
+        GlutinGraphicsBackend {
+            gl_window,
+            gl: gl.clone(),
+            egui_glow: egui_glow::EguiGlow::new(&event_loop, gl.clone()),
+        }
+    };
+    let egui_ctx = gfx_backend.egui_ctx();
+    egui_ctx.set_request_repaint_callback({
+        let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
+        move || {
+            let _ = el_proxy.lock().send_event(UserEvent::RequestRepaint);
+        }
+    });
 
     let audio_binder = audio::LateBinder::new(48000);
 
@@ -257,7 +325,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     let config_arc = std::sync::Arc::new(parking_lot::RwLock::new(config));
     let mut state = gui::State::new(
-        &egui_glow.egui_ctx,
+        egui_ctx,
         config_arc.clone(),
         discord_client,
         audio_binder.clone(),
@@ -271,34 +339,18 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let mut patch_autoupdater = patch::Autoupdater::new(config_arc.clone(), patches_scanner.clone());
     patch_autoupdater.set_enabled(handle.clone(), config_arc.read().enable_patch_autoupdate);
 
-    egui_glow.egui_ctx.set_request_repaint_callback({
-        let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
-        move || {
-            let _ = el_proxy.lock().send_event(UserEvent::RequestRepaint);
-        }
-    });
-
     event_loop.run(move |event, _, control_flow| {
         let mut config = config_arc.read().clone();
         let old_config = config.clone();
 
         let mut redraw = || {
-            let repaint_after = egui_glow.run(gl_window.window(), |ctx| {
-                ctx.set_pixels_per_point(
-                    gl_window.window().scale_factor() as f32 * config.ui_scale_percent as f32 / 100.0,
-                );
-                gui::show(
-                    ctx,
-                    &mut config,
-                    handle.clone(),
-                    gl_window.window(),
-                    &input_state,
-                    &mut state,
-                )
+            let repaint_after = gfx_backend.run(|window, ctx| {
+                ctx.set_pixels_per_point(window.scale_factor() as f32 * config.ui_scale_percent as f32 / 100.0);
+                gui::show(ctx, &mut config, handle.clone(), window, &input_state, &mut state)
             });
 
             if repaint_after.is_zero() {
-                gl_window.window().request_redraw();
+                gfx_backend.window().request_redraw();
                 control_flow.set_poll();
             } else if let Some(repaint_after_instant) = std::time::Instant::now().checked_add(repaint_after) {
                 control_flow.set_wait_until(repaint_after_instant);
@@ -306,12 +358,9 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                 control_flow.set_wait();
             }
 
-            unsafe {
-                gl.clear_color(0.0, 0.0, 0.0, 1.0);
-                gl.clear(glow::COLOR_BUFFER_BIT);
-            }
-            egui_glow.paint(gl_window.window());
-            gl_window.swap_buffers().unwrap();
+            gfx_backend.clear();
+            gfx_backend.paint();
+            gfx_backend.swap_buffers();
             fps_counter.lock().mark();
         };
 
@@ -323,7 +372,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                     winit::event::WindowEvent::MouseInput { .. } | winit::event::WindowEvent::CursorMoved { .. } => {
                         state.last_mouse_motion_time = Some(std::time::Instant::now());
                         if state.steal_input.is_none() {
-                            egui_glow.on_event(&window_event);
+                            gfx_backend.on_window_event(&window_event);
                         }
                     }
                     winit::event::WindowEvent::KeyboardInput {
@@ -342,28 +391,28 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                     &mut config.input_mapping,
                                 );
                             } else {
-                                if !egui_glow.on_event(&window_event) {
+                                if !gfx_backend.on_window_event(&window_event) {
                                     input_state.handle_key_down(virutal_keycode);
                                 }
                             }
                         }
                         winit::event::ElementState::Released => {
-                            if !egui_glow.on_event(&window_event) {
+                            if !gfx_backend.on_window_event(&window_event) {
                                 input_state.handle_key_up(virutal_keycode);
                             }
                         }
                     },
                     window_event => {
-                        egui_glow.on_event(&window_event);
+                        gfx_backend.on_window_event(&window_event);
                         match window_event {
                             winit::event::WindowEvent::Focused(false) => {
                                 input_state.clear_keys();
                             }
                             winit::event::WindowEvent::Resized(size) => {
-                                gl_window.resize(size);
+                                gfx_backend.resize(size);
                             }
                             winit::event::WindowEvent::Occluded(false) => {
-                                config.full_screen = gl_window.window().fullscreen().is_some();
+                                config.full_screen = gfx_backend.window().fullscreen().is_some();
                             }
                             winit::event::WindowEvent::CursorEntered { .. } => {
                                 state.last_mouse_motion_time = Some(std::time::Instant::now());
@@ -378,16 +427,16 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                         }
                     }
                 };
-                gl_window.window().request_redraw();
+                gfx_backend.window().request_redraw();
             }
             winit::event::Event::NewEvents(cause) => {
                 input_state.digest();
                 if let winit::event::StartCause::ResumeTimeReached { .. } = cause {
-                    gl_window.window().request_redraw();
+                    gfx_backend.window().request_redraw();
                 }
             }
             winit::event::Event::UserEvent(UserEvent::RequestRepaint) => {
-                gl_window.window().request_redraw();
+                gfx_backend.window().request_redraw();
             }
             winit::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
