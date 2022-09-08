@@ -63,8 +63,16 @@ impl GraphicsBackend for Backend {
     }
 
     fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
-        if let winit::event::WindowEvent::Resized(size) = event {
-            self.gl_window.resize(*size);
+        match event {
+            winit::event::WindowEvent::Resized(physical_size) => {
+                if physical_size.width > 0 && physical_size.height > 0 {
+                    self.gl_window.resize(*physical_size);
+                }
+            }
+            winit::event::WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                self.gl_window.resize(**new_inner_size);
+            }
+            _ => {}
         }
         self.egui_glow.on_event(event)
     }

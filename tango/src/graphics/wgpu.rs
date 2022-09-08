@@ -18,11 +18,14 @@ impl<'a> Backend<'a> {
         unsafe {
             painter.set_window(Some(&window));
         }
+        let mut egui_winit = egui_winit::State::new(event_loop);
+        egui_winit.set_pixels_per_point(window.scale_factor() as f32);
+        egui_winit.set_max_texture_side(painter.max_texture_side().unwrap_or(2048));
         Self {
             window,
             painter,
             egui_ctx: egui::Context::default(),
-            egui_winit: egui_winit::State::new(event_loop),
+            egui_winit,
             shapes: vec![],
             textures_delta: egui::TexturesDelta::default(),
         }
@@ -61,13 +64,28 @@ impl<'a> graphics::Backend for Backend<'a> {
             .handle_platform_output(&self.window, &self.egui_ctx, platform_output);
 
         self.shapes = shapes;
-        self.textures_delta.append(textures_delta);
+        self.textures_delta = textures_delta;
         repaint_after
     }
 
     fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
-        if let winit::event::WindowEvent::Resized(size) = event {
-            self.painter.on_window_resized(size.width, size.height);
+        match event {
+            winit::event::WindowEvent::Resized(physical_size) => {
+                if physical_size.width > 0 && physical_size.height > 0 {
+                    self.painter
+                        .on_window_resized(physical_size.width, physical_size.height);
+                }
+            }
+            winit::event::WindowEvent::ScaleFactorChanged {
+                scale_factor,
+                new_inner_size,
+                ..
+            } => {
+                self.egui_winit.set_pixels_per_point(*scale_factor as f32);
+                self.painter
+                    .on_window_resized(new_inner_size.width, new_inner_size.height);
+            }
+            _ => {}
         }
         self.egui_winit.on_event(&self.egui_ctx, event)
     }

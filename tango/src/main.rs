@@ -282,10 +282,8 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         let old_config = config.clone();
 
         let mut redraw = || {
-            let repaint_after = gfx_backend.run(|window, ctx| {
-                ctx.set_pixels_per_point(window.scale_factor() as f32 * config.ui_scale_percent as f32 / 100.0);
-                gui::show(ctx, &mut config, handle.clone(), window, &input_state, &mut state)
-            });
+            let repaint_after = gfx_backend
+                .run(|window, ctx| gui::show(ctx, &mut config, handle.clone(), window, &input_state, &mut state));
 
             if repaint_after.is_zero() {
                 gfx_backend.window().request_redraw();
