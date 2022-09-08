@@ -1,0 +1,71 @@
+use crate::graphics;
+
+struct Backend {
+    gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, winit::window::Window>,
+    gl: std::sync::Arc<glow::Context>,
+    egui_glow: egui_glow::EguiGlow,
+}
+
+impl Backend {
+    fn new<T>(wb: winit::window::WindowBuilder, event_loop: &winit::event_loop::EventLoopWindowTarget<T>) -> Self {
+        use glow::HasContext;
+        let gl_window = glutin::ContextBuilder::new()
+            .with_depth_buffer(0)
+            .with_stencil_buffer(0)
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap();
+        let gl_window = unsafe { gl_window.make_current().unwrap() };
+
+        let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
+        unsafe {
+            gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+        gl_window.swap_buffers().unwrap();
+
+        log::info!(
+            "GL version: {}, extensions: {:?}",
+            unsafe { gl.get_parameter_string(glow::VERSION) },
+            gl.supported_extensions()
+        );
+
+        Self {
+            gl_window,
+            gl: gl.clone(),
+            egui_glow: egui_glow::EguiGlow::new(&event_loop, gl.clone()),
+        }
+    }
+}
+
+impl GraphicsBackend for Backend {
+    fn window(&self) -> &winit::window::Window {
+        self.gl_window.window()
+    }
+
+    fn paint(&mut self) {
+        use glow::HasContext;
+        unsafe {
+            self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            self.gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+        self.egui_glow.paint(self.gl_window.window());
+        self.gl_window.swap_buffers().unwrap()
+    }
+
+    fn egui_ctx(&self) -> &egui::Context {
+        &self.egui_glow.egui_ctx
+    }
+
+    fn run(&mut self, mut run_ui: impl FnMut(&winit::window::Window, &egui::Context)) -> std::time::Duration {
+        let window = self.gl_window.window();
+        self.egui_glow.run(window, |ui| run_ui(window, ui))
+    }
+
+    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
+        if let winit::event::WindowEvent::Resized(size) = event {
+            self.gl_window.resize(*size);
+        }
+        self.egui_glow.on_event(event)
+    }
+}
