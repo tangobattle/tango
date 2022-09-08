@@ -1764,7 +1764,69 @@ pub fn show(
 
                     const PATCH_VERSION_COMBOBOX_WIDTH: f32 = 100.0;
                     ui.add_enabled_ui(!is_ready && selection.is_some(), |ui| {
+                        let warning = (|| {
+                            let selection = if let Some(selection) = selection.as_ref() {
+                                selection
+                            } else {
+                                return None;
+                            };
+
+                            let lobby = if let Some(lobby) = lobby.as_ref() {
+                                lobby
+                            } else {
+                                return None;
+                            };
+
+                            let remote_gi = if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
+                                remote_gi
+                            } else {
+                                return None;
+                            };
+
+                            let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                                &remote_gi.family_and_variant.0,
+                                remote_gi.family_and_variant.1,
+                            ) {
+                                remote_game
+                            } else {
+                                return None;
+                            };
+
+                            // TODO: Check patch.
+
+                            let local_netplay_compatibilities =
+                                if let Some((patch_name, _, _)) = selection.patch.as_ref() {
+                                    patches
+                                        .get(patch_name)
+                                        .map(|patch| {
+                                            patch
+                                                .versions
+                                                .values()
+                                                .map(|vi| vi.netplay_compatibility.as_str())
+                                                .collect()
+                                        })
+                                        .unwrap_or_else(|| vec![])
+                                } else {
+                                    vec![selection.game.family_and_variant().0]
+                                };
+
+                            if let Some(nc) = get_netplay_compatibility(
+                                remote_game,
+                                remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
+                                &patches,
+                            ) {
+                                if !local_netplay_compatibilities.contains(&nc.as_str()) {
+                                    return Some(Warning::Incompatible);
+                                }
+                            }
+
+                            None
+                        })();
+
                         let mut layout_job = egui::text::LayoutJob::default();
+                        if warning.is_some() {
+                            gui::warning::append_to_layout_job(ui, &mut layout_job);
+                        }
                         layout_job.append(
                             &selection
                                 .as_ref()
@@ -1776,7 +1838,7 @@ pub fn show(
                                 ui.visuals().text_color(),
                             ),
                         );
-                        egui::ComboBox::from_id_source("patch-select-combobox")
+                        let resp = egui::ComboBox::from_id_source("patch-select-combobox")
                             .selected_text(layout_job)
                             .width(ui.available_width() - ui.spacing().item_spacing.x - PATCH_VERSION_COMBOBOX_WIDTH)
                             .show_ui(ui, |ui| {
@@ -1786,6 +1848,8 @@ pub fn show(
                                     return;
                                 };
                                 {
+                                    let warning = (|| {})();
+
                                     let mut layout_job = egui::text::LayoutJob::default();
                                     layout_job.append(
                                         &i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap(),
@@ -1864,6 +1928,10 @@ pub fn show(
                                     }
                                 }
                             });
+                        if let Some(warning) = warning {
+                            resp.response.on_hover_text(warning.description(&config.language));
+                        }
+
                         ui.add_enabled_ui(
                             !is_ready
                                 && selection
