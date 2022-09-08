@@ -159,13 +159,21 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         });
 
     #[cfg(not(feature = "wgpu"))]
-    let mut gfx_backend = graphics::glutin::Backend::new(wb, &event_loop);
+    let mut gfx_backend = graphics::glutin::Backend::new(
+        glutin::ContextBuilder::new()
+            .with_depth_buffer(0)
+            .with_stencil_buffer(0)
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap(),
+        &event_loop,
+    );
 
     #[cfg(feature = "wgpu")]
     let mut gfx_backend = graphics::wgpu::Backend::new(
         wb.build(&event_loop).unwrap(),
         egui_wgpu::winit::Painter::new(
-            wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+            wgpu::Backends::GL,
             wgpu::PowerPreference::LowPower,
             wgpu::DeviceDescriptor {
                 label: None,

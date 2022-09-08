@@ -320,15 +320,6 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
             );
             ui.end_row();
 
-            ui.strong(i18n::LOCALES.lookup(&config.language, "settings-ui-scale").unwrap());
-            ui.add(
-                egui::DragValue::new(&mut config.ui_scale_percent)
-                    .speed(10)
-                    .suffix("%")
-                    .clamp_range(50..=400),
-            );
-            ui.end_row();
-
             ui.strong(i18n::LOCALES.lookup(&config.language, "settings-full-screen").unwrap());
             ui.add(egui::Checkbox::new(&mut config.full_screen, ""));
             if config.full_screen && window.fullscreen().is_none() {

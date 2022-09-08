@@ -22,7 +22,11 @@ impl<'a> Backend<'a> {
         egui_winit.set_pixels_per_point(window.scale_factor() as f32);
         egui_winit.set_max_texture_side(painter.max_texture_side().unwrap_or(2048));
         let render_state = painter.render_state().unwrap();
-        log::info!("wgpu device: {:?}", render_state.device);
+        log::info!(
+            "wgpu device: {:?}, swapchain format: {:?}",
+            render_state.device,
+            render_state.target_format
+        );
         Self {
             window,
             painter,
