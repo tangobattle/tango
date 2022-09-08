@@ -21,6 +21,8 @@ impl<'a> Backend<'a> {
         let mut egui_winit = egui_winit::State::new(event_loop);
         egui_winit.set_pixels_per_point(window.scale_factor() as f32);
         egui_winit.set_max_texture_side(painter.max_texture_side().unwrap_or(2048));
+        let render_state = painter.render_state().unwrap();
+        log::info!("wgpu device: {:?}", render_state.device);
         Self {
             window,
             painter,

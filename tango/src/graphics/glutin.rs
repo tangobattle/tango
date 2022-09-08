@@ -1,3 +1,5 @@
+use glow::HasContext;
+
 use crate::graphics;
 
 struct Backend {
@@ -8,7 +10,6 @@ struct Backend {
 
 impl Backend {
     fn new<T>(wb: winit::window::WindowBuilder, event_loop: &winit::event_loop::EventLoopWindowTarget<T>) -> Self {
-        use glow::HasContext;
         let gl_window = glutin::ContextBuilder::new()
             .with_depth_buffer(0)
             .with_stencil_buffer(0)
@@ -44,7 +45,6 @@ impl GraphicsBackend for Backend {
     }
 
     fn paint(&mut self) {
-        use glow::HasContext;
         unsafe {
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);

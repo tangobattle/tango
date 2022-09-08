@@ -89,7 +89,7 @@ itertools = "0.10"
 reqwest = { version = "0.11", features = ["stream"] }
 oneshot = "0.1"
 winit = "0.27"
-wgpu = { version = "0.13", optional = true }
+wgpu = { version = "0.13", optional = true, features = ["angle"] }
 
 [build-dependencies]
 embed-resource = "1.7"

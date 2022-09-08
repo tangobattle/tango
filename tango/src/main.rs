@@ -170,7 +170,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             wgpu::DeviceDescriptor {
                 label: None,
                 features: wgpu::Features::default(),
-                limits: wgpu::Limits::downlevel_defaults(),
+                limits: wgpu::Limits::downlevel_webgl2_defaults(),
             },
             wgpu::PresentMode::Fifo,
             1,
