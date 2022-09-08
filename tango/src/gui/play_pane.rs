@@ -14,6 +14,7 @@ pub enum Warning {
     NoLocalPatch(String, semver::Version),
     NoRemoteROM(&'static (dyn game::Game + Send + Sync)),
     NoRemotePatch(String, semver::Version),
+    NoRemotePatches(String),
 }
 
 impl Warning {
@@ -52,7 +53,7 @@ impl Warning {
                     language,
                     "lobby-issue-no-local-patch",
                     &std::collections::HashMap::from([
-                        ("patch_name", name.clone().into()),
+                        ("patch_name", name.as_str().into()),
                         ("patch_version", version.to_string().into()),
                     ]),
                 )
@@ -82,9 +83,16 @@ impl Warning {
                     language,
                     "lobby-issue-no-remote-patch",
                     &std::collections::HashMap::from([
-                        ("patch_name", name.clone().into()),
+                        ("patch_name", name.as_str().into()),
                         ("patch_version", version.to_string().into()),
                     ]),
+                )
+                .unwrap(),
+            Warning::NoRemotePatches(name) => i18n::LOCALES
+                .lookup_with_args(
+                    language,
+                    "lobby-issue-no-remote-patches",
+                    &std::collections::HashMap::from([("patch_name", name.as_str().into())]),
                 )
                 .unwrap(),
         }
@@ -1792,11 +1800,9 @@ pub fn show(
                                 return None;
                             };
 
-                            if let Some((patch_name, patch_version, _)) = selection.patch.as_ref() {
-                                if !lobby.remote_settings.available_patches.iter().any(|(name, versions)| {
-                                    patch_name == name && versions.iter().any(|v| v == patch_version)
-                                }) {
-                                    return Some(Warning::NoRemotePatch(patch_name.clone(), patch_version.clone()));
+                            if let Some((name, _, _)) = selection.patch.as_ref() {
+                                if !lobby.remote_settings.available_patches.iter().any(|(n, _)| name == n) {
+                                    return Some(Warning::NoRemotePatches(name.clone()));
                                 }
                             }
 
@@ -1939,6 +1945,10 @@ pub fn show(
                                         } else {
                                             return None;
                                         };
+
+                                        if !lobby.remote_settings.available_patches.iter().any(|(n, _)| *name == n) {
+                                            return Some(Warning::NoRemotePatches((*name).clone()));
+                                        }
 
                                         let local_netplay_compatibilities = patches
                                             .get(*name)
