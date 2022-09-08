@@ -1792,7 +1792,13 @@ pub fn show(
                                 return None;
                             };
 
-                            // TODO: Check if the remote side has the patch.
+                            if let Some((patch_name, patch_version, _)) = selection.patch.as_ref() {
+                                if !lobby.remote_settings.available_patches.iter().any(|(name, versions)| {
+                                    patch_name == name && versions.iter().any(|v| v == patch_version)
+                                }) {
+                                    return Some(Warning::NoRemotePatch(patch_name.clone(), patch_version.clone()));
+                                }
+                            }
 
                             let local_netplay_compatibilities =
                                 if let Some((patch_name, _, _)) = selection.patch.as_ref() {
@@ -1848,9 +1854,46 @@ pub fn show(
                                     return;
                                 };
                                 {
-                                    let warning = (|| {})();
+                                    let warning = (|| {
+                                        let lobby = if let Some(lobby) = lobby.as_ref() {
+                                            lobby
+                                        } else {
+                                            return None;
+                                        };
+
+                                        let remote_gi =
+                                            if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
+                                                remote_gi
+                                            } else {
+                                                return None;
+                                            };
+
+                                        let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                                            &remote_gi.family_and_variant.0,
+                                            remote_gi.family_and_variant.1,
+                                        ) {
+                                            remote_game
+                                        } else {
+                                            return None;
+                                        };
+
+                                        if let Some(nc) = get_netplay_compatibility(
+                                            remote_game,
+                                            remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
+                                            &patches,
+                                        ) {
+                                            if nc != selection.game.family_and_variant().0 {
+                                                return Some(Warning::Incompatible);
+                                            }
+                                        }
+
+                                        None
+                                    })();
 
                                     let mut layout_job = egui::text::LayoutJob::default();
+                                    if warning.is_some() {
+                                        gui::warning::append_to_layout_job(ui, &mut layout_job);
+                                    }
                                     layout_job.append(
                                         &i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap(),
                                         0.0,
@@ -1859,7 +1902,11 @@ pub fn show(
                                             ui.visuals().text_color(),
                                         ),
                                     );
-                                    if ui.selectable_label(selection.patch.is_none(), layout_job).clicked() {
+                                    let mut resp = ui.selectable_label(selection.patch.is_none(), layout_job);
+                                    if let Some(warning) = warning {
+                                        resp = resp.on_hover_text(warning.description(&config.language));
+                                    }
+                                    if resp.clicked() {
                                         *selection = gui::Selection::new(
                                             selection.game.clone(),
                                             selection.save.clone(),
@@ -1870,7 +1917,57 @@ pub fn show(
                                 }
 
                                 for (name, (_, supported_versions)) in supported_patches.iter() {
+                                    let warning = (|| {
+                                        let lobby = if let Some(lobby) = lobby.as_ref() {
+                                            lobby
+                                        } else {
+                                            return None;
+                                        };
+
+                                        let remote_gi =
+                                            if let Some(remote_gi) = lobby.remote_settings.game_info.as_ref() {
+                                                remote_gi
+                                            } else {
+                                                return None;
+                                            };
+
+                                        let remote_game = if let Some(remote_game) = game::find_by_family_and_variant(
+                                            &remote_gi.family_and_variant.0,
+                                            remote_gi.family_and_variant.1,
+                                        ) {
+                                            remote_game
+                                        } else {
+                                            return None;
+                                        };
+
+                                        let local_netplay_compatibilities = patches
+                                            .get(*name)
+                                            .map(|patch| {
+                                                patch
+                                                    .versions
+                                                    .values()
+                                                    .map(|vi| vi.netplay_compatibility.as_str())
+                                                    .collect()
+                                            })
+                                            .unwrap_or_else(|| vec![]);
+
+                                        if let Some(nc) = get_netplay_compatibility(
+                                            remote_game,
+                                            remote_gi.patch.as_ref().map(|pi| (pi.name.as_str(), &pi.version)),
+                                            &patches,
+                                        ) {
+                                            if !local_netplay_compatibilities.contains(&nc.as_str()) {
+                                                return Some(Warning::Incompatible);
+                                            }
+                                        }
+
+                                        None
+                                    })();
+
                                     let mut layout_job = egui::text::LayoutJob::default();
+                                    if warning.is_some() {
+                                        gui::warning::append_to_layout_job(ui, &mut layout_job);
+                                    }
                                     layout_job.append(
                                         *name,
                                         0.0,
@@ -1879,13 +1976,14 @@ pub fn show(
                                             ui.visuals().text_color(),
                                         ),
                                     );
-                                    if ui
-                                        .selectable_label(
-                                            selection.patch.as_ref().map(|(name, _, _)| name) == Some(*name),
-                                            layout_job,
-                                        )
-                                        .clicked()
-                                    {
+                                    let mut resp = ui.selectable_label(
+                                        selection.patch.as_ref().map(|(name, _, _)| name) == Some(*name),
+                                        layout_job,
+                                    );
+                                    if let Some(warning) = warning {
+                                        resp = resp.on_hover_text(warning.description(&config.language));
+                                    }
+                                    if resp.clicked() {
                                         *patch_selection = Some(name.to_string());
 
                                         let rom = roms.get(&selection.game).unwrap().clone();
