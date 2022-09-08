@@ -27,21 +27,6 @@ pub fn show(
     let saves = saves_scanner.read();
     let patches = patches_scanner.read();
 
-    let mut netplay_compatibilities = game::GAMES
-        .iter()
-        .map(|game| (*game, std::collections::HashSet::from([game.family_and_variant().0])))
-        .collect::<std::collections::HashMap<_, _>>();
-    for metadata in patches.values() {
-        for version in metadata.versions.values() {
-            for game in version.supported_games.iter() {
-                netplay_compatibilities
-                    .get_mut(game)
-                    .unwrap()
-                    .insert(&version.netplay_compatibility);
-            }
-        }
-    }
-
     ui.vertical(|ui| {
         let games = game::sorted_all_games(language);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -179,11 +164,12 @@ pub fn show(
                                 if let Some(netplay_compatibility) =
                                     gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, &patches)
                                 {
-                                    if !netplay_compatibilities
-                                        .get(game)
-                                        .map(|nc| nc.contains(netplay_compatibility.as_str()))
-                                        .unwrap_or(false)
-                                    {
+                                    if !patches.values().any(|metadata| {
+                                        metadata.versions.values().any(|version| {
+                                            version.supported_games.contains(game)
+                                                && version.netplay_compatibility == netplay_compatibility
+                                        })
+                                    }) {
                                         return Some(gui::play_pane::Warning::Incompatible);
                                     }
                                 }
