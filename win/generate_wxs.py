@@ -14,7 +14,7 @@ print(
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product
-        Id="*"
+        Id="E8EA30F8-D1B3-4ABC-9048-F0BAD4835738"
         Language="1033"
         Manufacturer="Tango"
         Name="Tango"
