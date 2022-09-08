@@ -36,43 +36,64 @@ enum UserEvent {
 
 trait GraphicsBackend {
     fn window(&self) -> &winit::window::Window;
-    fn swap_buffers(&self);
-    fn resize(&self, size: winit::dpi::PhysicalSize<u32>);
     fn paint(&mut self);
-    fn clear(&self);
     fn egui_ctx(&self) -> &egui::Context;
     fn run(&mut self, run_ui: impl FnMut(&winit::window::Window, &egui::Context)) -> std::time::Duration;
     fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool;
 }
 
+#[cfg(not(feature = "wgpu"))]
 struct GlutinGraphicsBackend {
     gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, winit::window::Window>,
     gl: std::sync::Arc<glow::Context>,
     egui_glow: egui_glow::EguiGlow,
 }
 
+#[cfg(not(feature = "wgpu"))]
+impl GlutinGraphicsBackend {
+    fn new<T>(wb: winit::window::WindowBuilder, event_loop: &winit::event_loop::EventLoopWindowTarget<T>) -> Self {
+        let gl_window = glutin::ContextBuilder::new()
+            .with_depth_buffer(0)
+            .with_stencil_buffer(0)
+            .with_vsync(true)
+            .build_windowed(wb, &event_loop)
+            .unwrap();
+        let gl_window = unsafe { gl_window.make_current().unwrap() };
+
+        let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
+        unsafe {
+            gl.clear_color(0.0, 0.0, 0.0, 1.0);
+            gl.clear(glow::COLOR_BUFFER_BIT);
+        }
+        gl_window.swap_buffers().unwrap();
+
+        log::info!(
+            "GL version: {}, extensions: {:?}",
+            unsafe { gl.get_parameter_string(glow::VERSION) },
+            gl.supported_extensions()
+        );
+
+        Self {
+            gl_window,
+            gl: gl.clone(),
+            egui_glow: egui_glow::EguiGlow::new(&event_loop, gl.clone()),
+        }
+    }
+}
+
+#[cfg(not(feature = "wgpu"))]
 impl GraphicsBackend for GlutinGraphicsBackend {
     fn window(&self) -> &winit::window::Window {
         self.gl_window.window()
     }
 
-    fn swap_buffers(&self) {
-        self.gl_window.swap_buffers().unwrap()
-    }
-
-    fn resize(&self, size: winit::dpi::PhysicalSize<u32>) {
-        self.gl_window.resize(size)
-    }
-
     fn paint(&mut self) {
-        self.egui_glow.paint(self.gl_window.window());
-    }
-
-    fn clear(&self) {
         unsafe {
             self.gl.clear_color(0.0, 0.0, 0.0, 1.0);
             self.gl.clear(glow::COLOR_BUFFER_BIT);
         }
+        self.egui_glow.paint(self.gl_window.window());
+        self.gl_window.swap_buffers().unwrap()
     }
 
     fn egui_ctx(&self) -> &egui::Context {
@@ -85,7 +106,86 @@ impl GraphicsBackend for GlutinGraphicsBackend {
     }
 
     fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
+        if let winit::event::WindowEvent::Resized(size) = event {
+            self.gl_window.resize(*size);
+        }
         self.egui_glow.on_event(event)
+    }
+}
+
+#[cfg(feature = "wgpu")]
+struct WgpuGraphicsBackend<'a> {
+    window: winit::window::Window,
+    egui_ctx: egui::Context,
+    painter: egui_wgpu::winit::Painter<'a>,
+    egui_winit: egui_winit::State,
+    shapes: Vec<egui::epaint::ClippedShape>,
+    textures_delta: egui::TexturesDelta,
+}
+
+#[cfg(feature = "wgpu")]
+impl<'a> WgpuGraphicsBackend<'a> {
+    fn new<T>(
+        window: winit::window::Window,
+        mut painter: egui_wgpu::winit::Painter<'a>,
+        event_loop: &winit::event_loop::EventLoopWindowTarget<T>,
+    ) -> Self {
+        unsafe {
+            painter.set_window(Some(&window));
+        }
+        Self {
+            window,
+            painter,
+            egui_ctx: egui::Context::default(),
+            egui_winit: egui_winit::State::new(event_loop),
+            shapes: vec![],
+            textures_delta: egui::TexturesDelta::default(),
+        }
+    }
+}
+
+#[cfg(feature = "wgpu")]
+impl<'a> GraphicsBackend for WgpuGraphicsBackend<'a> {
+    fn window(&self) -> &winit::window::Window {
+        &self.window
+    }
+
+    fn paint(&mut self) {
+        self.painter.paint_and_update_textures(
+            self.egui_ctx.pixels_per_point(),
+            egui::Rgba::BLACK,
+            &self.egui_ctx.tessellate(std::mem::take(&mut self.shapes)),
+            &std::mem::take(&mut self.textures_delta),
+        );
+    }
+
+    fn egui_ctx(&self) -> &egui::Context {
+        &self.egui_ctx
+    }
+
+    fn run(&mut self, mut run_ui: impl FnMut(&winit::window::Window, &egui::Context)) -> std::time::Duration {
+        let egui::FullOutput {
+            platform_output,
+            repaint_after,
+            textures_delta,
+            shapes,
+        } = self.egui_ctx.run(self.egui_winit.take_egui_input(&self.window), |ui| {
+            run_ui(&self.window, ui)
+        });
+
+        self.egui_winit
+            .handle_platform_output(&self.window, &self.egui_ctx, platform_output);
+
+        self.shapes = shapes;
+        self.textures_delta.append(textures_delta);
+        repaint_after
+    }
+
+    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
+        if let winit::event::WindowEvent::Resized(size) = event {
+            self.painter.on_window_resized(size.width, size.height);
+        }
+        self.egui_winit.on_event(&self.egui_ctx, event)
     }
 }
 
@@ -212,34 +312,26 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             None
         });
 
-    let mut gfx_backend = {
-        let gl_window = glutin::ContextBuilder::new()
-            .with_depth_buffer(0)
-            .with_stencil_buffer(0)
-            .with_vsync(true)
-            .build_windowed(wb, &event_loop)
-            .unwrap();
-        let gl_window = unsafe { gl_window.make_current().unwrap() };
+    #[cfg(not(feature = "wgpu"))]
+    let mut gfx_backend = GlutinGraphicsBackend::new(wb, &event_loop);
 
-        let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
-        unsafe {
-            gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            gl.clear(glow::COLOR_BUFFER_BIT);
-        }
-        gl_window.swap_buffers().unwrap();
+    #[cfg(feature = "wgpu")]
+    let mut gfx_backend = WgpuGraphicsBackend::new(
+        wb.build(&event_loop).unwrap(),
+        egui_wgpu::winit::Painter::new(
+            wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+            wgpu::PowerPreference::LowPower,
+            wgpu::DeviceDescriptor {
+                label: None,
+                features: wgpu::Features::default(),
+                limits: wgpu::Limits::downlevel_defaults(),
+            },
+            wgpu::PresentMode::Fifo,
+            1,
+        ),
+        &event_loop,
+    );
 
-        log::info!(
-            "GL version: {}, extensions: {:?}",
-            unsafe { gl.get_parameter_string(glow::VERSION) },
-            gl.supported_extensions()
-        );
-
-        GlutinGraphicsBackend {
-            gl_window,
-            gl: gl.clone(),
-            egui_glow: egui_glow::EguiGlow::new(&event_loop, gl.clone()),
-        }
-    };
     let egui_ctx = gfx_backend.egui_ctx();
     egui_ctx.set_request_repaint_callback({
         let el_proxy = parking_lot::Mutex::new(event_loop.create_proxy());
@@ -358,9 +450,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                 control_flow.set_wait();
             }
 
-            gfx_backend.clear();
             gfx_backend.paint();
-            gfx_backend.swap_buffers();
             fps_counter.lock().mark();
         };
 
@@ -407,9 +497,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                         match window_event {
                             winit::event::WindowEvent::Focused(false) => {
                                 input_state.clear_keys();
-                            }
-                            winit::event::WindowEvent::Resized(size) => {
-                                gfx_backend.resize(size);
                             }
                             winit::event::WindowEvent::Occluded(false) => {
                                 config.full_screen = gfx_backend.window().fullscreen().is_some();

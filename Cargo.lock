@@ -5165,6 +5165,7 @@ dependencies = [
  "directories-next",
  "egui",
  "egui-wgpu",
+ "egui-winit",
  "egui_extras",
  "egui_glow",
  "embed-resource",
