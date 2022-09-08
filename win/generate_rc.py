@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
-import toml
 import semver
+import toml
 
 with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) as f:
     cargo_toml = toml.load(f)
@@ -9,7 +9,8 @@ with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) 
 
 version = semver.Version.parse(cargo_toml["package"]["version"])
 
-print(f"""\
+print(
+    f"""\
 #include "winver.h"
 
 1 ICON "icon.ico"
@@ -34,4 +35,5 @@ BEGIN
         VALUE "Translation", 0x0, 1200
     END
 END
-""")
+"""
+)

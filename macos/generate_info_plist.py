@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
-import toml
 import semver
+import toml
 
 with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) as f:
     cargo_toml = toml.load(f)
@@ -9,7 +9,8 @@ with open(os.path.join(os.path.dirname(__file__), "..", "tango", "Cargo.toml")) 
 
 version = semver.Version.parse(cargo_toml["package"]["version"])
 
-print(f"""\
+print(
+    f"""\
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -42,4 +43,5 @@ print(f"""\
 		<string></string>
 	</dict>
 </plist>
-""")
+"""
+)
