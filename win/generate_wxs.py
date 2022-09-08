@@ -30,7 +30,6 @@ print(
                         Name="Tango"
                         Target="[INSTALLFOLDER]Tango.exe"
                         WorkingDirectory="INSTALLFOLDER" />
-                    <RemoveFolder Id="DesktopFolder" On="uninstall" />
                     <RegistryValue
                         Root="HKCU"
                         Key="Software\Tango\Tango"
