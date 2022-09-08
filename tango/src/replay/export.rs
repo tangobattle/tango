@@ -165,9 +165,7 @@ pub async fn export(
         let samples = &samples[..(n * 2) as usize];
 
         emu_vbuf.copy_from_slice(core.video_buffer().unwrap());
-        for i in (0..emu_vbuf.len()).step_by(4) {
-            emu_vbuf[i + 3] = 0xff;
-        }
+        video::fix_vbuf_alpha(&mut emu_vbuf);
         filter.apply(
             &emu_vbuf,
             &mut vbuf,

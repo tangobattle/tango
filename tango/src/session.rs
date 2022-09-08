@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, game, net, replay, replayer, stats};
+use crate::{audio, battle, config, game, net, replay, replayer, stats, video};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -47,12 +47,6 @@ pub enum Mode {
     SinglePlayer(SinglePlayer),
     PvP(PvP),
     Replayer,
-}
-
-fn fix_vbuf_alpha(vbuf: &mut [u8]) {
-    for chunk in vbuf.chunks_mut(4) {
-        chunk[3] = 0xff;
-    }
 }
 
 impl Session {
@@ -172,7 +166,7 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer, _thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                fix_vbuf_alpha(&mut *vbuf);
+                video::fix_vbuf_alpha(&mut *vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
             });
@@ -244,7 +238,7 @@ impl Session {
             thread.set_frame_callback(move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                fix_vbuf_alpha(&mut *vbuf);
+                video::fix_vbuf_alpha(&mut *vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
 
@@ -338,7 +332,7 @@ impl Session {
             thread.set_frame_callback(move |_core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
-                fix_vbuf_alpha(&mut *vbuf);
+                video::fix_vbuf_alpha(&mut *vbuf);
                 emu_tps_counter.lock().mark();
 
                 if !replay_is_complete && replayer_state.lock_inner().input_pairs_left() == 0 {

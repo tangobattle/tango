@@ -26,3 +26,9 @@ pub fn filter_by_name(name: &str) -> Option<Box<dyn Filter + Sync + Send>> {
         _ => None,
     }
 }
+
+pub fn fix_vbuf_alpha(vbuf: &mut [u8]) {
+    for chunk in vbuf.chunks_mut(4) {
+        chunk[3] = 0xff;
+    }
+}
