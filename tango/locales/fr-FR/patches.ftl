@@ -1,8 +1,8 @@
-patches = Patches
-patches-open-folder = Open folder
-patches-update = Update
-patches-details-authors = Authors
-patches-details-license = License
-    .all-rights-reserved = All rights reserved
-patches-details-source = Website
-patches-details-games = Supported games
+patches = Patchs
+patches-open-folder = Ouvrir le dossier
+patches-update = Mettre à jour
+patches-details-authors = Auteurs
+patches-details-license = Licence
+    .all-rights-reserved = Tous les droits sont réservés
+patches-details-source = Site Web
+patches-details-games = Jeux pris en charge
