@@ -300,14 +300,14 @@ impl Autoupdater {
         }
     }
 
-    fn start(&mut self, handle: tokio::runtime::Handle) {
+    fn start(&mut self) {
         if self.cancellation_token.is_some() {
             return;
         }
 
         log::info!("starting patch autoupdater");
         let cancellation_token = tokio_util::sync::CancellationToken::new();
-        handle.spawn({
+        tokio::runtime::Handle::current().spawn({
             let cancellation_token = cancellation_token.clone();
             let config = self.config.clone();
             let patches_scanner = self.patches_scanner.clone();
@@ -355,9 +355,9 @@ impl Autoupdater {
         }
     }
 
-    pub fn set_enabled(&mut self, handle: tokio::runtime::Handle, enabled: bool) {
+    pub fn set_enabled(&mut self, enabled: bool) {
         if enabled {
-            self.start(handle);
+            self.start();
         } else {
             self.stop();
         }

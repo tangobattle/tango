@@ -239,7 +239,6 @@ impl FontFamilies {
 pub fn show(
     ctx: &egui::Context,
     config: &mut config::Config,
-    handle: tokio::runtime::Handle,
     window: &winit::window::Window,
     input_state: &input::State,
     state: &mut State,
@@ -304,7 +303,6 @@ pub fn show(
         debug_window::show(
             ctx,
             config,
-            handle.clone(),
             state.session.clone(),
             state.fps_counter.clone(),
             state.emu_tps_counter.clone(),
@@ -316,7 +314,6 @@ pub fn show(
     settings_window::show(
         ctx,
         &mut state.show_settings,
-        handle.clone(),
         &state.font_families,
         config,
         state.roms_scanner.clone(),
@@ -336,7 +333,6 @@ pub fn show(
     );
     replay_dump_windows::show(
         ctx,
-        handle.clone(),
         &mut state.replay_dump_windows,
         &config.language,
         &config.replays_path(),
@@ -367,7 +363,6 @@ pub fn show(
             &state.font_families,
             config,
             state.config.clone(),
-            handle.clone(),
             window,
             &mut state.show_settings,
             &mut state.replay_dump_windows,

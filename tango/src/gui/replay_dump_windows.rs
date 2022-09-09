@@ -59,7 +59,6 @@ impl Drop for ChildState {
 
 pub fn show(
     ctx: &egui::Context,
-    handle: tokio::runtime::Handle,
     state: &mut State,
     language: &unic_langid::LanguageIdentifier,
     replays_path: &std::path::Path,
@@ -196,7 +195,7 @@ pub fn show(
                         settings.disable_bgm = state.disable_bgm;
                         let cancellation_token = tokio_util::sync::CancellationToken::new();
                         state.cancellation_token = Some(cancellation_token.clone());
-                        handle.spawn(async move {
+                        tokio::runtime::Handle::current().spawn(async move {
                             tokio::select! {
                                 r = replay::export::export(&rom, &replay, &path, &settings, |current, total| {
                                     *progress.lock() = (current, total);

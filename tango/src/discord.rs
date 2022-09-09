@@ -132,19 +132,17 @@ pub fn make_in_progress_activity(
 }
 
 pub struct Client {
-    handle: tokio::runtime::Handle,
     current_activity: std::sync::Arc<parking_lot::Mutex<Option<()>>>,
     current_join_secret: std::sync::Arc<parking_lot::Mutex<Option<String>>>,
 }
 
 impl Client {
-    pub fn new(handle: tokio::runtime::Handle) -> Self {
+    pub fn new() -> Self {
         let current_activity: std::sync::Arc<parking_lot::Mutex<Option<()>>> =
             std::sync::Arc::new(parking_lot::Mutex::new(None));
         let current_join_secret = std::sync::Arc::new(parking_lot::Mutex::new(None));
 
         let client = Self {
-            handle,
             current_activity,
             current_join_secret,
         };

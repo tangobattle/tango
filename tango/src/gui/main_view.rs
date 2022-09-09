@@ -34,7 +34,6 @@ pub fn show(
     font_families: &gui::FontFamilies,
     config: &mut config::Config,
     config_arc: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    handle: tokio::runtime::Handle,
     window: &winit::window::Window,
     show_settings: &mut Option<gui::settings_window::State>,
     replay_dump_windows: &mut gui::replay_dump_windows::State,
@@ -76,7 +75,7 @@ pub fn show(
                                 .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "replays").unwrap())
                                 .clicked()
                             {
-                                state.replays_pane.rescan(handle.clone(), &config.replays_path());
+                                state.replays_pane.rescan(&config.replays_path());
                             }
 
                             if ui
@@ -84,7 +83,7 @@ pub fn show(
                                 .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "patches").unwrap())
                                 .clicked()
                             {
-                                handle.spawn_blocking({
+                                tokio::runtime::Handle::current().spawn_blocking({
                                     let patches_scanner = patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
@@ -109,7 +108,6 @@ pub fn show(
         Tab::Play => {
             gui::play_pane::show(
                 ui,
-                handle.clone(),
                 &font_families,
                 window,
                 clipboard,
@@ -130,7 +128,6 @@ pub fn show(
         Tab::Replays => {
             gui::replays_pane::show(
                 ui,
-                handle.clone(),
                 clipboard,
                 &font_families,
                 &mut state.replays_pane,
@@ -148,7 +145,6 @@ pub fn show(
         Tab::Patches => {
             gui::patches_pane::show(
                 ui,
-                handle.clone(),
                 &mut state.patches_pane,
                 &config.language,
                 if !config.patch_repo.is_empty() {

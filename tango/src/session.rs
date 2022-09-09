@@ -52,7 +52,6 @@ pub enum Mode {
 impl Session {
     pub fn new_pvp(
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-        handle: tokio::runtime::Handle,
         audio_binder: audio::LateBinder,
         link_code: String,
         netplay_compatibility: String,
@@ -92,14 +91,27 @@ impl Session {
         let (completion_tx, completion_rx) = oneshot::channel();
 
         traps.extend(hooks.primary_traps(
-            handle.clone(),
             joyflags.clone(),
             match_.clone(),
             CompletionToken {
                 tx: std::sync::Arc::new(parking_lot::Mutex::new(Some(completion_tx))),
             },
         ));
-        core.set_traps(traps);
+        core.set_traps(
+            traps
+                .into_iter()
+                .map(|(addr, f)| {
+                    let handle = tokio::runtime::Handle::current();
+                    (
+                        addr,
+                        Box::new(move |core: mgba::core::CoreMutRef<'_>| {
+                            let _guard = handle.enter();
+                            f(core)
+                        }) as Box<dyn Fn(mgba::core::CoreMutRef<'_>)>,
+                    )
+                })
+                .collect(),
+        );
 
         let thread = mgba::thread::Thread::new(core);
 
@@ -130,7 +142,7 @@ impl Session {
             {
                 let match_ = match_.clone();
                 let inner_match = inner_match.clone();
-                handle.spawn(async move {
+                tokio::runtime::Handle::current().spawn(async move {
                     tokio::select! {
                         r = inner_match.run(receiver) => {
                             log::info!("match thread ending: {:?}", r);

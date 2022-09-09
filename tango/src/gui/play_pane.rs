@@ -562,7 +562,6 @@ impl Lobby {
 
 async fn run_connection_task(
     config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
-    handle: tokio::runtime::Handle,
     egui_ctx: egui::Context,
     audio_binder: audio::LateBinder,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -786,7 +785,6 @@ async fn run_connection_task(
                     {
                         *session.lock() = Some(session::Session::new_pvp(
                             config.clone(),
-                            handle,
                             audio_binder,
                             link_code,
                             selection.patch.as_ref()
@@ -867,7 +865,6 @@ impl State {
 
 fn show_lobby_table(
     ui: &mut egui::Ui,
-    handle: tokio::runtime::Handle,
     cancellation_token: &tokio_util::sync::CancellationToken,
     config: &mut config::Config,
     lobby: &mut Lobby,
@@ -1075,7 +1072,7 @@ fn show_lobby_table(
                                                 config.default_match_type = match_type.0;
                                             }
                                             if match_type != lobby.match_type {
-                                                handle.block_on(async {
+                                                tokio::runtime::Handle::current().block_on(async {
                                                     let _ = lobby.set_match_type(match_type).await;
                                                 });
                                             }
@@ -1118,7 +1115,7 @@ fn show_lobby_table(
                         strip.cell(|ui| {
                             let mut checked = lobby.reveal_setup;
                             ui.checkbox(&mut checked, "");
-                            handle.block_on(async {
+                            tokio::runtime::Handle::current().block_on(async {
                                 let _ = lobby.set_reveal_setup(checked).await;
                             });
                         });
@@ -1175,7 +1172,6 @@ fn show_lobby_table(
 
 fn show_bottom_pane(
     ui: &mut egui::Ui,
-    handle: tokio::runtime::Handle,
     window: &winit::window::Window,
     clipboard: &mut arboard::Clipboard,
     config: &mut config::Config,
@@ -1308,15 +1304,7 @@ fn show_bottom_pane(
                                 ui.add_enabled_ui(
                                     lobby.local_negotiated_state.is_none() && lobby.sender.is_some(),
                                     |ui| {
-                                        show_lobby_table(
-                                            ui,
-                                            handle.clone(),
-                                            &cancellation_token,
-                                            config,
-                                            &mut lobby,
-                                            &roms,
-                                            &patches,
-                                        );
+                                        show_lobby_table(ui, &cancellation_token, config, &mut lobby, &roms, &patches);
                                     },
                                 );
                             }
@@ -1394,7 +1382,7 @@ fn show_bottom_pane(
                                 ready = was_ready;
                             }
                             if lobby.sender.is_some() {
-                                handle.block_on(async {
+                                tokio::runtime::Handle::current().block_on(async {
                                     if !was_ready && ready {
                                         *show_save_select = None;
                                         let save_data =
@@ -1460,7 +1448,7 @@ fn show_bottom_pane(
                                     cancellation_token: cancellation_token.clone(),
                                 });
 
-                                handle.spawn({
+                                tokio::runtime::Handle::current().spawn({
                                     let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
                                         config.matchmaking_endpoint.clone()
                                     } else {
@@ -1471,14 +1459,12 @@ fn show_bottom_pane(
                                     let patches_path = config.patches_path();
                                     let replays_path = config.replays_path();
                                     let config_arc = config_arc.clone();
-                                    let handle = handle.clone();
                                     let connection_task_arc = connection_task_arc.clone();
                                     let roms_scanner = roms_scanner.clone();
                                     let patches_scanner = patches_scanner.clone();
                                     async move {
                                         run_connection_task(
                                             config_arc,
-                                            handle,
                                             egui_ctx.clone(),
                                             audio_binder,
                                             emu_tps_counter,
@@ -1507,7 +1493,7 @@ fn show_bottom_pane(
                                     .map(|(name, version, _)| (name.clone(), version.clone()));
 
                                 // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
-                                handle.spawn_blocking(move || {
+                                tokio::runtime::Handle::current().spawn_blocking(move || {
                                     *session.lock() = Some(
                                         session::Session::new_singleplayer(
                                             audio_binder,
@@ -1531,7 +1517,6 @@ fn show_bottom_pane(
 
 pub fn show(
     ui: &mut egui::Ui,
-    handle: tokio::runtime::Handle,
     font_families: &gui::FontFamilies,
     window: &winit::window::Window,
     clipboard: &mut arboard::Clipboard,
@@ -1554,7 +1539,6 @@ pub fn show(
     if state.show_save_select.is_none() {
         show_bottom_pane(
             ui,
-            handle.clone(),
             window,
             clipboard,
             config,
@@ -1704,7 +1688,7 @@ pub fn show(
                     .clicked()
                 {
                     state.show_save_select = if state.show_save_select.is_none() {
-                        handle.spawn_blocking({
+                        tokio::runtime::Handle::current().spawn_blocking({
                             let roms_scanner = roms_scanner.clone();
                             let saves_scanner = saves_scanner.clone();
                             let roms_path = config.roms_path();
@@ -2299,7 +2283,7 @@ pub fn show(
         ..
     }) = connection_task.as_ref()
     {
-        handle.block_on(async {
+        tokio::runtime::Handle::current().block_on(async {
             let mut lobby = lobby.lock().await;
             let _ = lobby.set_local_selection(&selection).await;
         });

@@ -31,7 +31,6 @@ impl State {
 pub fn show(
     ctx: &egui::Context,
     state: &mut Option<State>,
-    handle: tokio::runtime::Handle,
     font_families: &gui::FontFamilies,
     config: &mut config::Config,
     roms_scanner: rom::Scanner,
@@ -107,7 +106,6 @@ pub fn show(
                         Tab::Advanced => show_advanced_tab(
                             ui,
                             config,
-                            handle.clone(),
                             roms_scanner.clone(),
                             saves_scanner.clone(),
                             patches_scanner.clone(),
@@ -490,7 +488,6 @@ fn show_patches_tab(ui: &mut egui::Ui, config: &mut config::Config) {
 fn show_advanced_tab(
     ui: &mut egui::Ui,
     config: &mut config::Config,
-    handle: tokio::runtime::Handle,
     roms_scanner: rom::Scanner,
     saves_scanner: save::Scanner,
     patches_scanner: patch::Scanner,
@@ -527,7 +524,7 @@ fn show_advanced_tab(
                         if let Some(data_path) = rfd::FileDialog::new().set_directory(&config.data_path).pick_folder() {
                             config.data_path = data_path;
                             let _ = config.ensure_dirs();
-                            handle.spawn_blocking({
+                            tokio::runtime::Handle::current().spawn_blocking({
                                 let roms_scanner = roms_scanner.clone();
                                 let saves_scanner = saves_scanner.clone();
                                 let patches_scanner = patches_scanner.clone();

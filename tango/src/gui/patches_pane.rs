@@ -12,7 +12,6 @@ impl State {
 
 pub fn show(
     ui: &mut egui::Ui,
-    handle: tokio::runtime::Handle,
     _state: &mut State,
     language: &unic_langid::LanguageIdentifier,
     repo_url: &str,
@@ -29,7 +28,7 @@ pub fn show(
                 ))
                 .clicked()
             {
-                handle.spawn_blocking({
+                tokio::runtime::Handle::current().spawn_blocking({
                     let patches_scanner = patches_scanner.clone();
                     let repo_url = repo_url.to_owned();
                     let patches_path = patches_path.to_path_buf();

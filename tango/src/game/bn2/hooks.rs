@@ -80,59 +80,52 @@ impl game::Hooks for Hooks {
 
     fn primary_traps(
         &self,
-        handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         completion_token: session::CompletionToken,
     ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         let make_send_and_receive_call_hook = || {
             let match_ = match_.clone();
-            let handle = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                handle.block_on(async {
-                    let pc = core.as_ref().gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-                    let match_ = handle.block_on(match_.lock());
-                    match &*match_ {
-                        Some(match_) => match_,
-                        _ => {
-                            core.gba_mut().cpu_mut().set_gpr(0, 0);
-                            return;
-                        }
-                    };
-                    core.gba_mut().cpu_mut().set_gpr(0, 3);
-                });
+                let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                match &*match_ {
+                    Some(match_) => match_,
+                    _ => {
+                        core.gba_mut().cpu_mut().set_gpr(0, 0);
+                        return;
+                    }
+                };
+                core.gba_mut().cpu_mut().set_gpr(0, 3);
             })
         };
         vec![
             (self.offsets.rom.comm_menu_init_ret, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 let munger = self.munger();
                 Box::new(move |core| {
-                    handle.block_on(async {
-                        let match_ = handle.block_on(match_.lock());
-                        let match_ = match &*match_ {
-                            Some(match_) => match_,
-                            _ => {
-                                return;
-                            }
-                        };
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
 
-                        let mut rng = handle.block_on(match_.lock_rng());
-                        let offerer_rng_state = generate_rng_state(&mut *rng);
-                        let answerer_rng_state = generate_rng_state(&mut *rng);
-                        munger.set_rng_state(
-                            core,
-                            if match_.is_offerer() {
-                                offerer_rng_state
-                            } else {
-                                answerer_rng_state
-                            },
-                        );
-                        munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
-                    });
+                    let mut rng = tokio::runtime::Handle::current().block_on(match_.lock_rng());
+                    let offerer_rng_state = generate_rng_state(&mut *rng);
+                    let answerer_rng_state = generate_rng_state(&mut *rng);
+                    munger.set_rng_state(
+                        core,
+                        if match_.is_offerer() {
+                            offerer_rng_state
+                        } else {
+                            answerer_rng_state
+                        },
+                    );
+                    munger.start_battle_from_comm_menu(core, random_background(&mut *rng));
                 })
             }),
             (
@@ -143,9 +136,8 @@ impl game::Hooks for Hooks {
             ),
             (self.offsets.rom.round_end_set_win, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |_| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -153,15 +145,14 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     round_state.set_last_result(battle::BattleResult::Win);
                 })
             }),
             (self.offsets.rom.round_end_set_loss, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |_| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -169,15 +160,14 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     round_state.set_last_result(battle::BattleResult::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_win, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |_| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -185,15 +175,14 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     round_state.set_last_result(battle::BattleResult::Win);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_loss, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |_| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -201,15 +190,14 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     round_state.set_last_result(battle::BattleResult::Loss);
                 })
             }),
             (self.offsets.rom.round_end_damage_judge_set_draw, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |_| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -217,7 +205,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     let result = {
                         let round = round_state.round.as_ref().expect("round");
                         round.on_draw_result()
@@ -227,10 +215,9 @@ impl game::Hooks for Hooks {
             }),
             (self.offsets.rom.round_ending_entry1, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
 
                 Box::new(move |mut _core| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         None => {
@@ -239,67 +226,66 @@ impl game::Hooks for Hooks {
                     };
 
                     // This is level-triggered because otherwise it's a massive pain to deal with.
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     if round_state.round.is_none() {
                         return;
                     }
 
-                    handle.block_on(round_state.end_round()).expect("end round");
-                    handle
+                    tokio::runtime::Handle::current()
+                        .block_on(round_state.end_round())
+                        .expect("end round");
+                    tokio::runtime::Handle::current()
                         .block_on(match_.advance_shadow_until_round_end())
                         .expect("advance shadow");
                 })
             }),
             (self.offsets.rom.round_ending_entry2, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |mut _core| {
-                    handle.block_on(async {
-                        let match_ = handle.block_on(match_.lock());
-                        let match_ = match &*match_ {
-                            Some(match_) => match_,
-                            None => {
-                                return;
-                            }
-                        };
-
-                        // This is level-triggered because otherwise it's a massive pain to deal with.
-                        let mut round_state = handle.block_on(match_.lock_round_state());
-                        if round_state.round.is_none() {
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        None => {
                             return;
                         }
+                    };
 
-                        handle.block_on(round_state.end_round()).expect("end round");
-                        handle
-                            .block_on(match_.advance_shadow_until_round_end())
-                            .expect("advance shadow");
-                    });
+                    // This is level-triggered because otherwise it's a massive pain to deal with.
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    if round_state.round.is_none() {
+                        return;
+                    }
+
+                    tokio::runtime::Handle::current()
+                        .block_on(round_state.end_round())
+                        .expect("end round");
+                    tokio::runtime::Handle::current()
+                        .block_on(match_.advance_shadow_until_round_end())
+                        .expect("advance shadow");
                 })
             }),
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |_core| {
-                        handle.block_on(async {
-                            let match_ = handle.block_on(match_.lock());
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
-                            match_.start_round().await.expect("start round");
-                        });
+                        let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                        let match_ = match &*match_ {
+                            Some(match_) => match_,
+                            _ => {
+                                return;
+                            }
+                        };
+                        tokio::runtime::Handle::current()
+                            .block_on(match_.start_round())
+                            .expect("start round");
                     }),
                 )
             },
             (self.offsets.rom.link_is_p2_ret, {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 Box::new(move |mut core| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -307,7 +293,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let round_state = handle.block_on(match_.lock_round_state());
+                    let round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
                     let round = match round_state.round.as_ref() {
                         Some(round) => round,
                         None => {
@@ -321,58 +307,57 @@ impl game::Hooks for Hooks {
             (self.offsets.rom.main_read_joyflags, {
                 let match_ = match_.clone();
                 let munger = self.munger();
-                let handle = handle.clone();
                 Box::new(move |core| {
-                    handle.block_on(async {
-                        let match_ = handle.block_on(match_.lock());
-                        let match_ = match &*match_ {
-                            Some(match_) => match_,
-                            _ => {
-                                return;
-                            }
-                        };
-
-                        let mut round_state = handle.block_on(match_.lock_round_state());
-
-                        let round = match round_state.round.as_mut() {
-                            Some(round) => round,
-                            None => {
-                                return;
-                            }
-                        };
-
-                        if !munger.is_linking(core) {
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
                             return;
                         }
+                    };
 
-                        if !round.has_committed_state() {
-                            let mut rng = handle.block_on(match_.lock_rng());
-                            let rng_state = generate_rng_state(&mut *rng);
-                            munger.set_rng_state(core, rng_state);
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
 
-                            round.set_first_committed_state(
-                                core.save_state().expect("save state"),
-                                handle
-                                    .block_on(match_.advance_shadow_until_first_committed_state())
-                                    .expect("shadow save state"),
-                                &munger.tx_packet(core),
-                            );
-                            log::info!("primary rng state: {:08x}", munger.rng_state(core));
-                            log::info!("battle state committed on {}", round.current_tick());
+                    let round = match round_state.round.as_mut() {
+                        Some(round) => round,
+                        None => {
+                            return;
                         }
+                    };
 
-                        'abort: loop {
-                            if let Err(e) = handle.block_on(round.add_local_input_and_fastforward(
+                    if !munger.is_linking(core) {
+                        return;
+                    }
+
+                    if !round.has_committed_state() {
+                        let mut rng = tokio::runtime::Handle::current().block_on(match_.lock_rng());
+                        let rng_state = generate_rng_state(&mut *rng);
+                        munger.set_rng_state(core, rng_state);
+
+                        round.set_first_committed_state(
+                            core.save_state().expect("save state"),
+                            tokio::runtime::Handle::current()
+                                .block_on(match_.advance_shadow_until_first_committed_state())
+                                .expect("shadow save state"),
+                            &munger.tx_packet(core),
+                        );
+                        log::info!("primary rng state: {:08x}", munger.rng_state(core));
+                        log::info!("battle state committed on {}", round.current_tick());
+                    }
+
+                    'abort: loop {
+                        if let Err(e) =
+                            tokio::runtime::Handle::current().block_on(round.add_local_input_and_fastforward(
                                 core,
                                 joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                            )) {
-                                log::error!("failed to add local input: {}", e);
-                                break 'abort;
-                            }
-                            return;
+                            ))
+                        {
+                            log::error!("failed to add local input: {}", e);
+                            break 'abort;
                         }
-                        match_.cancel();
-                    });
+                        return;
+                    }
+                    match_.cancel();
                 })
             }),
             (
@@ -405,7 +390,7 @@ impl game::Hooks for Hooks {
                 let match_ = match_.clone();
 
                 Box::new(move |_| {
-                    let match_ = handle.block_on(match_.lock());
+                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -413,7 +398,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
 
                     let round = match round_state.round.as_mut() {
                         Some(round) => round,

@@ -221,7 +221,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         controllers.insert(which, controller);
     }
 
-    let discord_client = discord::Client::new(handle.clone());
+    let discord_client = discord::Client::new();
 
     let roms_scanner = scanner::Scanner::new();
     let saves_scanner = scanner::Scanner::new();
@@ -249,7 +249,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     );
 
     let mut patch_autoupdater = patch::Autoupdater::new(config_arc.clone(), patches_scanner.clone());
-    patch_autoupdater.set_enabled(handle.clone(), config_arc.read().enable_patch_autoupdate);
+    patch_autoupdater.set_enabled(config_arc.read().enable_patch_autoupdate);
 
     event_loop.run(move |event, _, control_flow| {
         let mut config = config_arc.read().clone();
@@ -257,7 +257,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
         let mut redraw = || {
             let repaint_after = gfx_backend.run(Box::new(|window, ctx| {
-                gui::show(ctx, &mut config, handle.clone(), window, &input_state, &mut state)
+                gui::show(ctx, &mut config, window, &input_state, &mut state)
             }));
 
             if repaint_after.is_zero() {
@@ -416,6 +416,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             let r = config.save();
             log::info!("config save: {:?}", r);
         }
-        patch_autoupdater.set_enabled(handle.clone(), config.enable_patch_autoupdate);
+        patch_autoupdater.set_enabled(config.enable_patch_autoupdate);
     });
 }

@@ -177,7 +177,6 @@ pub trait Hooks {
 
     fn primary_traps(
         &self,
-        handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         completion_token: session::CompletionToken,

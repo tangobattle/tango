@@ -17,7 +17,6 @@ impl State {
 pub fn show(
     ctx: &egui::Context,
     config: &mut config::Config,
-    handle: tokio::runtime::Handle,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
@@ -50,7 +49,7 @@ pub fn show(
 
                 if let Some(session) = session.lock().as_ref() {
                     let tps_adjustment = if let session::Mode::PvP(pvp) = session.mode() {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             if let Some(match_) = &*pvp.match_.lock().await {
                                 ui.label("Match active");
                                 ui.end_row();
