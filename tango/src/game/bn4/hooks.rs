@@ -71,7 +71,7 @@ fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u
 }
 
 impl game::Hooks for Hooks {
-    fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn common_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let munger = self.munger();
@@ -118,7 +118,7 @@ impl game::Hooks for Hooks {
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         completion_token: session::CompletionToken,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let match_ = match_.clone();
@@ -499,7 +499,7 @@ impl game::Hooks for Hooks {
         ]
     }
 
-    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let munger = self.munger();
@@ -819,7 +819,7 @@ impl game::Hooks for Hooks {
         ]
     }
 
-    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
+    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
             {
                 let replayer_state = replayer_state.clone();

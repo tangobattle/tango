@@ -169,11 +169,11 @@ where
 pub trait Hooks {
     fn patch(&self, _core: mgba::core::CoreMutRef) {}
 
-    fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+    fn common_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
-    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+    fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
-    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+    fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
     fn primary_traps(
         &self,
@@ -181,7 +181,7 @@ pub trait Hooks {
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         completion_token: session::CompletionToken,
-    ) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)>;
+    ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
     fn packet_size(&self) -> usize {
         return 0x10;

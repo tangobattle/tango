@@ -72,7 +72,7 @@ impl Core {
         self.video_buffer.as_deref()
     }
 
-    pub fn set_traps(&mut self, traps: Vec<(u32, Box<dyn FnMut(CoreMutRef)>)>) {
+    pub fn set_traps(&mut self, traps: Vec<(u32, Box<dyn Fn(CoreMutRef)>)>) {
         self.trapper = Some(trapper::Trapper::new(self.as_mut(), traps));
     }
 }

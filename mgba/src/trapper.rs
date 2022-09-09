@@ -12,7 +12,7 @@ struct TrapperCStruct {
 }
 
 struct Trap {
-    handler: Box<dyn FnMut(core::CoreMutRef)>,
+    handler: Box<dyn Fn(core::CoreMutRef)>,
     original: u16,
 }
 
@@ -55,7 +55,7 @@ unsafe extern "C" fn c_trapper_bkpt16(arm_core: *mut mgba_sys::ARMCore, imm: i32
 }
 
 impl Trapper {
-    pub fn new(mut core: core::CoreMutRef, handlers: Vec<(u32, Box<dyn FnMut(core::CoreMutRef)>)>) -> Self {
+    pub fn new(mut core: core::CoreMutRef, handlers: Vec<(u32, Box<dyn Fn(core::CoreMutRef)>)>) -> Self {
         let mut cpu_component = unsafe { std::mem::zeroed::<mgba_sys::mCPUComponent>() };
         cpu_component.init = Some(c_trapper_init);
         cpu_component.deinit = Some(c_trapper_deinit);
