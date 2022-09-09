@@ -19,7 +19,6 @@ settings-video-filter = ビデオフィルター
     .mmpx = MMPX
 settings-max-scale = 最大スケール
     .unset = 未設定
-settings-ui-scale = UIスケール
 settings-language = 言語
 settings-nickname = ニックネーム
 settings-streamer-mode = 生放送プライバシー モード

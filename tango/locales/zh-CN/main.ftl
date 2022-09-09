@@ -1,10 +1,10 @@
 crash =
-    Oops, Tango has encountered an error and has crashed!
+    哎呀，Tango 遇到错误并崩溃了！
     
-    When reporting this crash, please include the following log file:
+    报告此崩溃时，请包含以下日志文件：
     
     { $path }
 crash-no-log =
-    Oops, Tango has encountered an error and has crashed!
+    哎呀，Tango 遇到错误并崩溃了！
     
     { $error }
