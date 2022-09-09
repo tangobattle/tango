@@ -331,49 +331,115 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
 
             ui.end_row();
 
-            ui.strong(i18n::LOCALES.lookup(&config.language, "settings-video-filter").unwrap());
+            {
+                ui.strong(i18n::LOCALES.lookup(&config.language, "settings-video-filter").unwrap());
 
-            let null_label = i18n::LOCALES
-                .lookup(&config.language, "settings-video-filter.null")
-                .unwrap();
-            let hq2x_label = i18n::LOCALES
-                .lookup(&config.language, "settings-video-filter.hq2x")
-                .unwrap();
-            let hq3x_label = i18n::LOCALES
-                .lookup(&config.language, "settings-video-filter.hq3x")
-                .unwrap();
-            let hq4x_label = i18n::LOCALES
-                .lookup(&config.language, "settings-video-filter.hq4x")
-                .unwrap();
-            let mmpx_label = i18n::LOCALES
-                .lookup(&config.language, "settings-video-filter.mmpx")
-                .unwrap();
+                let null_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.null")
+                    .unwrap();
+                let hq2x_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.hq2x")
+                    .unwrap();
+                let hq3x_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.hq3x")
+                    .unwrap();
+                let hq4x_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.hq4x")
+                    .unwrap();
+                let mmpx_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-video-filter.mmpx")
+                    .unwrap();
 
-            egui::ComboBox::from_id_source("settings-window-general-video-filter")
-                .width(200.0)
-                .selected_text(match config.video_filter.as_str() {
-                    "" => &null_label,
-                    "hq2x" => &hq2x_label,
-                    "hq3x" => &hq3x_label,
-                    "hq4x" => &hq4x_label,
-                    "mmpx" => &mmpx_label,
-                    _ => "",
-                })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut config.video_filter, "".to_string(), &null_label);
-                    ui.selectable_value(&mut config.video_filter, "hq2x".to_string(), &hq2x_label);
-                    ui.selectable_value(&mut config.video_filter, "hq3x".to_string(), &hq3x_label);
-                    ui.selectable_value(&mut config.video_filter, "hq4x".to_string(), &hq4x_label);
-                    ui.selectable_value(&mut config.video_filter, "mmpx".to_string(), &mmpx_label);
-                });
-            ui.end_row();
+                egui::ComboBox::from_id_source("settings-window-general-video-filter")
+                    .width(200.0)
+                    .selected_text(match config.video_filter.as_str() {
+                        "" => &null_label,
+                        "hq2x" => &hq2x_label,
+                        "hq3x" => &hq3x_label,
+                        "hq4x" => &hq4x_label,
+                        "mmpx" => &mmpx_label,
+                        _ => "",
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut config.video_filter, "".to_string(), &null_label);
+                        ui.selectable_value(&mut config.video_filter, "hq2x".to_string(), &hq2x_label);
+                        ui.selectable_value(&mut config.video_filter, "hq3x".to_string(), &hq3x_label);
+                        ui.selectable_value(&mut config.video_filter, "hq4x".to_string(), &hq4x_label);
+                        ui.selectable_value(&mut config.video_filter, "mmpx".to_string(), &mmpx_label);
+                    });
+                ui.end_row();
+            }
+
+            {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-graphics-backend")
+                        .unwrap(),
+                );
+
+                #[cfg(feature = "glutin")]
+                let glutin_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-graphics-backend.glutin")
+                    .unwrap();
+                #[cfg(feature = "wgpu")]
+                let wgpu_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-graphics-backend.wgpu")
+                    .unwrap();
+
+                egui::ComboBox::from_id_source("settings-window-general-graphics-backend")
+                    .width(200.0)
+                    .selected_text(match config.graphics_backend {
+                        #[cfg(feature = "glutin")]
+                        config::GraphicsBackend::Glutin => &glutin_label,
+                        #[cfg(feature = "wgpu")]
+                        config::GraphicsBackend::Wgpu => &wgpu_label,
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut config.graphics_backend,
+                            config::GraphicsBackend::Glutin,
+                            &glutin_label,
+                        );
+                        ui.selectable_value(&mut config.graphics_backend, config::GraphicsBackend::Wgpu, &wgpu_label);
+                    });
+                ui.end_row();
+            }
         });
 }
 
-fn show_audio_tab(ui: &mut egui::Ui, _config: &mut config::Config) {
+fn show_audio_tab(ui: &mut egui::Ui, config: &mut config::Config) {
     egui::Grid::new("settings-window-audio-grid")
         .num_columns(2)
-        .show(ui, |_ui| {});
+        .show(ui, |ui| {
+            ui.strong(
+                i18n::LOCALES
+                    .lookup(&config.language, "settings-audio-backend")
+                    .unwrap(),
+            );
+
+            #[cfg(feature = "sdl2-audio")]
+            let sdl2_label = i18n::LOCALES
+                .lookup(&config.language, "settings-audio-backend.sdl2")
+                .unwrap();
+            #[cfg(feature = "cpal")]
+            let cpal_label = i18n::LOCALES
+                .lookup(&config.language, "settings-audio-backend.cpal")
+                .unwrap();
+
+            egui::ComboBox::from_id_source("settings-window-general-audio-backend")
+                .width(200.0)
+                .selected_text(match config.audio_backend {
+                    #[cfg(feature = "sdl2-audio")]
+                    config::AudioBackend::Sdl2 => &sdl2_label,
+                    #[cfg(feature = "cpal")]
+                    config::AudioBackend::Cpal => &cpal_label,
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut config.audio_backend, config::AudioBackend::Sdl2, &sdl2_label);
+                    ui.selectable_value(&mut config.audio_backend, config::AudioBackend::Cpal, &cpal_label);
+                });
+            ui.end_row();
+        });
 }
 
 fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
