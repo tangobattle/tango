@@ -1,11 +1,8 @@
 use crate::audio;
 
-pub struct StreamWrapper<T>(T);
+pub struct StreamWrapper(Box<dyn audio::Stream + Send + 'static>);
 
-impl<T> sdl2::audio::AudioCallback for StreamWrapper<T>
-where
-    T: audio::Stream + Send,
-{
+impl sdl2::audio::AudioCallback for StreamWrapper {
     type Channel = i16;
 
     fn callback(&mut self, buf: &mut [i16]) {
@@ -17,13 +14,32 @@ where
     }
 }
 
-pub fn open_stream<T>(
-    audio: &sdl2::AudioSubsystem,
-    spec: &sdl2::audio::AudioSpecDesired,
-    stream: T,
-) -> Result<sdl2::audio::AudioDevice<StreamWrapper<T>>, String>
-where
-    T: audio::Stream + Send,
-{
-    audio.open_playback(None, spec, |_| StreamWrapper(stream))
+pub struct Backend {
+    _audio_device: sdl2::audio::AudioDevice<StreamWrapper>,
 }
+
+impl Backend {
+    pub fn new(
+        audio: &sdl2::AudioSubsystem,
+        stream: impl audio::Stream + Send + 'static,
+    ) -> Result<Self, anyhow::Error> {
+        let audio_device = audio
+            .open_playback(
+                None,
+                &sdl2::audio::AudioSpecDesired {
+                    freq: Some(48000),
+                    channels: Some(audio::NUM_CHANNELS as u8),
+                    samples: Some(512),
+                },
+                |_| StreamWrapper(Box::new(stream)),
+            )
+            .map_err(|e| anyhow::format_err!("{}", e))?;
+        log::info!("sdl2 audio spec: {:?}", audio_device.spec());
+        audio_device.resume();
+        Ok(Self {
+            _audio_device: audio_device,
+        })
+    }
+}
+
+impl audio::Backend for Backend {}

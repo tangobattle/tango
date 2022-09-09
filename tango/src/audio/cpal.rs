@@ -17,7 +17,7 @@ pub fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::Suppo
     Ok(supported_config)
 }
 
-pub fn open_stream(
+fn open_stream(
     device: &cpal::Device,
     supported_config: &cpal::SupportedStreamConfig,
     mut stream: impl audio::Stream + Send + 'static,
@@ -113,3 +113,35 @@ fn realign_samples(buf: &mut [i16], channels: u16) {
         buf[dest..dest + 2].copy_from_slice(&tmp);
     }
 }
+
+pub struct Backend {
+    _audio_device: cpal::Device,
+    _stream: cpal::Stream,
+}
+
+impl Backend {
+    pub fn new(stream: impl audio::Stream + Send) -> Result<Self, anyhow::Error> {
+        use cpal::traits::{HostTrait, StreamTrait};
+
+        let audio_device = cpal::default_host()
+            .default_output_device()
+            .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
+        log::info!(
+            "cpal supported audio output configs: {:?}",
+            audio_device.supported_output_configs()?.collect::<Vec<_>>()
+        );
+        let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
+        log::info!("selected audio config: {:?}", audio_supported_config);
+
+        let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
+        let stream = open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
+        stream.play()?;
+
+        Ok(Self {
+            _audio_device: audio_device,
+            _stream: stream,
+        })
+    }
+}
+
+impl audio::Backend for Backend {}

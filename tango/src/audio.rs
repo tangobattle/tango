@@ -1,5 +1,6 @@
 #[cfg(feature = "cpal")]
 pub mod cpal;
+#[cfg(feature = "sdl2-audio")]
 pub mod sdl2;
 
 pub trait Stream {
@@ -114,3 +115,5 @@ impl Stream for MGBAStream {
         available as usize
     }
 }
+
+pub trait Backend {}

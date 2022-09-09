@@ -5,6 +5,30 @@ use serde::Deserialize;
 use crate::{i18n, input};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+pub enum GraphicsBackend {
+    Glutin,
+    Wgpu,
+}
+
+impl Default for GraphicsBackend {
+    fn default() -> Self {
+        Self::Glutin
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
+pub enum AudioBackend {
+    Sdl2,
+    Cpal,
+}
+
+impl Default for AudioBackend {
+    fn default() -> Self {
+        Self::Sdl2
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum Theme {
     System,
     Light,
@@ -56,6 +80,8 @@ pub struct Config {
     pub data_path: std::path::PathBuf,
     pub full_screen: bool,
     pub streamer_mode: bool,
+    pub graphics_backend: GraphicsBackend,
+    pub audio_backend: AudioBackend,
 }
 
 impl Default for Config {
@@ -78,6 +104,8 @@ impl Default for Config {
             data_path: "".into(),
             full_screen: false,
             streamer_mode: false,
+            graphics_backend: Default::default(),
+            audio_backend: Default::default(),
         }
     }
 }

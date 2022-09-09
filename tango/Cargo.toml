@@ -6,7 +6,9 @@ license = "AGPL-3.0-or-later"
 default-run = "tango"
 
 [features]
-default = ["wgpu"]
+default = ["glutin", "sdl2-audio", "wgpu", "cpal"]
+sdl2-audio = []
+glutin = ["dep:glutin", "dep:egui_glow"]
 cpal = ["dep:cpal"]
 wgpu = ["dep:wgpu", "dep:egui-wgpu"]
 
@@ -53,10 +55,10 @@ image = { version = "0.24", features = ["png"] }
 thiserror = "1.0"
 egui = { version = "0.19", features = [] }
 glow = "0.11"
-egui_glow = { version = "0.19", features = ["winit", "clipboard", "links"] }
+egui_glow = { version = "0.19", features = ["winit", "clipboard", "links"], optional = true }
 egui-wgpu = { version = "0.19", features = ["winit"], optional = true }
 egui-winit = "0.19"
-glutin = { version = "0.29", features = ["serde"] }
+glutin = { version = "0.29", features = ["serde"], optional = true }
 cpal = { version = "0.13", optional = true }
 fluent-bundle = "0.15"
 fluent-templates = "0.8"

@@ -158,33 +158,35 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             None
         });
 
-    #[cfg(not(feature = "wgpu"))]
-    let mut gfx_backend = graphics::glutin::Backend::new(
-        glutin::ContextBuilder::new()
-            .with_depth_buffer(0)
-            .with_stencil_buffer(0)
-            .with_vsync(true)
-            .build_windowed(wb, &event_loop)
-            .unwrap(),
-        &event_loop,
-    );
+    let mut gfx_backend: Box<dyn graphics::Backend> = match config.graphics_backend {
+        #[cfg(feature = "glutin")]
+        config::GraphicsBackend::Glutin => Box::new(graphics::glutin::Backend::new(
+            glutin::ContextBuilder::new()
+                .with_depth_buffer(0)
+                .with_stencil_buffer(0)
+                .with_vsync(true)
+                .build_windowed(wb, &event_loop)
+                .unwrap(),
+            &event_loop,
+        )),
 
-    #[cfg(feature = "wgpu")]
-    let mut gfx_backend = graphics::wgpu::Backend::new(
-        wb.build(&event_loop).unwrap(),
-        egui_wgpu::winit::Painter::new(
-            wgpu::Backends::PRIMARY | wgpu::Backends::GL,
-            wgpu::PowerPreference::LowPower,
-            wgpu::DeviceDescriptor {
-                label: None,
-                features: wgpu::Features::default(),
-                limits: wgpu::Limits::downlevel_webgl2_defaults(),
-            },
-            wgpu::PresentMode::Fifo,
-            1,
-        ),
-        &event_loop,
-    );
+        #[cfg(feature = "wgpu")]
+        config::GraphicsBackend::Wgpu => Box::new(graphics::wgpu::Backend::new(
+            wb.build(&event_loop).unwrap(),
+            egui_wgpu::winit::Painter::new(
+                wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+                wgpu::PowerPreference::LowPower,
+                wgpu::DeviceDescriptor {
+                    label: None,
+                    features: wgpu::Features::default(),
+                    limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                },
+                wgpu::PresentMode::Fifo,
+                1,
+            ),
+            &event_loop,
+        )),
+    };
 
     let egui_ctx = gfx_backend.egui_ctx();
     egui_ctx.set_request_repaint_callback({
@@ -196,46 +198,11 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     let audio_binder = audio::LateBinder::new(48000);
 
-    #[cfg(feature = "cpal")]
-    let (_audio_device, _stream) = {
-        log::info!("using cpal audio");
-
-        use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-
-        let audio_device = cpal::default_host()
-            .default_output_device()
-            .ok_or_else(|| anyhow::format_err!("could not open audio device"))?;
-        log::info!(
-            "supported audio output configs: {:?}",
-            audio_device.supported_output_configs()?.collect::<Vec<_>>()
-        );
-        let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
-        log::info!("selected audio config: {:?}", audio_supported_config);
-
-        let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
-        let stream = audio::cpal::open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
-        stream.play()?;
-
-        (audio_device, stream)
-    };
-
-    #[cfg(not(feature = "cpal"))]
-    let _audio_device = {
-        log::info!("using sdl2 audio");
-
-        let audio_device = audio::sdl2::open_stream(
-            &audio,
-            &sdl2::audio::AudioSpecDesired {
-                freq: Some(48000),
-                channels: Some(audio::NUM_CHANNELS as u8),
-                samples: Some(512),
-            },
-            audio_binder.clone(),
-        )
-        .unwrap();
-        log::info!("audio spec: {:?}", audio_device.spec());
-        audio_device.resume();
-        audio_device
+    let _audio_backend: Box<dyn audio::Backend> = match config.audio_backend {
+        #[cfg(feature = "cpal")]
+        config::AudioBackend::Cpal => Box::new(audio::cpal::Backend::new(audio_binder.clone())?),
+        #[cfg(feature = "sdl2-audio")]
+        config::AudioBackend::Sdl2 => Box::new(audio::sdl2::Backend::new(&audio, audio_binder.clone())?),
     };
 
     let fps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(30)));
@@ -290,8 +257,9 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         let old_config = config.clone();
 
         let mut redraw = || {
-            let repaint_after = gfx_backend
-                .run(|window, ctx| gui::show(ctx, &mut config, handle.clone(), window, &input_state, &mut state));
+            let repaint_after = gfx_backend.run(Box::new(|window, ctx| {
+                gui::show(ctx, &mut config, handle.clone(), window, &input_state, &mut state)
+            }));
 
             if repaint_after.is_zero() {
                 gfx_backend.window().request_redraw();
