@@ -46,5 +46,5 @@ cp ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe .
 
 wixl installer.wxs
 popd
-mv tango_wix_workdir/installer.msi "dist/tango-$(python3 -c "import toml; print(toml.load(open('tango/Cargo.toml'))['package']['version'])", end='')-x86_64-windows.msi"
+mv tango_wix_workdir/installer.msi "dist/tango-x86_64-windows.msi"
 rm -rf tango_wix_workdir

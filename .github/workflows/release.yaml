@@ -10,15 +10,6 @@ jobs:
         runs-on: ubuntu-20.04
 
         steps:
-            - run: >
-                  sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list &&
-                  sudo dpkg --add-architecture i386 &&
-                  sudo apt-get update &&
-                  sudo apt install -y aptitude &&
-                  sudo aptitude remove -y libpcre2-8-0 libgd3 &&
-                  sudo aptitude install -y libwine:i386 &&
-                  sudo apt install -y wine-stable wine64 wine32 mingw-w64
-
             - uses: actions/checkout@v2
               with:
                   submodules: recursive
@@ -31,14 +22,13 @@ jobs:
                       core/target
                   key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-            - uses: actions/setup-node@v1
-              with:
-                  node-version: 18
+            - run: >
+                  sudo apt install -y msitools mingw-w64 imagemagick wget
 
-            - uses: actions-rs/toolchain@v1
+            - uses: dtolnay/rust-toolchain@stable
               with:
                   toolchain: stable
-                  target: x86_64-pc-windows-gnu
+                  targets: x86_64-pc-windows-gnu
 
             - run: >
                   sudo update-alternatives --install /usr/bin/x86_64-w64-mingw32-gcc x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-win32 60 &&
@@ -49,72 +39,18 @@ jobs:
                   sudo update-alternatives --config x86_64-w64-mingw32-g++
 
             - run: >
-                  cd core &&
-                  BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr/x86_64-w64-mingw32/" cargo build --release --target x86_64-pc-windows-gnu
+                  BINDGEN_EXTRA_CLANG_ARGS="--sysroot=/usr/x86_64-w64-mingw32/" ./win/build.sh
 
-            - run: >
-                  mkdir launcher/bin &&
-                  cp /usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll \
-                     /usr/lib/gcc/x86_64-w64-mingw32/9.3-posix/*.dll \
-                     core/target/x86_64-pc-windows-gnu/release/tango-core.exe \
-                     core/target/x86_64-pc-windows-gnu/release/replayview.exe \
-                     core/target/x86_64-pc-windows-gnu/release/replaydump.exe \
-                     core/target/x86_64-pc-windows-gnu/release/keymaptool.exe \
-                     launcher/bin
-
-            - run: >
-                  cd launcher &&
-                  npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:win32-x64 -- --publish always
+            - uses: actions/upload-release-asset@v1
               env:
-                  NODE_OPTIONS: --max-old-space-size=8192
-
-    release-linux-x64:
-        runs-on: ubuntu-20.04
-
-        steps:
-            - uses: actions/checkout@v2
+                  GITHUB_TOKEN: ${{ github.token }}
               with:
-                  submodules: recursive
+                  upload_url: ${{ github.event.release.upload_url }}
+                  asset_path: ./dist/tango-x86_64-windows.msi
+                  asset_name: tango-${{ github.ref_name }}-x86_64-windows.msi
+                  asset_content_type: application/octet-stream
 
-            - uses: pat-s/always-upload-cache@v2
-              with:
-                  path: |
-                      ~/.cargo/registry
-                      ~/.cargo/git
-                      core/target
-                  key: linux-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-            - uses: actions/setup-node@v1
-              with:
-                  node-version: 18
-
-            - uses: actions-rs/toolchain@v1
-              with:
-                  toolchain: stable
-                  target: x86_64-unknown-linux-gnu
-
-            - run: >
-                  sudo apt-get update -y &&
-                  sudo apt-get upgrade -y &&
-                  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl git libnss3 pkgconf sudo libsdl2-dev
-
-            - run: >
-                  cd core &&
-                  cargo build --release --target x86_64-unknown-linux-gnu
-
-            - run: >
-                  mkdir launcher/bin &&
-                  cp core/target/x86_64-unknown-linux-gnu/release/{tango-core,replayview,replaydump,keymaptool} ./launcher/bin/
-
-            - run: >
-                  cd launcher &&
-                  npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:linux-x64 -- --publish always
-              env:
-                  NODE_OPTIONS: --max-old-space-size=8192
-
-    release-mac-x64:
+    release-mac-universal:
         runs-on: macos-12
 
         steps:
@@ -128,28 +64,21 @@ jobs:
                       ~/.cargo/registry
                       ~/.cargo/git
                       core/target
-                  key: darwin-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+                  key: darwin-universal-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-            - uses: actions/setup-node@v1
-              with:
-                  node-version: 18
-
-            - uses: actions-rs/toolchain@v1
+            - uses: dtolnay/rust-toolchain@stable
               with:
                   toolchain: stable
-                  target: x86_64-apple-darwin
+                  targets: x86_64-apple-darwin, aarch64-apple-darwin
 
             - run: >
-                  cd core &&
-                  cargo build --release --target x86_64-apple-darwin
+                  ./macos/build.sh
 
-            - run: >
-                  mkdir launcher/bin &&
-                  cp core/target/x86_64-apple-darwin/release/{tango-core,replayview,replaydump,keymaptool} ./launcher/bin/
-
-            - run: >
-                  cd launcher &&
-                  npm install &&
-                  GITHUB_TOKEN="${{ secrets.github_token }}" USE_HARD_LINKS="false" npm run dist:mac-x64 -- --publish always
+            - uses: actions/upload-release-asset@v1
               env:
-                  NODE_OPTIONS: --max-old-space-size=8192
+                  GITHUB_TOKEN: ${{ github.token }}
+              with:
+                  upload_url: ${{ github.event.release.upload_url }}
+                  asset_path: ./dist/tango-macos.zip
+                  asset_name: tango-${{ github.ref_name }}-macos.zip
+                  asset_content_type: application/zip
