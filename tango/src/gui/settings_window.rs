@@ -168,15 +168,15 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                 egui::ComboBox::from_id_source("settings-window-general-language")
                     .width(200.0)
                     .selected_text(match &config.language {
-                        lang if lang.matches(&unic_langid::langid!("en"), false, true) => en_label.clone(),
-                        lang if lang.matches(&unic_langid::langid!("ja"), false, true) => ja_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("en-US"), false, true) => en_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("ja-JP"), false, true) => ja_label.clone(),
                         lang if lang.matches(&unic_langid::langid!("zh-Hans"), false, true) => zh_hans_label.clone(),
                         lang if lang.matches(&unic_langid::langid!("zh-Hant"), false, true) => zh_hant_label.clone(),
                         _ => egui::RichText::new(""),
                     })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut config.language, unic_langid::langid!("en"), en_label.clone());
-                        ui.selectable_value(&mut config.language, unic_langid::langid!("ja"), ja_label.clone());
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("en-US"), en_label.clone());
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("ja-JP"), ja_label.clone());
                         ui.selectable_value(
                             &mut config.language,
                             unic_langid::langid!("zh-Hans"),
