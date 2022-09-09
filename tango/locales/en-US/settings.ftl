@@ -23,8 +23,6 @@ settings-video-filter = Video filter
 settings-max-scale = Max scale
     .unset = Unset
 
-settings-ui-scale = UI scale
-
 settings-language = Language
 settings-nickname = Nickname
 settings-streamer-mode = Streamer privacy mode
