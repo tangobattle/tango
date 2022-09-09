@@ -1,4 +1,4 @@
-copy-to-clipboard = Copy to clipboard
-    .copied = Copied!
+copy-to-clipboard = Copier dans le presse-papier
+    .copied = Copié !
 window-title = Tango
-    .running = Tango (running)
+    .running = Tango (en cours d'exécution)
