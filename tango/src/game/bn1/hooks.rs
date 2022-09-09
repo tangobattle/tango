@@ -44,42 +44,31 @@ const INIT_RX: [u8; 16] = [
 impl game::Hooks for Hooks {
     fn common_traps(&self) -> Vec<(u32, Box<dyn FnMut(mgba::core::CoreMutRef)>)> {
         vec![
-            {
+            (self.offsets.rom.start_screen_jump_table_entry, {
                 let munger = self.munger();
-                (
-                    self.offsets.rom.start_screen_jump_table_entry,
-                    Box::new(move |core| {
-                        munger.skip_logo(core);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.start_screen_play_music_call,
-                    Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    }),
-                )
-            },
-            {
+                Box::new(move |core| {
+                    munger.skip_logo(core);
+                })
+            }),
+            (
+                self.offsets.rom.start_screen_play_music_call,
+                Box::new(move |mut core| {
+                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                }),
+            ),
+            (self.offsets.rom.start_screen_sram_unmask_ret, {
                 let munger = self.munger();
-                (
-                    self.offsets.rom.start_screen_sram_unmask_ret,
-                    Box::new(move |core| {
-                        munger.continue_from_title_menu(core);
-                    }),
-                )
-            },
-            {
+                Box::new(move |core| {
+                    munger.continue_from_title_menu(core);
+                })
+            }),
+            (self.offsets.rom.game_load_ret, {
                 let munger = self.munger();
-                (
-                    self.offsets.rom.game_load_ret,
-                    Box::new(move |core| {
-                        munger.open_comm_menu_from_overworld(core);
-                    }),
-                )
-            },
+                Box::new(move |core| {
+                    munger.open_comm_menu_from_overworld(core);
+                })
+            }),
         ]
     }
 
@@ -95,248 +84,211 @@ impl game::Hooks for Hooks {
             let munger = self.munger();
             let handle = handle.clone();
             Box::new(move |mut core: mgba::core::CoreMutRef| {
-                handle.block_on(async {
-                    let pc = core.as_ref().gba().cpu().thumb_pc();
-                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                let pc = core.as_ref().gba().cpu().thumb_pc();
+                core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-                    let match_ = match_.lock().await;
-                    match &*match_ {
-                        Some(match_) => match_,
-                        _ => {
-                            core.gba_mut().cpu_mut().set_gpr(0, 0);
-                            return;
-                        }
-                    };
-                    core.gba_mut().cpu_mut().set_gpr(0, 3);
+                let match_ = handle.block_on(match_.lock());
+                match &*match_ {
+                    Some(match_) => match_,
+                    _ => {
+                        core.gba_mut().cpu_mut().set_gpr(0, 0);
+                        return;
+                    }
+                };
+                core.gba_mut().cpu_mut().set_gpr(0, 3);
 
-                    munger.set_rx_packet(core, 0, &INIT_RX);
-                    munger.set_rx_packet(core, 1, &INIT_RX);
-                });
+                munger.set_rx_packet(core, 0, &INIT_RX);
+                munger.set_rx_packet(core, 1, &INIT_RX);
             })
         };
         vec![
-            {
-                let handle = handle.clone();
+            (self.offsets.rom.comm_menu_init_ret, {
                 let munger = self.munger();
-                (
-                    self.offsets.rom.comm_menu_init_ret,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            munger.start_battle_from_comm_menu(core);
-                        });
-                    }),
-                )
-            },
-            {
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.match_end_ret,
-                    Box::new(move |_core| {
-                        handle.block_on(async {
-                            completion_token.complete();
-                        });
-                    }),
-                )
-            },
-            {
+                Box::new(move |core| {
+                    munger.start_battle_from_comm_menu(core);
+                })
+            }),
+            (
+                self.offsets.rom.match_end_ret,
+                Box::new(move |_core| {
+                    completion_token.complete();
+                }),
+            ),
+            (self.offsets.rom.round_end_set_win, {
                 let match_ = match_.clone();
                 let handle = handle.clone();
-                (
-                    self.offsets.rom.round_end_set_win,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match_.lock().await;
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
 
-                            let mut round_state = match_.lock_round_state().await;
-                            round_state.set_last_result(battle::BattleResult::Win);
-                        });
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    round_state.set_last_result(battle::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_set_loss, {
                 let match_ = match_.clone();
                 let handle = handle.clone();
-                (
-                    self.offsets.rom.round_end_set_loss,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match_.lock().await;
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
 
-                            let mut round_state = match_.lock_round_state().await;
-                            round_state.set_last_result(battle::BattleResult::Loss);
-                        });
-                    }),
-                )
-            },
+                Box::new(move |_| {
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    round_state.set_last_result(battle::BattleResult::Loss);
+                })
+            }),
             (self.offsets.rom.round_ending_entry1, {
                 let match_ = match_.clone();
                 let handle = handle.clone();
                 Box::new(move |mut _core| {
-                    handle.block_on(async {
-                        let match_ = match_.lock().await;
-                        let match_ = match &*match_ {
-                            Some(match_) => match_,
-                            None => {
-                                return;
-                            }
-                        };
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        None => {
+                            return;
+                        }
+                    };
 
-                        let mut round_state = match_.lock_round_state().await;
-                        round_state.end_round().await.expect("end round");
-                        match_.advance_shadow_until_round_end().await.expect("advance shadow");
-                    });
+                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    handle.block_on(round_state.end_round()).expect("end round");
+                    handle
+                        .block_on(match_.advance_shadow_until_round_end())
+                        .expect("advance shadow");
                 })
             }),
             (self.offsets.rom.round_ending_entry2, {
                 let match_ = match_.clone();
                 let handle = handle.clone();
                 Box::new(move |mut _core| {
-                    handle.block_on(async {
-                        let match_ = match_.lock().await;
-                        let match_ = match &*match_ {
-                            Some(match_) => match_,
-                            None => {
-                                return;
-                            }
-                        };
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        None => {
+                            return;
+                        }
+                    };
 
-                        let mut round_state = match_.lock_round_state().await;
-                        round_state.end_round().await.expect("end round");
-                        match_.advance_shadow_until_round_end().await.expect("advance shadow");
-                    });
+                    let mut round_state = handle.block_on(match_.lock_round_state());
+                    handle.block_on(round_state.end_round()).expect("end round");
+                    handle
+                        .block_on(match_.advance_shadow_until_round_end())
+                        .expect("advance shadow");
                 })
             }),
-            {
+            (self.offsets.rom.round_start_ret, {
                 let match_ = match_.clone();
                 let handle = handle.clone();
                 let munger = self.munger();
-                (
-                    self.offsets.rom.round_start_ret,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            let match_ = match_.lock().await;
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
-                            match_.start_round().await.expect("start round");
-                            let mut rng = match_.lock_rng().await;
-                            munger.set_battle_stage(core, rng.gen_range(0..0xc));
-                        });
-                    }),
-                )
-            },
-            {
+
+                Box::new(move |core| {
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+                    handle.block_on(match_.start_round()).expect("start round");
+                    let mut rng = handle.block_on(match_.lock_rng());
+                    munger.set_battle_stage(core, rng.gen_range(0..0xc));
+                })
+            }),
+            (self.offsets.rom.link_is_p2_ret, {
                 let match_ = match_.clone();
                 let handle = handle.clone();
-                (
-                    self.offsets.rom.link_is_p2_ret,
-                    Box::new(move |mut core| {
-                        handle.block_on(async {
-                            let match_ = match_.lock().await;
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
 
-                            let round_state = match_.lock_round_state().await;
-                            let round = match round_state.round.as_ref() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
+                Box::new(move |mut core| {
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
 
-                            core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
-                        });
-                    }),
-                )
-            },
-            {
+                    let round_state = handle.block_on(match_.lock_round_state());
+                    let round = match round_state.round.as_ref() {
+                        Some(round) => round,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    core.gba_mut().cpu_mut().set_gpr(0, round.local_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.main_read_joyflags, {
                 let match_ = match_.clone();
                 let munger = self.munger();
                 let handle = handle.clone();
-                (
-                    self.offsets.rom.main_read_joyflags,
-                    Box::new(move |core| {
-                        handle.block_on(async {
-                            let match_ = match_.lock().await;
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
 
-                            let mut round_state = match_.lock_round_state().await;
+                Box::new(move |core| {
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
 
-                            let round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
+                    let mut round_state = handle.block_on(match_.lock_round_state());
 
-                            if !round.has_committed_state() {
-                                let mut rng = match_.lock_rng().await;
-                                let offerer_rng_state = generate_rng_state(&mut *rng);
-                                let answerer_rng_state = generate_rng_state(&mut *rng);
-                                munger.set_rng_state(
-                                    core,
-                                    if match_.is_offerer() {
-                                        offerer_rng_state
-                                    } else {
-                                        answerer_rng_state
-                                    },
-                                );
+                    let round = match round_state.round.as_mut() {
+                        Some(round) => round,
+                        None => {
+                            return;
+                        }
+                    };
 
-                                round.set_first_committed_state(
-                                    core.save_state().expect("save state"),
-                                    match_
-                                        .advance_shadow_until_first_committed_state()
-                                        .await
-                                        .expect("shadow save state"),
-                                    &munger.tx_packet(core),
-                                );
-                                log::info!("primary rng state: {:08x}", munger.rng_state(core));
-                                log::info!("battle state committed on {}", round.current_tick());
-                            }
+                    if !round.has_committed_state() {
+                        let mut rng = handle.block_on(match_.lock_rng());
+                        let offerer_rng_state = generate_rng_state(&mut *rng);
+                        let answerer_rng_state = generate_rng_state(&mut *rng);
+                        munger.set_rng_state(
+                            core,
+                            if match_.is_offerer() {
+                                offerer_rng_state
+                            } else {
+                                answerer_rng_state
+                            },
+                        );
 
-                            'abort: loop {
-                                if let Err(e) = round
-                                    .add_local_input_and_fastforward(
-                                        core,
-                                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                                    )
-                                    .await
-                                {
-                                    log::error!("failed to add local input: {}", e);
-                                    break 'abort;
-                                }
-                                return;
-                            }
+                        round.set_first_committed_state(
+                            core.save_state().expect("save state"),
+                            handle
+                                .block_on(match_.advance_shadow_until_first_committed_state())
+                                .expect("shadow save state"),
+                            &munger.tx_packet(core),
+                        );
+                        log::info!("primary rng state: {:08x}", munger.rng_state(core));
+                        log::info!("battle state committed on {}", round.current_tick());
+                    }
 
-                            match_.cancel();
-                        });
-                    }),
-                )
-            },
+                    'abort: loop {
+                        if let Err(e) = handle.block_on(round.add_local_input_and_fastforward(
+                            core,
+                            joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                        )) {
+                            log::error!("failed to add local input: {}", e);
+                            break 'abort;
+                        }
+                        return;
+                    }
+
+                    match_.cancel();
+                })
+            }),
             (
                 self.offsets.rom.handle_input_custom_send_and_receive_call,
                 make_send_and_receive_call_hook(),
@@ -345,63 +297,51 @@ impl game::Hooks for Hooks {
                 self.offsets.rom.handle_input_in_turn_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
-            {
+            (self.offsets.rom.comm_menu_send_and_receive_call, {
                 let munger = self.munger();
-                let handle = handle.clone();
-                (
-                    self.offsets.rom.comm_menu_send_and_receive_call,
-                    Box::new(move |mut core| {
-                        handle.block_on(async {
-                            let pc = core.as_ref().gba().cpu().thumb_pc();
-                            core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                            core.gba_mut().cpu_mut().set_gpr(0, 3);
-                            munger.set_rx_packet(core, 0, &INIT_RX);
-                            munger.set_rx_packet(core, 1, &INIT_RX);
-                        });
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.init_sio_call,
-                    Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc();
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    }),
-                )
-            },
-            {
+
+                Box::new(move |mut core| {
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                    core.gba_mut().cpu_mut().set_gpr(0, 3);
+                    munger.set_rx_packet(core, 0, &INIT_RX);
+                    munger.set_rx_packet(core, 1, &INIT_RX);
+                })
+            }),
+            (
+                self.offsets.rom.init_sio_call,
+                Box::new(move |mut core| {
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                }),
+            ),
+            (self.offsets.rom.round_call_jump_table_ret, {
                 let match_ = match_.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |_| {
-                        handle.block_on(async {
-                            let match_ = match_.lock().await;
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
+                Box::new(move |_| {
+                    let match_ = handle.block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
 
-                            let mut round_state = match_.lock_round_state().await;
+                    let mut round_state = handle.block_on(match_.lock_round_state());
 
-                            let round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
+                    let round = match round_state.round.as_mut() {
+                        Some(round) => round,
+                        None => {
+                            return;
+                        }
+                    };
 
-                            if !round.has_committed_state() {
-                                return;
-                            }
+                    if !round.has_committed_state() {
+                        return;
+                    }
 
-                            round.increment_current_tick();
-                        });
-                    }),
-                )
-            },
+                    round.increment_current_tick();
+                })
+            }),
         ]
     }
 
