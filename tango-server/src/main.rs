@@ -34,6 +34,15 @@ struct State {
     matchmaking_server: std::sync::Arc<matchmaking::Server>,
 }
 
+async fn handle_healthcheck_request(
+    request: hyper::Request<hyper::Body>,
+) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
+    return Ok(hyper::Response::builder()
+        .status(hyper::StatusCode::OK)
+        .body(hyper::Body::from("ok"))
+        .unwrap());
+}
+
 async fn handle_matchmaking_request(
     mut request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
@@ -114,6 +123,7 @@ fn router(
             matchmaking_server: std::sync::Arc::new(matchmaking::Server::new(iceconfig_backend)),
         })
         .get("/", handle_matchmaking_request)
+        .get("/ok", handle_healthcheck_request)
         .build()
         .unwrap()
 }
