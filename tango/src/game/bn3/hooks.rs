@@ -546,205 +546,169 @@ impl game::Hooks for Hooks {
         };
 
         vec![
-            {
+            (self.offsets.rom.comm_menu_init_ret, {
                 let munger = self.munger();
                 let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.comm_menu_init_ret,
-                    Box::new(move |core| {
+                Box::new(move |core| {
+                    let mut rng = shadow_state.lock_rng();
+
+                    // rng1 is the local rng, it should not be synced.
+                    // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
+                    let offerer_rng1_state = generate_rng1_state(&mut *rng);
+                    let answerer_rng1_state = generate_rng1_state(&mut *rng);
+                    munger.set_rng1_state(
+                        core,
+                        if shadow_state.is_offerer() {
+                            answerer_rng1_state
+                        } else {
+                            offerer_rng1_state
+                        },
+                    );
+                    munger.start_battle_from_comm_menu(
+                        core,
+                        bn3_match_type(&mut *rng, shadow_state.match_type()),
+                        random_background(&mut *rng),
+                    );
+                })
+            }),
+            (self.offsets.rom.round_start_ret, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |_| {
+                    shadow_state.start_round();
+                })
+            }),
+            (self.offsets.rom.round_end_set_win, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |_| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    round_state.set_last_result(battle::BattleResult::Loss);
+                })
+            }),
+            (self.offsets.rom.round_end_set_loss, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |_| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    round_state.set_last_result(battle::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_win, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |_| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    round_state.set_last_result(battle::BattleResult::Loss);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_loss, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |_| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    round_state.set_last_result(battle::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_draw, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |_| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    let result = {
+                        let round = round_state.round.as_mut().expect("round");
+                        round.on_draw_result()
+                    };
+                    round_state.set_last_result(result);
+                })
+            }),
+            (self.offsets.rom.round_end_entry, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |core| {
+                    shadow_state.end_round();
+                    shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
+                })
+            }),
+            (self.offsets.rom.battle_is_p2_ret, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    let round_state = shadow_state.lock_round_state();
+                    let round = round_state.round.as_ref().expect("round");
+
+                    core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.link_is_p2_ret, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    let round_state = shadow_state.lock_round_state();
+                    let round = match round_state.round.as_ref() {
+                        Some(round) => round,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.main_read_joyflags, {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger();
+                Box::new(move |mut core| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    let round = match round_state.round.as_mut() {
+                        Some(round) => round,
+                        None => {
+                            return;
+                        }
+                    };
+
+                    if !munger.is_linking(core) && !round.has_first_committed_state() {
+                        return;
+                    }
+
+                    if !round.has_first_committed_state() {
                         let mut rng = shadow_state.lock_rng();
 
-                        // rng1 is the local rng, it should not be synced.
-                        // However, we should make sure it's reproducible from the shared RNG state so we generate it like this.
-                        let offerer_rng1_state = generate_rng1_state(&mut *rng);
-                        let answerer_rng1_state = generate_rng1_state(&mut *rng);
-                        munger.set_rng1_state(
-                            core,
-                            if shadow_state.is_offerer() {
-                                answerer_rng1_state
-                            } else {
-                                offerer_rng1_state
-                            },
+                        // rng2 is the shared rng, it must be synced.
+                        munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
+
+                        round
+                            .set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
+                        log::info!(
+                            "shadow rng1 state: {:08x}, rng2 state: {:08x}",
+                            munger.rng1_state(core),
+                            munger.rng2_state(core)
                         );
-                        munger.start_battle_from_comm_menu(
-                            core,
-                            bn3_match_type(&mut *rng, shadow_state.match_type()),
-                            random_background(&mut *rng),
-                        );
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_start_ret,
-                    Box::new(move |_| {
-                        shadow_state.start_round();
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_end_set_win,
-                    Box::new(move |_| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        round_state.set_last_result(battle::BattleResult::Loss);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_end_set_loss,
-                    Box::new(move |_| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        round_state.set_last_result(battle::BattleResult::Win);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_win,
-                    Box::new(move |_| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        round_state.set_last_result(battle::BattleResult::Loss);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_loss,
-                    Box::new(move |_| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        round_state.set_last_result(battle::BattleResult::Win);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_draw,
-                    Box::new(move |_| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let result = {
-                            let round = round_state.round.as_mut().expect("round");
-                            round.on_draw_result()
-                        };
-                        round_state.set_last_result(result);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_end_entry,
-                    Box::new(move |core| {
-                        shadow_state.end_round();
-                        shadow_state.set_applied_state(core.save_state().expect("save state"), 0);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.battle_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let round_state = shadow_state.lock_round_state();
-                        let round = round_state.round.as_ref().expect("round");
+                        log::info!("shadow state committed on {}", round.current_tick());
+                        return;
+                    }
 
-                        core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.link_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let round_state = shadow_state.lock_round_state();
-                        let round = match round_state.round.as_ref() {
-                            Some(round) => round,
-                            None => {
-                                return;
-                            }
-                        };
-
-                        core.gba_mut().cpu_mut().set_gpr(0, round.remote_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let shadow_state = shadow_state.clone();
-                let munger = self.munger();
-                (
-                    self.offsets.rom.main_read_joyflags,
-                    Box::new(move |mut core| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let round = match round_state.round.as_mut() {
-                            Some(round) => round,
-                            None => {
-                                return;
-                            }
-                        };
-
-                        if !munger.is_linking(core) && !round.has_first_committed_state() {
+                    if let Some(ip) = round.peek_shadow_input().clone() {
+                        if ip.local.local_tick != ip.remote.local_tick {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
+                                round.current_tick(),
+                                ip.local.local_tick,
+                                ip.remote.local_tick
+                            ));
                             return;
                         }
 
-                        if !round.has_first_committed_state() {
-                            let mut rng = shadow_state.lock_rng();
-
-                            // rng2 is the shared rng, it must be synced.
-                            munger.set_rng2_state(core, generate_rng2_state(&mut *rng));
-
-                            round.set_first_committed_state(
-                                core.save_state().expect("save state"),
-                                &munger.tx_packet(core),
-                            );
-                            log::info!(
-                                "shadow rng1 state: {:08x}, rng2 state: {:08x}",
-                                munger.rng1_state(core),
-                                munger.rng2_state(core)
-                            );
-                            log::info!("shadow state committed on {}", round.current_tick());
+                        if ip.local.local_tick != round.current_tick() {
+                            shadow_state.set_anyhow_error(anyhow::anyhow!(
+                                "read joyflags: input tick != in battle tick: {} != {}",
+                                ip.local.local_tick,
+                                round.current_tick(),
+                            ));
                             return;
                         }
 
-                        if let Some(ip) = round.peek_shadow_input().clone() {
-                            if ip.local.local_tick != ip.remote.local_tick {
-                                shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                    "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
-                                    round.current_tick(),
-                                    ip.local.local_tick,
-                                    ip.remote.local_tick
-                                ));
-                                return;
-                            }
+                        core.gba_mut()
+                            .cpu_mut()
+                            .set_gpr(4, (ip.remote.joyflags | 0xfc00) as i32);
+                    }
 
-                            if ip.local.local_tick != round.current_tick() {
-                                shadow_state.set_anyhow_error(anyhow::anyhow!(
-                                    "read joyflags: input tick != in battle tick: {} != {}",
-                                    ip.local.local_tick,
-                                    round.current_tick(),
-                                ));
-                                return;
-                            }
-
-                            core.gba_mut()
-                                .cpu_mut()
-                                .set_gpr(4, (ip.remote.joyflags | 0xfc00) as i32);
-                        }
-
-                        if round.take_input_injected() {
-                            shadow_state
-                                .set_applied_state(core.save_state().expect("save state"), round.current_tick());
-                        }
-                    }),
-                )
-            },
+                    if round.take_input_injected() {
+                        shadow_state.set_applied_state(core.save_state().expect("save state"), round.current_tick());
+                    }
+                })
+            }),
             (
                 self.offsets.rom.handle_input_init_send_and_receive_call,
                 make_send_and_receive_call_hook(),
@@ -763,53 +727,45 @@ impl game::Hooks for Hooks {
                     core.gba_mut().cpu_mut().set_gpr(0, 0);
                 }),
             ),
-            {
+            (self.offsets.rom.comm_menu_send_and_receive_call, {
                 let munger = self.munger();
-                (
-                    self.offsets.rom.comm_menu_send_and_receive_call,
-                    Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc();
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                        core.gba_mut().cpu_mut().set_gpr(0, 3);
-                        munger.set_rx_packet(core, 0, &INIT_RX);
-                        munger.set_rx_packet(core, 1, &INIT_RX);
-                    }),
-                )
-            },
-            {
-                (
-                    self.offsets.rom.init_sio_call,
-                    Box::new(move |mut core| {
-                        let pc = core.as_ref().gba().cpu().thumb_pc();
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    }),
-                )
-            },
-            {
+                Box::new(move |mut core| {
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                    core.gba_mut().cpu_mut().set_gpr(0, 3);
+                    munger.set_rx_packet(core, 0, &INIT_RX);
+                    munger.set_rx_packet(core, 1, &INIT_RX);
+                })
+            }),
+            (
+                self.offsets.rom.init_sio_call,
+                Box::new(move |mut core| {
+                    let pc = core.as_ref().gba().cpu().thumb_pc();
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                }),
+            ),
+            (self.offsets.rom.round_call_jump_table_ret, {
                 let shadow_state = shadow_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |mut core| {
-                        let mut round_state = shadow_state.lock_round_state();
-                        let round = match round_state.round.as_mut() {
-                            Some(round) => round,
-                            None => {
-                                return;
-                            }
-                        };
-
-                        if !round.has_first_committed_state() {
+                Box::new(move |mut core| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    let round = match round_state.round.as_mut() {
+                        Some(round) => round,
+                        None => {
                             return;
                         }
-                        round.increment_current_tick();
+                    };
 
-                        if round_state.last_result.is_some() {
-                            // We have no real inputs left but the round has ended. Just fudge them until we get to the next round.
-                            core.gba_mut().cpu_mut().set_gpr(0, 7);
-                        }
-                    }),
-                )
-            },
+                    if !round.has_first_committed_state() {
+                        return;
+                    }
+                    round.increment_current_tick();
+
+                    if round_state.last_result.is_some() {
+                        // We have no real inputs left but the round has ended. Just fudge them until we get to the next round.
+                        core.gba_mut().cpu_mut().set_gpr(0, 7);
+                    }
+                })
+            }),
         ]
     }
 
@@ -891,113 +847,95 @@ impl game::Hooks for Hooks {
         };
 
         vec![
-            {
+            (self.offsets.rom.battle_start_play_music_call, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.battle_start_play_music_call,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        if !replayer_state.disable_bgm() {
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if !replayer_state.disable_bgm() {
+                        return;
+                    }
+                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                })
+            }),
+            (self.offsets.rom.battle_is_p2_ret, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    core.gba_mut()
+                        .cpu_mut()
+                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.link_is_p2_ret, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    core.gba_mut()
+                        .cpu_mut()
+                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.round_ending_entry, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    if replayer_state.is_round_ending() {
+                        return;
+                    }
+                    replayer_state.set_round_ending();
+                })
+            }),
+            (self.offsets.rom.round_end_entry, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_ended();
+                })
+            }),
+            (self.offsets.rom.main_read_joyflags, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    let current_tick = replayer_state.current_tick();
+
+                    if current_tick == replayer_state.commit_tick() {
+                        replayer_state.set_committed_state(core.save_state().expect("save committed state"));
+                    }
+
+                    let ip = match replayer_state.peek_input_pair() {
+                        Some(ip) => ip.clone(),
+                        None => {
                             return;
                         }
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.battle_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, replayer_state.local_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.link_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, replayer_state.local_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_ending_entry,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
-                            return;
-                        }
-                        replayer_state.set_round_ending();
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_entry,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_ended();
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.main_read_joyflags,
-                    Box::new(move |mut core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        let current_tick = replayer_state.current_tick();
+                    };
 
-                        if current_tick == replayer_state.commit_tick() {
-                            replayer_state.set_committed_state(core.save_state().expect("save committed state"));
-                        }
+                    if ip.local.local_tick != ip.remote.local_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
+                            current_tick,
+                            ip.local.local_tick,
+                            ip.remote.local_tick
+                        ));
+                        return;
+                    }
 
-                        let ip = match replayer_state.peek_input_pair() {
-                            Some(ip) => ip.clone(),
-                            None => {
-                                return;
-                            }
-                        };
+                    if ip.local.local_tick != current_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "read joyflags: input tick != in battle tick: {} != {}",
+                            ip.local.local_tick,
+                            current_tick,
+                        ));
+                        return;
+                    }
 
-                        if ip.local.local_tick != ip.remote.local_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
-                                current_tick,
-                                ip.local.local_tick,
-                                ip.remote.local_tick
-                            ));
-                            return;
-                        }
+                    core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                        if ip.local.local_tick != current_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "read joyflags: input tick != in battle tick: {} != {}",
-                                ip.local.local_tick,
-                                current_tick,
-                            ));
-                            return;
-                        }
-
-                        core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
-
-                        if current_tick == replayer_state.dirty_tick() {
-                            replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
-                        }
-                    }),
-                )
-            },
+                    if current_tick == replayer_state.dirty_tick() {
+                        replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    }
+                })
+            }),
             (
                 self.offsets.rom.handle_input_init_send_and_receive_call,
                 make_send_and_receive_call_hook(),
@@ -1016,66 +954,48 @@ impl game::Hooks for Hooks {
                     core.gba_mut().cpu_mut().set_gpr(0, 0);
                 }),
             ),
-            {
+            (self.offsets.rom.round_call_jump_table_ret, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.increment_current_tick();
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.increment_current_tick();
+                })
+            }),
+            (self.offsets.rom.round_end_set_win, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_set_win,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_set_loss, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_set_loss,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Loss);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_win, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_win,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_loss, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_loss,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Loss);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_draw, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_draw,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Draw);
-                    }),
-                )
-            },
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Draw);
+                })
+            }),
         ]
     }
 
