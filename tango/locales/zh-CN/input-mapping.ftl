@@ -1,4 +1,4 @@
-input-mapping-prompt = Press input for { $key }.
+input-mapping-prompt = 请按【{ $key }】按钮的输入。
 input-button-left = ⬅
 input-button-right = ➡
 input-button-up = ⬆
