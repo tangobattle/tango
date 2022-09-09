@@ -114,7 +114,6 @@ impl game::Hooks for Hooks {
 
     fn primary_traps(
         &self,
-        handle: tokio::runtime::Handle,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
         match_: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<battle::Match>>>>,
         completion_token: session::CompletionToken,
@@ -122,12 +121,11 @@ impl game::Hooks for Hooks {
         vec![
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 let munger = self.munger();
                 (
                     self.offsets.rom.comm_menu_init_ret,
                     Box::new(move |core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -152,11 +150,10 @@ impl game::Hooks for Hooks {
                 )
             },
             {
-                let handle = handle.clone();
                 (
                     self.offsets.rom.match_end_ret,
                     Box::new(move |_core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             completion_token.complete();
                         });
                     }),
@@ -164,11 +161,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_set_win,
                     Box::new(move |_| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -185,11 +181,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_set_loss,
                     Box::new(move |_| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -206,11 +201,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_damage_judge_set_win,
                     Box::new(move |_| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -227,11 +221,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_damage_judge_set_loss,
                     Box::new(move |_| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -248,11 +241,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_end_damage_judge_set_draw,
                     Box::new(move |_| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -273,11 +265,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_set_ending,
                     Box::new(move |_| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -295,11 +286,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_start_ret,
                     Box::new(move |_core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -314,11 +304,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.battle_is_p2_tst,
                     Box::new(move |mut core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -337,11 +326,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.link_is_p2_ret,
                     Box::new(move |mut core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -372,11 +360,10 @@ impl game::Hooks for Hooks {
             {
                 let match_ = match_.clone();
                 let munger = self.munger();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.in_battle_call_handle_link_cable_input,
                     Box::new(move |mut core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                             core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
                             munger.set_copy_data_input_state(core, if match_.lock().await.is_some() { 2 } else { 4 });
@@ -387,11 +374,10 @@ impl game::Hooks for Hooks {
             {
                 let match_ = match_.clone();
                 let munger = self.munger();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.main_read_joyflags,
                     Box::new(move |core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,
@@ -467,11 +453,10 @@ impl game::Hooks for Hooks {
             },
             {
                 let match_ = match_.clone();
-                let handle = handle.clone();
                 (
                     self.offsets.rom.round_call_jump_table_ret,
                     Box::new(move |_core| {
-                        handle.block_on(async {
+                        tokio::runtime::Handle::current().block_on(async {
                             let match_ = match_.lock().await;
                             let match_ = match &*match_ {
                                 Some(match_) => match_,

@@ -120,10 +120,9 @@ fn main() -> Result<(), anyhow::Error> {
 
 fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    let _enter_guard = rt.enter();
 
     mgba::log::init();
-
-    let handle = rt.handle().clone();
 
     let sdl = sdl2::init().unwrap();
     let audio = sdl.audio().unwrap();
