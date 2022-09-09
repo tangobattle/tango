@@ -26,7 +26,7 @@ print(
             <Directory Id="ProgramFiles64Folder">
                 <Directory Id="INSTALLFOLDER" Name="Tango">
                     <Component Id="tango.exe" Guid="*">
-                        <File Source="tango.exe" KeyPath="yes">
+                        <File Id="tango.exe" Name="tango.exe" Source="tango.exe" KeyPath="yes">
                             <Shortcut
                                 Id="DesktopShortcut"
                                 Directory="DesktopFolder"
@@ -38,22 +38,22 @@ print(
                         </File>
                     </Component>
                     <Component Id="libstdc++-6.dll" Guid="*">
-                        <File Source="libstdc++-6.dll" KeyPath="yes" />
+                        <File Id="libstdc++-6.dll" Name="libstdc++-6.dll" Source="libstdc++-6.dll" KeyPath="yes" />
                     </Component>
                     <Component Id="libEGL.dll" Guid="*">
-                        <File Source="libEGL.dll" KeyPath="yes" />
+                        <File Id="libEGL.dll" Name="libEGL.dll" Source="libEGL.dll" KeyPath="yes" />
                     </Component>
                     <Component Id="libGLESv2.dll" Guid="*">
-                        <File Source="libGLESv2.dll" KeyPath="yes" />
+                        <File Id="libGLESv2.dll" Name="libGLESv2.dll" Source="libGLESv2.dll" KeyPath="yes" />
                     </Component>
                     <Component Id="libgcc_s_seh-1.dll" Guid="*">
-                        <File Source="libgcc_s_seh-1.dll" KeyPath="yes" />
+                        <File Id="libgcc_s_seh-1.dll" Name="libgcc_s_seh-1.dll" Source="libgcc_s_seh-1.dll" KeyPath="yes" />
                     </Component>
                     <Component Id="libwinpthread-1.dll" Guid="*">
-                        <File Source="libwinpthread-1.dll" KeyPath="yes" />
+                        <File Id="libwinpthread-1.dll" Name="libwinpthread-1.dll" Source="libwinpthread-1.dll" KeyPath="yes" />
                     </Component>
                     <Component Id="ffmpeg.exe" Guid="*">
-                        <File Source="ffmpeg.exe" KeyPath="yes" />
+                        <File Id="ffmpeg.exe" Name="ffmpeg.exe" Source="ffmpeg.exe" KeyPath="yes" />
                     </Component>
                 </Directory>
             </Directory>

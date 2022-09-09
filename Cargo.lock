@@ -2741,12 +2741,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64e9829a50b42bb782c1df523f78d332fe371b10c661e78b7a3c34b0198e9fac"
 
 [[package]]
-name = "inplace_it"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67f0347836f3f6362c1e7efdadde2b1c4b4556d211310b70631bae7eb692070b"
-
-[[package]]
 name = "input-helper"
 version = "0.1.0"
 
@@ -3226,8 +3220,7 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 [[package]]
 name = "naga"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f50357e1167a3ab92d6b3c7f4bf5f7fd13fde3f4b28bf0d5ea07b5100fdb6c0"
+source = "git+https://github.com/gfx-rs/naga?rev=b209d911#b209d911681c4ef563f7d9048623667743e6248f"
 dependencies = [
  "bit-set",
  "bitflags",
@@ -6193,16 +6186,15 @@ dependencies = [
 
 [[package]]
 name = "wgpu"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "277e967bf8b7820a76852645a6bce8bbd31c32fda2042e82d8e3ea75fda8892d"
+version = "0.13.0"
+source = "git+https://github.com/tangobattle/wgpu?rev=ba9a49aa0b4cad4a1b52e47b1d94f572947d076b#ba9a49aa0b4cad4a1b52e47b1d94f572947d076b"
 dependencies = [
  "arrayvec 0.7.2",
  "js-sys",
  "log",
  "naga",
- "parking_lot 0.11.2",
- "raw-window-handle 0.4.3",
+ "parking_lot 0.12.1",
+ "raw-window-handle 0.5.0",
  "smallvec",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -6214,9 +6206,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-core"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89b92788dec9d0c1bed849a1b83f01b2ee12819bf04a79c90f68e4173f7b5ba2"
+version = "0.13.0"
+source = "git+https://github.com/tangobattle/wgpu?rev=ba9a49aa0b4cad4a1b52e47b1d94f572947d076b#ba9a49aa0b4cad4a1b52e47b1d94f572947d076b"
 dependencies = [
  "arrayvec 0.7.2",
  "bit-vec",
@@ -6227,9 +6218,9 @@ dependencies = [
  "fxhash",
  "log",
  "naga",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
- "raw-window-handle 0.4.3",
+ "raw-window-handle 0.5.0",
  "smallvec",
  "thiserror",
  "web-sys",
@@ -6239,9 +6230,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-hal"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20cbdfc3d0637dba3d5536b93adef3d26023a0b96f0e1ee5ee9560a401d9f646"
+version = "0.13.0"
+source = "git+https://github.com/tangobattle/wgpu?rev=ba9a49aa0b4cad4a1b52e47b1d94f572947d076b#ba9a49aa0b4cad4a1b52e47b1d94f572947d076b"
 dependencies = [
  "android_system_properties",
  "arrayvec 0.7.2",
@@ -6256,7 +6246,6 @@ dependencies = [
  "glow",
  "gpu-alloc",
  "gpu-descriptor",
- "inplace_it",
  "js-sys",
  "khronos-egl",
  "libloading",
@@ -6264,11 +6253,12 @@ dependencies = [
  "metal",
  "naga",
  "objc",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
- "raw-window-handle 0.4.3",
+ "raw-window-handle 0.5.0",
  "renderdoc-sys",
+ "smallvec",
  "thiserror",
  "wasm-bindgen",
  "web-sys",
@@ -6278,9 +6268,8 @@ dependencies = [
 
 [[package]]
 name = "wgpu-types"
-version = "0.13.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f762cbc08e1a51389859cf9c199c7aef544789cf3510889aab12c607f701604"
+version = "0.13.0"
+source = "git+https://github.com/tangobattle/wgpu?rev=ba9a49aa0b4cad4a1b52e47b1d94f572947d076b#ba9a49aa0b4cad4a1b52e47b1d94f572947d076b"
 dependencies = [
  "bitflags",
 ]
@@ -6697,8 +6686,3 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[patch.unused]]
-name = "wgpu"
-version = "0.13.0"
-source = "git+https://github.com/tangobattle/wgpu?rev=ba9a49aa0b4cad4a1b52e47b1d94f572947d076b#ba9a49aa0b4cad4a1b52e47b1d94f572947d076b"
