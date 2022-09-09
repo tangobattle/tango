@@ -335,12 +335,16 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             } else {
                                 if !gfx_backend.on_window_event(&window_event) {
                                     input_state.handle_key_down(virutal_keycode);
+                                } else {
+                                    input_state.clear_keys();
                                 }
                             }
                         }
                         winit::event::ElementState::Released => {
                             if !gfx_backend.on_window_event(&window_event) {
                                 input_state.handle_key_up(virutal_keycode);
+                            } else {
+                                input_state.clear_keys();
                             }
                         }
                     },
