@@ -5,6 +5,7 @@ use std::str::FromStr;
 
 mod debug_window;
 mod escape_window;
+mod language_select;
 mod main_view;
 mod patches_pane;
 mod play_pane;
