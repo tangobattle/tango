@@ -21,7 +21,7 @@ convert Tango.iconset/*.png tango/icon.ico
 rm -rf Tango.iconset
 
 # Build Windows binaries.
-cargo build --release --target x86_64-pc-windows-gnu
+cargo build --bin tango --release --target x86_64-pc-windows-gnu
 
 # Build MSI.
 mkdir tango_wix_workdir
