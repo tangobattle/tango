@@ -691,114 +691,96 @@ impl game::Hooks for Hooks {
         };
 
         vec![
-            {
+            (self.offsets.rom.battle_start_play_music_call, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.battle_start_play_music_call,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        if !replayer_state.disable_bgm() {
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if !replayer_state.disable_bgm() {
+                        return;
+                    }
+                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                })
+            }),
+            (self.offsets.rom.link_is_p2_ret, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    core.gba_mut()
+                        .cpu_mut()
+                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.round_ending_entry1, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    if replayer_state.is_round_ending() {
+                        return;
+                    }
+                    replayer_state.set_round_ending();
+                })
+            }),
+            (self.offsets.rom.round_ending_entry2, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    if replayer_state.is_round_ending() {
+                        return;
+                    }
+                    replayer_state.set_round_ending();
+                })
+            }),
+            (self.offsets.rom.round_end_entry, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_ended();
+                })
+            }),
+            (self.offsets.rom.main_read_joyflags, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    let current_tick = replayer_state.current_tick();
+
+                    if current_tick == replayer_state.commit_tick() {
+                        replayer_state.set_committed_state(core.save_state().expect("save committed state"));
+                    }
+
+                    let ip = match replayer_state.peek_input_pair() {
+                        Some(ip) => ip.clone(),
+                        None => {
                             return;
                         }
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.link_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, replayer_state.local_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_ending_entry1,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
-                            return;
-                        }
-                        replayer_state.set_round_ending();
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_ending_entry2,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
-                            return;
-                        }
-                        replayer_state.set_round_ending();
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_entry,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_ended();
-                    }),
-                )
-            },
-            {
-                let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.main_read_joyflags,
-                    Box::new(move |mut core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        let current_tick = replayer_state.current_tick();
+                    };
 
-                        if current_tick == replayer_state.commit_tick() {
-                            replayer_state.set_committed_state(core.save_state().expect("save committed state"));
-                        }
+                    if ip.local.local_tick != ip.remote.local_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
+                            current_tick,
+                            ip.local.local_tick,
+                            ip.remote.local_tick
+                        ));
+                        return;
+                    }
 
-                        let ip = match replayer_state.peek_input_pair() {
-                            Some(ip) => ip.clone(),
-                            None => {
-                                return;
-                            }
-                        };
+                    if ip.local.local_tick != current_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "read joyflags: input tick != in battle tick: {} != {}",
+                            ip.local.local_tick,
+                            current_tick,
+                        ));
+                        return;
+                    }
 
-                        if ip.local.local_tick != ip.remote.local_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
-                                current_tick,
-                                ip.local.local_tick,
-                                ip.remote.local_tick
-                            ));
-                            return;
-                        }
+                    core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
 
-                        if ip.local.local_tick != current_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "read joyflags: input tick != in battle tick: {} != {}",
-                                ip.local.local_tick,
-                                current_tick,
-                            ));
-                            return;
-                        }
-
-                        core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
-
-                        if current_tick == replayer_state.dirty_tick() {
-                            replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
-                        }
-                    }),
-                )
-            },
+                    if current_tick == replayer_state.dirty_tick() {
+                        replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    }
+                })
+            }),
             (
                 self.offsets.rom.handle_input_custom_send_and_receive_call,
                 make_send_and_receive_call_hook(),
@@ -807,36 +789,27 @@ impl game::Hooks for Hooks {
                 self.offsets.rom.handle_input_in_turn_send_and_receive_call,
                 make_send_and_receive_call_hook(),
             ),
-            {
+            (self.offsets.rom.round_call_jump_table_ret, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_call_jump_table_ret,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.increment_current_tick();
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.increment_current_tick();
+                })
+            }),
+            (self.offsets.rom.round_end_set_win, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_set_win,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_set_loss, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_set_loss,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
-                    }),
-                )
-            },
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Loss);
+                })
+            }),
         ]
     }
 
