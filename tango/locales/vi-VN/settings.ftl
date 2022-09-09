@@ -40,3 +40,4 @@ settings-graphics-backend = Graphics backend (requires restart)
 settings-audio-backend = Audio backend (requires restart)
     .sdl2 = SDL2 (safe)
     .cpal = cpal (experimental)
+settings-volume = Volume
