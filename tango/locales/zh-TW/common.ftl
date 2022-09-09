@@ -1,4 +1,4 @@
-copy-to-clipboard = Copy to clipboard
-    .copied = Copied!
+copy-to-clipboard = 複製到剪貼板
+    .copied = 複製了！
 window-title = Tango
-    .running = Tango (running)
+    .running = Tango（進行中）
