@@ -21,13 +21,14 @@ convert Tango.iconset/*.png tango/icon.ico
 rm -rf Tango.iconset
 
 # Build Windows binaries.
-# cargo build --release --target x86_64-pc-windows-gnu
+cargo build --release --target x86_64-pc-windows-gnu
 
 # Build MSI.
 mkdir tango_wix_workdir
 "$(dirname "${BASH_SOURCE[0]}")/generate_wxs.py" >tango_wix_workdir/installer.wxs
 pushd tango_wix_workdir
 
+cp ../tango/icon.ico .
 cp ../target/x86_64-pc-windows-gnu/release/tango.exe .
 
 mingw_sysroot="$(x86_64-w64-mingw32-g++ -print-sysroot)"

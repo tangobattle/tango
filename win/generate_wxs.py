@@ -15,12 +15,18 @@ print(
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Product
         Id="E8EA30F8-D1B3-4ABC-9048-F0BAD4835738"
+        UpgradeCode="*"
         Language="1033"
         Manufacturer="Tango"
         Name="Tango"
         Version="{version.major}.{version.minor}.{version.patch}.0">
-        <Package Id="*" InstallerVersion="200" />
+        <Package Id="*" InstallerVersion="200" InstallScope="perUser" />
         <Media Id="1" Cabinet="product.cab" EmbedCab="yes" />
+        <Icon Id="icon.ico" SourceFile="icon.ico" />
+
+        <Property Id="ARPPRODUCTICON" Value="icon.ico" />
+        <Property Id="ALLUSERS" Value="2" />
+        <Property Id="MSIINSTALLPERUSER" Value="1" />
 
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="ProgramFiles64Folder">
@@ -68,6 +74,18 @@ print(
             <ComponentRef Id="libwinpthread-1.dll" />
             <ComponentRef Id="ffmpeg.exe" />
         </Feature>
+
+        <InstallExecuteSequence>
+            <Custom Action="Launch" After="InstallFinalize" />
+        </InstallExecuteSequence>
+
+        <CustomAction
+            Id="Launch"
+            ExeCommand="tango.exe"
+            FileKey="tango.exe"
+            Execute="immediate"
+            Impersonate="yes"
+            Return="asyncNoWait" />
     </Product>
 </Wix>
 """
