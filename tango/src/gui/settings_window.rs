@@ -384,7 +384,7 @@ fn show_audio_tab(ui: &mut egui::Ui, config: &mut config::Config) {
         .show(ui, |ui| {
             let mut volume = (config.volume as f32 * 100.0 / 256.0).round() as i32;
             ui.strong(i18n::LOCALES.lookup(&config.language, "settings-volume").unwrap());
-            ui.add(egui::Slider::new(&mut volume, 0.0..=100.0).suffix("%").step_by(1.0));
+            ui.add(egui::Slider::new(&mut volume, 0..=100).suffix("%").step_by(1));
             config.volume = volume * 0x100 / 100;
             ui.end_row();
 
