@@ -351,6 +351,7 @@ pub fn show(
             &config.input_mapping,
             session,
             &config.video_filter,
+            config.volume,
             config.max_scale,
             &config.crashstates_path(),
             &state.last_mouse_motion_time,

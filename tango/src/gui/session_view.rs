@@ -92,6 +92,7 @@ pub fn show(
     input_mapping: &input::Mapping,
     session: &session::Session,
     video_filter: &str,
+    volume: i32,
     max_scale: u32,
     crashstates_path: &std::path::Path,
     last_mouse_motion_time: &Option<std::time::Instant>,
@@ -99,6 +100,7 @@ pub fn show(
     state: &mut State,
     discord_client: &mut discord::Client,
 ) {
+    session.set_master_volume(volume);
     session.set_joyflags(input_mapping.to_mgba_keys(input_state));
 
     if ctx.input_mut().consume_key(egui::Modifiers::NONE, egui::Key::Escape) {

@@ -35,7 +35,7 @@ struct State {
 }
 
 async fn handle_healthcheck_request(
-    request: hyper::Request<hyper::Body>,
+    _request: hyper::Request<hyper::Body>,
 ) -> Result<hyper::Response<hyper::Body>, anyhow::Error> {
     return Ok(hyper::Response::builder()
         .status(hyper::StatusCode::OK)

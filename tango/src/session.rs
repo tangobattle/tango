@@ -404,6 +404,18 @@ impl Session {
         audio_guard.sync().fps_target()
     }
 
+    pub fn set_master_volume(&self, volume: i32) {
+        let handle = self.thread.handle();
+        let mut audio_guard = handle.lock_audio();
+        audio_guard.core_mut().gba_mut().set_master_volume(volume);
+    }
+
+    pub fn master_volume(&self) -> i32 {
+        let handle = self.thread.handle();
+        let audio_guard = handle.lock_audio();
+        audio_guard.core().gba().master_volume()
+    }
+
     pub fn has_crashed(&self) -> Option<mgba::thread::Handle> {
         let handle = self.thread.handle();
         if handle.has_crashed() {

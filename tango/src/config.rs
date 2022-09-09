@@ -94,6 +94,7 @@ pub struct Config {
     pub streamer_mode: bool,
     pub graphics_backend: GraphicsBackend,
     pub audio_backend: AudioBackend,
+    pub volume: i32,
 }
 
 impl Default for Config {
@@ -118,6 +119,7 @@ impl Default for Config {
             streamer_mode: false,
             graphics_backend: Default::default(),
             audio_backend: Default::default(),
+            volume: 0x100,
         }
     }
 }

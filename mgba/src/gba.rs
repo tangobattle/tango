@@ -27,6 +27,10 @@ impl<'a> GBARef<'a> {
         }
     }
 
+    pub fn master_volume(&self) -> i32 {
+        unsafe { (*self.ptr).audio.masterVolume }
+    }
+
     pub fn sync(&self) -> Option<sync::SyncRef> {
         let sync_ptr = unsafe { (*self.ptr).sync };
         if sync_ptr.is_null() {
@@ -52,6 +56,12 @@ impl<'a> GBAMutRef<'a> {
         GBARef {
             ptr: self.ptr,
             _lifetime: self._lifetime,
+        }
+    }
+
+    pub fn set_master_volume(&self, volume: i32) {
+        unsafe {
+            (*self.ptr).audio.masterVolume = volume;
         }
     }
 
