@@ -2,12 +2,10 @@ game-exe1 = ロックマンエグゼ
     .short = EXE1
     .variant-0 = ロックマンエグゼ
     .match-type-0-0 = シングル
-
 game-bn1 = ロックマンエグゼ（英語版）
     .short = BN1
     .variant-0 = ロックマンエグゼ（英語版）
     .match-type-0-0 = シングル
-
 game-exe2 = ロックマンエグゼ2
     .short = EXE2
     .variant-0 = ロックマンエグゼ2
@@ -16,7 +14,6 @@ game-bn2 = ロックマンエグゼ2（英語版）
     .short = BN2
     .variant-0 = ロックマンエグゼ2（英語版）
     .match-type-0-0 = シングル
-
 game-exe3 = ロックマンエグゼ3
     .short = EXE3
     .variant-0 = ロックマンエグゼ3 WHITE
@@ -35,7 +32,6 @@ game-bn3 = ロックマンエグゼ3（英語版）
     .match-type-0-2 = ミドル級
     .match-type-0-3 = ヘビー級
     .match-type-1-0 = トリプル
-
 game-exe4 = ロックマンエグゼ4
     .short = EXE4
     .variant-0 = ロックマンエグゼ4 トーナメント レッドサン
@@ -48,13 +44,11 @@ game-bn4 = ロックマンエグゼ4（英語版）
     .variant-1 = ロックマンエグゼ4 トーナメント ブルームーン（英語版）
     .match-type-0-0 = シングル
     .match-type-1-0 = トリプル
-
 game-exe45 = ロックマンエグゼ4.5
     .short = EXE4.5
     .variant-0 = ロックマンエグゼ4.5 リアルオペレーション
     .match-type-0-0 = シングル
     .match-type-1-0 = トリプル
-
 game-exe5 = ロックマンエグゼ5
     .short = EXE5
     .variant-0 = ロックマンエグゼ5 チーム オブ ブルース
@@ -71,7 +65,6 @@ game-bn5 = ロックマンエグゼ5（英語版）
     .match-type-0-1 = シングル（全てのステージ構成）
     .match-type-1-0 = トリプル
     .match-type-1-1 = トリプル（全てのステージ構成）
-
 game-exe6 = ロックマンエグゼ6
     .short = EXE6
     .variant-0 = ロックマンエグゼ6 電脳獣 グレイガ
