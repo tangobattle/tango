@@ -27,7 +27,6 @@ mod stats;
 mod video;
 
 use fluent_templates::Loader;
-use graphics::Backend;
 
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 

@@ -6,25 +6,37 @@ use crate::{i18n, input};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum GraphicsBackend {
+    #[cfg(feature = "glutin")]
     Glutin,
+    #[cfg(feature = "wgpu")]
     Wgpu,
 }
 
 impl Default for GraphicsBackend {
+    #[allow(unreachable_code)]
     fn default() -> Self {
-        Self::Glutin
+        #[cfg(feature = "glutin")]
+        return Self::Glutin;
+        #[cfg(feature = "wgpu")]
+        return Self::Wgpu;
     }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum AudioBackend {
+    #[cfg(feature = "sdl2-audio")]
     Sdl2,
+    #[cfg(feature = "cpal")]
     Cpal,
 }
 
 impl Default for AudioBackend {
+    #[allow(unreachable_code)]
     fn default() -> Self {
-        Self::Sdl2
+        #[cfg(feature = "sdl2-audio")]
+        return Self::Sdl2;
+        #[cfg(feature = "cpal")]
+        return Self::Cpal;
     }
 }
 
