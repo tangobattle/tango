@@ -160,33 +160,25 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
             {
                 ui.strong(i18n::LOCALES.lookup(&config.language, "settings-language").unwrap());
 
-                let en_label = egui::RichText::new("English").family(font_families.latn.clone());
-                let ja_label = egui::RichText::new("日本語").family(font_families.jpan.clone());
-                let zh_hans_label = egui::RichText::new("简体中文").family(font_families.hans.clone());
-                let zh_hant_label = egui::RichText::new("繁體中文").family(font_families.hant.clone());
+                let en_us_label = egui::RichText::new("English").family(font_families.latn.clone());
+                let ja_jp_label = egui::RichText::new("日本語").family(font_families.jpan.clone());
+                let zh_cn_label = egui::RichText::new("简体中文").family(font_families.hans.clone());
+                let zh_tw_label = egui::RichText::new("繁體中文").family(font_families.hant.clone());
 
                 egui::ComboBox::from_id_source("settings-window-general-language")
                     .width(200.0)
                     .selected_text(match &config.language {
-                        lang if lang.matches(&unic_langid::langid!("en-US"), false, true) => en_label.clone(),
-                        lang if lang.matches(&unic_langid::langid!("ja-JP"), false, true) => ja_label.clone(),
-                        lang if lang.matches(&unic_langid::langid!("zh-Hans"), false, true) => zh_hans_label.clone(),
-                        lang if lang.matches(&unic_langid::langid!("zh-Hant"), false, true) => zh_hant_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("en-US"), false, true) => en_us_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("ja-JP"), false, true) => ja_jp_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("zh-CN"), false, true) => zh_cn_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("zh-TW"), false, true) => zh_tw_label.clone(),
                         _ => egui::RichText::new(""),
                     })
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut config.language, unic_langid::langid!("en-US"), en_label.clone());
-                        ui.selectable_value(&mut config.language, unic_langid::langid!("ja-JP"), ja_label.clone());
-                        ui.selectable_value(
-                            &mut config.language,
-                            unic_langid::langid!("zh-Hans"),
-                            zh_hans_label.clone(),
-                        );
-                        ui.selectable_value(
-                            &mut config.language,
-                            unic_langid::langid!("zh-Hant"),
-                            zh_hant_label.clone(),
-                        );
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("en-US"), en_us_label.clone());
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("ja-JP"), ja_jp_label.clone());
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("zh-CN"), zh_cn_label.clone());
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("zh-TW"), zh_tw_label.clone());
                     });
                 ui.end_row();
             }
