@@ -26,7 +26,7 @@ jobs:
                   sudo apt install -y msitools mingw-w64 imagemagick wget
 
             - run: >
-                  sudo pip3 install semver toml
+                  sudo pip3 install semver==3.0.0-dev3 toml
 
             - uses: dtolnay/rust-toolchain@stable
               with:
@@ -70,7 +70,7 @@ jobs:
                   key: darwin-universal-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo pip3 install semver toml
+                  sudo pip3 install semver==3.0.0-dev3 toml
 
             - uses: dtolnay/rust-toolchain@stable
               with:
