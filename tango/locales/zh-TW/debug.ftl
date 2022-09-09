@@ -1,1 +1,1 @@
-debug = Debug
+debug = 調試
