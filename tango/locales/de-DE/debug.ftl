@@ -1,1 +1,1 @@
-debug = Debug
+debug = Debuggen
