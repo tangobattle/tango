@@ -165,6 +165,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                 let zh_cn_label = egui::RichText::new("简体中文").family(font_families.hans.clone());
                 let zh_tw_label = egui::RichText::new("繁體中文").family(font_families.hant.clone());
                 let es_es_label = egui::RichText::new("Español").family(font_families.latn.clone());
+                let pt_br_label = egui::RichText::new("Português (Brasil)").family(font_families.latn.clone());
                 let fr_fr_label = egui::RichText::new("Français").family(font_families.latn.clone());
                 let de_de_label = egui::RichText::new("Deutsch").family(font_families.latn.clone());
 
@@ -176,6 +177,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                         lang if lang.matches(&unic_langid::langid!("zh-CN"), false, true) => zh_cn_label.clone(),
                         lang if lang.matches(&unic_langid::langid!("zh-TW"), false, true) => zh_tw_label.clone(),
                         lang if lang.matches(&unic_langid::langid!("es-ES"), false, true) => es_es_label.clone(),
+                        lang if lang.matches(&unic_langid::langid!("pt-BR"), false, true) => pt_br_label.clone(),
                         lang if lang.matches(&unic_langid::langid!("fr-FR"), false, true) => fr_fr_label.clone(),
                         lang if lang.matches(&unic_langid::langid!("de-DE"), false, true) => de_de_label.clone(),
                         _ => egui::RichText::new(""),
@@ -186,6 +188,7 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                         ui.selectable_value(&mut config.language, unic_langid::langid!("zh-CN"), zh_cn_label.clone());
                         ui.selectable_value(&mut config.language, unic_langid::langid!("zh-TW"), zh_tw_label.clone());
                         ui.selectable_value(&mut config.language, unic_langid::langid!("es-ES"), es_es_label.clone());
+                        ui.selectable_value(&mut config.language, unic_langid::langid!("pt-BR"), pt_br_label.clone());
                         ui.selectable_value(&mut config.language, unic_langid::langid!("fr-FR"), fr_fr_label.clone());
                         ui.selectable_value(&mut config.language, unic_langid::langid!("de-DE"), de_de_label.clone());
                     });
