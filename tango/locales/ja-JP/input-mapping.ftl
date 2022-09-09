@@ -1,5 +1,4 @@
-input-mapping-prompt = 「{$key}」の入力を押してください。
-
+input-mapping-prompt = 「{ $key }」の入力を押してください。
 input-button-left = ⬅
 input-button-right = ➡
 input-button-up = ⬆
@@ -11,7 +10,6 @@ input-button-r = R
 input-button-start = START
 input-button-select = SELECT
 input-button-speed-up = 加速
-
 physical-input-button-dpup = 十字ボタン ⬆
 physical-input-button-dpdown = 十字ボタン ⬇
 physical-input-button-dpleft = 十字ボタン ⬅
@@ -28,7 +26,6 @@ physical-input-button-back = BACK
 physical-input-button-guide = ガイド
 physical-input-button-start = START
 physical-input-button-touchpad = タッチパッド
-
 physical-input-axis-motion-leftx-minus = Lスティック ⬅
 physical-input-axis-motion-leftx-plus = Lスティック ➡
 physical-input-axis-motion-lefty-minus = Lスティック ⬆
