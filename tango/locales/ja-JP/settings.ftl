@@ -1,5 +1,4 @@
 settings = 設定
-
 settings-tab-general = 一般設定
 settings-tab-input = 入力
 settings-tab-graphics = グラフィックス
@@ -8,12 +7,10 @@ settings-tab-netplay = ネットプレー
 settings-tab-patches = パッチ
 settings-tab-advanced = 詳細設定
 settings-tab-about = Tangoについて
-
 settings-theme = テーマ
     .light = ライト
     .dark = ダーク
     .system = システム設定に従う
-
 settings-video-filter = ビデオフィルター
     .null = なし
     .hq2x = hq2x
@@ -22,9 +19,7 @@ settings-video-filter = ビデオフィルター
     .mmpx = MMPX
 settings-max-scale = 最大スケール
     .unset = 未設定
-
 settings-ui-scale = UIスケール
-
 settings-language = 言語
 settings-nickname = ニックネーム
 settings-streamer-mode = 生放送プライバシー モード

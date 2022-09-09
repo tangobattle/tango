@@ -1,2 +1,1 @@
 debug = デバッグ
-about = Tangoについて

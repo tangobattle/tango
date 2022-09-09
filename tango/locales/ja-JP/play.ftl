@@ -1,5 +1,4 @@
 play = プレイ
-
 play-play = プレイ
 play-fight = 対戦！
 play-leave = 出る
@@ -10,25 +9,27 @@ play-no-game = なし
 play-no-patch = なし
 play-you = 自分
 play-cancel = キャンセル
-
 play-details-game = 作品
+    .unrecognized = 未知
 play-details-match-type = マッチタイプ
 play-details-reveal-setup = 構築を公開
 play-details-input-delay = 入力遅延
     .suggest = 提案
-
 play-connection-task-starting = 接続開始中…
 play-connection-task-signaling = マッチメイキングサーバーに接続中…
 play-connection-task-waiting = 相手方の接続待機中…
-
 select-save = セーブファイルを選択
     .select = 選択
     .no-save-selected = セーブファイルが選択されていません
     .return-to-games-list = 作品一覧へ戻る
     .open-folder = フォルダを開く
-
-lobby-issue-missing-rom = 相手の作品のROMを持っていません：{$game_name}
-lobby-issue-no-local-game-selected = 作品を選択していません。
-lobby-issue-no-remote-game-selected = 相手は作品を選択していません。
+lobby-issue-no-local-rom = 相手が選択した作品を持っていません：{ $game_name }
+lobby-issue-no-remote-rom = 相手は自分が選択した作品を持っていません：{ $game_name }
+lobby-issue-no-local-patch = 自分は相手が選択したパッチを持っていません：{ $patch_name } v${ patch_version }
+lobby-issue-no-remote-patch = 相手は自分が選択したパッチを持っていません：{ $patch_name } v${ patch_version }
+lobby-issue-no-remote-patches = 相手はどのバージョンのパッチを持っていません：{ $patch_name }
+lobby-issue-unrecognized-game = 相手が未知の作品を選択しました。
 lobby-issue-incompatible = 選択した作品に互換性がありません。
 lobby-issue-match-type-mismatch = 自分と相手のマッチタイプは異なります。
+lobby-issue-no-local-selection = 自分は作品を選択していません。
+lobby-issue-no-remote-selection = 相手は作品を選択していません。
