@@ -1,3 +1,12 @@
+/// Autoupdater.
+///
+/// The autoupdater is a little contrived, but it works like this:
+///
+/// 1. We query Github for the latest release that is greater than our current release.
+/// 2. If found, we download it as INCOMPLETE_FILENAME. Once it's downloaded, we rename it to PENDING_FILENAME.
+/// 3. On the next launch of Tango or if manually triggered, if PENDING_FILENAME is found, we run the update routine.
+/// 4. To prevent the updater from getting wedged, we rename PENDING_FILENAME to IN_PROGRESS_FILENAME, such that on a second launch of Tango we don't try a bad upgrade.
+/// 5. We delete IN_PROGRESS_FILENAME.
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
