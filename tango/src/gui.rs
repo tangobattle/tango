@@ -303,21 +303,17 @@ pub fn show(
     });
 
     if config.nickname.is_none() {
-        state.welcome = Some(welcome::State::new());
-    } else {
-        state.welcome = None;
-    }
-
-    if let Some(welcome) = state.welcome.as_mut() {
         welcome::show(
             ctx,
             &state.font_families,
             config,
             state.roms_scanner.clone(),
             state.saves_scanner.clone(),
-            welcome,
+            state.welcome.get_or_insert_with(|| welcome::State::new()),
         );
         return;
+    } else {
+        state.welcome = None;
     }
 
     if config.show_debug_overlay {
