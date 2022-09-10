@@ -34,12 +34,10 @@ settings-data-path = 数据路径
     .open = 打开
     .change = 改变
 settings-full-screen = 全屏
-settings-graphics-backend =
-    图形后端（需要重启）
-    
-    .glutin = Glutin (safe)
-    .wgpu = wgpu (requires Vulkan, DX12, or Metal; experimental)
-settings-audio-backend = Audio backend (requires restart)
-    .sdl2 = SDL2 (safe)
-    .cpal = cpal (experimental)
-settings-volume = Volume
+settings-graphics-backend = 图形后端（需要重启）
+    .glutin = Glutin（安全）
+    .wgpu = wgpu（需要 Vulkan、DX12、Metal，实验性）
+settings-audio-backend = 音频后端 （需要重启）
+    .sdl2 = SDL2（安全）
+    .cpal = cpal（实验性）
+settings-volume = 音量
