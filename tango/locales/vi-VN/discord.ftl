@@ -1,4 +1,4 @@
-discord-presence-looking = Looking for match
-discord-presence-in-single-player = In single player
-discord-presence-in-lobby = In lobby
-discord-presence-in-progress = Match in progress
+discord-presence-looking = Đang tìm trận
+discord-presence-in-single-player = Trong chế độ 1 người chơi
+discord-presence-in-lobby = Trong hàng chờ
+discord-presence-in-progress = Trận đấu đang diễn ra
