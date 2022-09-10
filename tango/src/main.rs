@@ -98,7 +98,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     if !status.success() {
         rfd::MessageDialog::new()
-            .set_title("Tango")
+            .set_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap())
             .set_description(
                 &i18n::LOCALES
                     .lookup_with_args(
@@ -137,7 +137,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let icon_height = icon.height();
 
     let wb = winit::window::WindowBuilder::new()
-        .with_title("Tango")
+        .with_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap())
         .with_window_icon(Some(winit::window::Icon::from_rgba(
             icon.into_bytes(),
             icon_width,
