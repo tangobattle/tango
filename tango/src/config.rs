@@ -231,4 +231,4 @@ impl Config {
 }
 
 pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tangobattle.com";
-pub const DEFAULT_PATCH_REPO: &str = "https://github.com/tangobattle/patches";
+pub const DEFAULT_PATCH_REPO: &str = "https://patches.tangobattle.com";

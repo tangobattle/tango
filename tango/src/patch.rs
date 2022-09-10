@@ -121,13 +121,7 @@ pub fn update(
     url: &String,
     path: &std::path::Path,
 ) -> Result<std::collections::BTreeMap<String, Patch>, anyhow::Error> {
-    let repo = git2::Repository::init(path)?;
-    let _ = repo.remote_delete("origin");
-    let mut remote = repo.remote("origin", url)?;
-    remote.fetch(&["main"], None, None)?;
-    let treeish = repo.find_reference("refs/remotes/origin/main")?.peel_to_tree()?;
-    repo.checkout_tree(treeish.as_object(), Some(git2::build::CheckoutBuilder::new().force()))?;
-    Ok(scan(path)?)
+    anyhow::bail!("not supported");
 }
 
 pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {

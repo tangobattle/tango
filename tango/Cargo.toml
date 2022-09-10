@@ -81,10 +81,6 @@ open = "3.0"
 indexmap = "1.9"
 bytemuck = "1.12"
 rfd = "0.10"
-git2 = { version = "0.15", default-features = false, features = [
-    "https",
-    "vendored-libgit2",
-] }
 chrono = "0.4"
 chrono_locale = "0.1"
 itertools = "0.10"
