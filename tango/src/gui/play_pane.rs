@@ -438,6 +438,7 @@ impl Lobby {
                     .patch
                     .as_ref()
                     .map(|(name, version, _)| (name.clone(), version.clone())),
+                selection.save.save.as_raw_wram(),
             )
         }) == self.selection.as_ref().map(|selection| {
             (
@@ -446,6 +447,7 @@ impl Lobby {
                     .patch
                     .as_ref()
                     .map(|(name, version, _)| (name.clone(), version.clone())),
+                selection.save.as_raw_wram(),
             )
         }) {
             return Ok(());
