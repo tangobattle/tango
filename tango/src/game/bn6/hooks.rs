@@ -406,38 +406,36 @@ impl game::Hooks for Hooks {
                 (
                     self.offsets.rom.round_post_increment_tick,
                     Box::new(move |core| {
-                        tokio::runtime::Handle::current().block_on(async {
-                            let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
-                            let match_ = match &*match_ {
-                                Some(match_) => match_,
-                                _ => {
-                                    return;
-                                }
-                            };
-
-                            let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
-
-                            let round = match round_state.round.as_mut() {
-                                Some(round) => round,
-                                None => {
-                                    return;
-                                }
-                            };
-
-                            if !round.has_committed_state() {
+                        let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                        let match_ = match &*match_ {
+                            Some(match_) => match_,
+                            _ => {
                                 return;
                             }
+                        };
 
-                            round.increment_current_tick();
-                            let game_current_tick = munger.current_tick(core);
-                            if game_current_tick != round.current_tick() {
-                                panic!(
-                                    "post increment tick: round tick = {} but game tick = {}",
-                                    round.current_tick(),
-                                    game_current_tick
-                                );
+                        let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+
+                        let round = match round_state.round.as_mut() {
+                            Some(round) => round,
+                            None => {
+                                return;
                             }
-                        });
+                        };
+
+                        if !round.has_committed_state() {
+                            return;
+                        }
+
+                        round.increment_current_tick();
+                        let game_current_tick = munger.current_tick(core);
+                        if game_current_tick != round.current_tick() {
+                            panic!(
+                                "post increment tick: round tick = {} but game tick = {}",
+                                round.current_tick(),
+                                game_current_tick
+                            );
+                        }
                     }),
                 )
             },
