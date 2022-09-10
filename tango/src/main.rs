@@ -126,7 +126,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     mgba::log::init();
 
-    let mut updater = updater::Updater::new(&config.updates_path());
+    let mut updater = updater::Updater::new(&config.updater_path());
     updater.set_enabled(true);
 
     let sdl = sdl2::init().unwrap();

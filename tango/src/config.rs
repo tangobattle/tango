@@ -214,8 +214,8 @@ impl Config {
         self.data_path.join("crashstates")
     }
 
-    pub fn updates_path(&self) -> std::path::PathBuf {
-        self.data_path.join("updates")
+    pub fn updater_path(&self) -> std::path::PathBuf {
+        self.data_path.join("updater")
     }
 
     pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
@@ -225,7 +225,7 @@ impl Config {
         std::fs::create_dir_all(&self.patches_path())?;
         std::fs::create_dir_all(&self.logs_path())?;
         std::fs::create_dir_all(&self.crashstates_path())?;
-        std::fs::create_dir_all(&self.updates_path())?;
+        std::fs::create_dir_all(&self.updater_path())?;
         Ok(())
     }
 }
