@@ -1,6 +1,6 @@
 save-tab-cover = カバー
 save-tab-navi = ナビ
-save-tab-navicust = ナビカスとマイザー
+save-tab-navicust = ナビカスタマイザー
 save-tab-folder = チップフォルダ
 save-tab-modcards = 改造カード
 save-tab-dark-ai = ダークソウルAI
