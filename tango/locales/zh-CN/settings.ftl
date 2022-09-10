@@ -34,7 +34,9 @@ settings-data-path = 数据路径
     .open = 打开
     .change = 改变
 settings-full-screen = 全屏
-settings-graphics-backend = Graphics backend (requires restart)
+settings-graphics-backend =
+    图形后端（需要重启）
+    
     .glutin = Glutin (safe)
     .wgpu = wgpu (requires Vulkan, DX12, or Metal; experimental)
 settings-audio-backend = Audio backend (requires restart)
