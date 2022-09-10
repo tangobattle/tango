@@ -7,6 +7,7 @@ mod audio;
 mod battle;
 mod config;
 mod discord;
+mod filesync;
 mod game;
 mod graphics;
 mod gui;

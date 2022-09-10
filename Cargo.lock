@@ -194,6 +194,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "983cd8b9d4b02a6dc6ffa557262eb5858a27a0038ffffe21a0f133eaa819a164"
 
 [[package]]
+name = "array-init"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23589ecb866b460d3a0f1278834750268c607e8e28a1b982c907219f3178cd72"
+dependencies = [
+ "nodrop",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -305,6 +314,17 @@ name = "async-recursion"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7d78656ba01f1b93024b7c3a0467f1608e4be67d725749fdcd7d2c7678fd7a2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "async-recursion"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cda8f4bcc10624c4e85bc66b3f452cca98cfa5ca002dc83a16aad2367641bea"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -673,7 +693,7 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0aacacf4d96c24b2ad6eb8ee6df040e4f27b0d0b39a5710c30091baa830485db"
 dependencies = [
- "smallvec",
+ "smallvec 1.9.0",
 ]
 
 [[package]]
@@ -1709,7 +1729,7 @@ dependencies = [
  "half",
  "lebe",
  "miniz_oxide 0.5.4",
- "smallvec",
+ "smallvec 1.9.0",
  "threadpool",
 ]
 
@@ -1760,7 +1780,7 @@ dependencies = [
  "intl_pluralrules",
  "rustc-hash",
  "self_cell",
- "smallvec",
+ "smallvec 1.9.0",
  "unic-langid",
 ]
 
@@ -3048,6 +3068,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "maybe-uninit"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3367,6 +3393,12 @@ dependencies = [
  "libc",
  "memoffset",
 ]
+
+[[package]]
+name = "nodrop"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72ef4a56884ca558e5ddb05a1d1e7e1bfd9a68d9ed024c21704cc98872dae1bb"
 
 [[package]]
 name = "nohash-hasher"
@@ -3767,7 +3799,7 @@ dependencies = [
  "instant",
  "libc",
  "redox_syscall",
- "smallvec",
+ "smallvec 1.9.0",
  "winapi",
 ]
 
@@ -3780,7 +3812,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "redox_syscall",
- "smallvec",
+ "smallvec 1.9.0",
  "windows-sys",
 ]
 
@@ -4562,6 +4594,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-hex"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca37e3e4d1b39afd7ff11ee4e947efae85adfddf4841787bfa47c470e96dc26d"
+dependencies = [
+ "array-init",
+ "serde",
+ "smallvec 0.6.14",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.144"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4810,6 +4853,15 @@ dependencies = [
  "async-channel",
  "futures-core",
  "futures-io",
+]
+
+[[package]]
+name = "smallvec"
+version = "0.6.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b97fcaeba89edba30f044a10c6a3cc39df9c3f17d7cd829dd1446cab35f890e0"
+dependencies = [
+ "maybe-uninit",
 ]
 
 [[package]]
@@ -5099,6 +5151,7 @@ version = "4.0.0-alpha.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "async-recursion 1.0.0",
  "bincode",
  "bytemuck",
  "byteorder",
@@ -5148,9 +5201,11 @@ dependencies = [
  "sdl2",
  "semver 1.0.13",
  "serde",
+ "serde-hex",
  "serde_json",
  "serde_plain",
  "serde_repr",
+ "sha2 0.10.5",
  "sha3",
  "shell-words",
  "subtle",
@@ -5599,7 +5654,7 @@ dependencies = [
  "once_cell",
  "regex",
  "sharded-slab",
- "smallvec",
+ "smallvec 1.9.0",
  "thread_local",
  "tracing",
  "tracing-core",
@@ -6028,7 +6083,7 @@ checksum = "8691f134d584a33a6606d9d717b95c4fa20065605f798a3f350d78dced02a902"
 dependencies = [
  "nix 0.24.2",
  "once_cell",
- "smallvec",
+ "smallvec 1.9.0",
  "wayland-sys",
 ]
 
@@ -6166,7 +6221,7 @@ dependencies = [
  "naga",
  "parking_lot 0.12.1",
  "raw-window-handle 0.5.0",
- "smallvec",
+ "smallvec 1.9.0",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -6192,7 +6247,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle 0.5.0",
- "smallvec",
+ "smallvec 1.9.0",
  "thiserror",
  "web-sys",
  "wgpu-hal",
@@ -6229,7 +6284,7 @@ dependencies = [
  "range-alloc",
  "raw-window-handle 0.5.0",
  "renderdoc-sys",
- "smallvec",
+ "smallvec 1.9.0",
  "thiserror",
  "wasm-bindgen",
  "web-sys",
@@ -6550,7 +6605,7 @@ dependencies = [
  "async-executor",
  "async-io",
  "async-lock",
- "async-recursion",
+ "async-recursion 0.3.2",
  "async-task",
  "async-trait",
  "byteorder",
