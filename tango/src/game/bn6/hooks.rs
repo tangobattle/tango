@@ -874,296 +874,254 @@ impl game::Hooks for Hooks {
 
     fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
-            {
+            (self.offsets.rom.battle_start_play_music_call, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.battle_start_play_music_call,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        if !replayer_state.disable_bgm() {
-                            return;
-                        }
-                        let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
-                        core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
-                    }),
-                )
-            },
-            {
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if !replayer_state.disable_bgm() {
+                        return;
+                    }
+                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
+                })
+            }),
+            (self.offsets.rom.battle_is_p2_tst, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.battle_is_p2_tst,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, replayer_state.local_player_index() as i32);
-                    }),
-                )
-            },
-            {
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    core.gba_mut()
+                        .cpu_mut()
+                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                })
+            }),
+            (self.offsets.rom.link_is_p2_ret, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.link_is_p2_ret,
-                    Box::new(move |mut core| {
-                        let replayer_state = replayer_state.lock_inner();
-                        core.gba_mut()
-                            .cpu_mut()
-                            .set_gpr(0, replayer_state.local_player_index() as i32);
-                    }),
-                )
-            },
-            {
-                let munger = self.munger();
-                (
-                    self.offsets
-                        .rom
-                        .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    core.gba_mut()
+                        .cpu_mut()
+                        .set_gpr(0, replayer_state.local_player_index() as i32);
+                })
+            }),
+            (
+                self.offsets
+                    .rom
+                    .comm_menu_in_battle_call_comm_menu_handle_link_cable_input,
+                {
+                    let munger = self.munger();
                     Box::new(move |mut core| {
                         let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
                         core.gba_mut().cpu_mut().set_thumb_pc(pc + 6);
                         munger.set_copy_data_input_state(core, 2);
-                    }),
-                )
-            },
-            {
+                    })
+                },
+            ),
+            (self.offsets.rom.round_set_ending, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_set_ending,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_ending();
-                    }),
-                )
-            },
-            {
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_ending();
+                })
+            }),
+            (self.offsets.rom.round_end_entry, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_entry,
-                    Box::new(move |_core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_ended();
-                    }),
-                )
-            },
-            {
+                Box::new(move |_core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_ended();
+                })
+            }),
+            (self.offsets.rom.main_read_joyflags, {
                 let munger = self.munger();
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.main_read_joyflags,
-                    Box::new(move |mut core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        let current_tick = replayer_state.current_tick();
+                Box::new(move |mut core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    let current_tick = replayer_state.current_tick();
 
-                        let game_current_tick = munger.current_tick(core);
-                        if game_current_tick != current_tick {
-                            panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
-                        }
+                    let game_current_tick = munger.current_tick(core);
+                    if game_current_tick != current_tick {
+                        panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
+                    }
 
-                        if current_tick == replayer_state.commit_tick() {
-                            replayer_state.set_committed_state(core.save_state().expect("save committed state"));
-                        }
+                    if current_tick == replayer_state.commit_tick() {
+                        replayer_state.set_committed_state(core.save_state().expect("save committed state"));
+                    }
 
-                        let ip = match replayer_state.peek_input_pair() {
-                            Some(ip) => ip.clone(),
-                            None => {
-                                return;
-                            }
-                        };
-
-                        if ip.local.local_tick != ip.remote.local_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
-                                current_tick,
-                                ip.local.local_tick,
-                                ip.remote.local_tick
-                            ));
+                    let ip = match replayer_state.peek_input_pair() {
+                        Some(ip) => ip.clone(),
+                        None => {
                             return;
                         }
+                    };
 
-                        if ip.local.local_tick != current_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "read joyflags: input tick != in battle tick: {} != {}",
-                                ip.local.local_tick,
-                                current_tick,
-                            ));
-                            return;
-                        }
+                    if ip.local.local_tick != ip.remote.local_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "read joyflags: local tick != remote tick (in battle tick = {}): {} != {}",
+                            current_tick,
+                            ip.local.local_tick,
+                            ip.remote.local_tick
+                        ));
+                        return;
+                    }
 
-                        core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+                    if ip.local.local_tick != current_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "read joyflags: input tick != in battle tick: {} != {}",
+                            ip.local.local_tick,
+                            current_tick,
+                        ));
+                        return;
+                    }
 
-                        if current_tick == replayer_state.dirty_tick() {
-                            replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
-                        }
-                    }),
-                )
-            },
-            {
+                    core.gba_mut().cpu_mut().set_gpr(4, (ip.local.joyflags | 0xfc00) as i32);
+
+                    if current_tick == replayer_state.dirty_tick() {
+                        replayer_state.set_dirty_state(core.save_state().expect("save dirty state"));
+                    }
+                })
+            }),
+            (self.offsets.rom.copy_input_data_entry, {
                 let munger = self.munger();
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.copy_input_data_entry,
-                    Box::new(move |core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
+                Box::new(move |core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    if replayer_state.is_round_ending() {
+                        return;
+                    }
+
+                    let current_tick = replayer_state.current_tick();
+
+                    let game_current_tick = munger.current_tick(core);
+                    if game_current_tick != current_tick {
+                        panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
+                    }
+
+                    let ip = match replayer_state.pop_input_pair() {
+                        Some(ip) => ip.clone(),
+                        None => {
                             return;
                         }
+                    };
 
-                        let current_tick = replayer_state.current_tick();
+                    if ip.local.local_tick != ip.remote.local_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
+                            current_tick,
+                            ip.local.local_tick,
+                            ip.remote.local_tick
+                        ));
+                        return;
+                    }
 
-                        let game_current_tick = munger.current_tick(core);
-                        if game_current_tick != current_tick {
-                            panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
-                        }
+                    if ip.local.local_tick != current_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "copy input data: input tick != in battle tick: {} != {}",
+                            ip.local.local_tick,
+                            current_tick,
+                        ));
+                        return;
+                    }
 
-                        let ip = match replayer_state.pop_input_pair() {
-                            Some(ip) => ip.clone(),
-                            None => {
-                                return;
-                            }
-                        };
+                    let local_packet = replayer_state.peek_local_packet().unwrap().clone();
+                    if local_packet.tick != current_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "copy input data: local packet tick != in battle tick: {} != {}",
+                            local_packet.tick,
+                            current_tick,
+                        ));
+                        return;
+                    }
 
-                        if ip.local.local_tick != ip.remote.local_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "copy input data: local tick != remote tick (in battle tick = {}): {} != {}",
-                                current_tick,
-                                ip.local.local_tick,
-                                ip.remote.local_tick
-                            ));
-                            return;
-                        }
-
-                        if ip.local.local_tick != current_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "copy input data: input tick != in battle tick: {} != {}",
-                                ip.local.local_tick,
-                                current_tick,
-                            ));
-                            return;
-                        }
-
-                        let local_packet = replayer_state.peek_local_packet().unwrap().clone();
-                        if local_packet.tick != current_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "copy input data: local packet tick != in battle tick: {} != {}",
-                                local_packet.tick,
-                                current_tick,
-                            ));
-                            return;
-                        }
-
-                        munger.set_rx_packet(
-                            core,
-                            replayer_state.local_player_index() as u32,
-                            &local_packet.packet.clone().try_into().unwrap(),
-                        );
-                        munger.set_rx_packet(
-                            core,
-                            replayer_state.remote_player_index() as u32,
-                            &replayer_state
-                                .apply_shadow_input(lockstep::Pair {
-                                    local: ip.local.with_packet(local_packet.packet),
-                                    remote: ip.remote,
-                                })
-                                .expect("apply shadow input")
-                                .try_into()
-                                .unwrap(),
-                        );
-                    }),
-                )
-            },
-            {
+                    munger.set_rx_packet(
+                        core,
+                        replayer_state.local_player_index() as u32,
+                        &local_packet.packet.clone().try_into().unwrap(),
+                    );
+                    munger.set_rx_packet(
+                        core,
+                        replayer_state.remote_player_index() as u32,
+                        &replayer_state
+                            .apply_shadow_input(lockstep::Pair {
+                                local: ip.local.with_packet(local_packet.packet),
+                                remote: ip.remote,
+                            })
+                            .expect("apply shadow input")
+                            .try_into()
+                            .unwrap(),
+                    );
+                })
+            }),
+            (self.offsets.rom.copy_input_data_ret, {
                 let munger = self.munger();
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.copy_input_data_ret,
-                    Box::new(move |core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        if replayer_state.is_round_ending() {
-                            return;
-                        }
+                Box::new(move |core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    if replayer_state.is_round_ending() {
+                        return;
+                    }
 
-                        let current_tick = replayer_state.current_tick();
+                    let current_tick = replayer_state.current_tick();
 
-                        let game_current_tick = munger.current_tick(core);
-                        if game_current_tick != current_tick {
-                            panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
-                        }
+                    let game_current_tick = munger.current_tick(core);
+                    if game_current_tick != current_tick {
+                        panic!("round tick = {} but game tick = {}", current_tick, game_current_tick);
+                    }
 
-                        replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
-                    }),
-                )
-            },
-            {
+                    replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
+                })
+            }),
+            (self.offsets.rom.round_post_increment_tick, {
                 let replayer_state = replayer_state.clone();
                 let munger = self.munger();
-                (
-                    self.offsets.rom.round_post_increment_tick,
-                    Box::new(move |core| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.increment_current_tick();
-                        let current_tick = replayer_state.current_tick();
+                Box::new(move |core| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.increment_current_tick();
+                    let current_tick = replayer_state.current_tick();
 
-                        let game_current_tick = munger.current_tick(core);
-                        if game_current_tick != current_tick {
-                            replayer_state.set_anyhow_error(anyhow::anyhow!(
-                                "post increment tick: round tick = {} but game tick = {}",
-                                current_tick,
-                                game_current_tick
-                            ));
-                        }
-                    }),
-                )
-            },
-            {
+                    let game_current_tick = munger.current_tick(core);
+                    if game_current_tick != current_tick {
+                        replayer_state.set_anyhow_error(anyhow::anyhow!(
+                            "post increment tick: round tick = {} but game tick = {}",
+                            current_tick,
+                            game_current_tick
+                        ));
+                    }
+                })
+            }),
+            (self.offsets.rom.round_end_set_win, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_set_win,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_set_loss, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_set_loss,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Loss);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_win, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_win,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Win);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Win);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_loss, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_loss,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Loss);
-                    }),
-                )
-            },
-            {
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Loss);
+                })
+            }),
+            (self.offsets.rom.round_end_damage_judge_set_draw, {
                 let replayer_state = replayer_state.clone();
-                (
-                    self.offsets.rom.round_end_damage_judge_set_draw,
-                    Box::new(move |_| {
-                        let mut replayer_state = replayer_state.lock_inner();
-                        replayer_state.set_round_result(replayer::BattleResult::Draw);
-                    }),
-                )
-            },
+                Box::new(move |_| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    replayer_state.set_round_result(replayer::BattleResult::Draw);
+                })
+            }),
         ]
     }
 
