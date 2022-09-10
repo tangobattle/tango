@@ -3,7 +3,7 @@ use fluent_templates::Loader;
 use crate::{gui, i18n, rom, save};
 
 pub struct State {
-    emblem_texture_cache: Option<egui::TextureHandle>,
+    emblem_texture_cache: Option<(usize, egui::TextureHandle)>,
 }
 
 impl State {
@@ -24,11 +24,21 @@ pub fn show<'a>(
     assets: &Box<dyn rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
-    let navi = if let Some(navi) = assets.navi(navi_view.navi()) {
+    let navi_id = navi_view.navi();
+    let navi = if let Some(navi) = assets.navi(navi_id) {
         navi
     } else {
         return;
     };
+
+    if !state
+        .emblem_texture_cache
+        .as_ref()
+        .map(|(id, _)| *id == navi_id)
+        .unwrap_or(false)
+    {
+        state.emblem_texture_cache = None;
+    }
 
     egui::ScrollArea::vertical()
         .id_source("navi-view")
@@ -39,15 +49,19 @@ pub fn show<'a>(
                     state
                         .emblem_texture_cache
                         .get_or_insert_with(|| {
-                            ui.ctx().load_texture(
-                                "emblem",
-                                egui::ColorImage::from_rgba_unmultiplied(
-                                    [15, 15],
-                                    &image::imageops::crop_imm(&navi.emblem, 1, 0, 15, 15).to_image(),
+                            (
+                                navi_id,
+                                ui.ctx().load_texture(
+                                    "emblem",
+                                    egui::ColorImage::from_rgba_unmultiplied(
+                                        [15, 15],
+                                        &image::imageops::crop_imm(&navi.emblem, 1, 0, 15, 15).to_image(),
+                                    ),
+                                    egui::TextureFilter::Nearest,
                                 ),
-                                egui::TextureFilter::Nearest,
                             )
                         })
+                        .1
                         .id(),
                     egui::Vec2::new(30.0, 30.0),
                 );
