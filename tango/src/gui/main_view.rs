@@ -108,7 +108,7 @@ pub fn show(
                                 .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "replays").unwrap())
                                 .clicked()
                             {
-                                state.replays_pane.rescan(&config.replays_path());
+                                state.replays_pane.rescan(ui.ctx(), &config.replays_path());
                             }
 
                             if ui
@@ -116,12 +116,14 @@ pub fn show(
                                 .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "patches").unwrap())
                                 .clicked()
                             {
+                                let egui_ctx = ui.ctx().clone();
                                 tokio::task::spawn_blocking({
                                     let patches_scanner = patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
                                         patches_scanner
                                             .rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
+                                        egui_ctx.request_repaint();
                                     }
                                 });
                             }

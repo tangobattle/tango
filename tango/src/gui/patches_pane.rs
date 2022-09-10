@@ -28,6 +28,7 @@ pub fn show(
                 ))
                 .clicked()
             {
+                let egui_ctx = ui.ctx().clone();
                 tokio::task::spawn_blocking({
                     let patches_scanner = patches_scanner.clone();
                     let repo_url = repo_url.to_owned();
@@ -40,6 +41,7 @@ pub fn show(
                                 return None;
                             }
                         });
+                        egui_ctx.request_repaint();
                     }
                 });
             }

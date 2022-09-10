@@ -525,6 +525,7 @@ fn show_advanced_tab(
                             config.data_path = data_path;
                             let _ = config.ensure_dirs();
                             tokio::task::spawn_blocking({
+                                let egui_ctx = ui.ctx().clone();
                                 let roms_scanner = roms_scanner.clone();
                                 let saves_scanner = saves_scanner.clone();
                                 let patches_scanner = patches_scanner.clone();
@@ -536,6 +537,7 @@ fn show_advanced_tab(
                                     saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                     patches_scanner
                                         .rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
+                                    egui_ctx.request_repaint();
                                 }
                             });
                         }

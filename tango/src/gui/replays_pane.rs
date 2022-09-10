@@ -27,10 +27,11 @@ impl State {
         }
     }
 
-    pub fn rescan(&self, replays_path: &std::path::Path) {
+    pub fn rescan(&self, ctx: &egui::Context, replays_path: &std::path::Path) {
         tokio::task::spawn_blocking({
             let replays_scanner = self.replays_scanner.clone();
             let replays_path = replays_path.to_path_buf();
+            let egui_ctx = ctx.clone();
             move || {
                 replays_scanner.rescan(move || {
                     let mut replays = std::collections::BTreeMap::new();
@@ -64,7 +65,8 @@ impl State {
                         replays.insert(path.to_path_buf(), metadata);
                     }
                     Some(replays)
-                })
+                });
+                egui_ctx.request_repaint();
             }
         });
     }
@@ -322,7 +324,7 @@ pub fn show(
                             .clicked()
                         {
                             tokio::task::spawn_blocking({
-                                let ctx = ui.ctx().clone();
+                                let egui_ctx = ui.ctx().clone();
                                 let audio_binder = audio_binder.clone();
                                 let game = selection.game;
                                 let patch = selection
@@ -345,7 +347,7 @@ pub fn show(
                                         )
                                         .unwrap(),
                                     ); // TODO: Don't unwrap maybe
-                                    ctx.request_repaint();
+                                    egui_ctx.request_repaint();
                                 }
                             });
                         }

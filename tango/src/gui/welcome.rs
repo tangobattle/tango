@@ -77,8 +77,10 @@ pub fn show(
                                 {
                                     let roms_path = config.roms_path();
                                     let roms_scanner = roms_scanner.clone();
+                                    let egui_ctx = ui.ctx().clone();
                                     tokio::task::spawn_blocking(move || {
                                         roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
+                                        egui_ctx.request_repaint();
                                     });
                                 }
                             });
@@ -117,8 +119,10 @@ pub fn show(
                                 {
                                     let saves_path = config.saves_path();
                                     let saves_scanner = saves_scanner.clone();
+                                    let egui_ctx = ui.ctx().clone();
                                     tokio::task::spawn_blocking(move || {
                                         saves_scanner.rescan(|| Some(save::scan_saves(&saves_path)));
+                                        egui_ctx.request_repaint();
                                     });
                                 }
                             });

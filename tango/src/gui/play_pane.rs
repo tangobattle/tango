@@ -1688,9 +1688,11 @@ pub fn show(
                             let saves_scanner = saves_scanner.clone();
                             let roms_path = config.roms_path();
                             let saves_path = config.saves_path();
+                            let egui_ctx = ui.ctx().clone();
                             move || {
                                 roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
                                 saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+                                egui_ctx.request_repaint();
                             }
                         });
                         Some(gui::save_select_view::State::new(selection.as_ref().map(|selection| {

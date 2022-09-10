@@ -83,6 +83,7 @@ fn do_update(path: &std::path::Path) {
     std::fs::rename(path, &new_path).unwrap();
     command
         .arg("/passive")
+        .arg("/i")
         .arg(new_path)
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
@@ -116,6 +117,7 @@ impl Updater {
         }
 
         let _ = std::fs::remove_file(self.path.join(INCOMPLETE_FILENAME));
+        let _ = std::fs::remove_file(self.path.join(IN_PROGRESS_FILENAME));
         self.do_update();
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
@@ -187,8 +189,8 @@ impl Updater {
                             let mut output_file = tokio::fs::File::create(&incomplete_output_path).await?;
                             let mut stream = resp.bytes_stream();
                             while let Some(chunk) = stream.next().await {
-                                let mut chunk = chunk?;
-                                output_file.write_buf(&mut chunk).await?;
+                                let chunk = chunk?;
+                                output_file.write_all(&chunk).await?;
                                 current += chunk.len() as u64;
                                 status.lock().state = State::Downloading { current, total };
                             }
