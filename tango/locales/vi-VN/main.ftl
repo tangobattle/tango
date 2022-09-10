@@ -1,10 +1,10 @@
 crash =
-    Oops, Tango has encountered an error and has crashed!
+    Tango đã gặp phải lỗi và sập!
     
-    When reporting this crash, please include the following log file:
+    Khi báo lỗi, hãy thêm vào log file sau:
     
-    { $path }
+    {$path}
 crash-no-log =
-    Oops, Tango has encountered an error and has crashed!
+    Tango đã gặp phải lỗi và sập!
     
-    { $error }
+    {$error}

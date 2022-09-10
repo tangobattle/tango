@@ -1,4 +1,4 @@
-save-tab-cover = Coberta
+save-tab-cover = Capa
 save-tab-navi = Navi
 save-tab-navicust = NaviCust
 save-tab-folder = Folder

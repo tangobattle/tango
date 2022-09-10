@@ -1,2 +1,2 @@
-escape-settings = Settings
-escape-end-game = End game
+escape-settings = Cài đặt
+escape-end-game = Hết trận
