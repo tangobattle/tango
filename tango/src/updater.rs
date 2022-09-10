@@ -94,16 +94,20 @@ impl Updater {
         }
     }
 
+    pub fn do_update(&self) {
+        let pending_path = self.path.join(PENDING_FILENAME);
+        if std::fs::metadata(&pending_path).is_ok() {
+            do_update(&pending_path);
+        }
+    }
+
     fn start(&mut self) {
         if self.cancellation_token.is_some() {
             return;
         }
 
         let _ = std::fs::remove_file(self.path.join(INCOMPLETE_FILENAME));
-        let pending_path = self.path.join(PENDING_FILENAME);
-        if std::fs::metadata(&pending_path).is_ok() {
-            do_update(&pending_path);
-        }
+        self.do_update();
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         tokio::task::spawn({
