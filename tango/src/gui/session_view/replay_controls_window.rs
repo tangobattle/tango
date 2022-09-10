@@ -41,7 +41,7 @@ pub fn show(
                 let mut speed = session.fps_target() / session::EXPECTED_FPS;
                 ui.add(egui::Separator::default().vertical());
                 ui.label("🐢");
-                ui.add(egui::Slider::new(&mut speed, 0.5..=10.0).step_by(0.25))
+                ui.add(egui::Slider::new(&mut speed, 0.25..=10.0).step_by(0.25))
                     .on_hover_text(i18n::LOCALES.lookup(language, "replay-viewer-speed").unwrap());
                 ui.label("🐇");
                 session.set_fps_target(speed * session::EXPECTED_FPS);
