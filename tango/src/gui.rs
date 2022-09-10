@@ -16,6 +16,7 @@ mod save_view;
 mod session_view;
 mod settings_window;
 mod steal_input_window;
+mod updater_window;
 mod warning;
 mod welcome;
 

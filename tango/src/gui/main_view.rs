@@ -132,6 +132,10 @@ pub fn show(
         });
     });
 
+    if state.show_updater {
+        gui::updater_window::show(ctx, &mut state.show_updater, &config.language, updater);
+    }
+
     // If a join is requested, switch immediately to the play tab.
     if discord_client.has_current_join_secret() {
         state.tab = Tab::Play;
