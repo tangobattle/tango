@@ -1,5 +1,5 @@
-updater-downloading = Update downloading ({ $percent }%)...
-updater-ready-to-update = Ready to update!
-updater-current-version = Current version
-updater-latest-version = Latest version
-updater-update = Update
+updater-downloading = Baixando atualização ({ $percent }%)...
+updater-ready-to-update = Pronto para atualizar!
+updater-current-version = Versão atual
+updater-latest-version = Versão mais recente
+updater-update = Atualizar
