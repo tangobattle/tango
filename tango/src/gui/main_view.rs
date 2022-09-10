@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats};
+use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats, updater};
 
 pub struct State {
     tab: Tab,
@@ -8,6 +8,7 @@ pub struct State {
     play_pane: gui::play_pane::State,
     patches_pane: gui::patches_pane::State,
     replays_pane: gui::replays_pane::State,
+    show_updater: bool,
 }
 
 impl State {
@@ -18,6 +19,7 @@ impl State {
             play_pane: gui::play_pane::State::new(),
             patches_pane: gui::patches_pane::State::new(),
             replays_pane: gui::replays_pane::State::new(),
+            show_updater: false,
         }
     }
 }
@@ -47,6 +49,7 @@ pub fn show(
     selection: &mut Option<gui::Selection>,
     state: &mut State,
     discord_client: &mut discord::Client,
+    updater: &updater::Updater,
 ) {
     egui::TopBottomPanel::top("main-top-panel").show(ctx, |ui| {
         ui.vertical(|ui| {
@@ -62,6 +65,36 @@ pub fn show(
                         } else {
                             None
                         };
+                    }
+                    let updater_status = updater.status();
+                    if updater_status.state != updater::State::UpToDate {
+                        if ui
+                            .selectable_label(state.show_updater, "🆕")
+                            .on_hover_text_at_pointer(match updater_status.state {
+                                updater::State::ReadyToUpdate => i18n::LOCALES
+                                    .lookup(&config.language, "updater-ready-to-update")
+                                    .unwrap(),
+                                updater::State::Downloading { current, total } => i18n::LOCALES
+                                    .lookup_with_args(
+                                        &config.language,
+                                        "updater-downloading",
+                                        &std::collections::HashMap::from([(
+                                            "percent",
+                                            if total > 0 {
+                                                format!("{}", current * 100 / total)
+                                            } else {
+                                                "?".to_string()
+                                            }
+                                            .into(),
+                                        )]),
+                                    )
+                                    .unwrap(),
+                                _ => unreachable!(),
+                            })
+                            .clicked()
+                        {
+                            state.show_updater = !state.show_updater;
+                        }
                     }
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {

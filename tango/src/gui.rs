@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, discord, game, i18n, input, patch, rom, save, session, stats};
+use crate::{audio, config, discord, game, i18n, input, patch, rom, save, session, stats, updater};
 use std::str::FromStr;
 
 mod debug_window;
@@ -245,6 +245,7 @@ pub fn show(
     window: &winit::window::Window,
     input_state: &input::State,
     state: &mut State,
+    updater: &updater::Updater,
 ) {
     {
         let mut session = state.session.lock();
@@ -393,6 +394,7 @@ pub fn show(
             &mut state.selection,
             &mut state.main_view,
             &mut state.discord_client,
+            updater,
         );
     }
 }

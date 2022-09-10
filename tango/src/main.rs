@@ -126,6 +126,9 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     mgba::log::init();
 
+    let mut updater = updater::Updater::new(&config.updates_path());
+    updater.set_enabled(true);
+
     let sdl = sdl2::init().unwrap();
     let audio = sdl.audio().unwrap();
     let game_controller = sdl.game_controller().unwrap();
@@ -258,7 +261,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
         let mut redraw = || {
             let repaint_after = gfx_backend.run(Box::new(|window, ctx| {
-                gui::show(ctx, &mut config, window, &input_state, &mut state)
+                gui::show(ctx, &mut config, window, &input_state, &mut state, &updater)
             }));
 
             if repaint_after.is_zero() {
