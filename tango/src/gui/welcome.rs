@@ -1,4 +1,4 @@
-use crate::{config, game, rom, save};
+use crate::{config, game, gui, rom, save};
 
 pub struct State {
     nickname: String,
@@ -14,12 +14,15 @@ impl State {
 
 pub fn show(
     ctx: &egui::Context,
+    font_families: &gui::FontFamilies,
     config: &mut config::Config,
     roms_scanner: rom::Scanner,
     saves_scanner: save::Scanner,
     state: &mut State,
 ) {
     egui::CentralPanel::default().show(ctx, |ui| {
+        gui::language_select::show(ui, font_families, &mut config.language);
+
         if roms_scanner.read().is_empty() {
             ui.label("no roms lol");
             if ui.button("rescan lol").clicked() {

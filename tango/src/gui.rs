@@ -311,6 +311,7 @@ pub fn show(
     if let Some(welcome) = state.welcome.as_mut() {
         welcome::show(
             ctx,
+            &state.font_families,
             config,
             state.roms_scanner.clone(),
             state.saves_scanner.clone(),
