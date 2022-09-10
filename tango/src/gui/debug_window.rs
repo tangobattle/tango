@@ -1,4 +1,4 @@
-use crate::{config, session, stats};
+use crate::{config, session, stats, sync};
 
 mod memory_view_window;
 
@@ -49,42 +49,38 @@ pub fn show(
 
                 if let Some(session) = session.lock().as_ref() {
                     let tps_adjustment = if let session::Mode::PvP(pvp) = session.mode() {
-                        tokio::runtime::Handle::current().block_on(async {
-                            if let Some(match_) = &*pvp.match_.lock().await {
-                                ui.label("Match active");
+                        if let Some(match_) = &*sync::block_on(pvp.match_.lock()) {
+                            ui.label("Match active");
+                            ui.end_row();
+
+                            let round_state = sync::block_on(match_.lock_round_state());
+                            if let Some(round) = round_state.round.as_ref() {
+                                ui.strong("Current tick");
+                                ui.label(egui::RichText::new(format!("{:4}", round.current_tick())).monospace());
                                 ui.end_row();
 
-                                let round_state = match_.lock_round_state().await;
-                                if let Some(round) = round_state.round.as_ref() {
-                                    ui.strong("Current tick");
-                                    ui.label(egui::RichText::new(format!("{:4}", round.current_tick())).monospace());
-                                    ui.end_row();
+                                ui.strong("Local player index");
+                                ui.label(egui::RichText::new(format!("{:1}", round.local_player_index())).monospace());
+                                ui.end_row();
 
-                                    ui.strong("Local player index");
-                                    ui.label(
-                                        egui::RichText::new(format!("{:1}", round.local_player_index())).monospace(),
-                                    );
-                                    ui.end_row();
-
-                                    ui.strong("Queue length");
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{:2} vs {:2} (delay = {:1})",
-                                            round.local_queue_length(),
-                                            round.remote_queue_length(),
-                                            round.local_delay(),
-                                        ))
-                                        .monospace(),
-                                    );
-                                    ui.end_row();
-                                    round.tps_adjustment()
-                                } else {
-                                    0.0
-                                }
+                                ui.strong("Queue length");
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{:2} vs {:2} (delay = {:1})",
+                                        round.local_queue_length(),
+                                        round.remote_queue_length(),
+                                        round.local_delay(),
+                                    ))
+                                    .monospace(),
+                                );
+                                ui.end_row();
+                                round.tps_adjustment()
                             } else {
                                 0.0
                             }
-                        })
+                        } else {
+                            0.0
+                        }
                     } else {
                         0.0
                     };

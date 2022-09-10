@@ -276,12 +276,8 @@ impl game::Hooks for Hooks {
                         return;
                     }
 
-                    tokio::runtime::Handle::current()
-                        .block_on(round_state.end_round())
-                        .expect("end round");
-                    tokio::runtime::Handle::current()
-                        .block_on(match_.advance_shadow_until_round_end())
-                        .expect("advance shadow");
+                    sync::block_on(round_state.end_round()).expect("end round");
+                    sync::block_on(match_.advance_shadow_until_round_end()).expect("advance shadow");
                 })
             }),
             (self.offsets.rom.round_start_ret, {
@@ -294,9 +290,7 @@ impl game::Hooks for Hooks {
                             return;
                         }
                     };
-                    tokio::runtime::Handle::current()
-                        .block_on(match_.start_round())
-                        .expect("start round");
+                    sync::block_on(match_.start_round()).expect("start round");
                 })
             }),
             (self.offsets.rom.battle_is_p2_ret, {
@@ -371,8 +365,7 @@ impl game::Hooks for Hooks {
 
                         round.set_first_committed_state(
                             core.save_state().expect("save state"),
-                            tokio::runtime::Handle::current()
-                                .block_on(match_.advance_shadow_until_first_committed_state())
+                            sync::block_on(match_.advance_shadow_until_first_committed_state())
                                 .expect("shadow save state"),
                             &munger.tx_packet(core),
                         );

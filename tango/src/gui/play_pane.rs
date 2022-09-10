@@ -3,7 +3,7 @@ use rand::RngCore;
 use sha3::digest::{ExtendableOutput, Update};
 use subtle::ConstantTimeEq;
 
-use crate::{audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats};
+use crate::{audio, config, discord, game, gui, i18n, net, patch, randomcode, rom, save, session, stats, sync};
 
 pub enum Warning {
     Incompatible,
@@ -1072,9 +1072,7 @@ fn show_lobby_table(
                                                 config.default_match_type = match_type.0;
                                             }
                                             if match_type != lobby.match_type {
-                                                tokio::runtime::Handle::current().block_on(async {
-                                                    let _ = lobby.set_match_type(match_type).await;
-                                                });
+                                                let _ = sync::block_on(lobby.set_match_type(match_type));
                                             }
                                         }
                                     });
@@ -1115,9 +1113,7 @@ fn show_lobby_table(
                         strip.cell(|ui| {
                             let mut checked = lobby.reveal_setup;
                             ui.checkbox(&mut checked, "");
-                            tokio::runtime::Handle::current().block_on(async {
-                                let _ = lobby.set_reveal_setup(checked).await;
-                            });
+                            let _ = sync::block_on(lobby.set_reveal_setup(checked));
                         });
                         strip.cell(|ui| {
                             ui.checkbox(&mut lobby.remote_settings.reveal_setup.clone(), "");
@@ -1382,18 +1378,15 @@ fn show_bottom_pane(
                                 ready = was_ready;
                             }
                             if lobby.sender.is_some() {
-                                tokio::runtime::Handle::current().block_on(async {
-                                    if !was_ready && ready {
-                                        *show_save_select = None;
-                                        let save_data =
-                                            lobby.selection.as_ref().map(|selection| selection.save.to_vec());
-                                        if let Some(save_data) = save_data {
-                                            let _ = lobby.commit(&save_data).await;
-                                        }
-                                    } else if was_ready && !ready {
-                                        let _ = lobby.uncommit().await;
+                                if !was_ready && ready {
+                                    *show_save_select = None;
+                                    let save_data = lobby.selection.as_ref().map(|selection| selection.save.to_vec());
+                                    if let Some(save_data) = save_data {
+                                        let _ = sync::block_on(lobby.commit(&save_data));
                                     }
-                                });
+                                } else if was_ready && !ready {
+                                    let _ = sync::block_on(lobby.uncommit());
+                                }
                             }
                         }
 
@@ -2283,9 +2276,7 @@ pub fn show(
         ..
     }) = connection_task.as_ref()
     {
-        tokio::runtime::Handle::current().block_on(async {
-            let mut lobby = lobby.lock().await;
-            let _ = lobby.set_local_selection(&selection).await;
-        });
+        let mut lobby = lobby.blocking_lock();
+        let _ = sync::block_on(lobby.set_local_selection(&selection));
     }
 }
