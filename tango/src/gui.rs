@@ -17,6 +17,7 @@ mod session_view;
 mod settings_window;
 mod steal_input_window;
 mod warning;
+mod welcome;
 
 pub struct Selection {
     pub game: &'static (dyn game::Game + Send + Sync),
@@ -84,6 +85,7 @@ pub struct State {
     themes: Themes,
     current_language: Option<unic_langid::LanguageIdentifier>,
     session_view: Option<session_view::State>,
+    welcome: Option<welcome::State>,
     discord_client: discord::Client,
 }
 
@@ -161,6 +163,7 @@ impl State {
             show_escape_window: None,
             show_debug_window: None,
             session_view: None,
+            welcome: None,
             replay_dump_windows: replay_dump_windows::State::new(),
             clipboard: arboard::Clipboard::new().unwrap(),
             font_data: std::collections::BTreeMap::from([
@@ -298,6 +301,23 @@ pub fn show(
         config::Theme::Light => state.themes.light.clone(),
         config::Theme::Dark => state.themes.dark.clone(),
     });
+
+    if config.nickname.is_none() {
+        state.welcome = Some(welcome::State::new());
+    } else {
+        state.welcome = None;
+    }
+
+    if let Some(welcome) = state.welcome.as_mut() {
+        welcome::show(
+            ctx,
+            config,
+            state.roms_scanner.clone(),
+            state.saves_scanner.clone(),
+            welcome,
+        );
+        return;
+    }
 
     if config.show_debug_overlay {
         debug_window::show(
