@@ -79,8 +79,6 @@ fn do_update(path: &std::path::Path) {
     const DETACHED_PROCESS: u32 = 0x00000008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
     let mut command = std::process::Command::new("msiexec");
-    let new_path = path.with_file_name(IN_PROGRESS_FILENAME);
-    std::fs::rename(path, &new_path).unwrap();
     command
         .arg("/passive")
         .arg("/i")
@@ -107,7 +105,10 @@ impl Updater {
     pub fn do_update(&self) {
         let pending_path = self.path.join(PENDING_FILENAME);
         if std::fs::metadata(&pending_path).is_ok() {
-            do_update(&pending_path);
+            let new_path = self.path.with_file_name(IN_PROGRESS_FILENAME);
+            std::fs::rename(&pending_path, &new_path).unwrap();
+            do_update(&new_path);
+            let _ = std::fs::remove_file(&new_path);
         }
     }
 
