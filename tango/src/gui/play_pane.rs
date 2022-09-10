@@ -893,7 +893,7 @@ fn show_lobby_table(
             },
         ))
         .size(egui_extras::Size::exact(row_height + spacing_y))
-        .size(egui_extras::Size::exact(row_height + spacing_y))
+        // .size(egui_extras::Size::exact(row_height + spacing_y))
         .size(egui_extras::Size::exact(row_height + spacing_y))
         .vertical(|mut outer_strip| {
             const CELL_WIDTH: f32 = 200.0;
@@ -1100,28 +1100,28 @@ fn show_lobby_table(
                     });
             });
 
-            outer_strip.strip(|sb| {
-                sb.size(egui_extras::Size::remainder())
-                    .size(egui_extras::Size::exact(CELL_WIDTH))
-                    .size(egui_extras::Size::exact(CELL_WIDTH))
-                    .horizontal(|mut strip| {
-                        strip.cell(|ui| {
-                            ui.strong(
-                                i18n::LOCALES
-                                    .lookup(&config.language, "play-details-reveal-setup")
-                                    .unwrap(),
-                            );
-                        });
-                        strip.cell(|ui| {
-                            let mut checked = lobby.reveal_setup;
-                            ui.checkbox(&mut checked, "");
-                            let _ = sync::block_on(lobby.set_reveal_setup(checked));
-                        });
-                        strip.cell(|ui| {
-                            ui.checkbox(&mut lobby.remote_settings.reveal_setup.clone(), "");
-                        });
-                    });
-            });
+            // outer_strip.strip(|sb| {
+            //     sb.size(egui_extras::Size::remainder())
+            //         .size(egui_extras::Size::exact(CELL_WIDTH))
+            //         .size(egui_extras::Size::exact(CELL_WIDTH))
+            //         .horizontal(|mut strip| {
+            //             strip.cell(|ui| {
+            //                 ui.strong(
+            //                     i18n::LOCALES
+            //                         .lookup(&config.language, "play-details-reveal-setup")
+            //                         .unwrap(),
+            //                 );
+            //             });
+            //             strip.cell(|ui| {
+            //                 let mut checked = lobby.reveal_setup;
+            //                 ui.checkbox(&mut checked, "");
+            //                 let _ = sync::block_on(lobby.set_reveal_setup(checked));
+            //             });
+            //             strip.cell(|ui| {
+            //                 ui.checkbox(&mut lobby.remote_settings.reveal_setup.clone(), "");
+            //             });
+            //         });
+            // });
 
             outer_strip.strip(|sb| {
                 sb.size(egui_extras::Size::remainder())
