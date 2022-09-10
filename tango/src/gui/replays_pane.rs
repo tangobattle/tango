@@ -28,7 +28,7 @@ impl State {
     }
 
     pub fn rescan(&self, replays_path: &std::path::Path) {
-        tokio::runtime::Handle::current().spawn_blocking({
+        tokio::task::spawn_blocking({
             let replays_scanner = self.replays_scanner.clone();
             let replays_path = replays_path.to_path_buf();
             move || {
@@ -321,7 +321,7 @@ pub fn show(
                             .button(format!("▶️ {}", i18n::LOCALES.lookup(language, "replays-play").unwrap()))
                             .clicked()
                         {
-                            tokio::runtime::Handle::current().spawn_blocking({
+                            tokio::task::spawn_blocking({
                                 let ctx = ui.ctx().clone();
                                 let audio_binder = audio_binder.clone();
                                 let game = selection.game;

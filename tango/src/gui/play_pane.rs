@@ -1441,7 +1441,7 @@ fn show_bottom_pane(
                                     cancellation_token: cancellation_token.clone(),
                                 });
 
-                                tokio::runtime::Handle::current().spawn({
+                                tokio::task::spawn({
                                     let matchmaking_endpoint = if !config.matchmaking_endpoint.is_empty() {
                                         config.matchmaking_endpoint.clone()
                                     } else {
@@ -1486,7 +1486,7 @@ fn show_bottom_pane(
                                     .map(|(name, version, _)| (name.clone(), version.clone()));
 
                                 // We have to run this in a thread in order to lock main_view safely. Furthermore, we have to use a real thread because of parking_lot::Mutex.
-                                tokio::runtime::Handle::current().spawn_blocking(move || {
+                                tokio::task::spawn_blocking(move || {
                                     *session.lock() = Some(
                                         session::Session::new_singleplayer(
                                             audio_binder,
@@ -1681,7 +1681,7 @@ pub fn show(
                     .clicked()
                 {
                     state.show_save_select = if state.show_save_select.is_none() {
-                        tokio::runtime::Handle::current().spawn_blocking({
+                        tokio::task::spawn_blocking({
                             let roms_scanner = roms_scanner.clone();
                             let saves_scanner = saves_scanner.clone();
                             let roms_path = config.roms_path();

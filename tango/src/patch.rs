@@ -307,7 +307,7 @@ impl Autoupdater {
 
         log::info!("starting patch autoupdater");
         let cancellation_token = tokio_util::sync::CancellationToken::new();
-        tokio::runtime::Handle::current().spawn({
+        tokio::task::spawn({
             let cancellation_token = cancellation_token.clone();
             let config = self.config.clone();
             let patches_scanner = self.patches_scanner.clone();
@@ -326,18 +326,17 @@ impl Autoupdater {
                     };
 
                     let patches_scanner = patches_scanner.clone();
-                    let _ = tokio::runtime::Handle::current()
-                        .spawn_blocking(move || {
-                            patches_scanner.rescan(move || match update(&repo_url, &patches_path) {
-                                Ok(patches) => Some(patches),
-                                Err(e) => {
-                                    log::error!("failed to update patches: {:?}", e);
-                                    return None;
-                                }
-                            });
-                            log::info!("patch autoupdate completed");
-                        })
-                        .await;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        patches_scanner.rescan(move || match update(&repo_url, &patches_path) {
+                            Ok(patches) => Some(patches),
+                            Err(e) => {
+                                log::error!("failed to update patches: {:?}", e);
+                                return None;
+                            }
+                        });
+                        log::info!("patch autoupdate completed");
+                    })
+                    .await;
                     tokio::select! {
                         _ = tokio::time::sleep(std::time::Duration::from_secs(15 * 60)) => { }
                         _ = cancellation_token.cancelled() => { break 'l; }

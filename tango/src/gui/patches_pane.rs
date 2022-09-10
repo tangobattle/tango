@@ -28,7 +28,7 @@ pub fn show(
                 ))
                 .clicked()
             {
-                tokio::runtime::Handle::current().spawn_blocking({
+                tokio::task::spawn_blocking({
                     let patches_scanner = patches_scanner.clone();
                     let repo_url = repo_url.to_owned();
                     let patches_path = patches_path.to_path_buf();

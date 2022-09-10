@@ -142,7 +142,7 @@ impl Session {
             {
                 let match_ = match_.clone();
                 let inner_match = inner_match.clone();
-                tokio::runtime::Handle::current().spawn(async move {
+                tokio::task::spawn(async move {
                     tokio::select! {
                         r = inner_match.run(receiver) => {
                             log::info!("match thread ending: {:?}", r);

@@ -524,7 +524,7 @@ fn show_advanced_tab(
                         if let Some(data_path) = rfd::FileDialog::new().set_directory(&config.data_path).pick_folder() {
                             config.data_path = data_path;
                             let _ = config.ensure_dirs();
-                            tokio::runtime::Handle::current().spawn_blocking({
+                            tokio::task::spawn_blocking({
                                 let roms_scanner = roms_scanner.clone();
                                 let saves_scanner = saves_scanner.clone();
                                 let patches_scanner = patches_scanner.clone();

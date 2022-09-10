@@ -77,7 +77,7 @@ pub fn show(
                                 {
                                     let roms_path = config.roms_path();
                                     let roms_scanner = roms_scanner.clone();
-                                    tokio::runtime::Handle::current().spawn_blocking(move || {
+                                    tokio::task::spawn_blocking(move || {
                                         roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
                                     });
                                 }
@@ -117,7 +117,7 @@ pub fn show(
                                 {
                                     let saves_path = config.saves_path();
                                     let saves_scanner = saves_scanner.clone();
-                                    tokio::runtime::Handle::current().spawn_blocking(move || {
+                                    tokio::task::spawn_blocking(move || {
                                         saves_scanner.rescan(|| Some(save::scan_saves(&saves_path)));
                                     });
                                 }

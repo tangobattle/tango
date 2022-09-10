@@ -83,7 +83,7 @@ pub fn show(
                                 .on_hover_text_at_pointer(i18n::LOCALES.lookup(&config.language, "patches").unwrap())
                                 .clicked()
                             {
-                                tokio::runtime::Handle::current().spawn_blocking({
+                                tokio::task::spawn_blocking({
                                     let patches_scanner = patches_scanner.clone();
                                     let patches_path = config.patches_path();
                                     move || {
