@@ -13,16 +13,19 @@ use tokio::io::AsyncWriteExt;
 const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum State {
+pub enum Status {
     UpToDate,
-    Downloading { current: u64, total: u64 },
-    ReadyToUpdate,
-}
-
-#[derive(Debug, Clone)]
-pub struct Status {
-    pub latest_version: semver::Version,
-    pub state: State,
+    UpdateAvailable {
+        version: semver::Version,
+    },
+    Downloading {
+        version: semver::Version,
+        current: u64,
+        total: u64,
+    },
+    ReadyToUpdate {
+        version: semver::Version,
+    },
 }
 
 #[derive(serde::Deserialize)]
@@ -39,8 +42,10 @@ struct GithubReleaseInfo {
 }
 
 pub struct Updater {
+    ui_callback: std::sync::Arc<tokio::sync::Mutex<Option<Box<dyn Fn() + Sync + Send>>>>,
+    current_version: semver::Version,
     path: std::path::PathBuf,
-    status: std::sync::Arc<parking_lot::Mutex<Status>>,
+    status: std::sync::Arc<tokio::sync::Mutex<Status>>,
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
 }
 
@@ -54,19 +59,17 @@ fn is_target_installer(s: &str) -> bool {
     s.ends_with("-x86_64-windows.msi")
 }
 
+const INCOMPLETE_FILENAME: &str = "incomplete";
+
 #[cfg(target_os = "macos")]
 const PENDING_FILENAME: &str = "pending.zip";
 #[cfg(target_os = "macos")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.zip";
-#[cfg(target_os = "macos")]
-const INCOMPLETE_FILENAME: &str = "incomplete.zip";
 
 #[cfg(target_os = "windows")]
 const PENDING_FILENAME: &str = "pending.msi";
 #[cfg(target_os = "windows")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.msi";
-#[cfg(target_os = "windows")]
-const INCOMPLETE_FILENAME: &str = "incomplete.msi";
 
 #[cfg(target_os = "macos")]
 fn do_update(_path: &std::path::Path) {
@@ -82,22 +85,22 @@ fn do_update(path: &std::path::Path) {
     command
         .arg("/passive")
         .arg("/i")
-        .arg(new_path)
+        .arg(path)
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .unwrap();
-    // Is this racy? Can we spawn msiexec before we exit?
+    // Is this racy? Can we exit before msiexec finishes?
     std::process::exit(0);
 }
 
 impl Updater {
     pub fn new(path: &std::path::Path) -> Updater {
+        let current_version: semver::Version = env!("CARGO_PKG_VERSION").parse().unwrap();
         Self {
+            current_version: current_version.clone(),
             path: path.to_owned(),
-            status: std::sync::Arc::new(parking_lot::Mutex::new(Status {
-                latest_version: env!("CARGO_PKG_VERSION").parse().unwrap(),
-                state: State::UpToDate,
-            })),
+            ui_callback: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+            status: std::sync::Arc::new(tokio::sync::Mutex::new(Status::UpToDate)),
             cancellation_token: None,
         }
     }
@@ -105,11 +108,18 @@ impl Updater {
     pub fn do_update(&self) {
         let pending_path = self.path.join(PENDING_FILENAME);
         if std::fs::metadata(&pending_path).is_ok() {
-            let new_path = self.path.with_file_name(IN_PROGRESS_FILENAME);
+            let new_path = self.path.join(IN_PROGRESS_FILENAME);
             std::fs::rename(&pending_path, &new_path).unwrap();
             do_update(&new_path);
-            let _ = std::fs::remove_file(&new_path);
         }
+    }
+
+    pub fn set_ui_callback(&self, cb: Option<Box<dyn Fn() + Sync + Send>>) {
+        *self.ui_callback.blocking_lock() = cb;
+    }
+
+    pub fn current_version(&self) -> &semver::Version {
+        &self.current_version
     }
 
     fn start(&mut self) {
@@ -126,10 +136,14 @@ impl Updater {
             let cancellation_token = cancellation_token.clone();
             let status = self.status.clone();
             let path = self.path.clone();
+            let ui_callback = self.ui_callback.clone();
+            let current_version = self.current_version.clone();
             async move {
                 'l: loop {
                     let status = status.clone();
                     let path = path.clone();
+                    let ui_callback = ui_callback.clone();
+                    let current_version = current_version.clone();
                     if let Err(e) = (move || async move {
                         let client = reqwest::Client::new();
                         let releases = client
@@ -166,12 +180,6 @@ impl Updater {
                             anyhow::bail!("no releases found at all");
                         };
 
-                        // If this version is older or the one we already know about, skip.
-                        if version <= status.lock().latest_version {
-                            log::info!("already up to date! latest version: {}", version);
-                            return Ok(());
-                        }
-
                         // Find the appropriate release.
                         let asset = if let Some(asset) =
                             info.assets.into_iter().find(|asset| is_target_installer(&asset.name))
@@ -180,6 +188,34 @@ impl Updater {
                         } else {
                             anyhow::bail!("version {} is missing assets", version);
                         };
+
+                        // If this version is older or the one we already know about, skip.
+                        match &*status.lock().await {
+                            Status::UpToDate => {
+                                if version <= current_version {
+                                    log::info!("current version is already latest: {} vs {}", version, current_version);
+                                    return Ok(());
+                                }
+                            }
+                            Status::ReadyToUpdate {
+                                version: update_version,
+                            } => {
+                                if version <= *update_version {
+                                    log::info!("latest version already downloaded: {} vs {}", version, update_version);
+                                    return Ok(());
+                                }
+                            }
+                            _ => {
+                                // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
+                            }
+                        }
+
+                        *status.lock().await = Status::UpdateAvailable {
+                            version: version.clone(),
+                        };
+                        if let Some(cb) = ui_callback.lock().await.as_ref() {
+                            cb();
+                        }
 
                         let resp = reqwest::get(&asset.browser_download_url).await?;
                         let mut current = 0u64;
@@ -193,12 +229,22 @@ impl Updater {
                                 let chunk = chunk?;
                                 output_file.write_all(&chunk).await?;
                                 current += chunk.len() as u64;
-                                status.lock().state = State::Downloading { current, total };
+                                *status.lock().await = Status::Downloading {
+                                    version: version.clone(),
+                                    current,
+                                    total,
+                                };
+                                if let Some(cb) = ui_callback.lock().await.as_ref() {
+                                    cb();
+                                }
                             }
                         }
                         std::fs::rename(incomplete_output_path, path.join(PENDING_FILENAME))?;
 
-                        status.lock().state = State::ReadyToUpdate;
+                        *status.lock().await = Status::ReadyToUpdate { version };
+                        if let Some(cb) = ui_callback.lock().await.as_ref() {
+                            cb();
+                        }
 
                         Ok::<(), anyhow::Error>(())
                     })()
@@ -213,13 +259,18 @@ impl Updater {
                     }
                 }
 
-                let mut status = status.lock();
-                if let State::Downloading { .. } = status.state {
+                let mut status = status.lock().await;
+                if let Status::Downloading { version, .. } = &*status {
                     // Do cleanup.
                     let _ = std::fs::remove_file(&path.join(IN_PROGRESS_FILENAME));
                     let _ = std::fs::remove_file(&path.join(INCOMPLETE_FILENAME));
                     let _ = std::fs::remove_file(&path.join(PENDING_FILENAME));
-                    status.state = State::UpToDate;
+                    *status = Status::UpdateAvailable {
+                        version: version.clone(),
+                    };
+                    if let Some(cb) = ui_callback.lock().await.as_ref() {
+                        cb();
+                    }
                 }
             }
         });
@@ -232,8 +283,8 @@ impl Updater {
         }
     }
 
-    pub fn status(&self) -> Status {
-        self.status.lock().clone()
+    pub async fn status(&self) -> Status {
+        self.status.lock().await.clone()
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {

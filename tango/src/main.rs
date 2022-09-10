@@ -198,6 +198,12 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             let _ = el_proxy.lock().send_event(UserEvent::RequestRepaint);
         }
     });
+    updater.set_ui_callback({
+        let egui_ctx = egui_ctx.clone();
+        Some(Box::new(move || {
+            egui_ctx.request_repaint();
+        }))
+    });
 
     let audio_binder = audio::LateBinder::new(48000);
 

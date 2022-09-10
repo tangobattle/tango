@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats, updater};
+use crate::{audio, config, discord, gui, i18n, patch, rom, save, session, stats, sync, updater};
 
 pub struct State {
     tab: Tab,
@@ -66,15 +66,18 @@ pub fn show(
                             None
                         };
                     }
-                    let updater_status = updater.status();
-                    if updater_status.state != updater::State::UpToDate {
+                    let updater_status = sync::block_on(updater.status());
+                    if updater_status != updater::Status::UpToDate {
                         if ui
                             .selectable_label(state.show_updater, "🆕")
-                            .on_hover_text_at_pointer(match updater_status.state {
-                                updater::State::ReadyToUpdate => i18n::LOCALES
+                            .on_hover_text_at_pointer(match updater_status {
+                                updater::Status::ReadyToUpdate { .. } => i18n::LOCALES
                                     .lookup(&config.language, "updater-ready-to-update")
                                     .unwrap(),
-                                updater::State::Downloading { current, total } => i18n::LOCALES
+                                updater::Status::UpdateAvailable { .. } => i18n::LOCALES
+                                    .lookup(&config.language, "updater-update-available")
+                                    .unwrap(),
+                                updater::Status::Downloading { current, total, .. } => i18n::LOCALES
                                     .lookup_with_args(
                                         &config.language,
                                         "updater-downloading",
@@ -89,7 +92,7 @@ pub fn show(
                                         )]),
                                     )
                                     .unwrap(),
-                                _ => unreachable!(),
+                                updater::Status::UpToDate => unreachable!(),
                             })
                             .clicked()
                         {
