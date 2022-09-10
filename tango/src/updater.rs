@@ -105,7 +105,7 @@ impl Updater {
         }
     }
 
-    pub fn do_update(&self) {
+    pub fn finish_update(&self) {
         let pending_path = self.path.join(PENDING_FILENAME);
         if std::fs::metadata(&pending_path).is_ok() {
             let new_path = self.path.join(IN_PROGRESS_FILENAME);
@@ -129,7 +129,7 @@ impl Updater {
 
         let _ = std::fs::remove_file(self.path.join(INCOMPLETE_FILENAME));
         let _ = std::fs::remove_file(self.path.join(IN_PROGRESS_FILENAME));
-        self.do_update();
+        self.finish_update();
 
         let cancellation_token = tokio_util::sync::CancellationToken::new();
         tokio::task::spawn({
