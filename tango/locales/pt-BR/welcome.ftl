@@ -1,4 +1,4 @@
-welcome-heading = Bem-vindo ao Tango!
+welcome-heading = Bem-vindo(a) ao Tango!
 welcome-description = Há apenas algumas etapas que você precisa completar antes de começar a jogar.
 welcome-step-1 = Adicione suas ROMs
 welcome-step-1-description = Certifique-se de que são ROMs novas e sem patches.
