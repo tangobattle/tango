@@ -1,7 +1,7 @@
 use byteorder::ByteOrder;
 use rand::Rng;
 
-use crate::{battle, game, lockstep, replayer, session, shadow};
+use crate::{battle, game, lockstep, replayer, session, shadow, sync};
 
 mod munger;
 mod offsets;
@@ -85,7 +85,7 @@ impl game::Hooks for Hooks {
                 let pc = core.as_ref().gba().cpu().thumb_pc();
                 core.gba_mut().cpu_mut().set_thumb_pc(pc + 4);
 
-                let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                let match_ = sync::block_on(match_.lock());
                 match &*match_ {
                     Some(match_) => match_,
                     _ => {
@@ -116,7 +116,7 @@ impl game::Hooks for Hooks {
                 let match_ = match_.clone();
 
                 Box::new(move |_| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -124,7 +124,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let mut round_state = sync::block_on(match_.lock_round_state());
                     round_state.set_last_result(battle::BattleResult::Win);
                 })
             }),
@@ -132,7 +132,7 @@ impl game::Hooks for Hooks {
                 let match_ = match_.clone();
 
                 Box::new(move |_| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -140,14 +140,14 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let mut round_state = sync::block_on(match_.lock_round_state());
                     round_state.set_last_result(battle::BattleResult::Loss);
                 })
             }),
             (self.offsets.rom.round_ending_entry1, {
                 let match_ = match_.clone();
                 Box::new(move |mut _core| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         None => {
@@ -155,7 +155,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let mut round_state = sync::block_on(match_.lock_round_state());
                     tokio::runtime::Handle::current()
                         .block_on(round_state.end_round())
                         .expect("end round");
@@ -167,7 +167,7 @@ impl game::Hooks for Hooks {
             (self.offsets.rom.round_ending_entry2, {
                 let match_ = match_.clone();
                 Box::new(move |mut _core| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         None => {
@@ -175,7 +175,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let mut round_state = sync::block_on(match_.lock_round_state());
                     tokio::runtime::Handle::current()
                         .block_on(round_state.end_round())
                         .expect("end round");
@@ -189,7 +189,7 @@ impl game::Hooks for Hooks {
                 let munger = self.munger();
 
                 Box::new(move |core| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -199,7 +199,7 @@ impl game::Hooks for Hooks {
                     tokio::runtime::Handle::current()
                         .block_on(match_.start_round())
                         .expect("start round");
-                    let mut rng = tokio::runtime::Handle::current().block_on(match_.lock_rng());
+                    let mut rng = sync::block_on(match_.lock_rng());
                     munger.set_battle_stage(core, rng.gen_range(0..0xc));
                 })
             }),
@@ -207,7 +207,7 @@ impl game::Hooks for Hooks {
                 let match_ = match_.clone();
 
                 Box::new(move |mut core| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -215,7 +215,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let round_state = sync::block_on(match_.lock_round_state());
                     let round = match round_state.round.as_ref() {
                         Some(round) => round,
                         None => {
@@ -231,7 +231,7 @@ impl game::Hooks for Hooks {
                 let munger = self.munger();
 
                 Box::new(move |core| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -239,7 +239,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let mut round_state = sync::block_on(match_.lock_round_state());
 
                     let round = match round_state.round.as_mut() {
                         Some(round) => round,
@@ -249,7 +249,7 @@ impl game::Hooks for Hooks {
                     };
 
                     if !round.has_committed_state() {
-                        let mut rng = tokio::runtime::Handle::current().block_on(match_.lock_rng());
+                        let mut rng = sync::block_on(match_.lock_rng());
                         let offerer_rng_state = generate_rng_state(&mut *rng);
                         let answerer_rng_state = generate_rng_state(&mut *rng);
                         munger.set_rng_state(
@@ -273,12 +273,10 @@ impl game::Hooks for Hooks {
                     }
 
                     'abort: loop {
-                        if let Err(e) =
-                            tokio::runtime::Handle::current().block_on(round.add_local_input_and_fastforward(
-                                core,
-                                joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                            ))
-                        {
+                        if let Err(e) = sync::block_on(round.add_local_input_and_fastforward(
+                            core,
+                            joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                        )) {
                             log::error!("failed to add local input: {}", e);
                             break 'abort;
                         }
@@ -317,7 +315,7 @@ impl game::Hooks for Hooks {
             (self.offsets.rom.round_call_jump_table_ret, {
                 let match_ = match_.clone();
                 Box::new(move |_| {
-                    let match_ = tokio::runtime::Handle::current().block_on(match_.lock());
+                    let match_ = sync::block_on(match_.lock());
                     let match_ = match &*match_ {
                         Some(match_) => match_,
                         _ => {
@@ -325,7 +323,7 @@ impl game::Hooks for Hooks {
                         }
                     };
 
-                    let mut round_state = tokio::runtime::Handle::current().block_on(match_.lock_round_state());
+                    let mut round_state = sync::block_on(match_.lock_round_state());
 
                     let round = match round_state.round.as_mut() {
                         Some(round) => round,

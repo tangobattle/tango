@@ -24,6 +24,7 @@ mod scanner;
 mod session;
 mod shadow;
 mod stats;
+mod sync;
 mod video;
 
 use fluent_templates::Loader;
