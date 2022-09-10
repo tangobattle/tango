@@ -70,16 +70,18 @@ pub fn show(
                             {
                                 let _ = open::that(&config.roms_path());
                             }
-                            if ui
-                                .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
-                                .clicked()
-                            {
-                                let roms_path = config.roms_path();
-                                let roms_scanner = roms_scanner.clone();
-                                tokio::runtime::Handle::current().spawn_blocking(move || {
-                                    roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
-                                });
-                            }
+                            ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
+                                if ui
+                                    .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
+                                    .clicked()
+                                {
+                                    let roms_path = config.roms_path();
+                                    let roms_scanner = roms_scanner.clone();
+                                    tokio::runtime::Handle::current().spawn_blocking(move || {
+                                        roms_scanner.rescan(|| Some(game::scan_roms(&roms_path)));
+                                    });
+                                }
+                            });
                         });
                     }
                 });
@@ -107,16 +109,19 @@ pub fn show(
                             {
                                 let _ = open::that(&config.saves_path());
                             }
-                            if ui
-                                .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
-                                .clicked()
-                            {
-                                let saves_path = config.saves_path();
-                                let saves_scanner = saves_scanner.clone();
-                                tokio::runtime::Handle::current().spawn_blocking(move || {
-                                    saves_scanner.rescan(|| Some(save::scan_saves(&saves_path)));
-                                });
-                            }
+
+                            ui.add_enabled_ui(!saves_scanner.is_scanning(), |ui| {
+                                if ui
+                                    .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
+                                    .clicked()
+                                {
+                                    let saves_path = config.saves_path();
+                                    let saves_scanner = saves_scanner.clone();
+                                    tokio::runtime::Handle::current().spawn_blocking(move || {
+                                        saves_scanner.rescan(|| Some(save::scan_saves(&saves_path)));
+                                    });
+                                }
+                            });
                         });
                     }
                 });
