@@ -30,9 +30,7 @@ pushd tango_wix_workdir
 
 cp ../tango/icon.ico .
 cp ../target/x86_64-pc-windows-gnu/release/tango.exe .
-
-mingw_sysroot="$(x86_64-w64-mingw32-g++ -print-sysroot)"
-cp "${mingw_sysroot}/x86_64-w64-mingw32/"{bin/libwinpthread-1.dll,lib/{libgcc_s_seh-1.dll,libstdc++-6.dll}} .
+cp {/usr/x86_64-w64-mingw32/lib/libwinpthread-1.dll,/usr/lib/gcc/x86_64-w64-mingw32/9.3-posix/{libgcc_s_seh-1.dll,libstdc++-6.dll}} .
 
 ANGLE_ZIP_URL="https://github.com/google/gfbuild-angle/releases/download/github%2Fgoogle%2Fgfbuild-angle%2Ff810e998993290f049bbdad4fae975e4867100ad/gfbuild-angle-f810e998993290f049bbdad4fae975e4867100ad-Windows_x64_Release.zip"
 mkdir angle
