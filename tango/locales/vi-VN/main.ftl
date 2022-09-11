@@ -1,10 +1,10 @@
 crash =
-    Tango đã gặp phải lỗi và sập!
+    Tango đã gặp lỗi và ngừng hoạt động!
     
-    Khi báo lỗi, hãy thêm vào log file sau:
+    Khi báo lỗi, hãy đính kèm file log sau đây:
     
     {$path}
 crash-no-log =
-    Tango đã gặp phải lỗi và sập!
+    Tango đã gặp lỗi và ngừng hoạt động!
     
     {$error}
