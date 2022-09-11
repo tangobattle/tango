@@ -74,8 +74,10 @@ const PENDING_FILENAME: &str = "pending.msi";
 const IN_PROGRESS_FILENAME: &str = "in_progress.msi";
 
 #[cfg(target_os = "macos")]
-fn do_update(_path: &std::path::Path) {
-    // Surprise, this does nothing!
+fn do_update(path: &std::path::Path) {
+    // Semi-automatic update.
+    let mut command = std::process::Command::new("/usr/bin/open");
+    command.arg(path).spawn().unwrap();
     std::process::exit(0);
 }
 
