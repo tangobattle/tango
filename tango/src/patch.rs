@@ -134,13 +134,21 @@ pub async fn update(
         .await?;
 
     let root = root.to_path_buf();
+    // Allow 4 concurrent downloads.
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
     filesync::sync(&root, &entries, {
         let url = url.clone();
         let root = root.clone();
+        let sem = sem.clone();
         move |path| {
             let url = url.clone();
             let root = root.clone();
+            let sem = sem.clone();
             Box::pin(async move {
+                let _permit = sem
+                    .acquire()
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                 let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
                 let client = reqwest::Client::new();
                 let mut stream = client

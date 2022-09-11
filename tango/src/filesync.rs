@@ -31,9 +31,13 @@ async fn sync_entry(
                 }
             }
 
-            for (filename, child) in entries.iter() {
-                sync_entry(root, &path.join(filename), child, fetch_cb).await?;
-            }
+            futures::future::join_all(entries.iter().map(|(filename, child)| {
+                let filename = filename.clone();
+                async { Ok::<_, std::io::Error>(sync_entry(root, &path.join(filename), child, fetch_cb).await?) }
+            }))
+            .await
+            .into_iter()
+            .collect::<Result<_, _>>()?;
         }
         Entry::File(hash) => {
             let needs_fetch = match tokio::fs::metadata(&real_path).await {
@@ -71,8 +75,13 @@ pub async fn sync(
     entries: &Entries,
     fetch_cb: impl Fn(&std::path::Path) -> futures::future::BoxFuture<std::io::Result<()>> + Send + Sync,
 ) -> std::io::Result<()> {
-    for (filename, child) in entries.iter() {
-        sync_entry(root, &std::path::Path::new(filename), child, &fetch_cb).await?;
-    }
+    futures::future::join_all(entries.iter().map(|(filename, child)| {
+        let path = std::path::PathBuf::from(filename.clone());
+        let fetch_cb = &fetch_cb;
+        async move { Ok::<_, std::io::Error>(sync_entry(root, &path, child, fetch_cb).await?) }
+    }))
+    .await
+    .into_iter()
+    .collect::<Result<_, _>>()?;
     Ok(())
 }
