@@ -1,4 +1,4 @@
-input-mapping-prompt = Press input for { $key }.
+input-mapping-prompt = Chọn nút cho { $key }.
 input-button-left = ⬅
 input-button-right = ➡
 input-button-up = ⬆

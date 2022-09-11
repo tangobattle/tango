@@ -1,8 +1,8 @@
-patches = Patches
-patches-open-folder = Open folder
-patches-update = Update
-patches-details-authors = Authors
-patches-details-license = License
-    .all-rights-reserved = All rights reserved
+patches = Danh sách bản vá
+patches-open-folder = Mở thư mục
+patches-update = Cập nhật bản vá
+patches-details-authors = Tác giả
+patches-details-license = Giấy phép
+    .all-rights-reserved = Đã đăng kí bản quyền tác giả
 patches-details-source = Website
-patches-details-games = Supported games
+patches-details-games = Các game được hỗ trợ
