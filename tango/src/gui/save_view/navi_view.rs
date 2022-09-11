@@ -1,5 +1,7 @@
+#[allow(unused_imports)]
 use fluent_templates::Loader;
 
+#[allow(unused_imports)]
 use crate::{gui, i18n, rom, save};
 
 pub struct State {
@@ -16,7 +18,7 @@ impl State {
 
 pub fn show<'a>(
     ui: &mut egui::Ui,
-    clipboard: &mut arboard::Clipboard,
+    _clipboard: &mut arboard::Clipboard,
     font_families: &gui::FontFamilies,
     _lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
