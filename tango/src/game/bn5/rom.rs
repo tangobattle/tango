@@ -162,9 +162,8 @@ impl Assets {
                                                 op: EREADER_COMMAND,
                                                 params,
                                             } => {
-                                                if let Ok(parts) = rom::text::parse_entry(
-                                                    &mapper.get(0x02001d14 + params[1] as u32 * 0x10),
-                                                    0,
+                                                if let Ok(parts) = rom::text::parse(
+                                                    &mapper.get(0x02001d10 + params[1] as u32 * 0x18)[6..],
                                                     &text_parse_options,
                                                 ) {
                                                     parts
@@ -206,29 +205,29 @@ impl Assets {
                                     .flat_map(|part| {
                                         match part {
                                             rom::text::Part::String(s) => s,
-                                            // rom::text::Part::Command {
-                                            //     op: EREADER_COMMAND,
-                                            //     params,
-                                            // } => {
-                                            //     if let Ok(parts) = rom::text::parse(
-                                            //         &mapper.get(0x020007d0 + params[1] as u32 * 100)[6..],
-                                            //         &text_parse_options,
-                                            //     ) {
-                                            //         parts
-                                            //             .into_iter()
-                                            //             .flat_map(|part| {
-                                            //                 match part {
-                                            //                     rom::text::Part::String(s) => s,
-                                            //                     _ => "".to_string(),
-                                            //                 }
-                                            //                 .chars()
-                                            //                 .collect::<Vec<_>>()
-                                            //             })
-                                            //             .collect::<String>()
-                                            //     } else {
-                                            //         "???".to_string()
-                                            //     }
-                                            // }
+                                            rom::text::Part::Command {
+                                                op: EREADER_COMMAND,
+                                                params,
+                                            } => {
+                                                if let Ok(parts) = rom::text::parse(
+                                                    &mapper.get(0x02001370 + params[1] as u32 * 100)[6..],
+                                                    &text_parse_options,
+                                                ) {
+                                                    parts
+                                                        .into_iter()
+                                                        .flat_map(|part| {
+                                                            match part {
+                                                                rom::text::Part::String(s) => s,
+                                                                _ => "".to_string(),
+                                                            }
+                                                            .chars()
+                                                            .collect::<Vec<_>>()
+                                                        })
+                                                        .collect::<String>()
+                                                } else {
+                                                    "???".to_string()
+                                                }
+                                            }
                                             _ => "".to_string(),
                                         }
                                         .chars()
