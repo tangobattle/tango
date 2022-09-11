@@ -85,7 +85,7 @@ impl Assets {
             extension_ops: 0xe5..=0xe6,
             eof_op: 0xe7,
             newline_op: 0xe8,
-            commands: std::collections::HashMap::new(),
+            commands: std::collections::HashMap::from([(0xea, 3), (0xeb, 0), (0xec, 2), (0xee, 3), (0xf1, 1)]),
         };
 
         let mapper = rom::MemoryMapper::new(rom, wram);
