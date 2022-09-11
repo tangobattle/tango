@@ -70,7 +70,7 @@ jobs:
                   key: darwin-universal-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo pip3 install semver==3.0.0-dev3 toml
+                  sudo pip3 install semver==3.0.0-dev3 toml dmgbuild pyobjc-framework-Quartz
 
             - uses: dtolnay/rust-toolchain@stable
               with:

@@ -53,7 +53,7 @@ pub struct Updater {
 
 #[cfg(target_os = "macos")]
 fn is_target_installer(s: &str) -> bool {
-    s.ends_with("-macos.zip")
+    s.ends_with("-macos.dmg")
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
@@ -64,9 +64,9 @@ fn is_target_installer(s: &str) -> bool {
 const INCOMPLETE_FILENAME: &str = "incomplete";
 
 #[cfg(target_os = "macos")]
-const PENDING_FILENAME: &str = "pending.zip";
+const PENDING_FILENAME: &str = "pending.dmg";
 #[cfg(target_os = "macos")]
-const IN_PROGRESS_FILENAME: &str = "in_progress.zip";
+const IN_PROGRESS_FILENAME: &str = "in_progress.dmg";
 
 #[cfg(target_os = "windows")]
 const PENDING_FILENAME: &str = "pending.msi";
@@ -76,6 +76,7 @@ const IN_PROGRESS_FILENAME: &str = "in_progress.msi";
 #[cfg(target_os = "macos")]
 fn do_update(_path: &std::path::Path) {
     // Surprise, this does nothing!
+    std::process::exit(0);
 }
 
 #[cfg(target_os = "windows")]

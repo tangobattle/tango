@@ -36,4 +36,4 @@ lipo -create target/{aarch64-apple-darwin,x86_64-apple-darwin}/release/tango -ou
 
 # Build zip.
 mkdir -p dist
-zip -r "dist/tango-macos.zip" Tango.app
+dmgbuild -s "$(dirname "${BASH_SOURCE[0]}")/dmgbuild.settings.py" Tango dist/tango-macos.dmg
