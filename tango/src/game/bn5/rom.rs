@@ -5,9 +5,11 @@ use crate::rom;
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
+    chip_descriptions_pointers: u32,
     chip_icon_palette_pointer: u32,
     ncp_data: u32,
     ncp_names_pointer: u32,
+    ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     modcard_data: u32,
@@ -19,9 +21,11 @@ pub struct Offsets {
 pub static BRBJ_00: Offsets = Offsets {
     chip_data:                      0x0801e1d0,
     chip_names_pointers:            0x08040a68,
+    chip_descriptions_pointers:     0x08023afc,
     chip_icon_palette_pointer:      0x0804992c,
     ncp_data:                       0x0813d0cc,
     ncp_names_pointer:              0x08040a78,
+    ncp_descriptions_pointer:       0x08132b28,
     element_icon_palette_pointer:   0x08122ffc,
     element_icons_pointer:          0x08122ff4,
     modcard_data:                   0x0813842c,
@@ -33,9 +37,11 @@ pub static BRBJ_00: Offsets = Offsets {
 pub static BRKJ_00: Offsets = Offsets {
     chip_data:                      0x0801e1cc,
     chip_names_pointers:            0x08040a70,
+    chip_descriptions_pointers:     0x08023af8,
     chip_icon_palette_pointer:      0x08049934,
     ncp_data:                       0x0813d1b4,
     ncp_names_pointer:              0x08040a80,
+    ncp_descriptions_pointer:       0x08132c10,
     element_icon_palette_pointer:   0x081230e4,
     element_icons_pointer:          0x081230dc,
     modcard_data:                   0x08138514,
@@ -47,9 +53,11 @@ pub static BRKJ_00: Offsets = Offsets {
 pub static BRBE_00: Offsets = Offsets {
     chip_data:                      0x0801e214,
     chip_names_pointers:            0x08040b84,
+    chip_descriptions_pointers:     0x08023b40,
     chip_icon_palette_pointer:      0x0804a0f0,
     ncp_data:                       0x0813d540,
     ncp_names_pointer:              0x08040b94,
+    ncp_descriptions_pointer:       0x08132f70,
     element_icon_palette_pointer:   0x081233e0,
     element_icons_pointer:          0x081233d8,
     modcard_data:                   0x08138874,
@@ -61,9 +69,11 @@ pub static BRBE_00: Offsets = Offsets {
 pub static BRKE_00: Offsets = Offsets {
     chip_data:                      0x0801e210,
     chip_names_pointers:            0x08040b8c,
+    chip_descriptions_pointers:     0x08023b3c,
     chip_icon_palette_pointer:      0x0804a0f8,
     ncp_data:                       0x0813d628,
     ncp_names_pointer:              0x08040b9c,
+    ncp_descriptions_pointer:       0x08133058,
     element_icon_palette_pointer:   0x081234c8,
     element_icons_pointer:          0x081234c0,
     modcard_data:                   0x0813895c,
@@ -88,7 +98,14 @@ impl Assets {
             extension_op: 0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
-            commands: std::collections::HashMap::from([(PRINT_VAR_COMMAND, 3), (EREADER_COMMAND, 2)]),
+            commands: std::collections::HashMap::from([
+                (PRINT_VAR_COMMAND, 3),
+                (EREADER_COMMAND, 2),
+                (0xe7, 1),
+                (0xe8, 3),
+                (0xee, 3),
+                (0xf1, 2),
+            ]),
         };
 
         let mapper = rom::MemoryMapper::new(rom, wram);
@@ -175,7 +192,54 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: {
+                            let pointer = offsets.chip_descriptions_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
+
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
+                                i,
+                                &text_parse_options,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::String(s) => s,
+                                            // rom::text::Part::Command {
+                                            //     op: EREADER_COMMAND,
+                                            //     params,
+                                            // } => {
+                                            //     if let Ok(parts) = rom::text::parse(
+                                            //         &mapper.get(0x020007d0 + params[1] as u32 * 100)[6..],
+                                            //         &text_parse_options,
+                                            //     ) {
+                                            //         parts
+                                            //             .into_iter()
+                                            //             .flat_map(|part| {
+                                            //                 match part {
+                                            //                     rom::text::Part::String(s) => s,
+                                            //                     _ => "".to_string(),
+                                            //                 }
+                                            //                 .chars()
+                                            //                 .collect::<Vec<_>>()
+                                            //             })
+                                            //             .collect::<String>()
+                                            //     } else {
+                                            //         "???".to_string()
+                                            //     }
+                                            // }
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                                    .replace("\n", " ")
+                            } else {
+                                "???".to_string()
+                            }
+                        },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
@@ -236,7 +300,28 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: if let Ok(parts) = rom::text::parse_entry(
+                            &mapper.get(byteorder::LittleEndian::read_u32(
+                                &mapper.get(offsets.ncp_descriptions_pointer)[..4],
+                            )),
+                            i / 4,
+                            &text_parse_options,
+                        ) {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        rom::text::Part::String(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                                .replace("\n", " ")
+                        } else {
+                            "???".to_string()
+                        },
                         color: [
                             None,
                             Some(rom::NavicustPartColor::White),
