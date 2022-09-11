@@ -23,7 +23,7 @@ jobs:
                   key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo apt install -y msitools mingw-w64 imagemagick wget
+                  sudo apt install -y msitools mingw-w64 imagemagick wget bsdtar
 
             - run: >
                   sudo pip3 install semver==3.0.0-dev3 toml
