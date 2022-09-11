@@ -1,7 +1,7 @@
 use sha2::Digest;
 use tokio::io::AsyncReadExt;
 
-pub type Entries = std::collections::HashMap<std::ffi::OsString, Entry>;
+pub type Entries = std::collections::HashMap<String, Entry>;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(untagged)]
@@ -11,15 +11,12 @@ pub enum Entry {
 }
 
 #[async_recursion::async_recursion]
-async fn sync_entry<F>(
+async fn sync_entry(
     root: &std::path::Path,
     path: &std::path::Path,
     entry: &Entry,
-    fetch_cb: &(impl Fn(&std::path::Path, &std::path::Path) -> F + Send + Sync),
-) -> std::io::Result<()>
-where
-    F: std::future::Future<Output = std::io::Result<()>> + Send,
-{
+    fetch_cb: &(impl Fn(&std::path::Path) -> futures::future::BoxFuture<std::io::Result<()>> + Send + Sync),
+) -> std::io::Result<()> {
     let real_path = root.join(path);
 
     match entry {
@@ -61,7 +58,7 @@ where
             };
 
             if needs_fetch {
-                fetch_cb(root, path).await?;
+                fetch_cb(path).await?;
             }
         }
     }
@@ -69,16 +66,13 @@ where
     Ok(())
 }
 
-pub async fn sync<F>(
+pub async fn sync(
     root: &std::path::Path,
-    entries: &Vec<Entry>,
-    fetch_cb: &(impl Fn(&std::path::Path, &std::path::Path) -> F + Send + Sync),
-) -> std::io::Result<()>
-where
-    F: std::future::Future<Output = std::io::Result<()>> + Send,
-{
-    for entry in entries.iter() {
-        sync_entry(root, std::path::Path::new("."), entry, fetch_cb).await?;
+    entries: &Entries,
+    fetch_cb: impl Fn(&std::path::Path) -> futures::future::BoxFuture<std::io::Result<()>> + Send + Sync,
+) -> std::io::Result<()> {
+    for (filename, child) in entries.iter() {
+        sync_entry(root, &std::path::Path::new(filename), child, &fetch_cb).await?;
     }
     Ok(())
 }

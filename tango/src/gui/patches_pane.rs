@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{game, i18n, patch};
+use crate::{game, i18n, patch, sync};
 
 pub struct State {}
 
@@ -34,7 +34,7 @@ pub fn show(
                     let repo_url = repo_url.to_owned();
                     let patches_path = patches_path.to_path_buf();
                     move || {
-                        patches_scanner.rescan(move || match patch::update(&repo_url, &patches_path) {
+                        patches_scanner.rescan(move || match sync::block_on(patch::update(&repo_url, &patches_path)) {
                             Ok(patches) => Some(patches),
                             Err(e) => {
                                 log::error!("failed to update patches: {:?}", e);

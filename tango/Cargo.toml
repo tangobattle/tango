@@ -91,6 +91,7 @@ wgpu = { version = "0.13", optional = true, features = ["angle"] }
 async-recursion = "1.0"
 sha2 = "0.10"
 serde-hex = "0.1"
+futures = "0.3"
 
 [build-dependencies]
 embed-resource = "1.7"

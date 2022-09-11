@@ -1,8 +1,11 @@
 pub mod bps;
 
+use futures::StreamExt;
+use itertools::Itertools;
 use serde::Deserialize;
+use tokio::io::AsyncWriteExt;
 
-use crate::{config, game, rom, scanner};
+use crate::{config, filesync, game, rom, scanner, sync};
 
 #[derive(serde::Deserialize, Debug)]
 struct Metadata {
@@ -117,11 +120,51 @@ lazy_static! {
     static ref PATCH_FILENAME_REGEX: regex::Regex = regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
 }
 
-pub fn update(
+pub async fn update(
     url: &String,
-    path: &std::path::Path,
+    root: &std::path::Path,
 ) -> Result<std::collections::BTreeMap<String, Patch>, anyhow::Error> {
-    anyhow::bail!("not supported");
+    let client = reqwest::Client::new();
+    let entries = client
+        .get(format!("{}/index.json", url))
+        .header("User-Agent", "tango")
+        .send()
+        .await?
+        .json::<filesync::Entries>()
+        .await?;
+
+    let root = root.to_path_buf();
+    filesync::sync(&root, &entries, {
+        let url = url.clone();
+        let root = root.clone();
+        move |path| {
+            let url = url.clone();
+            let root = root.clone();
+            Box::pin(async move {
+                let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
+                let client = reqwest::Client::new();
+                let mut stream = client
+                    .get(format!(
+                        "{}/{}",
+                        url,
+                        path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
+                    ))
+                    .header("User-Agent", "tango")
+                    .send()
+                    .await
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                    .bytes_stream();
+                while let Some(chunk) = stream.next().await {
+                    let chunk = chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                    output_file.write_all(&chunk).await?;
+                }
+                log::info!("filesynced: {}", path.display());
+                Ok(())
+            })
+        }
+    })
+    .await?;
+    Ok(scan(&root)?)
 }
 
 pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
@@ -321,7 +364,7 @@ impl Autoupdater {
 
                     let patches_scanner = patches_scanner.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        patches_scanner.rescan(move || match update(&repo_url, &patches_path) {
+                        patches_scanner.rescan(move || match sync::block_on(update(&repo_url, &patches_path)) {
                             Ok(patches) => Some(patches),
                             Err(e) => {
                                 log::error!("failed to update patches: {:?}", e);
