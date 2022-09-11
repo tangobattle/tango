@@ -5,6 +5,7 @@ use crate::rom;
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
+    chip_descriptions_pointers: u32,
     chip_icon_palette_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
@@ -18,6 +19,7 @@ pub static BR4J_00: Offsets = Offsets {
     chip_data:                      0x0801af0c,
     chip_icon_palette_pointer:      0x080168ec,
     chip_names_pointers:            0x0803cb98,
+    chip_descriptions_pointers:     0x0802165c,
     element_icons_pointer:          0x080d4c94,
     element_icon_palette_pointer:   0x080d4ca0,
     navi_names_pointer:             0x0805174c,
@@ -38,7 +40,7 @@ impl Assets {
             extension_op: 0xe4,
             eof_op: 0xe5,
             newline_op: 0xe8,
-            commands: std::collections::HashMap::new(),
+            commands: std::collections::HashMap::from([(0xe6, 1), (0xe7, 1), (0xed, 3), (0xf0, 2), (0xfc, 1)]),
         };
 
         let mapper = rom::MemoryMapper::new(rom, wram);
@@ -102,7 +104,32 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: {
+                            let pointer = offsets.chip_descriptions_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
+
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
+                                i,
+                                &text_parse_options,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::String(s) => s,
+
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                                    .replace("\n", " ")
+                            } else {
+                                "???".to_string()
+                            }
+                        },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
