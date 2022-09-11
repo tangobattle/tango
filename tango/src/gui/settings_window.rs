@@ -496,6 +496,26 @@ fn show_advanced_tab(
         .num_columns(2)
         .show(ui, |ui| {
             {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-enable-updater")
+                        .unwrap(),
+                );
+                ui.checkbox(&mut config.enable_updater, "");
+                ui.end_row();
+            }
+
+            {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-allow-prerelease-upgrades")
+                        .unwrap(),
+                );
+                ui.checkbox(&mut config.allow_prerelease_upgrades, "");
+                ui.end_row();
+            }
+
+            {
                 ui.strong(i18n::LOCALES.lookup(&config.language, "settings-data-path").unwrap());
                 ui.horizontal(|ui| {
                     ui.add(

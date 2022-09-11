@@ -45,3 +45,5 @@ settings-audio-backend = Audio backend (requires restart)
     .sdl2 = SDL2 (safe)
     .cpal = cpal (experimental)
 settings-volume = Volume
+settings-enable-updater = Enable updater
+settings-allow-prerelease-upgrades = Allow prerelease upgrades

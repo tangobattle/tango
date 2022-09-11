@@ -10,6 +10,8 @@
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
+use crate::config;
+
 const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,6 +44,7 @@ struct GithubReleaseInfo {
 }
 
 pub struct Updater {
+    config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
     ui_callback: std::sync::Arc<tokio::sync::Mutex<Option<Box<dyn Fn() + Sync + Send>>>>,
     current_version: semver::Version,
     path: std::path::PathBuf,
@@ -94,9 +97,10 @@ fn do_update(path: &std::path::Path) {
 }
 
 impl Updater {
-    pub fn new(path: &std::path::Path) -> Updater {
+    pub fn new(path: &std::path::Path, config: std::sync::Arc<parking_lot::RwLock<config::Config>>) -> Updater {
         let current_version: semver::Version = env!("CARGO_PKG_VERSION").parse().unwrap();
         Self {
+            config,
             current_version: current_version.clone(),
             path: path.to_owned(),
             ui_callback: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
@@ -138,12 +142,14 @@ impl Updater {
             let path = self.path.clone();
             let ui_callback = self.ui_callback.clone();
             let current_version = self.current_version.clone();
+            let config = self.config.clone();
             async move {
                 'l: loop {
                     let status = status.clone();
                     let path = path.clone();
                     let ui_callback = ui_callback.clone();
                     let current_version = current_version.clone();
+                    let config = config.clone();
                     if let Err(e) = (move || async move {
                         let client = reqwest::Client::new();
                         let releases = client
@@ -157,10 +163,6 @@ impl Updater {
                         let (version, info) = if let Some(release) = releases
                             .into_iter()
                             .flat_map(|r| {
-                                if r.prerelease {
-                                    return vec![];
-                                }
-
                                 if r.tag_name.chars().next() != Some('v') {
                                     return vec![];
                                 }
@@ -170,6 +172,10 @@ impl Updater {
                                 } else {
                                     return vec![];
                                 };
+
+                                if !config.read().allow_prerelease_upgrades && !v.pre.is_empty() {
+                                    return vec![];
+                                }
 
                                 vec![(v, r)]
                             })

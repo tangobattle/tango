@@ -125,10 +125,14 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let _enter_guard = rt.enter();
 
+    let config = std::sync::Arc::new(parking_lot::RwLock::new(config));
+
     mgba::log::init();
 
-    let mut updater = updater::Updater::new(&config.updater_path());
-    updater.set_enabled(true);
+    let updater_path = config::get_updater_path().unwrap();
+    let _ = std::fs::create_dir_all(&updater_path);
+    let mut updater = updater::Updater::new(&updater_path, config.clone());
+    updater.set_enabled(config.read().enable_updater);
 
     let sdl = sdl2::init().unwrap();
     let audio = sdl.audio().unwrap();
@@ -142,7 +146,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let icon_height = icon.height();
 
     let wb = winit::window::WindowBuilder::new()
-        .with_title(&i18n::LOCALES.lookup(&config.language, "window-title").unwrap())
+        .with_title(&i18n::LOCALES.lookup(&config.read().language, "window-title").unwrap())
         .with_window_icon(Some(winit::window::Icon::from_rgba(
             icon.into_bytes(),
             icon_width,
@@ -156,13 +160,13 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
         ))
-        .with_fullscreen(if config.full_screen {
+        .with_fullscreen(if config.read().full_screen {
             Some(winit::window::Fullscreen::Borderless(None))
         } else {
             None
         });
 
-    let mut gfx_backend: Box<dyn graphics::Backend> = match config.graphics_backend {
+    let mut gfx_backend: Box<dyn graphics::Backend> = match config.read().graphics_backend {
         #[cfg(feature = "glutin")]
         config::GraphicsBackend::Glutin => Box::new(graphics::glutin::Backend::new(
             glutin::ContextBuilder::new()
@@ -208,7 +212,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
     let audio_binder = audio::LateBinder::new(48000);
 
-    let _audio_backend: Box<dyn audio::Backend> = match config.audio_backend {
+    let _audio_backend: Box<dyn audio::Backend> = match config.read().audio_backend {
         #[cfg(feature = "cpal")]
         config::AudioBackend::Cpal => Box::new(audio::cpal::Backend::new(audio_binder.clone())?),
         #[cfg(feature = "sdl2-audio")]
@@ -238,18 +242,17 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let saves_scanner = scanner::Scanner::new();
     let patches_scanner = scanner::Scanner::new();
     {
-        let roms_path = config.roms_path();
-        let saves_path = config.saves_path();
-        let patches_path = config.patches_path();
+        let roms_path = config.read().roms_path();
+        let saves_path = config.read().saves_path();
+        let patches_path = config.read().patches_path();
         roms_scanner.rescan(move || Some(game::scan_roms(&roms_path)));
         saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
         patches_scanner.rescan(move || Some(patch::scan(&patches_path).unwrap_or_default()));
     }
 
-    let config_arc = std::sync::Arc::new(parking_lot::RwLock::new(config));
     let mut state = gui::State::new(
         egui_ctx,
-        config_arc.clone(),
+        config.clone(),
         discord_client,
         audio_binder.clone(),
         fps_counter.clone(),
@@ -259,16 +262,16 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         patches_scanner.clone(),
     );
 
-    let mut patch_autoupdater = patch::Autoupdater::new(config_arc.clone(), patches_scanner.clone());
-    patch_autoupdater.set_enabled(config_arc.read().enable_patch_autoupdate);
+    let mut patch_autoupdater = patch::Autoupdater::new(config.clone(), patches_scanner.clone());
+    patch_autoupdater.set_enabled(config.read().enable_patch_autoupdate);
 
     event_loop.run(move |event, _, control_flow| {
-        let mut config = config_arc.read().clone();
-        let old_config = config.clone();
+        let mut next_config = config.read().clone();
+        let old_config = next_config.clone();
 
         let mut redraw = || {
             let repaint_after = gfx_backend.run(Box::new(|window, ctx| {
-                gui::show(ctx, &mut config, window, &input_state, &mut state, &updater)
+                gui::show(ctx, &mut next_config, window, &input_state, &mut state, &updater)
             }));
 
             if repaint_after.is_zero() {
@@ -308,7 +311,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             if let Some(steal_input) = state.steal_input.take() {
                                 steal_input.run_callback(
                                     input::PhysicalInput::Key(virutal_keycode),
-                                    &mut config.input_mapping,
+                                    &mut next_config.input_mapping,
                                 );
                             } else {
                                 if !gfx_backend.on_window_event(&window_event) {
@@ -333,7 +336,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                 input_state.clear_keys();
                             }
                             winit::event::WindowEvent::Occluded(false) => {
-                                config.full_screen = gfx_backend.window().fullscreen().is_some();
+                                next_config.full_screen = gfx_backend.window().fullscreen().is_some();
                             }
                             winit::event::WindowEvent::CursorEntered { .. } => {
                                 state.last_mouse_motion_time = Some(std::time::Instant::now());
@@ -392,7 +395,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                                 input::AxisDirection::Negative
                                             },
                                         },
-                                        &mut config.input_mapping,
+                                        &mut next_config.input_mapping,
                                     );
                                 } else {
                                     input_state.handle_controller_axis_motion(which, axis as usize, value);
@@ -403,7 +406,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                             if let Some(steal_input) = state.steal_input.take() {
                                 steal_input
-                                    .run_callback(input::PhysicalInput::Button(button), &mut config.input_mapping);
+                                    .run_callback(input::PhysicalInput::Button(button), &mut next_config.input_mapping);
                             } else {
                                 input_state.handle_controller_button_down(which, button);
                             }
@@ -422,11 +425,12 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             _ => {}
         }
 
-        if config != old_config {
-            *config_arc.write() = config.clone();
-            let r = config.save();
+        if next_config != old_config {
+            *config.write() = next_config.clone();
+            let r = next_config.save();
             log::info!("config save: {:?}", r);
         }
-        patch_autoupdater.set_enabled(config.enable_patch_autoupdate);
+        patch_autoupdater.set_enabled(next_config.enable_patch_autoupdate);
+        updater.set_enabled(config.read().enable_updater);
     });
 }

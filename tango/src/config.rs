@@ -95,6 +95,8 @@ pub struct Config {
     pub graphics_backend: GraphicsBackend,
     pub audio_backend: AudioBackend,
     pub volume: i32,
+    pub allow_prerelease_upgrades: bool,
+    pub enable_updater: bool,
 }
 
 impl Default for Config {
@@ -120,6 +122,12 @@ impl Default for Config {
             graphics_backend: Default::default(),
             audio_backend: Default::default(),
             volume: 0x100,
+            allow_prerelease_upgrades: !env!("CARGO_PKG_VERSION")
+                .parse::<semver::Version>()
+                .unwrap()
+                .pre
+                .is_empty(),
+            enable_updater: true,
         }
     }
 }
@@ -133,6 +141,13 @@ fn get_config_path() -> Result<std::path::PathBuf, anyhow::Error> {
         .ok_or_else(|| anyhow::anyhow!("could not get tango project directory"))?
         .config_dir()
         .join("config.json"))
+}
+
+pub fn get_updater_path() -> Result<std::path::PathBuf, anyhow::Error> {
+    Ok(get_project_dirs()
+        .ok_or_else(|| anyhow::anyhow!("could not get tango project directory"))?
+        .cache_dir()
+        .join("updater"))
 }
 
 const DATA_DIR_NAME: &str = "Tango Testing";
@@ -214,10 +229,6 @@ impl Config {
         self.data_path.join("crashstates")
     }
 
-    pub fn updater_path(&self) -> std::path::PathBuf {
-        self.data_path.join("updater")
-    }
-
     pub fn ensure_dirs(&self) -> Result<(), anyhow::Error> {
         std::fs::create_dir_all(&self.saves_path())?;
         std::fs::create_dir_all(&self.roms_path())?;
@@ -225,7 +236,6 @@ impl Config {
         std::fs::create_dir_all(&self.patches_path())?;
         std::fs::create_dir_all(&self.logs_path())?;
         std::fs::create_dir_all(&self.crashstates_path())?;
-        std::fs::create_dir_all(&self.updater_path())?;
         Ok(())
     }
 }
