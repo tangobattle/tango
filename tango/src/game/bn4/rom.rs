@@ -7,9 +7,11 @@ pub mod modcards;
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
+    chip_descriptions_pointers: u32,
     chip_icon_palette_pointer: u32,
     ncp_data: u32,
     ncp_names_pointer: u32,
+    ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
 }
@@ -18,9 +20,11 @@ pub struct Offsets {
 pub static B4WJ_01: Offsets = Offsets {
     chip_data:                      0x0801972c,
     chip_names_pointers:            0x0804fa6c,
+    chip_descriptions_pointers:     0x0801fd20,
     chip_icon_palette_pointer:      0x080159d4,
     ncp_data:                       0x08045538,
     ncp_names_pointer:              0x0804fa7c,
+    ncp_descriptions_pointer:       0x0803e55c,
     element_icon_palette_pointer:   0x081098ac,
     element_icons_pointer:          0x081098a0,
 };
@@ -29,9 +33,11 @@ pub static B4WJ_01: Offsets = Offsets {
 pub static B4BJ_00: Offsets = Offsets {
     chip_data:                      0x080196f8,
     chip_names_pointers:            0x0804fa3c,
+    chip_descriptions_pointers:     0x0801fce4,
     chip_icon_palette_pointer:      0x080159a0,
     ncp_data:                       0x08045504,
     ncp_names_pointer:              0x0804fa4c,
+    ncp_descriptions_pointer:       0x0803e528,
     element_icon_palette_pointer:   0x0810983c,
     element_icons_pointer:          0x08109830,
 };
@@ -40,9 +46,11 @@ pub static B4BJ_00: Offsets = Offsets {
 pub static B4WE_00: Offsets = Offsets {
     chip_data:                      0x080197ec,
     chip_names_pointers:            0x0804fb74,
+    chip_descriptions_pointers:     0x0801fde0,
     chip_icon_palette_pointer:      0x08015a78,
     ncp_data:                       0x0804563c,
     ncp_names_pointer:              0x0804fb84,
+    ncp_descriptions_pointer:       0x0803e63c,
     element_icon_palette_pointer:   0x08106bd8,
     element_icons_pointer:          0x081099cc,
 };
@@ -51,9 +59,11 @@ pub static B4WE_00: Offsets = Offsets {
 pub static B4BE_00: Offsets = Offsets {
     chip_data:                      0x080197ec,
     chip_names_pointers:            0x0804fb80,
+    chip_descriptions_pointers:     0x0801fde0,
     chip_icon_palette_pointer:      0x08015a78,
     ncp_data:                       0x08045644,
     ncp_names_pointer:              0x0804fb90,
+    ncp_descriptions_pointer:       0x0803e644,
     element_icon_palette_pointer:   0x081099e4,
     element_icons_pointer:          0x081099d8,
 };
@@ -80,7 +90,13 @@ impl Assets {
             extension_op: 0xe4,
             eof_op: 0xe5,
             newline_op: 0xe8,
-            commands: std::collections::HashMap::from([(EREADER_COMMAND, 2)]),
+            commands: std::collections::HashMap::from([
+                (EREADER_COMMAND, 2),
+                (0xe6, 1),
+                (0xe7, 1),
+                (0xed, 3),
+                (0xf0, 2),
+            ]),
         };
 
         let mapper = rom::MemoryMapper::new(rom, wram);
@@ -168,7 +184,31 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: {
+                            let pointer = offsets.chip_descriptions_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
+
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
+                                i,
+                                &text_parse_options,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                                    .replace("\n", " ")
+                            } else {
+                                "???".to_string()
+                            }
+                        },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
@@ -229,7 +269,28 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: if let Ok(parts) = rom::text::parse_entry(
+                            &mapper.get(byteorder::LittleEndian::read_u32(
+                                &mapper.get(offsets.ncp_descriptions_pointer)[..4],
+                            )),
+                            i / 4,
+                            &text_parse_options,
+                        ) {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        rom::text::Part::String(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                                .replace("\n", " ")
+                        } else {
+                            "???".to_string()
+                        },
                         color: [
                             None,
                             Some(rom::NavicustPartColor::White),
