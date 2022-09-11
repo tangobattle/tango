@@ -787,7 +787,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.label("Brazilian Portuguese: ");
 
-                ui.hyperlink_to("Darkgaia", "https://discord.gg/hPrFVaaRrU");
+                ui.hyperlink_to("Darkgaia", "https://ayo.so/darkgaiagames");
 
                 ui.label(", ");
 
