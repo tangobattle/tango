@@ -419,11 +419,6 @@ impl Round {
         self.local_player_index
     }
 
-    #[allow(dead_code)] // TODO
-    pub fn remote_player_index(&self) -> u8 {
-        1 - self.local_player_index
-    }
-
     pub fn set_first_committed_state(
         &mut self,
         state: mgba::state::State,
