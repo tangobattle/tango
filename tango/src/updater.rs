@@ -39,7 +39,6 @@ struct GithubReleaseAssetInfo {
 #[derive(serde::Deserialize)]
 struct GithubReleaseInfo {
     tag_name: String,
-    prerelease: bool,
     assets: Vec<GithubReleaseAssetInfo>,
 }
 
