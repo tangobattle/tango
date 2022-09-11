@@ -1,9 +1,9 @@
-play = Play
-play-play = Play
-play-fight = Fight!
-play-leave = Leave
-play-random = Generate random code
-play-ready = I'm ready!
+play = Chơi
+play-play = Chơi
+play-fight = Đấu!
+play-leave = Thoát
+play-random = Tạo code ngẫu nhiên
+play-ready = Sẵn sàng!
 play-link-code = Link code
 play-no-game = None
 play-no-patch = None
