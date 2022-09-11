@@ -44,5 +44,7 @@ cp ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe .
 
 wixl installer.wxs
 popd
+
+mkdir -p dist
 mv tango_wix_workdir/installer.msi "dist/tango-x86_64-windows.msi"
 rm -rf tango_wix_workdir
