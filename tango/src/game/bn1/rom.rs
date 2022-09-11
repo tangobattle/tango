@@ -142,8 +142,8 @@ impl Assets {
                         image: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x14..0x14 + 4]))
-                                    [..rom::TILE_BYTES * 6 * 7],
-                                6,
+                                    [..rom::TILE_BYTES * 8 * 7],
+                                8,
                             )
                             .unwrap(),
                             &rom::read_palette(

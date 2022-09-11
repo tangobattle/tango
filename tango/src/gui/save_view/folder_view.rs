@@ -5,6 +5,7 @@ use crate::{gui, i18n, rom, save};
 pub struct State {
     grouped: bool,
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
+    chip_image_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
 }
 
@@ -13,6 +14,7 @@ impl State {
         Self {
             grouped: true,
             chip_icon_texture_cache: std::collections::HashMap::new(),
+            chip_image_texture_cache: std::collections::HashMap::new(),
             element_icon_texture_cache: std::collections::HashMap::new(),
         }
     }
@@ -226,7 +228,7 @@ pub fn show<'a>(
                                             .entry(chip.id)
                                             .or_insert_with(|| {
                                                 ui.ctx().load_texture(
-                                                    format!("chip {}", chip.id),
+                                                    format!("chip icon {}", chip.id),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
                                                         &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
@@ -236,7 +238,31 @@ pub fn show<'a>(
                                             })
                                             .id(),
                                         egui::Vec2::new(28.0, 28.0),
-                                    );
+                                    )
+                                    .on_hover_ui(|ui| {
+                                        if let Some(image) = info.map(|info| &info.image) {
+                                            ui.image(
+                                                state
+                                                    .chip_image_texture_cache
+                                                    .entry(chip.id)
+                                                    .or_insert_with(|| {
+                                                        ui.ctx().load_texture(
+                                                            format!("chip image {}", chip.id),
+                                                            egui::ColorImage::from_rgba_unmultiplied(
+                                                                [image.width() as usize, image.height() as usize],
+                                                                &image,
+                                                            ),
+                                                            egui::TextureFilter::Nearest,
+                                                        )
+                                                    })
+                                                    .id(),
+                                                egui::Vec2::new(
+                                                    image.width() as f32 * 2.0,
+                                                    image.height() as f32 * 2.0,
+                                                ),
+                                            );
+                                        }
+                                    });
                                 });
                                 strip.cell(|ui| {
                                     ui.horizontal(|ui| {
