@@ -18,6 +18,7 @@ pub struct Chip {
     pub name: String,
     pub description: String,
     pub icon: image::RgbaImage,
+    pub image: image::RgbaImage,
     pub codes: Vec<u8>,
     pub element: usize,
     pub class: ChipClass,

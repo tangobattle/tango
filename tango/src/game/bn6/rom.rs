@@ -248,6 +248,17 @@ impl Assets {
                             .unwrap(),
                             &chip_icon_palette,
                         ),
+                        image: rom::apply_palette(
+                            rom::read_merged_tiles(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x24..0x24 + 4]))
+                                    [..rom::TILE_BYTES * 6 * 7],
+                                6,
+                            )
+                            .unwrap(),
+                            &rom::read_palette(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x28..0x28 + 4]))[..32],
+                            ),
+                        ),
                         codes: buf[0x00..0x04].iter().cloned().filter(|code| *code != 0xff).collect(),
                         element: buf[0x06] as usize,
                         class: [
