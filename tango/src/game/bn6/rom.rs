@@ -209,7 +209,7 @@ impl Assets {
                                                 params,
                                             } => {
                                                 if let Ok(parts) = rom::text::parse(
-                                                    &mapper.get(0x020007d0 + params[1] as u32 * 100)[6..],
+                                                    &mapper.get(0x020007d6 + params[1] as u32 * 100),
                                                     &text_parse_options,
                                                 ) {
                                                     parts

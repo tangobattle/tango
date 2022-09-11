@@ -163,7 +163,7 @@ impl Assets {
                                                 params,
                                             } => {
                                                 if let Ok(parts) = rom::text::parse(
-                                                    &mapper.get(0x02001d10 + params[1] as u32 * 0x18)[6..],
+                                                    &mapper.get(0x02001d16 + params[1] as u32 * 0x18),
                                                     &text_parse_options,
                                                 ) {
                                                     parts
@@ -210,7 +210,7 @@ impl Assets {
                                                 params,
                                             } => {
                                                 if let Ok(parts) = rom::text::parse(
-                                                    &mapper.get(0x02001370 + params[1] as u32 * 100)[6..],
+                                                    &mapper.get(0x02001376 + params[1] as u32 * 100),
                                                     &text_parse_options,
                                                 ) {
                                                     parts

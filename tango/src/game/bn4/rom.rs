@@ -154,9 +154,8 @@ impl Assets {
                                                 op: EREADER_COMMAND,
                                                 params,
                                             } => {
-                                                if let Ok(parts) = rom::text::parse_entry(
-                                                    &mapper.get(0x02001770 + params[1] as u32 * 0x10),
-                                                    0,
+                                                if let Ok(parts) = rom::text::parse(
+                                                    &mapper.get(0x02001772 + params[1] as u32 * 0x10),
                                                     &text_parse_options,
                                                 ) {
                                                     parts
