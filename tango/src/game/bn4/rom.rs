@@ -226,6 +226,7 @@ impl Assets {
                                         .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
+                                    .replace("-\n", "-")
                                     .replace("\n", " ")
                             } else {
                                 "???".to_string()
@@ -309,6 +310,7 @@ impl Assets {
                                     .collect::<Vec<_>>()
                                 })
                                 .collect::<String>()
+                                .replace("-\n", "-")
                                 .replace("\n", " ")
                         } else {
                             "???".to_string()
