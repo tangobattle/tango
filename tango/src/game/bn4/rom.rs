@@ -87,7 +87,7 @@ impl Assets {
     ) -> Self {
         let text_parse_options = rom::text::ParseOptions {
             charset,
-            extension_op: 0xe4,
+            extension_ops: 0xe4..=0xe4,
             eof_op: 0xe5,
             newline_op: 0xe8,
             commands: std::collections::HashMap::from([

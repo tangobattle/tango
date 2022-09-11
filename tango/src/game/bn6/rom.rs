@@ -110,7 +110,7 @@ impl Assets {
             } else {
                 default_charset
             },
-            extension_op: 0xe4,
+            extension_ops: 0xe4..=0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
             commands: std::collections::HashMap::from([

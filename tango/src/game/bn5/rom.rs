@@ -95,7 +95,7 @@ impl Assets {
     pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
         let text_parse_options = rom::text::ParseOptions {
             charset,
-            extension_op: 0xe4,
+            extension_ops: 0xe4..=0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
             commands: std::collections::HashMap::from([

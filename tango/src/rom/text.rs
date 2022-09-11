@@ -11,7 +11,7 @@ pub enum Part {
 
 pub struct ParseOptions<'a> {
     pub charset: &'a [&'a str],
-    pub extension_op: u8,
+    pub extension_ops: std::ops::RangeInclusive<u8>,
     pub eof_op: u8,
     pub newline_op: u8,
     pub commands: std::collections::HashMap<u8, usize>,
@@ -44,7 +44,7 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
             parts.push(Part::Command { op, params });
         } else {
             let mut c = op as usize;
-            if op == options.extension_op {
+            if options.extension_ops.contains(&op) {
                 c += buf.read_u8()? as usize;
             }
             out_buf.push_str(options.charset.get(c).unwrap_or(&"�"));
