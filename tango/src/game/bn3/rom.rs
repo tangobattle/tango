@@ -5,9 +5,11 @@ use crate::rom;
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
+    chip_descriptions_pointers: u32,
     chip_icon_palette_pointer: u32,
     ncp_data: u32,
     ncp_names_pointer: u32,
+    ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     key_items_names_pointer: u32,
@@ -17,11 +19,13 @@ pub struct Offsets {
 pub static A6BJ_01: Offsets = Offsets {
     chip_data:                      0x08011474,
     chip_names_pointers:            0x08027c34,
+    chip_descriptions_pointers:     0x0800e3e8,
     chip_icon_palette_pointer:      0x080335ec,
     element_icon_palette_pointer:   0x080335ec,
     element_icons_pointer:          0x080335e0,
     ncp_data:                       0x080398d8,
     ncp_names_pointer:              0x08027c44,
+    ncp_descriptions_pointer:       0x0802ef4c,
     key_items_names_pointer:        0x08027c30,
 };
 
@@ -29,11 +33,13 @@ pub static A6BJ_01: Offsets = Offsets {
 pub static A3XJ_01: Offsets = Offsets {
     chip_data:                      0x08011474,
     chip_names_pointers:            0x08027c1c,
+    chip_descriptions_pointers:     0x0800e3e8,
     chip_icon_palette_pointer:      0x080335d4,
     element_icon_palette_pointer:   0x080335d4,
     element_icons_pointer:          0x080335c8,
     ncp_data:                       0x080398c0,
     ncp_names_pointer:              0x08027c2c,
+    ncp_descriptions_pointer:       0x0802ef34,
     key_items_names_pointer:        0x08027c18,
 };
 
@@ -41,11 +47,13 @@ pub static A3XJ_01: Offsets = Offsets {
 pub static A6BE_00: Offsets = Offsets {
     chip_data:                      0x08011510,
     chip_names_pointers:            0x08027ad4,
+    chip_descriptions_pointers:     0x0800e46c,
     chip_icon_palette_pointer:      0x08033134,
     element_icon_palette_pointer:   0x08033134,
     element_icons_pointer:          0x08033128,
     ncp_data:                       0x08039420,
     ncp_names_pointer:              0x08027ae4,
+    ncp_descriptions_pointer:       0x0802ea94,
     key_items_names_pointer:        0x08027ad0,
 };
 
@@ -53,11 +61,13 @@ pub static A6BE_00: Offsets = Offsets {
 pub static A3XE_00: Offsets = Offsets {
     chip_data:                      0x08011510,
     chip_names_pointers:            0x08027abc,
+    chip_descriptions_pointers:     0x0800e46c,
     chip_icon_palette_pointer:      0x0803311c,
     element_icon_palette_pointer:   0x0803311c,
     element_icons_pointer:          0x08033110,
     ncp_data:                       0x08039408,
     ncp_names_pointer:              0x08027acc,
+    ncp_descriptions_pointer:       0x0802ea7c,
     key_items_names_pointer:        0x08027ab8,
 };
 
@@ -140,7 +150,32 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: {
+                            let pointer = offsets.chip_descriptions_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
+
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
+                                i,
+                                &text_parse_options,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                                    .replace("-\n", "-")
+                                    .replace("\n", " ")
+                            } else {
+                                "???".to_string()
+                            }
+                        },
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x14..0x14 + 4]))
@@ -201,7 +236,29 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
-                        description: "".to_string(),
+                        description: if let Ok(parts) = rom::text::parse_entry(
+                            &mapper.get(byteorder::LittleEndian::read_u32(
+                                &mapper.get(offsets.ncp_descriptions_pointer)[..4],
+                            )),
+                            i / 4,
+                            &text_parse_options,
+                        ) {
+                            parts
+                                .into_iter()
+                                .flat_map(|part| {
+                                    match part {
+                                        rom::text::Part::String(s) => s,
+                                        _ => "".to_string(),
+                                    }
+                                    .chars()
+                                    .collect::<Vec<_>>()
+                                })
+                                .collect::<String>()
+                                .replace("-\n", "-")
+                                .replace("\n", " ")
+                        } else {
+                            "???".to_string()
+                        },
                         color: [
                             None,
                             Some(rom::NavicustPartColor::White),
