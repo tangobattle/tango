@@ -131,7 +131,6 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
         .await?;
 
     let root = root.to_path_buf();
-    // Allow 4 concurrent downloads.
     filesync::sync(
         &root,
         &entries,
