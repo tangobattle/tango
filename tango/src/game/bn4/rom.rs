@@ -197,6 +197,29 @@ impl Assets {
                                     .flat_map(|part| {
                                         match part {
                                             rom::text::Part::String(s) => s,
+                                            rom::text::Part::Command {
+                                                op: EREADER_COMMAND,
+                                                params,
+                                            } => {
+                                                if let Ok(parts) = rom::text::parse(
+                                                    &mapper.get(0x02000522 + params[1] as u32 * 0x5c),
+                                                    &text_parse_options,
+                                                ) {
+                                                    parts
+                                                        .into_iter()
+                                                        .flat_map(|part| {
+                                                            match part {
+                                                                rom::text::Part::String(s) => s,
+                                                                _ => "".to_string(),
+                                                            }
+                                                            .chars()
+                                                            .collect::<Vec<_>>()
+                                                        })
+                                                        .collect::<String>()
+                                                } else {
+                                                    "???".to_string()
+                                                }
+                                            }
                                             _ => "".to_string(),
                                         }
                                         .chars()
