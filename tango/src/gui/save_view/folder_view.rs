@@ -243,19 +243,34 @@ pub fn show<'a>(
                                         ui.horizontal(|ui| {
                                             ui.spacing_mut().item_spacing.x = 0.0;
                                             if let Some(chip) = chip.as_ref() {
-                                                ui.label(
+                                                let mut layout_job = egui::text::LayoutJob::default();
+                                                let mut name_style =
+                                                    ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone();
+                                                name_style.family = font_families.for_language(game_lang);
+                                                layout_job.append(
+                                                    info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                                    0.0,
+                                                    egui::TextFormat::simple(name_style, ui.visuals().text_color()),
+                                                );
+                                                layout_job.append(
+                                                    &format!(" {}", chips_view.chip_codes()[chip.code] as char),
+                                                    0.0,
+                                                    egui::TextFormat::simple(
+                                                        ui.style()
+                                                            .text_styles
+                                                            .get(&egui::TextStyle::Body)
+                                                            .unwrap()
+                                                            .clone(),
+                                                        ui.visuals().text_color(),
+                                                    ),
+                                                );
+
+                                                ui.label(layout_job).on_hover_text(
                                                     egui::RichText::new(
-                                                        info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                                        info.map(|info| info.description.as_str()).unwrap_or("???"),
                                                     )
                                                     .color(fg_color.unwrap_or(ui.visuals().text_color()))
                                                     .family(font_families.for_language(game_lang)),
-                                                );
-                                                ui.label(
-                                                    egui::RichText::new(format!(
-                                                        " {}",
-                                                        chips_view.chip_codes()[chip.code] as char
-                                                    ))
-                                                    .color(fg_color.unwrap_or(ui.visuals().text_color())),
                                                 );
                                             } else {
                                                 ui.label("???");

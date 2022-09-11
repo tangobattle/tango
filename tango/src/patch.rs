@@ -61,11 +61,13 @@ where
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct ChipOverride {
     pub name: String,
+    pub description: String,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
 pub struct NavicustPartOverride {
     pub name: String,
+    pub description: String,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]

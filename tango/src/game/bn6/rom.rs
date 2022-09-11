@@ -5,9 +5,11 @@ use crate::{patch, rom};
 pub struct Offsets {
     chip_data: u32,
     chip_names_pointers: u32,
+    chip_descriptions_pointers: u32,
     chip_icon_palette_pointer: u32,
     ncp_data: u32,
     ncp_names_pointer: u32,
+    ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     modcard_data: u32,
@@ -19,9 +21,11 @@ pub struct Offsets {
 pub static BR5J_00: Offsets = Offsets {
     chip_data:                      0x080221bc,
     chip_names_pointers:            0x08043274,
+    chip_descriptions_pointers:     0x08028164,
     chip_icon_palette_pointer:      0x0801f144,
     ncp_data:                       0x081460cc,
     ncp_names_pointer:              0x08043284,
+    ncp_descriptions_pointer:       0x08139240,
     element_icon_palette_pointer:   0x081226e4,
     element_icons_pointer:          0x081226dc,
     modcard_data:                   0x08144778,
@@ -33,9 +37,11 @@ pub static BR5J_00: Offsets = Offsets {
 pub static BR6J_00: Offsets = Offsets {
     chip_data:                      0x080221bc,
     chip_names_pointers:            0x080432a4,
+    chip_descriptions_pointers:     0x08028164,
     chip_icon_palette_pointer:      0x0801f144,
     ncp_data:                       0x08144300,
     ncp_names_pointer:              0x080432b4,
+    ncp_descriptions_pointer:       0x08137478,
     element_icon_palette_pointer:   0x081213c4,
     element_icons_pointer:          0x081213bc,
     modcard_data:                   0x081429b0,
@@ -47,9 +53,11 @@ pub static BR6J_00: Offsets = Offsets {
 pub static BR5E_00: Offsets = Offsets {
     chip_data:                      0x08021da8,
     chip_names_pointers:            0x08042038,
+    chip_descriptions_pointers:     0x08027d50,
     chip_icon_palette_pointer:      0x0801ed20,
     ncp_data:                       0x0813b22c,
     ncp_names_pointer:              0x08042048,
+    ncp_descriptions_pointer:       0x08130878,
     element_icon_palette_pointer:   0x0811a9a4,
     element_icons_pointer:          0x0811a99c,
     modcard_data:                   0,
@@ -61,9 +69,11 @@ pub static BR5E_00: Offsets = Offsets {
 pub static BR6E_00: Offsets = Offsets {
     chip_data:                      0x08021da8,
     chip_names_pointers:            0x08042068,
+    chip_descriptions_pointers:     0x08027d50,
     chip_icon_palette_pointer:      0x0801ed20,
     ncp_data:                       0x0813944c,
     ncp_names_pointer:              0x08042078,
+    ncp_descriptions_pointer:       0x0812ea9c,
     element_icon_palette_pointer:   0x08119674,
     element_icons_pointer:          0x0811966c,
     modcard_data:                   0,
@@ -72,6 +82,7 @@ pub static BR6E_00: Offsets = Offsets {
 };
 
 const PRINT_VAR_COMMAND: u8 = 0xfa;
+const EREADER_COMMAND: u8 = 0xff;
 
 pub struct Assets {
     element_icons: [image::RgbaImage; 11],
@@ -102,7 +113,14 @@ impl Assets {
             extension_op: 0xe4,
             eof_op: 0xe6,
             newline_op: 0xe9,
-            commands: std::collections::HashMap::from([(PRINT_VAR_COMMAND, 3)]),
+            commands: std::collections::HashMap::from([
+                (PRINT_VAR_COMMAND, 3),
+                (EREADER_COMMAND, 2),
+                (0xe7, 1),
+                (0xe8, 3),
+                (0xee, 3),
+                (0xf1, 2),
+            ]),
         };
 
         let mapper = rom::MemoryMapper::new(rom, wram);
@@ -163,6 +181,59 @@ impl Assets {
                                         .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
+                            } else {
+                                "???".to_string()
+                            }
+                        },
+                        description: if let Some(chips) = overrides.chips.as_ref() {
+                            chips
+                                .get(i)
+                                .map(|chip| chip.description.clone())
+                                .unwrap_or("???".to_string())
+                        } else {
+                            let pointer = offsets.chip_descriptions_pointers + ((i / 0x100) * 4) as u32;
+                            let i = i % 0x100;
+
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
+                                i,
+                                &text_parse_options,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::String(s) => s,
+                                            rom::text::Part::Command {
+                                                op: EREADER_COMMAND,
+                                                params,
+                                            } => {
+                                                if let Ok(parts) = rom::text::parse(
+                                                    &mapper.get(0x020007d0 + params[1] as u32 * 100)[6..],
+                                                    &text_parse_options,
+                                                ) {
+                                                    parts
+                                                        .into_iter()
+                                                        .flat_map(|part| {
+                                                            match part {
+                                                                rom::text::Part::String(s) => s,
+                                                                _ => "".to_string(),
+                                                            }
+                                                            .chars()
+                                                            .collect::<Vec<_>>()
+                                                        })
+                                                        .collect::<String>()
+                                                } else {
+                                                    "???".to_string()
+                                                }
+                                            }
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                                    .replace("\n", " ")
                             } else {
                                 "???".to_string()
                             }
@@ -228,6 +299,35 @@ impl Assets {
                                         .collect::<Vec<_>>()
                                     })
                                     .collect::<String>()
+                            } else {
+                                "???".to_string()
+                            }
+                        },
+                        description: if let Some(navicust_parts) = overrides.navicust_parts.as_ref() {
+                            navicust_parts
+                                .get(i / 4)
+                                .map(|ncp| ncp.description.clone())
+                                .unwrap_or("???".to_string())
+                        } else {
+                            if let Ok(parts) = rom::text::parse_entry(
+                                &mapper.get(byteorder::LittleEndian::read_u32(
+                                    &mapper.get(offsets.ncp_descriptions_pointer)[..4],
+                                )),
+                                i / 4,
+                                &text_parse_options,
+                            ) {
+                                parts
+                                    .into_iter()
+                                    .flat_map(|part| {
+                                        match part {
+                                            rom::text::Part::String(s) => s,
+                                            _ => "".to_string(),
+                                        }
+                                        .chars()
+                                        .collect::<Vec<_>>()
+                                    })
+                                    .collect::<String>()
+                                    .replace("\n", " ")
                             } else {
                                 "???".to_string()
                             }

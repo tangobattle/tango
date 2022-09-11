@@ -16,6 +16,7 @@ pub enum ChipClass {
 #[derive(Clone, Debug)]
 pub struct Chip {
     pub name: String,
+    pub description: String,
     pub icon: image::RgbaImage,
     pub codes: Vec<u8>,
     pub element: usize,
@@ -67,6 +68,7 @@ pub type NavicustBitmap = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
 #[derive(Clone, Debug)]
 pub struct NavicustPart {
     pub name: String,
+    pub description: String,
     pub color: Option<NavicustPartColor>,
     pub is_solid: bool,
     pub compressed_bitmap: NavicustBitmap,

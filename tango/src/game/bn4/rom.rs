@@ -168,6 +168,7 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
+                        description: "".to_string(),
                         icon: rom::apply_palette(
                             rom::read_merged_tiles(
                                 &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
@@ -228,6 +229,7 @@ impl Assets {
                                 "???".to_string()
                             }
                         },
+                        description: "".to_string(),
                         color: [
                             None,
                             Some(rom::NavicustPartColor::White),

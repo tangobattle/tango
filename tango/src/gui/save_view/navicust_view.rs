@@ -51,7 +51,13 @@ fn navicust_part_colors(color: &rom::NavicustPartColor) -> (egui::Color32, egui:
     }
 }
 
-fn show_part_name(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, color: &rom::NavicustPartColor) {
+fn show_part_name(
+    ui: &mut egui::Ui,
+    name: egui::RichText,
+    description: egui::RichText,
+    is_enabled: bool,
+    color: &rom::NavicustPartColor,
+) {
     egui::Frame::none()
         .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
         .rounding(egui::Rounding::same(2.0))
@@ -62,7 +68,9 @@ fn show_part_name(ui: &mut egui::Ui, name: egui::RichText, is_enabled: bool, col
         })
         .show(ui, |ui| {
             ui.label(name.color(egui::Color32::BLACK));
-        });
+        })
+        .response
+        .on_hover_text(description);
 }
 
 pub fn show<'a>(
@@ -137,6 +145,7 @@ pub fn show<'a>(
                 show_part_name(
                     ui,
                     egui::RichText::new(&info.name).family(font_families.for_language(game_lang)),
+                    egui::RichText::new(&info.description).family(font_families.for_language(game_lang)),
                     true,
                     color,
                 );
@@ -148,6 +157,7 @@ pub fn show<'a>(
                 show_part_name(
                     ui,
                     egui::RichText::new(&info.name).family(font_families.for_language(game_lang)),
+                    egui::RichText::new(&info.description).family(font_families.for_language(game_lang)),
                     true,
                     color,
                 );
