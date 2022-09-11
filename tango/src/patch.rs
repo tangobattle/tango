@@ -120,10 +120,7 @@ lazy_static! {
     static ref PATCH_FILENAME_REGEX: regex::Regex = regex::Regex::new(r"^(\S{4})_(\d{2}).bps$").unwrap();
 }
 
-pub async fn update(
-    url: &String,
-    root: &std::path::Path,
-) -> Result<std::collections::BTreeMap<String, Patch>, anyhow::Error> {
+pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::Error> {
     let client = reqwest::Client::new();
     let entries = client
         .get(format!("{}/index.json", url))
@@ -135,44 +132,42 @@ pub async fn update(
 
     let root = root.to_path_buf();
     // Allow 4 concurrent downloads.
-    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
-    filesync::sync(&root, &entries, {
-        let url = url.clone();
-        let root = root.clone();
-        let sem = sem.clone();
-        move |path| {
+    filesync::sync(
+        &root,
+        &entries,
+        {
             let url = url.clone();
             let root = root.clone();
-            let sem = sem.clone();
-            Box::pin(async move {
-                let _permit = sem
-                    .acquire()
-                    .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-                let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
-                let client = reqwest::Client::new();
-                let mut stream = client
-                    .get(format!(
-                        "{}/{}",
-                        url,
-                        path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
-                    ))
-                    .header("User-Agent", "tango")
-                    .send()
-                    .await
-                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                    .bytes_stream();
-                while let Some(chunk) = stream.next().await {
-                    let chunk = chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-                    output_file.write_all(&chunk).await?;
-                }
-                log::info!("filesynced: {}", path.display());
-                Ok(())
-            })
-        }
-    })
+            move |path| {
+                let url = url.clone();
+                let root = root.clone();
+                Box::pin(async move {
+                    let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
+                    let client = reqwest::Client::new();
+                    let mut stream = client
+                        .get(format!(
+                            "{}/{}",
+                            url,
+                            path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
+                        ))
+                        .header("User-Agent", "tango")
+                        .send()
+                        .await
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                        .bytes_stream();
+                    while let Some(chunk) = stream.next().await {
+                        let chunk = chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                        output_file.write_all(&chunk).await?;
+                    }
+                    log::info!("filesynced: {}", path.display());
+                    Ok(())
+                })
+            }
+        },
+        4,
+    )
     .await?;
-    Ok(scan(&root)?)
+    Ok(())
 }
 
 pub fn scan(path: &std::path::Path) -> Result<std::collections::BTreeMap<String, Patch>, std::io::Error> {
@@ -372,12 +367,11 @@ impl Autoupdater {
 
                     let patches_scanner = patches_scanner.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        patches_scanner.rescan(move || match sync::block_on(update(&repo_url, &patches_path)) {
-                            Ok(patches) => Some(patches),
-                            Err(e) => {
+                        patches_scanner.rescan(move || {
+                            if let Err(e) = sync::block_on(update(&repo_url, &patches_path)) {
                                 log::error!("failed to update patches: {:?}", e);
-                                return None;
                             }
+                            scan(&patches_path).ok()
                         });
                         log::info!("patch autoupdate completed");
                     })

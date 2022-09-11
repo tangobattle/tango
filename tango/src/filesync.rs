@@ -16,6 +16,7 @@ async fn sync_entry(
     path: &std::path::Path,
     entry: &Entry,
     fetch_cb: &(impl Fn(&std::path::Path) -> futures::future::BoxFuture<std::io::Result<()>> + Send + Sync),
+    sem: std::sync::Arc<tokio::sync::Semaphore>,
 ) -> std::io::Result<()> {
     let real_path = root.join(path);
 
@@ -33,13 +34,18 @@ async fn sync_entry(
 
             futures::future::join_all(entries.iter().map(|(filename, child)| {
                 let filename = filename.clone();
-                async { Ok::<_, std::io::Error>(sync_entry(root, &path.join(filename), child, fetch_cb).await?) }
+                let sem = sem.clone();
+                async { Ok::<_, std::io::Error>(sync_entry(root, &path.join(filename), child, fetch_cb, sem).await?) }
             }))
             .await
             .into_iter()
             .collect::<Result<_, _>>()?;
         }
         Entry::File(hash) => {
+            let _permit = sem
+                .acquire()
+                .await
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             let needs_fetch = match tokio::fs::metadata(&real_path).await {
                 Ok(_) => {
                     let mut f = tokio::fs::File::open(&real_path).await?;
@@ -74,11 +80,15 @@ pub async fn sync(
     root: &std::path::Path,
     entries: &Entries,
     fetch_cb: impl Fn(&std::path::Path) -> futures::future::BoxFuture<std::io::Result<()>> + Send + Sync,
+    concurrency_level: usize,
 ) -> std::io::Result<()> {
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(concurrency_level));
+
     futures::future::join_all(entries.iter().map(|(filename, child)| {
+        let sem = sem.clone();
         let path = std::path::PathBuf::from(filename.clone());
         let fetch_cb = &fetch_cb;
-        async move { Ok::<_, std::io::Error>(sync_entry(root, &path, child, fetch_cb).await?) }
+        async move { Ok::<_, std::io::Error>(sync_entry(root, &path, child, fetch_cb, sem).await?) }
     }))
     .await
     .into_iter()

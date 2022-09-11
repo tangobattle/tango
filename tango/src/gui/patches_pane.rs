@@ -34,18 +34,21 @@ pub fn show(
                     let repo_url = repo_url.to_owned();
                     let patches_path = patches_path.to_path_buf();
                     move || {
-                        patches_scanner.rescan(move || match sync::block_on(patch::update(&repo_url, &patches_path)) {
-                            Ok(patches) => Some(patches),
-                            Err(e) => {
+                        patches_scanner.rescan(move || {
+                            if let Err(e) = sync::block_on(patch::update(&repo_url, &patches_path)) {
                                 log::error!("failed to update patches: {:?}", e);
-                                return None;
                             }
+                            patch::scan(&patches_path).ok()
                         });
                         egui_ctx.request_repaint();
                     }
                 });
             }
         });
+
+        if patches_scanner.is_scanning() {
+            ui.spinner();
+        }
     });
 
     ui.separator();
