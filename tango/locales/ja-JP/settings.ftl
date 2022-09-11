@@ -41,5 +41,5 @@ settings-audio-backend = オーディオバックエンド（再起動が必要�
     .sdl2 = SDL2（安全）
     .cpal = cpal（実験的）
 settings-volume = 音量
-settings-enable-updater = Enable updater
-settings-allow-prerelease-upgrades = Allow prerelease upgrades
+settings-enable-updater = 自動更新を許可
+settings-allow-prerelease-upgrades = プレリリースアップグレードを許可
