@@ -165,7 +165,6 @@ impl Updater {
                                 if r.tag_name.chars().next() != Some('v') {
                                     return vec![];
                                 }
-
                                 let v = if let Ok(v) = r.tag_name[1..].parse::<semver::Version>() {
                                     v
                                 } else {
