@@ -63,6 +63,7 @@ pub fn show(
                                 .lookup(&config.language, "welcome-step-1-description")
                                 .unwrap(),
                         );
+                        ui.monospace(format!("{}", config.roms_path().display()));
                         ui.horizontal(|ui| {
                             if ui
                                 .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
@@ -104,6 +105,7 @@ pub fn show(
                                 .lookup(&config.language, "welcome-step-2-description")
                                 .unwrap(),
                         );
+                        ui.monospace(format!("{}", config.saves_path().display()));
                         ui.horizontal(|ui| {
                             if ui
                                 .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
