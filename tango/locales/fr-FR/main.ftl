@@ -1,10 +1,10 @@
 crash =
-    Oops, Tango has encountered an error and has crashed!
+    Oups, Tango a rencontré une erreur et a planté !
     
-    When reporting this crash, please include the following log file:
+    Lorsque vous signalez ce plantage, veuillez inclure le log suivant :
     
     { $path }
 crash-no-log =
-    Oops, Tango has encountered an error and has crashed!
+    Oups, Tango a rencontré une erreur et a planté !
     
     { $error }
