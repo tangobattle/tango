@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 use fluent_templates::Loader;
 
 use crate::{game, i18n};
