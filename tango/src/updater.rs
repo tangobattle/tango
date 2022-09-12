@@ -58,7 +58,7 @@ fn is_target_installer(s: &str) -> bool {
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
 fn is_target_installer(s: &str) -> bool {
-    s.ends_with("-x86_64-windows.msi")
+    s.ends_with("-x86_64-windows.exe")
 }
 
 const INCOMPLETE_FILENAME: &str = "incomplete";
@@ -69,9 +69,9 @@ const PENDING_FILENAME: &str = "pending.dmg";
 const IN_PROGRESS_FILENAME: &str = "in_progress.dmg";
 
 #[cfg(target_os = "windows")]
-const PENDING_FILENAME: &str = "pending.msi";
+const PENDING_FILENAME: &str = "pending.exe";
 #[cfg(target_os = "windows")]
-const IN_PROGRESS_FILENAME: &str = "in_progress.msi";
+const IN_PROGRESS_FILENAME: &str = "in_progress.exe";
 
 #[cfg(target_os = "macos")]
 fn do_update(path: &std::path::Path) {
@@ -86,15 +86,12 @@ fn do_update(path: &std::path::Path) {
     use std::os::windows::process::CommandExt;
     const DETACHED_PROCESS: u32 = 0x00000008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
-    let mut command = std::process::Command::new("msiexec");
+    let mut command = std::process::Command::new(path);
     command
-        .arg("/passive")
-        .arg("/i")
-        .arg(path)
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .unwrap();
-    // Is this racy? Can we exit before msiexec finishes?
+    // Is this racy? Can we exit before the installer finishes?
     std::process::exit(0);
 }
 

@@ -23,7 +23,7 @@ jobs:
                   key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo apt install -y wixl mingw-w64 imagemagick wget libarchive-tools
+                  sudo apt install -y nsis mingw-w64 imagemagick wget libarchive-tools
 
             - run: >
                   sudo pip3 install semver==3.0.0-dev3 toml
@@ -49,8 +49,8 @@ jobs:
                   GITHUB_TOKEN: ${{ github.token }}
               with:
                   upload_url: ${{ github.event.release.upload_url }}
-                  asset_path: ./dist/tango-x86_64-windows.msi
-                  asset_name: tango-${{ github.ref_name }}-x86_64-windows.msi
+                  asset_path: ./dist/tango-x86_64-windows.exe
+                  asset_name: tango-${{ github.ref_name }}-x86_64-windows.exe
                   asset_content_type: application/octet-stream
 
     release-mac-universal:

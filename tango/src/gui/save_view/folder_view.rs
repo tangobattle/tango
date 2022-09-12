@@ -284,7 +284,10 @@ pub fn show<'a>(
                                                         .map(|info| info.name())
                                                         .unwrap_or_else(|| "???".to_string()),
                                                     0.0,
-                                                    egui::TextFormat::simple(name_style, ui.visuals().text_color()),
+                                                    egui::TextFormat::simple(
+                                                        name_style,
+                                                        fg_color.unwrap_or(ui.visuals().text_color()),
+                                                    ),
                                                 );
                                                 layout_job.append(
                                                     &format!(" {}", chips_view.chip_codes()[chip.code] as char),
@@ -295,7 +298,7 @@ pub fn show<'a>(
                                                             .get(&egui::TextStyle::Body)
                                                             .unwrap()
                                                             .clone(),
-                                                        ui.visuals().text_color(),
+                                                        fg_color.unwrap_or(ui.visuals().text_color()),
                                                     ),
                                                 );
 
@@ -305,7 +308,6 @@ pub fn show<'a>(
                                                             .map(|info| info.description())
                                                             .unwrap_or_else(|| "???".to_string()),
                                                     )
-                                                    .color(fg_color.unwrap_or(ui.visuals().text_color()))
                                                     .family(font_families.for_language(game_lang)),
                                                 );
                                             } else {

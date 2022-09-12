@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Cleanup.
 function cleanup {
-    rm -rf Tango.iconset tango_wix_workdir
+    rm -rf Tango.iconset tango_win_workdir
 }
 trap cleanup EXIT
 cleanup
@@ -23,10 +23,10 @@ rm -rf Tango.iconset
 # Build Windows binaries.
 cargo build --bin tango --release --target x86_64-pc-windows-gnu
 
-# Build MSI.
-mkdir tango_wix_workdir
-"$(dirname "${BASH_SOURCE[0]}")/generate_wxs.py" >tango_wix_workdir/installer.wxs
-pushd tango_wix_workdir
+# Build installer.
+mkdir tango_win_workdir
+"$(dirname "${BASH_SOURCE[0]}")/generate_nsh.py" >tango_win_workdir/installer.nsh
+pushd tango_win_workdir
 
 cp ../tango/icon.ico .
 cp ../target/x86_64-pc-windows-gnu/release/tango.exe .
@@ -42,9 +42,9 @@ mkdir ffmpeg
 wget -O - "${FFMPEG_ZIP_URL}" | bsdtar -Cffmpeg -xvf- ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
 cp ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe .
 
-wixl installer.wxs
+makensis installer.nsh
 popd
 
 mkdir -p dist
-mv tango_wix_workdir/installer.msi "dist/tango-x86_64-windows.msi"
-rm -rf tango_wix_workdir
+mv tango_win_workdir/installer.exe "dist/tango-x86_64-windows.exe"
+rm -rf tango_win_workdir
