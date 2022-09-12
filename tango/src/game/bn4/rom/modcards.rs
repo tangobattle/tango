@@ -1,6 +1,4 @@
-use crate::rom;
-
-pub fn for_language(language: &unic_langid::LanguageIdentifier) -> Option<&'static [rom::Modcard4; 133]> {
+pub fn for_language(language: &unic_langid::LanguageIdentifier) -> Option<&'static [super::Modcard4; 133]> {
     if language.matches(&unic_langid::langid!("ja"), false, true) {
         Some(JA_MODCARDS)
     } else if language.matches(&unic_langid::langid!("en"), false, true) {
@@ -10,1600 +8,1600 @@ pub fn for_language(language: &unic_langid::LanguageIdentifier) -> Option<&'stat
     }
 }
 
-pub const JA_MODCARDS: &[rom::Modcard4; 133] = &[
-    rom::Modcard4 {
+pub const JA_MODCARDS: &[super::Modcard4; 133] = &[
+    super::Modcard4 {
         name: "ウェポンチェンジ",
         slot: 0,
         effect: "Bボタンでミニボムを投げる",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+100",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 2,
         effect: "ロックマンの最大HPを+100",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+150",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+150",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+200",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+200",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 2,
         effect: "ロックマンの最大HPを+250",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+250",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+300",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+300",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ファーストバリア100",
         slot: 2,
         effect: "戦闘開始からバリア100がつく",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスターを改造",
         slot: 0,
         effect: "バスター攻撃にブラインド効果追加",
         bug: Some("エリア前方に引き寄せられる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスターを改造",
         slot: 0,
         effect: "バスター攻撃にクサムラ効果追加",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "パネルチェンジ",
         slot: 3,
         effect: "ロックマンが歩いたパネルをメタルパネルに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "パネルチェンジ",
         slot: 3,
         effect: "ロックマンが歩いたパネルをひびパネルに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "パネルチェンジ",
         slot: 3,
         effect: "ロックマンが歩いたパネルを穴パネルに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "カスタム2",
         slot: 0,
         effect: "カスタム画面で選べるチップの枚数を+2",
         bug: Some("カスタム画面でHPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "メガフォルダ2",
         slot: 3,
         effect: "フォルダに入れられるメガクラスチップの枚数を+1",
         bug: Some("カスタム画面で選べるチップの枚数が-1"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスター攻撃力10",
         slot: 0,
         effect: "ロックバスターの攻撃力を10に",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをガッツマシンガンに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをキャノンに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをミニボムに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをヒートショットに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをバブルショットに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをサンダーボールに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをソードに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをスプレッドガンに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET画面カラー変更",
         slot: 5,
         effect: "PET画面のカラーを青に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET画面カラー変更",
         slot: 5,
         effect: "PET画面のカラーをピンクに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET画面カラー変更",
         slot: 5,
         effect: "PET画面のカラーを緑に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+350",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 2,
         effect: "ロックマンの最大HPを+350",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+400",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+400",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+450",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 2,
         effect: "ロックマンの最大HPを+450",
         bug: Some("混乱状態になる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 4,
         effect: "ロックマンの最大HPを+500",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+500",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でエアシュート発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でトラップ発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でバグボム発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でクラックアウト発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスターを改造",
         slot: 0,
         effect: "バスター攻撃にクラックアウト効果追加",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスターを改造",
         slot: 0,
         effect: "バスター攻撃にポイズン効果追加",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "デフォルトフルシンクロ",
         slot: 2,
         effect: "戦闘開始からフルシンクロ状態",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ファーストバリア200",
         slot: 2,
         effect: "戦闘開始からバリア200がつく",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウェポンチェンジ",
         slot: 0,
         effect: "Bボタンでメットガード1",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウェポンチェンジ",
         slot: 0,
         effect: "Bボタンでクラックアウト",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスター攻撃力15",
         slot: 0,
         effect: "ロックバスターの攻撃力を15に",
         bug: Some("混乱状態になる、戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ギガフォルダ1",
         slot: 1,
         effect: "フォルダに入れられるギガクラスチップの枚数を+1",
         bug: Some("カスタム画面で選べるチップの枚数が-1"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをコピーダメージに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをワイドショット1に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをブリザードに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをヒートブレスに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをエレキショックに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをウッディパウダーに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをパネルリターンに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをワイドソードに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ロックマンカラーを変更",
         slot: 2,
         effect: "ロックマンの体の色を赤に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ロックマンカラーを変更",
         slot: 2,
         effect: "ロックマンの体の色を黄色に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+550",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 3,
         effect: "ロックマンの最大HPを+550",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 2,
         effect: "ロックマンの最大HPを+600",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+600",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 4,
         effect: "ロックマンの最大HPを+650",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+650",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+700",
         bug: Some("混乱状態になる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でメガエナジーボム発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でリカバリー10発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でパネルリターン発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でスーパーキタカゼ発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でバンブーランス発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でダブルクラック発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "トリプルサポーター1/2",
         slot: 1,
         effect: "ラッシュ、ビート、タンゴの3つのサポートが装備される",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "トリプルサポーター2/2",
         slot: 2,
         effect: "ラッシュ、ビート、タンゴの3つのサポートが装備される",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "オールガード1/2",
         slot: 2,
         effect: "ブレイク、毒系以外の攻撃を完全無効化",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "オールガード1/2",
         slot: 3,
         effect: "ブレイク、毒系以外の攻撃を完全無効化",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ファーストドリームオーラ",
         slot: 2,
         effect: "戦闘開始からドリームオーラがつく",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをダークホールに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをワイドショット2に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをラビリングに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをサンドリングに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをエナジーボムに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをサンダーボール2に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをリペアーに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをトリプルクラックに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをロングソードに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET画面カラー変更",
         slot: 5,
         effect: "PET画面のカラーを黒に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ロックマンカラーを変更",
         slot: 2,
         effect: "ロックマンの体の色を白に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ロックマンカラーを変更",
         slot: 2,
         effect: "ロックマンの体の色を緑色に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+700",
         bug: Some("歩いたパネルが毒パネルになる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+750",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+750",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+800",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+800",
         bug: Some("歩いたパネルが毒パネルになる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 0,
         effect: "ロックマンの最大HPを+850",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+850",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 4,
         effect: "ロックマンの最大HPを+900",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+900",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 1,
         effect: "ロックマンの最大HPを+950",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "マックスHPを強化",
         slot: 4,
         effect: "ロックマンの最大HPを+1000",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "バスターを改造",
         slot: 0,
         effect: "バスター攻撃にアイス効果追加",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージフルカスタム1/2",
         slot: 3,
         effect: "チャージショットがフルカスタムになる",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージフルカスタム2/2",
         slot: 4,
         effect: "チャージショットがフルカスタムになる",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "パネルチェンジ",
         slot: 3,
         effect: "ロックマンが歩いたパネルをホーリーパネルに",
         bug: Some("戦闘中HPが減少、カスタム画面でHPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウェポンチェンジ",
         slot: 0,
         effect: "Bボタンでリフレクト",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウェポンチェンジ",
         slot: 0,
         effect: "Bボタンでフラワー",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウェポンチェンジ",
         slot: 0,
         effect: "Bボタンで水鉄砲",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "メガフォルダ3",
         slot: 2,
         effect: "フォルダに入れられるメガクラスチップの枚数を+3",
         bug: Some("カスタム画面で選べるチップの枚数が-1"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "カスタム3",
         slot: 3,
         effect: "カスタム画面で選べるチップの枚数を+3",
         bug: Some("カスタム画面でHPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ギガフォルダ1",
         slot: 0,
         effect: "フォルダに入れられるギガクラスチップの枚数を+1",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+左で技発動",
         slot: 3,
         effect: "B+左でトリプルクラック発動",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをワイドショット3に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをサンダーボール3に",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをフウジンラケットに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをメガエナジーボムに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをホウガンに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをバグボムに",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをワイドブレードに",
         bug: Some("エリア前方に引き寄せられる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "チャージ武器を変更",
         slot: 4,
         effect: "チャージショットをロングブレードに",
         bug: Some("エリア前方に引き寄せられる"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ロールソウル",
         slot: 4,
         effect: "常にロールソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ガッツソウル",
         slot: 4,
         effect: "常にガッツソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウインドソウル",
         slot: 4,
         effect: "常にウインドソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "サーチソウル",
         slot: 4,
         effect: "常にサーチソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ファイアソウル",
         slot: 4,
         effect: "常にファイアソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "サンダーソウル",
         slot: 4,
         effect: "常にサンダーソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ブルースソウル",
         slot: 4,
         effect: "常にブルースソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ナンバーソウル",
         slot: 4,
         effect: "常にナンバーソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "メタルソウル",
         slot: 4,
         effect: "常にメタルソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ジャンクソウル",
         slot: 4,
         effect: "常にジャンクソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "アクアソウル",
         slot: 4,
         effect: "常にアクアソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "ウッドソウル",
         slot: 4,
         effect: "常にウッドソウル状態",
         bug: Some("戦闘中HPが減少"),
     },
 ];
-pub const EN_MODCARDS: &[rom::Modcard4; 133] = &[
-    rom::Modcard4 {
+pub const EN_MODCARDS: &[super::Modcard4; 133] = &[
+    super::Modcard4 {
         name: "Weapon Change",
         slot: 0,
         effect: "B Button MiniBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+100",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 2,
         effect: "Max HP+100",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+150",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+150",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+200",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+200",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 2,
         effect: "Max HP+250",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+250",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+300",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+300",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "First Barrier100",
         slot: 2,
         effect: "Start battle with Barrier 100",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster Mod",
         slot: 0,
         effect: "Normal Shot inflicts Blind",
         bug: Some("Auto move forward"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster Mod",
         slot: 0,
         effect: "Normal Shot spawns Grass Panel",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Panel Change",
         slot: 3,
         effect: "Metal Panel Step",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Panel Change",
         slot: 3,
         effect: "Cracked Panel Step",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Panel Change",
         slot: 3,
         effect: "Broken Panel Step",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Custom2",
         slot: 0,
         effect: "Custom Slots +2",
         bug: Some("Custom HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "MegaFolder2",
         slot: 3,
         effect: "MegaChip+2",
         bug: Some("Custom -1"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster ATK 10",
         slot: 0,
         effect: "Buster ATK 10",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge GutsMachineGun",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Cannon",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge MiniBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge HeatShot",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Bubbler",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Thunder1",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Sword",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Spreader",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET Menu Color Change",
         slot: 5,
         effect: "Blue PET menu",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET Menu Color Change",
         slot: 5,
         effect: "Pink PET menu",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET Menu Color Change",
         slot: 5,
         effect: "Green PET menu",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+350",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 2,
         effect: "Max HP+350",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+400",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+400",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+450",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 2,
         effect: "Max HP+450",
         bug: Some("Start battle Confused"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 4,
         effect: "Max HP+500",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+500",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left AirShot",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left random Trap Chip",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left BugBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left CrackOut",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster Mod",
         slot: 0,
         effect: "Normal Shot spawns Cracked Panel",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster Mod",
         slot: 0,
         effect: "Normal Shot spawns Poison Panel",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Default Full Synchro",
         slot: 2,
         effect: "Start battle with Full Synchro",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "First Barrier200",
         slot: 2,
         effect: "Start battle with Barrier 200",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Weapon Change",
         slot: 0,
         effect: "B Button Guard1",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Weapon Change",
         slot: 0,
         effect: "B Button Crackout",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster ATK 15",
         slot: 0,
         effect: "Buster ATK 15",
         bug: Some("HP Bug & Start battle Confused"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "GigaFolder1",
         slot: 1,
         effect: "GigaChip+1",
         bug: Some("Custom -1"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge CopyDamage",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WideShot1",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Blizzard",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge HeatBreath",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge ElecShock",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WoodyPowder",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge PanelReturn",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WideSword",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "MegaMan Color Change",
         slot: 2,
         effect: "Red MegaMan Cosmetic",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "MegaMan Color Change",
         slot: 2,
         effect: "Yellow MegaMan Cosmetic",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+550",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 3,
         effect: "Max HP+550",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 2,
         effect: "Max HP+600",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+600",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 4,
         effect: "Max HP+650",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+650",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+700",
         bug: Some("Start battle Confused"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left MegaEnergyBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left Recov10",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left PanelReturn",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left NorthWind",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left Lance",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left DoubleCrack",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Triple Supporter 1/2",
         slot: 1,
         effect: "Triple Supporter 1/2",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Triple Supporter 2/2",
         slot: 2,
         effect: "Triple Supporter 2/2",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "AllGuard 1/2",
         slot: 2,
         effect: "AllGuard 1/2",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "AllGuard 2/2",
         slot: 3,
         effect: "AllGuard 2/2",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "First LifeAura",
         slot: 2,
         effect: "Start battle with LifeAura",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Hole",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WideShot2",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge ZapRing",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge SandRing",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge EnergyBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Thunder2",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Repair",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge TripleCrack",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge LongSword",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "PET Menu Color Change",
         slot: 5,
         effect: "Black PET menu",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "MegaMan Color Change",
         slot: 2,
         effect: "White MegaMan Cosmetic",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "MegaMan Color Change",
         slot: 2,
         effect: "Green MegaMan Cosmetic",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+700",
         bug: Some("Poison Panel Step"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+750",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+750",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+800",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+800",
         bug: Some("Poison Panel Step"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 0,
         effect: "Max HP+850",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+850",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 4,
         effect: "Max HP+900",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+900",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 1,
         effect: "Max HP+950",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Max HP Boost",
         slot: 4,
         effect: "Max HP+1000",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Buster Mod",
         slot: 0,
         effect: "Normal Shot spawns Ice Panel",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge FullCustom 1/2",
         slot: 3,
         effect: "Charge FullCustom 1/2",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge FullCustom 2/2",
         slot: 4,
         effect: "Charge FullCustom 2/2",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Panel Change",
         slot: 3,
         effect: "Holy Panel Step",
         bug: Some("HP Bug & Custom HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Weapon Change",
         slot: 0,
         effect: "B Button Reflect",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Weapon Change",
         slot: 0,
         effect: "B Button Flower",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Weapon Change",
         slot: 0,
         effect: "B Button WaterGun",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "MegaFolder3",
         slot: 2,
         effect: "MegaChip+3",
         bug: Some("Custom -1"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Custom3",
         slot: 3,
         effect: "Custom+3",
         bug: Some("Custom HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "GigaFolder1",
         slot: 0,
         effect: "GigaChip+1",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "B+Left Execution",
         slot: 3,
         effect: "B+Left TripleCrack",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WideShot3",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Thunder3",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WindRack",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge MegaEnergyBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge Ball",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge BugBomb",
         bug: None,
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge WideBlade",
         bug: Some("Auto move forward"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Charge Weapon Change",
         slot: 4,
         effect: "B Charge LongBlade",
         bug: Some("Auto move forward"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Roll Soul",
         slot: 4,
         effect: "Roll Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Guts Soul",
         slot: 4,
         effect: "Guts Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Wind Soul",
         slot: 4,
         effect: "Wind Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Search Soul",
         slot: 4,
         effect: "Search Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Fire Soul",
         slot: 4,
         effect: "Fire Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Thunder Soul",
         slot: 4,
         effect: "Thunder Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Proto Soul",
         slot: 4,
         effect: "Proto Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Number Soul",
         slot: 4,
         effect: "Number Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Metal Soul",
         slot: 4,
         effect: "Metal Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Junk Soul",
         slot: 4,
         effect: "Junk Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Aqua Soul",
         slot: 4,
         effect: "Aqua Soul",
         bug: Some("HP Bug"),
     },
-    rom::Modcard4 {
+    super::Modcard4 {
         name: "Wood Soul",
         slot: 4,
         effect: "Wood Soul",

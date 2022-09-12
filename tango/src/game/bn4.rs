@@ -61,11 +61,6 @@ impl game::Game for EXE4RSImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::B4WJ_01,
             overrides
@@ -73,12 +68,13 @@ impl game::Game for EXE4RSImpl {
                 .as_ref()
                 .and_then(|lang| rom::modcards::for_language(lang))
                 .unwrap_or(&rom::modcards::JA_MODCARDS),
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -138,11 +134,6 @@ impl game::Game for EXE4BMImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::B4BJ_00,
             overrides
@@ -150,12 +141,13 @@ impl game::Game for EXE4BMImpl {
                 .as_ref()
                 .and_then(|lang| rom::modcards::for_language(lang))
                 .unwrap_or(&rom::modcards::JA_MODCARDS),
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -215,11 +207,6 @@ impl game::Game for BN4RSImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::B4WE_00,
             overrides
@@ -227,12 +214,13 @@ impl game::Game for BN4RSImpl {
                 .as_ref()
                 .and_then(|lang| rom::modcards::for_language(lang))
                 .unwrap_or(&rom::modcards::EN_MODCARDS),
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -292,11 +280,6 @@ impl game::Game for BN4BMImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::B4BE_00,
             overrides
@@ -304,12 +287,13 @@ impl game::Game for BN4BMImpl {
                 .as_ref()
                 .and_then(|lang| rom::modcards::for_language(lang))
                 .unwrap_or(&rom::modcards::EN_MODCARDS),
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }

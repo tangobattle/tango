@@ -5,7 +5,7 @@ use crate::{battle, patch, replayer, rom, save, session, shadow};
 mod bn1;
 // mod bn2;
 // mod bn3;
-// mod bn4;
+mod bn4;
 // mod bn5;
 // mod bn6;
 // mod exe45;
@@ -39,10 +39,10 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     // bn3::EXE3B,
     // bn3::BN3W,
     // bn3::BN3B,
-    // bn4::EXE4RS,
-    // bn4::EXE4BM,
-    // bn4::BN4RS,
-    // bn4::BN4BM,
+    bn4::EXE4RS,
+    bn4::EXE4BM,
+    bn4::BN4RS,
+    bn4::BN4BM,
     // exe45::EXE45,
     // bn5::EXE5B,
     // bn5::EXE5C,

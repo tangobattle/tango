@@ -66,7 +66,7 @@ impl game::Game for EXE1Impl {
             overrides
                 .charset
                 .as_ref()
-                .map(|charset| charset.clone())
+                .cloned()
                 .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
             rom.to_vec(),
             wram.to_vec(),
@@ -134,7 +134,7 @@ impl game::Game for BN1Impl {
             overrides
                 .charset
                 .as_ref()
-                .map(|charset| charset.clone())
+                .cloned()
                 .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
             rom.to_vec(),
             wram.to_vec(),
