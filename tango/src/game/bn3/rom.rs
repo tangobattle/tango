@@ -291,19 +291,20 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
         let raw = self.raw_info();
-        [
-            None,
-            Some(rom::NavicustPartColor::White),
-            Some(rom::NavicustPartColor::Pink),
-            Some(rom::NavicustPartColor::Yellow),
-            Some(rom::NavicustPartColor::Red),
-            Some(rom::NavicustPartColor::Blue),
-            Some(rom::NavicustPartColor::Green),
-            Some(rom::NavicustPartColor::Orange),
-            Some(rom::NavicustPartColor::Purple),
-            Some(rom::NavicustPartColor::Gray),
-        ][raw[0x03] as usize]
-            .clone()
+        Some(match raw[0x03] {
+            1 => rom::NavicustPartColor::White,
+            2 => rom::NavicustPartColor::Pink,
+            3 => rom::NavicustPartColor::Yellow,
+            4 => rom::NavicustPartColor::Red,
+            5 => rom::NavicustPartColor::Blue,
+            6 => rom::NavicustPartColor::Green,
+            7 => rom::NavicustPartColor::Orange,
+            8 => rom::NavicustPartColor::Purple,
+            9 => rom::NavicustPartColor::Gray,
+            _ => {
+                return None;
+            }
+        })
     }
 
     fn is_solid(&self) -> bool {
@@ -402,18 +403,18 @@ impl<'a> rom::Style for Style<'a> {
     }
 
     fn extra_ncp_color(&self) -> Option<rom::NavicustPartColor> {
-        let typ = self.id >> 3;
-        [
-            None,
-            Some(rom::NavicustPartColor::Red),
-            Some(rom::NavicustPartColor::Blue),
-            Some(rom::NavicustPartColor::Green),
-            Some(rom::NavicustPartColor::Blue),
-            Some(rom::NavicustPartColor::Green),
-            Some(rom::NavicustPartColor::Red),
-            Some(rom::NavicustPartColor::Gray),
-        ][typ as usize]
-            .clone()
+        Some(match self.id >> 3 {
+            1 => rom::NavicustPartColor::Red,
+            2 => rom::NavicustPartColor::Blue,
+            3 => rom::NavicustPartColor::Green,
+            4 => rom::NavicustPartColor::Blue,
+            5 => rom::NavicustPartColor::Green,
+            6 => rom::NavicustPartColor::Red,
+            7 => rom::NavicustPartColor::Gray,
+            _ => {
+                return None;
+            }
+        })
     }
 }
 

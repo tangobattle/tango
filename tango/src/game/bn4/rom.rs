@@ -343,16 +343,17 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
 
     fn color(&self) -> Option<rom::NavicustPartColor> {
         let raw = self.raw_info();
-        [
-            None,
-            Some(rom::NavicustPartColor::White),
-            Some(rom::NavicustPartColor::Pink),
-            Some(rom::NavicustPartColor::Yellow),
-            Some(rom::NavicustPartColor::Red),
-            Some(rom::NavicustPartColor::Blue),
-            Some(rom::NavicustPartColor::Green),
-        ][raw[0x03] as usize]
-            .clone()
+        Some(match raw[0x03] {
+            1 => rom::NavicustPartColor::White,
+            2 => rom::NavicustPartColor::Pink,
+            3 => rom::NavicustPartColor::Yellow,
+            4 => rom::NavicustPartColor::Red,
+            5 => rom::NavicustPartColor::Blue,
+            6 => rom::NavicustPartColor::Green,
+            _ => {
+                return None;
+            }
+        })
     }
 
     fn is_solid(&self) -> bool {
