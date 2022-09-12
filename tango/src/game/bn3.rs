@@ -61,19 +61,15 @@ impl game::Game for EXE3WImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::A6BJ_01,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -133,19 +129,15 @@ impl game::Game for EXE3BImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::A3XJ_01,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -205,19 +197,15 @@ impl game::Game for BN3WImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::A6BE_00,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -277,19 +265,15 @@ impl game::Game for BN3BImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::A3XE_00,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }

@@ -1,5 +1,4 @@
 use byteorder::ByteOrder;
-use rayon::prelude::*;
 
 use crate::rom;
 
