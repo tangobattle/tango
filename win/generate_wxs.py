@@ -90,7 +90,7 @@ print(
 
         <CustomAction
             Id="Launch"
-            ExeCommand="tango.exe"
+            ExeCommand=""
             FileKey="tango.exe"
             Execute="immediate"
             Impersonate="yes"
