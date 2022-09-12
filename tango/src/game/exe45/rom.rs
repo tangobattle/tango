@@ -1,5 +1,4 @@
 use byteorder::ByteOrder;
-use rayon::prelude::*;
 
 use crate::rom;
 
@@ -29,21 +28,214 @@ pub static BR4J_00: Offsets = Offsets {
 };
 
 pub struct Assets {
-    element_icons: [image::RgbaImage; 13],
-    chips: [rom::Chip; 389],
-    navi: [rom::Navi; 23],
+    offsets: &'static Offsets,
+    text_parse_options: rom::text::ParseOptions,
+    mapper: rom::MemoryMapper,
+    chip_icon_palette: [image::Rgba<u8>; 16],
+    element_icon_palette: [image::Rgba<u8>; 16],
+}
+
+struct Chip<'a> {
+    id: usize,
+    assets: &'a Assets,
+}
+
+impl<'a> Chip<'a> {
+    fn raw_info(&'a self) -> [u8; 0x2c] {
+        self.assets.mapper.get(self.assets.offsets.chip_data)[self.id * 0x2c..(self.id + 1) * 0x2c]
+            .try_into()
+            .unwrap()
+    }
+}
+
+impl<'a> rom::Chip for Chip<'a> {
+    fn name(&self) -> String {
+        let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
+        let id = self.id % 0x100;
+
+        if let Ok(parts) = rom::text::parse_entry(
+            &self
+                .assets
+                .mapper
+                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+            id,
+            &self.assets.text_parse_options,
+        ) {
+            parts
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        rom::text::Part::String(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>()
+        } else {
+            "???".to_string()
+        }
+    }
+
+    fn description(&self) -> String {
+        let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
+        let id = self.id % 0x100;
+
+        if let Ok(parts) = rom::text::parse_entry(
+            &self
+                .assets
+                .mapper
+                .get(byteorder::LittleEndian::read_u32(&self.assets.mapper.get(pointer)[..4])),
+            id,
+            &self.assets.text_parse_options,
+        ) {
+            parts
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        rom::text::Part::String(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>()
+                .replace("-\n", "-")
+                .replace("\n", " ")
+        } else {
+            "???".to_string()
+        }
+    }
+
+    fn icon(&self) -> image::RgbaImage {
+        let raw = self.raw_info();
+        rom::apply_palette(
+            rom::read_merged_tiles(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x20..0x20 + 4]))[..rom::TILE_BYTES * 4],
+                2,
+            )
+            .unwrap(),
+            &self.assets.chip_icon_palette,
+        )
+    }
+
+    fn image(&self) -> image::RgbaImage {
+        let raw = self.raw_info();
+        rom::apply_palette(
+            rom::read_merged_tiles(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x24..0x24 + 4]))[..rom::TILE_BYTES * 7 * 6],
+                7,
+            )
+            .unwrap(),
+            &rom::read_palette(
+                &self
+                    .assets
+                    .mapper
+                    .get(byteorder::LittleEndian::read_u32(&raw[0x28..0x28 + 4]))[..32],
+            ),
+        )
+    }
+
+    fn codes(&self) -> Vec<u8> {
+        let raw = self.raw_info();
+        raw[0x00..0x04].iter().cloned().collect()
+    }
+
+    fn element(&self) -> usize {
+        let raw = self.raw_info();
+        raw[0x07] as usize
+    }
+
+    fn class(&self) -> rom::ChipClass {
+        let raw = self.raw_info();
+        [
+            rom::ChipClass::Standard,
+            rom::ChipClass::Mega,
+            rom::ChipClass::Giga,
+            rom::ChipClass::None,
+            rom::ChipClass::ProgramAdvance,
+        ][raw[0x08] as usize]
+    }
+
+    fn dark(&self) -> bool {
+        let raw = self.raw_info();
+        let flags = raw[0x09];
+        (flags & 0x20) != 0
+    }
+
+    fn mb(&self) -> u8 {
+        let raw = self.raw_info();
+        raw[0x06]
+    }
+
+    fn damage(&self) -> u32 {
+        let raw = self.raw_info();
+        let damage = byteorder::LittleEndian::read_u16(&raw[0x1a..0x1a + 2]) as u32;
+        if damage < 1000 {
+            damage
+        } else {
+            0
+        }
+    }
+}
+
+struct Navi<'a> {
+    id: usize,
+    assets: &'a Assets,
+}
+
+impl<'a> rom::Navi for Navi<'a> {
+    fn name(&self) -> String {
+        if let Ok(parts) = rom::text::parse_entry(
+            &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                &self.assets.mapper.get(self.assets.offsets.navi_names_pointer)[..4],
+            )),
+            self.id,
+            &self.assets.text_parse_options,
+        ) {
+            parts
+                .into_iter()
+                .flat_map(|part| {
+                    match part {
+                        rom::text::Part::String(s) => s,
+                        _ => "".to_string(),
+                    }
+                    .chars()
+                    .collect::<Vec<_>>()
+                })
+                .collect::<String>()
+        } else {
+            "???".to_string()
+        }
+    }
+
+    fn emblem(&self) -> image::RgbaImage {
+        rom::apply_palette(
+            rom::read_merged_tiles(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icons_pointers)[self.id * 4..(self.id + 1) * 4],
+                ))[..rom::TILE_BYTES * 4],
+                2,
+            )
+            .unwrap(),
+            &rom::read_palette(
+                &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
+                    &self.assets.mapper.get(self.assets.offsets.emblem_icon_palette_pointers)
+                        [self.id * 4..(self.id + 1) * 4],
+                ))[..32],
+            ),
+        )
+    }
 }
 
 impl Assets {
-    pub fn new(offsets: &Offsets, charset: &[&str], rom: &[u8], wram: &[u8]) -> Self {
-        let text_parse_options = rom::text::ParseOptions {
-            charset,
-            extension_ops: 0xe4..=0xe4,
-            eof_op: 0xe5,
-            newline_op: 0xe8,
-            commands: std::collections::HashMap::from([(0xe6, 1), (0xe7, 1), (0xed, 3), (0xf0, 2), (0xfc, 1)]),
-        };
-
+    pub fn new(offsets: &'static Offsets, charset: Vec<String>, rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -52,200 +244,63 @@ impl Assets {
             ))[..32],
         );
 
+        let element_icon_palette = rom::read_palette(
+            &mapper.get(byteorder::LittleEndian::read_u32(
+                &mapper.get(offsets.element_icon_palette_pointer)[..4],
+            ))[..32],
+        );
+
         Self {
-            element_icons: {
-                let palette = rom::read_palette(
-                    &mapper.get(byteorder::LittleEndian::read_u32(
-                        &mapper.get(offsets.element_icon_palette_pointer)[..4],
-                    ))[..32],
-                );
-                {
-                    let buf = mapper.get(byteorder::LittleEndian::read_u32(
-                        &mapper.get(offsets.element_icons_pointer)[..4],
-                    ));
-                    (0..13)
-                        .map(|i| {
-                            rom::apply_palette(
-                                rom::read_merged_tiles(&buf[i * rom::TILE_BYTES * 4..(i + 1) * rom::TILE_BYTES * 4], 2)
-                                    .unwrap(),
-                                &palette,
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .try_into()
-                        .unwrap()
-                }
+            offsets,
+            text_parse_options: rom::text::ParseOptions {
+                charset,
+                extension_ops: 0xe4..=0xe4,
+                eof_op: 0xe5,
+                newline_op: 0xe8,
+                commands: std::collections::HashMap::from([(0xe6, 1), (0xe7, 1), (0xed, 3), (0xf0, 2), (0xfc, 1)]),
             },
-            chips: (0..389)
-                .collect::<Vec<_>>()
-                .par_iter()
-                .map(|i| {
-                    let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
-                    let flags = buf[0x09];
-                    rom::Chip {
-                        name: {
-                            let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
-                            let i = i % 0x100;
-
-                            if let Ok(parts) = rom::text::parse_entry(
-                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
-                                i,
-                                &text_parse_options,
-                            ) {
-                                parts
-                                    .into_iter()
-                                    .flat_map(|part| {
-                                        match part {
-                                            rom::text::Part::String(s) => s,
-                                            _ => "".to_string(),
-                                        }
-                                        .chars()
-                                        .collect::<Vec<_>>()
-                                    })
-                                    .collect::<String>()
-                            } else {
-                                "???".to_string()
-                            }
-                        },
-                        description: {
-                            let pointer = offsets.chip_descriptions_pointers + ((i / 0x100) * 4) as u32;
-                            let i = i % 0x100;
-
-                            if let Ok(parts) = rom::text::parse_entry(
-                                &mapper.get(byteorder::LittleEndian::read_u32(&mapper.get(pointer)[..4])),
-                                i,
-                                &text_parse_options,
-                            ) {
-                                parts
-                                    .into_iter()
-                                    .flat_map(|part| {
-                                        match part {
-                                            rom::text::Part::String(s) => s,
-
-                                            _ => "".to_string(),
-                                        }
-                                        .chars()
-                                        .collect::<Vec<_>>()
-                                    })
-                                    .collect::<String>()
-                                    .replace("-\n", "-")
-                                    .replace("\n", " ")
-                            } else {
-                                "???".to_string()
-                            }
-                        },
-                        icon: rom::apply_palette(
-                            rom::read_merged_tiles(
-                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x20..0x20 + 4]))
-                                    [..rom::TILE_BYTES * 4],
-                                2,
-                            )
-                            .unwrap(),
-                            &chip_icon_palette,
-                        ),
-                        image: rom::apply_palette(
-                            rom::read_merged_tiles(
-                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x24..0x24 + 4]))
-                                    [..rom::TILE_BYTES * 7 * 6],
-                                7,
-                            )
-                            .unwrap(),
-                            &rom::read_palette(
-                                &mapper.get(byteorder::LittleEndian::read_u32(&buf[0x28..0x28 + 4]))[..32],
-                            ),
-                        ),
-                        codes: buf[0x00..0x04].iter().cloned().collect(),
-                        element: buf[0x07] as usize,
-                        class: [
-                            rom::ChipClass::Standard,
-                            rom::ChipClass::Mega,
-                            rom::ChipClass::Giga,
-                            rom::ChipClass::None,
-                            rom::ChipClass::ProgramAdvance,
-                        ][buf[0x08] as usize],
-                        dark: (flags & 0x20) != 0,
-                        mb: buf[0x06],
-                        damage: {
-                            let damage = byteorder::LittleEndian::read_u16(&buf[0x1a..0x1a + 2]) as u32;
-                            if damage < 1000 {
-                                damage
-                            } else {
-                                0
-                            }
-                        },
-                    }
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            navi: (0..23)
-                .map(|id| rom::Navi {
-                    name: {
-                        if let Ok(parts) = rom::text::parse_entry(
-                            &mapper.get(byteorder::LittleEndian::read_u32(
-                                &mapper.get(offsets.navi_names_pointer)[..4],
-                            )),
-                            id,
-                            &text_parse_options,
-                        ) {
-                            parts
-                                .into_iter()
-                                .flat_map(|part| {
-                                    match part {
-                                        rom::text::Part::String(s) => s,
-                                        _ => "".to_string(),
-                                    }
-                                    .chars()
-                                    .collect::<Vec<_>>()
-                                })
-                                .collect::<String>()
-                        } else {
-                            "???".to_string()
-                        }
-                    },
-                    emblem: {
-                        rom::apply_palette(
-                            rom::read_merged_tiles(
-                                &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(offsets.emblem_icons_pointers)[id * 4..(id + 1) * 4],
-                                ))[..rom::TILE_BYTES * 4],
-                                2,
-                            )
-                            .unwrap(),
-                            &rom::read_palette(
-                                &mapper.get(byteorder::LittleEndian::read_u32(
-                                    &mapper.get(offsets.emblem_icon_palette_pointers)[id * 4..(id + 1) * 4],
-                                ))[..32],
-                            ),
-                        )
-                    },
-                })
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
+            mapper,
+            chip_icon_palette,
+            element_icon_palette,
         }
     }
 }
 
 impl rom::Assets for Assets {
-    fn chip(&self, id: usize) -> Option<&rom::Chip> {
-        self.chips.get(id)
+    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Chip + 'a>> {
+        if id >= self.num_chips() {
+            return None;
+        }
+        Some(Box::new(Chip { id, assets: self }))
     }
 
     fn num_chips(&self) -> usize {
-        self.chips.len()
+        389
     }
 
-    fn element_icon(&self, id: usize) -> Option<&image::RgbaImage> {
-        self.element_icons.get(id)
+    fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
+        if id >= 13 {
+            return None;
+        }
+
+        let buf = self.mapper.get(byteorder::LittleEndian::read_u32(
+            &self.mapper.get(self.offsets.element_icons_pointer)[..4],
+        ));
+        Some(rom::apply_palette(
+            rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..(id + 1) * rom::TILE_BYTES * 4], 2).unwrap(),
+            &self.element_icon_palette,
+        ))
     }
 
-    fn navi(&self, id: usize) -> Option<&rom::Navi> {
-        self.navi.get(id)
+    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Navi + 'a>> {
+        if id >= self.num_navis() {
+            return None;
+        }
+        Some(Box::new(Navi { id, assets: self }))
     }
 
     fn num_navis(&self) -> usize {
-        self.navi.len()
+        23
     }
 }
 

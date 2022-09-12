@@ -8,7 +8,7 @@ mod bn1;
 mod bn4;
 // mod bn5;
 // mod bn6;
-// mod exe45;
+mod exe45;
 
 impl PartialEq for &'static (dyn Game + Send + Sync) {
     fn eq(&self, other: &Self) -> bool {
@@ -43,7 +43,7 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn4::EXE4BM,
     bn4::BN4RS,
     bn4::BN4BM,
-    // exe45::EXE45,
+    exe45::EXE45,
     // bn5::EXE5B,
     // bn5::EXE5C,
     // bn5::BN5P,
