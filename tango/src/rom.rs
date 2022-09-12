@@ -26,18 +26,18 @@ pub trait Chip {
     fn damage(&self) -> u32;
 }
 
-pub trait Modcard56Effect {
-    fn id(&self) -> u8;
-    fn name(&self) -> String;
-    fn parameter(&self) -> u8;
-    fn is_ability(&self) -> bool;
-    fn is_debuff(&self) -> bool;
+pub struct Modcard56Effect {
+    pub id: u8,
+    pub name: String,
+    pub parameter: u8,
+    pub is_ability: bool,
+    pub is_debuff: bool,
 }
 
 pub trait Modcard56 {
     fn name(&self) -> String;
     fn mb(&self) -> u8;
-    fn effects(&self) -> Vec<Box<dyn Modcard56Effect>>;
+    fn effects(&self) -> Vec<Modcard56Effect>;
 }
 
 pub trait Modcard4 {

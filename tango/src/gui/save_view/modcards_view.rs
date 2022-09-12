@@ -206,10 +206,10 @@ pub fn show_modcard56s<'a>(
             body.heterogeneous_rows(
                 items.iter().map(|(_, effects)| {
                     let num_effects = std::cmp::max(
-                        effects.iter().filter(|effect| effect.is_ability()).count(),
-                        effects.iter().filter(|effect| !effect.is_ability()).count(),
+                        effects.iter().filter(|effect| effect.is_ability).count(),
+                        effects.iter().filter(|effect| !effect.is_ability).count(),
                     );
-                    num_effects as f32 * row_height + num_effects as f32 * spacing_y - spacing_y * 0.5
+                    std::cmp::min(num_effects, 2) as f32 * row_height + num_effects as f32 * spacing_y - spacing_y * 0.5
                 }),
                 |i, mut row| {
                     let (modcard, effects) = &items[i];
@@ -234,16 +234,15 @@ pub fn show_modcard56s<'a>(
                         ui.vertical(|ui| {
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                                 for effect in effects.iter() {
-                                    if effect.is_ability() {
+                                    if effect.is_ability {
                                         continue;
                                     }
 
                                     show_effect(
                                         ui,
-                                        egui::RichText::new(&effect.name())
-                                            .family(font_families.for_language(game_lang)),
+                                        egui::RichText::new(&effect.name).family(font_families.for_language(game_lang)),
                                         modcard.as_ref().map(|modcard| modcard.enabled).unwrap_or(false),
-                                        effect.is_debuff(),
+                                        effect.is_debuff,
                                     );
                                 }
                             });
@@ -253,16 +252,15 @@ pub fn show_modcard56s<'a>(
                         ui.vertical(|ui| {
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                                 for effect in effects.iter() {
-                                    if !effect.is_ability() {
+                                    if !effect.is_ability {
                                         continue;
                                     }
 
                                     show_effect(
                                         ui,
-                                        egui::RichText::new(&effect.name())
-                                            .family(font_families.for_language(game_lang)),
+                                        egui::RichText::new(&effect.name).family(font_families.for_language(game_lang)),
                                         modcard.as_ref().map(|modcard| modcard.enabled).unwrap_or(false),
-                                        effect.is_debuff(),
+                                        effect.is_debuff,
                                     );
                                 }
                             });

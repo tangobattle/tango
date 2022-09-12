@@ -63,19 +63,15 @@ impl game::Game for EXE5BImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BRBJ_00,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -137,19 +133,15 @@ impl game::Game for EXE5CImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BRKJ_00,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::JA_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::JA_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -211,19 +203,15 @@ impl game::Game for BN5PImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BRBE_00,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }
@@ -285,19 +273,15 @@ impl game::Game for BN5CImpl {
         wram: &[u8],
         overrides: &patch::ROMOverrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
-        let override_charset = overrides
-            .charset
-            .as_ref()
-            .map(|charset| charset.iter().map(|s| s.as_str()).collect::<Vec<_>>());
-
         Ok(Box::new(rom::Assets::new(
             &rom::BRKE_00,
-            override_charset
+            overrides
+                .charset
                 .as_ref()
-                .map(|cs| cs.as_slice())
-                .unwrap_or(&rom::EN_CHARSET),
-            rom,
-            wram,
+                .cloned()
+                .unwrap_or_else(|| rom::EN_CHARSET.iter().map(|s| s.to_string()).collect()),
+            rom.to_vec(),
+            wram.to_vec(),
         )))
     }
 }

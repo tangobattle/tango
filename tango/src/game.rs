@@ -6,7 +6,7 @@ mod bn1;
 mod bn2;
 mod bn3;
 mod bn4;
-// mod bn5;
+mod bn5;
 // mod bn6;
 mod exe45;
 
@@ -44,10 +44,10 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn4::BN4RS,
     bn4::BN4BM,
     exe45::EXE45,
-    // bn5::EXE5B,
-    // bn5::EXE5C,
-    // bn5::BN5P,
-    // bn5::BN5C,
+    bn5::EXE5B,
+    bn5::EXE5C,
+    bn5::BN5P,
+    bn5::BN5C,
     // bn6::EXE6G,
     // bn6::EXE6F,
     // bn6::BN6G,
