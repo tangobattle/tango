@@ -90,7 +90,7 @@ impl Assets {
                                 &mapper.get(byteorder::LittleEndian::read_u32(
                                     &mapper.get(offsets.chip_names_pointer)[..4],
                                 )),
-                                i,
+                                *i,
                                 &text_parse_options,
                             ) {
                                 parts
@@ -113,7 +113,7 @@ impl Assets {
                                 &mapper.get(byteorder::LittleEndian::read_u32(
                                     &mapper.get(offsets.chip_descriptions_pointer)[..4],
                                 )),
-                                i,
+                                *i,
                                 &text_parse_options,
                             ) {
                                 parts

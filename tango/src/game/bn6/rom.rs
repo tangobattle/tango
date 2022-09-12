@@ -163,7 +163,7 @@ impl Assets {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {
                         name: if let Some(chips) = overrides.chips.as_ref() {
-                            chips.get(i).map(|chip| chip.name.clone()).unwrap_or("???".to_string())
+                            chips.get(*i).map(|chip| chip.name.clone()).unwrap_or("???".to_string())
                         } else {
                             let pointer = offsets.chip_names_pointers + ((i / 0x100) * 4) as u32;
                             let i = i % 0x100;
@@ -190,7 +190,7 @@ impl Assets {
                         },
                         description: if let Some(chips) = overrides.chips.as_ref() {
                             chips
-                                .get(i)
+                                .get(*i)
                                 .map(|chip| chip.description.clone())
                                 .unwrap_or("???".to_string())
                         } else {
