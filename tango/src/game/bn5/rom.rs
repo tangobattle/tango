@@ -380,7 +380,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
             5,
             self.assets
                 .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x08..0x0c]))[..49]
+                .get(byteorder::LittleEndian::read_u32(&raw[0x08..0x0c]))[..25]
                 .to_vec(),
         )
         .unwrap()
@@ -393,7 +393,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
             5,
             self.assets
                 .mapper
-                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..0x10]))[..49]
+                .get(byteorder::LittleEndian::read_u32(&raw[0x0c..0x10]))[..25]
                 .to_vec(),
         )
         .unwrap()

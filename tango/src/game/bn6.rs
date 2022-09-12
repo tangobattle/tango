@@ -65,8 +65,8 @@ impl game::Game for EXE6GImpl {
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::BR5J_00,
-            rom,
-            wram,
+            rom.to_vec(),
+            wram.to_vec(),
             &rom::JA_CHARSET,
             overrides,
         )))
@@ -132,8 +132,8 @@ impl game::Game for EXE6FImpl {
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::BR6J_00,
-            rom,
-            wram,
+            rom.to_vec(),
+            wram.to_vec(),
             &rom::JA_CHARSET,
             overrides,
         )))
@@ -199,8 +199,8 @@ impl game::Game for BN6GImpl {
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::BR5E_00,
-            rom,
-            wram,
+            rom.to_vec(),
+            wram.to_vec(),
             &rom::EN_CHARSET,
             overrides,
         )))
@@ -266,8 +266,8 @@ impl game::Game for BN6FImpl {
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::BR6E_00,
-            rom,
-            wram,
+            rom.to_vec(),
+            wram.to_vec(),
             &rom::EN_CHARSET,
             overrides,
         )))

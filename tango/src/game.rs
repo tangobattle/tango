@@ -7,7 +7,7 @@ mod bn2;
 mod bn3;
 mod bn4;
 mod bn5;
-// mod bn6;
+mod bn6;
 mod exe45;
 
 impl PartialEq for &'static (dyn Game + Send + Sync) {
@@ -48,10 +48,10 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn5::EXE5C,
     bn5::BN5P,
     bn5::BN5C,
-    // bn6::EXE6G,
-    // bn6::EXE6F,
-    // bn6::BN6G,
-    // bn6::BN6F,
+    bn6::EXE6G,
+    bn6::EXE6F,
+    bn6::BN6G,
+    bn6::BN6F,
 ];
 
 pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
