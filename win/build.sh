@@ -25,7 +25,7 @@ cargo build --bin tango --release --target x86_64-pc-windows-gnu
 
 # Build installer.
 mkdir tango_win_workdir
-"$(dirname "${BASH_SOURCE[0]}")/generate_nsh.py" >tango_win_workdir/installer.nsh
+"$(dirname "${BASH_SOURCE[0]}")/generate_nsi.py" >tango_win_workdir/installer.nsi
 pushd tango_win_workdir
 
 cp ../tango/icon.ico .
@@ -42,7 +42,7 @@ mkdir ffmpeg
 wget -O - "${FFMPEG_ZIP_URL}" | bsdtar -Cffmpeg -xvf- ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
 cp ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe .
 
-makensis installer.nsh
+makensis installer.nsi
 popd
 
 mkdir -p dist
