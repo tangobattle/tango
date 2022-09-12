@@ -219,7 +219,12 @@ impl<'a> rom::Chip for Chip<'a> {
 
     fn damage(&self) -> u32 {
         let raw = self.raw_info();
-        byteorder::LittleEndian::read_u16(&raw[0x0c..0x0c + 2]) as u32
+        let damage = byteorder::LittleEndian::read_u16(&raw[0x0c..0x0c + 2]) as u32;
+        if damage < 1000 {
+            damage
+        } else {
+            0
+        }
     }
 }
 
