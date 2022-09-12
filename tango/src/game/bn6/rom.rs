@@ -1,4 +1,5 @@
 use byteorder::ByteOrder;
+use rayon::prelude::*;
 
 use crate::{patch, rom};
 
@@ -156,6 +157,8 @@ impl Assets {
                 }
             },
             chips: (0..411)
+                .collect::<Vec<_>>()
+                .par_iter()
                 .map(|i| {
                     let buf = &mapper.get(offsets.chip_data)[i * 0x2c..(i + 1) * 0x2c];
                     rom::Chip {

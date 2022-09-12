@@ -248,7 +248,7 @@ pub fn unlz77(mut r: &[u8]) -> std::io::Result<Vec<u8>> {
 pub struct MemoryMapper<'a> {
     rom: &'a [u8],
     wram: &'a [u8],
-    unlz77_cache: std::cell::RefCell<std::collections::HashMap<u32, Vec<u8>>>,
+    unlz77_cache: parking_lot::Mutex<std::collections::HashMap<u32, Vec<u8>>>,
 }
 
 impl<'a> MemoryMapper<'a> {
@@ -256,7 +256,7 @@ impl<'a> MemoryMapper<'a> {
         Self {
             rom,
             wram,
-            unlz77_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
+            unlz77_cache: parking_lot::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -268,7 +268,7 @@ impl<'a> MemoryMapper<'a> {
         } else if start >= 0x88000000 && start <= 0x8a000000 {
             std::borrow::Cow::Owned(
                 self.unlz77_cache
-                    .borrow_mut()
+                    .lock()
                     .entry(start)
                     .or_insert_with(|| unlz77(&self.rom[(start & !0x88000000) as usize..]).unwrap()[4..].to_vec())
                     .clone(),
