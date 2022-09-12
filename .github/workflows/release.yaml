@@ -23,7 +23,7 @@ jobs:
                   key: win32-x64-cargo-${{ hashFiles('**/Cargo.lock') }}
 
             - run: >
-                  sudo apt install -y nsis mingw-w64 imagemagick wget libarchive-tools
+                  sudo apt-get install -y nsis mingw-w64 imagemagick wget libarchive-tools
 
             - run: >
                   sudo pip3 install semver==3.0.0-dev3 toml

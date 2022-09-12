@@ -36,7 +36,6 @@ InstallDirRegKey HKCU "${{REGPATH_UNINSTSUBKEY}}" "UninstallString"
 
 !include LogicLib.nsh
 !include WinCore.nsh
-!include Integration.nsh
 !include FileFunc.nsh
 
 Function .onInit
