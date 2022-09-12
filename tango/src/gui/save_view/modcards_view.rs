@@ -209,7 +209,8 @@ pub fn show_modcard56s<'a>(
                         effects.iter().filter(|effect| effect.is_ability).count(),
                         effects.iter().filter(|effect| !effect.is_ability).count(),
                     );
-                    std::cmp::min(num_effects, 2) as f32 * row_height + num_effects as f32 * spacing_y - spacing_y * 0.5
+                    let num_rows = std::cmp::max(num_effects, 2);
+                    num_rows as f32 * row_height + num_rows as f32 * spacing_y - spacing_y * 0.5
                 }),
                 |i, mut row| {
                     let (modcard, effects) = &items[i];
