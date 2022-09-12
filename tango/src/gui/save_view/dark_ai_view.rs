@@ -63,7 +63,7 @@ impl MaterializedDarkAI {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class == rom::ChipClass::Standard)
+                        .map(|c| c.class() == rom::ChipClass::Standard)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -80,7 +80,7 @@ impl MaterializedDarkAI {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class == rom::ChipClass::Standard)
+                        .map(|c| c.class() == rom::ChipClass::Standard)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -97,7 +97,7 @@ impl MaterializedDarkAI {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class == rom::ChipClass::Mega)
+                        .map(|c| c.class() == rom::ChipClass::Mega)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -114,7 +114,7 @@ impl MaterializedDarkAI {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class == rom::ChipClass::Giga)
+                        .map(|c| c.class() == rom::ChipClass::Giga)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -127,7 +127,7 @@ impl MaterializedDarkAI {
                 .filter(|(id, count)| {
                     assets
                         .chip(*id)
-                        .map(|c| c.class == rom::ChipClass::ProgramAdvance)
+                        .map(|c| c.class() == rom::ChipClass::ProgramAdvance)
                         .unwrap_or(false)
                         && **count > 0
                 })
@@ -155,15 +155,15 @@ fn show_table<const N: usize>(
                 outer_strip.cell(|ui| {
                     let info = id.and_then(|id| assets.chip(id));
 
-                    let (bg_color, fg_color) = if let Some(info) = info {
-                        let bg_color = if info.dark {
+                    let (bg_color, fg_color) = if let Some(info) = info.as_ref() {
+                        let bg_color = if info.dark() {
                             Some(if ui.visuals().dark_mode {
                                 egui::Color32::from_rgb(0x31, 0x39, 0x5a)
                             } else {
                                 egui::Color32::from_rgb(0xb5, 0x8c, 0xd6)
                             })
                         } else {
-                            match info.class {
+                            match info.class() {
                                 rom::ChipClass::Standard => None,
                                 rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
                                     egui::Color32::from_rgb(0x52, 0x84, 0x9c)
@@ -211,35 +211,34 @@ fn show_table<const N: usize>(
                             });
                             if let Some(id) = id {
                                 strip.cell(|ui| {
-                                    let icon = if let Some(icon) = info.map(|info| &info.icon) {
-                                        icon
-                                    } else {
-                                        return;
-                                    };
-
-                                    ui.image(
-                                        chip_icon_texture_cache
-                                            .entry(*id)
-                                            .or_insert_with(|| {
-                                                ui.ctx().load_texture(
-                                                    format!("chip {}", id),
+                                    match chip_icon_texture_cache.entry(*id) {
+                                        std::collections::hash_map::Entry::Occupied(_) => {}
+                                        std::collections::hash_map::Entry::Vacant(e) => {
+                                            if let Some(image) = info.as_ref().map(|info| info.icon()) {
+                                                e.insert(ui.ctx().load_texture(
+                                                    format!("chip icon {}", id),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
+                                                        &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
-                                                )
-                                            })
-                                            .id(),
-                                        egui::Vec2::new(28.0, 28.0),
-                                    );
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(texture_handle) = chip_icon_texture_cache.get(&id) {
+                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0));
+                                    }
                                 });
                                 strip.cell(|ui| {
                                     ui.horizontal(|ui| {
                                         ui.horizontal(|ui| {
                                             ui.label(
                                                 egui::RichText::new(
-                                                    info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                                    info.as_ref()
+                                                        .map(|info| info.name())
+                                                        .unwrap_or_else(|| "???".to_string()),
                                                 )
                                                 .color(fg_color.unwrap_or(ui.visuals().text_color()))
                                                 .family(font_families.for_language(game_lang)),
@@ -248,37 +247,34 @@ fn show_table<const N: usize>(
                                     });
                                 });
                                 strip.cell(|ui| {
-                                    let element = if let Some(element) = info.map(|info| info.element) {
+                                    let element = if let Some(element) = info.as_ref().map(|info| info.element()) {
                                         element
                                     } else {
                                         return;
                                     };
 
-                                    let icon = if let Some(icon) = assets.element_icon(element) {
-                                        icon
-                                    } else {
-                                        return;
-                                    };
-
-                                    ui.image(
-                                        element_icon_texture_cache
-                                            .entry(element)
-                                            .or_insert_with(|| {
-                                                ui.ctx().load_texture(
+                                    match element_icon_texture_cache.entry(element) {
+                                        std::collections::hash_map::Entry::Occupied(_) => {}
+                                        std::collections::hash_map::Entry::Vacant(e) => {
+                                            if let Some(image) = assets.element_icon(element) {
+                                                e.insert(ui.ctx().load_texture(
                                                     format!("element {}", element),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
+                                                        &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
-                                                )
-                                            })
-                                            .id(),
-                                        egui::Vec2::new(28.0, 28.0),
-                                    );
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(texture_handle) = element_icon_texture_cache.get(&element) {
+                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0));
+                                    }
                                 });
                                 strip.cell(|ui| {
-                                    let damage = info.map(|info| info.damage).unwrap_or(0);
+                                    let damage = info.as_ref().map(|info| info.damage()).unwrap_or(0);
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         if damage > 0 {
                                             ui.strong(format!("{}", damage));
@@ -307,12 +303,12 @@ fn make_string<'a, const N: usize>(
     std::iter::zip(chips, counts).map(|(id, count)| {
         let name = if let Some(id) = id {
             if let Some(info) = assets.chip(*id) {
-                &info.name
+                info.name()
             } else {
-                "-"
+                "-".to_string()
             }
         } else {
-            "-"
+            "-".to_string()
         };
         format!("{}\t{}", count, name)
     })

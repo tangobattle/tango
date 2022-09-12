@@ -9,8 +9,8 @@ pub enum Part {
     Command { op: u8, params: Vec<u8> },
 }
 
-pub struct ParseOptions<'a> {
-    pub charset: &'a [&'a str],
+pub struct ParseOptions {
+    pub charset: Vec<String>,
     pub extension_ops: std::ops::RangeInclusive<u8>,
     pub eof_op: u8,
     pub newline_op: u8,
@@ -47,7 +47,7 @@ pub fn parse(mut buf: &[u8], options: &ParseOptions) -> Result<Vec<Part>, std::i
             if options.extension_ops.contains(&op) {
                 c += buf.read_u8()? as usize;
             }
-            out_buf.push_str(options.charset.get(c).unwrap_or(&"�"));
+            out_buf.push_str(&options.charset.get(c).cloned().unwrap_or_else(|| "�".to_string()));
         }
     }
     if !out_buf.is_empty() {

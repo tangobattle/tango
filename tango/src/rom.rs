@@ -13,45 +13,40 @@ pub enum ChipClass {
     ProgramAdvance,
 }
 
-#[derive(Clone, Debug)]
-pub struct Chip {
-    pub name: String,
-    pub description: String,
-    pub icon: image::RgbaImage,
-    pub image: image::RgbaImage,
-    pub codes: Vec<u8>,
-    pub element: usize,
-    pub class: ChipClass,
-    pub dark: bool,
-    pub mb: u8,
-    pub damage: u32,
+pub trait Chip {
+    fn name(&self) -> String;
+    fn description(&self) -> String;
+    fn icon(&self) -> image::RgbaImage;
+    fn image(&self) -> image::RgbaImage;
+    fn codes(&self) -> Vec<u8>;
+    fn element(&self) -> usize;
+    fn class(&self) -> ChipClass;
+    fn dark(&self) -> bool;
+    fn mb(&self) -> u8;
+    fn damage(&self) -> u32;
 }
 
-#[derive(Clone, Debug)]
-pub struct Modcard56Effect {
-    pub id: u8,
-    pub name: String,
-    pub parameter: u8,
-    pub is_ability: bool,
-    pub is_debuff: bool,
+pub trait Modcard56Effect {
+    fn id(&self) -> u8;
+    fn name(&self) -> String;
+    fn parameter(&self) -> u8;
+    fn is_ability(&self) -> bool;
+    fn is_debuff(&self) -> bool;
 }
 
-#[derive(Clone, Debug)]
-pub struct Modcard56 {
-    pub name: String,
-    pub mb: u8,
-    pub effects: Vec<Modcard56Effect>,
+pub trait Modcard56 {
+    fn name(&self) -> String;
+    fn mb(&self) -> u8;
+    fn effects(&self) -> Vec<Box<dyn Modcard56Effect>>;
 }
 
-#[derive(Clone, Debug)]
-pub struct Modcard4 {
-    pub name: &'static str,
-    pub slot: u8,
-    pub effect: &'static str,
-    pub bug: Option<&'static str>,
+pub trait Modcard4 {
+    fn name(&self) -> String;
+    fn slot(&self) -> u8;
+    fn effect(&self) -> String;
+    fn bug(&self) -> Option<String>;
 }
 
-#[derive(Clone, Debug)]
 pub enum NavicustPartColor {
     White,
     Yellow,
@@ -66,20 +61,18 @@ pub enum NavicustPartColor {
 
 pub type NavicustBitmap = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
 
-#[derive(Clone, Debug)]
-pub struct NavicustPart {
-    pub name: String,
-    pub description: String,
-    pub color: Option<NavicustPartColor>,
-    pub is_solid: bool,
-    pub compressed_bitmap: NavicustBitmap,
-    pub uncompressed_bitmap: NavicustBitmap,
+pub trait NavicustPart {
+    fn name(&self) -> String;
+    fn description(&self) -> String;
+    fn color(&self) -> Option<NavicustPartColor>;
+    fn is_solid(&self) -> bool;
+    fn compressed_bitmap(&self) -> NavicustBitmap;
+    fn uncompressed_bitmap(&self) -> NavicustBitmap;
 }
 
-#[derive(Clone, Debug)]
-pub struct Style {
-    pub name: String,
-    pub extra_ncp_color: Option<NavicustPartColor>,
+pub trait Style {
+    fn name(&self) -> String;
+    fn extra_ncp_color(&self) -> Option<NavicustPartColor>;
 }
 
 #[derive(Debug, Clone)]
@@ -90,31 +83,30 @@ pub enum Modcard56EffectTemplatePart {
 
 pub type Modcard56EffectTemplate = Vec<Modcard56EffectTemplatePart>;
 
-#[derive(Clone, Debug)]
-pub struct Navi {
-    pub name: String,
-    pub emblem: image::RgbaImage,
+pub trait Navi {
+    fn name(&self) -> String;
+    fn emblem(&self) -> image::RgbaImage;
 }
 
 pub trait Assets {
-    fn chip(&self, id: usize) -> Option<&Chip>;
+    fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn Chip + 'a>>;
     fn num_chips(&self) -> usize;
-    fn element_icon(&self, id: usize) -> Option<&image::RgbaImage>;
-    fn modcard56(&self, id: usize) -> Option<&Modcard56> {
+    fn element_icon(&self, id: usize) -> Option<image::RgbaImage>;
+    fn modcard56<'a>(&'a self, id: usize) -> Option<Box<dyn Modcard56 + 'a>> {
         let _ = id;
         None
     }
     fn num_modcard56s(&self) -> usize {
         0
     }
-    fn modcard4(&self, id: usize) -> Option<&Modcard4> {
+    fn modcard4<'a>(&'a self, id: usize) -> Option<Box<dyn Modcard4 + 'a>> {
         let _ = id;
         None
     }
     fn num_modcard4s(&self) -> usize {
         0
     }
-    fn navicust_part(&self, id: usize, variant: usize) -> Option<&NavicustPart> {
+    fn navicust_part<'a>(&'a self, id: usize, variant: usize) -> Option<Box<dyn NavicustPart + 'a>> {
         let _ = id;
         let _ = variant;
         None
@@ -122,14 +114,14 @@ pub trait Assets {
     fn num_navicust_parts(&self) -> (usize, usize) {
         (0, 0)
     }
-    fn style(&self, id: usize) -> Option<&Style> {
+    fn style<'a>(&'a self, id: usize) -> Option<Box<dyn Style + 'a>> {
         let _ = id;
         None
     }
     fn num_styles(&self) -> usize {
         0
     }
-    fn navi(&self, id: usize) -> Option<&Navi> {
+    fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn Navi + 'a>> {
         let _ = id;
         None
     }
@@ -245,14 +237,14 @@ pub fn unlz77(mut r: &[u8]) -> std::io::Result<Vec<u8>> {
     Ok(out)
 }
 
-pub struct MemoryMapper<'a> {
-    rom: &'a [u8],
-    wram: &'a [u8],
+pub struct MemoryMapper {
+    rom: Vec<u8>,
+    wram: Vec<u8>,
     unlz77_cache: parking_lot::Mutex<std::collections::HashMap<u32, Vec<u8>>>,
 }
 
-impl<'a> MemoryMapper<'a> {
-    pub fn new(rom: &'a [u8], wram: &'a [u8]) -> Self {
+impl MemoryMapper {
+    pub fn new(rom: Vec<u8>, wram: Vec<u8>) -> Self {
         Self {
             rom,
             wram,
@@ -260,7 +252,7 @@ impl<'a> MemoryMapper<'a> {
         }
     }
 
-    pub fn get(&self, start: u32) -> std::borrow::Cow<'a, [u8]> {
+    pub fn get<'a>(&'a self, start: u32) -> std::borrow::Cow<'a, [u8]> {
         if start >= 0x02000000 && start < 0x04000000 {
             std::borrow::Cow::Borrowed(&self.wram[(start & !0x02000000) as usize..])
         } else if start >= 0x08000000 && start < 0x0a000000 {

@@ -5,7 +5,7 @@ use crate::{gui, i18n, rom, save};
 pub struct State {
     grouped: bool,
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
-    chip_image_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
+    chip_image_texture_cache: std::collections::HashMap<usize, (egui::TextureHandle, [u32; 2])>,
     element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
 }
 
@@ -112,7 +112,8 @@ pub fn show<'a>(
                             let info = assets.chip(chip.id);
                             buf.push_str(&format!(
                                 "{}\t{}\t",
-                                info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                info.map(|info| info.as_ref().name())
+                                    .unwrap_or_else(|| "???".to_string()),
                                 chips_view.chip_codes()[chip.code] as char
                             ));
                         } else {
@@ -144,15 +145,15 @@ pub fn show<'a>(
                         outer_strip.cell(|ui| {
                             let info = chip.as_ref().and_then(|chip| assets.chip(chip.id));
 
-                            let (bg_color, fg_color) = if let Some(info) = info {
-                                let bg_color = if info.dark {
+                            let (bg_color, fg_color) = if let Some(info) = info.as_ref() {
+                                let bg_color = if info.dark() {
                                     Some(if ui.visuals().dark_mode {
                                         egui::Color32::from_rgb(0x31, 0x39, 0x5a)
                                     } else {
                                         egui::Color32::from_rgb(0xb5, 0x8c, 0xd6)
                                     })
                                 } else {
-                                    match info.class {
+                                    match info.class() {
                                         rom::ChipClass::Standard => None,
                                         rom::ChipClass::Mega => Some(if ui.visuals().dark_mode {
                                             egui::Color32::from_rgb(0x52, 0x84, 0x9c)
@@ -210,59 +211,63 @@ pub fn show<'a>(
                                     });
                                 }
                                 strip.cell(|ui| {
-                                    let icon = if let Some(icon) = info.map(|info| &info.icon) {
-                                        icon
-                                    } else {
-                                        return;
-                                    };
-
                                     let chip = if let Some(chip) = chip.as_ref() {
                                         chip
                                     } else {
                                         return;
                                     };
 
-                                    ui.image(
-                                        state
-                                            .chip_icon_texture_cache
-                                            .entry(chip.id)
-                                            .or_insert_with(|| {
-                                                ui.ctx().load_texture(
+                                    match state.chip_icon_texture_cache.entry(chip.id) {
+                                        std::collections::hash_map::Entry::Occupied(_) => {}
+                                        std::collections::hash_map::Entry::Vacant(e) => {
+                                            if let Some(image) = info.as_ref().map(|info| info.icon()) {
+                                                e.insert(ui.ctx().load_texture(
                                                     format!("chip icon {}", chip.id),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
+                                                        &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
-                                                )
-                                            })
-                                            .id(),
-                                        egui::Vec2::new(28.0, 28.0),
-                                    )
-                                    .on_hover_ui(|ui| {
-                                        if let Some(image) = info.map(|info| &info.image) {
-                                            ui.image(
-                                                state
-                                                    .chip_image_texture_cache
-                                                    .entry(chip.id)
-                                                    .or_insert_with(|| {
-                                                        ui.ctx().load_texture(
-                                                            format!("chip image {}", chip.id),
-                                                            egui::ColorImage::from_rgba_unmultiplied(
-                                                                [image.width() as usize, image.height() as usize],
-                                                                &image,
-                                                            ),
-                                                            egui::TextureFilter::Nearest,
-                                                        )
-                                                    })
-                                                    .id(),
-                                                egui::Vec2::new(
-                                                    image.width() as f32 * 2.0,
-                                                    image.height() as f32 * 2.0,
-                                                ),
-                                            );
+                                                ));
+                                            }
                                         }
-                                    });
+                                    }
+
+                                    if let Some(texture_handle) = state.chip_icon_texture_cache.get(&chip.id) {
+                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0))
+                                            .on_hover_ui(|ui| {
+                                                match state.chip_image_texture_cache.entry(chip.id) {
+                                                    std::collections::hash_map::Entry::Occupied(_) => {}
+                                                    std::collections::hash_map::Entry::Vacant(e) => {
+                                                        if let Some(image) = info.as_ref().map(|info| info.image()) {
+                                                            e.insert((
+                                                                ui.ctx().load_texture(
+                                                                    format!("chip image {}", chip.id),
+                                                                    egui::ColorImage::from_rgba_unmultiplied(
+                                                                        [
+                                                                            image.width() as usize,
+                                                                            image.height() as usize,
+                                                                        ],
+                                                                        &image,
+                                                                    ),
+                                                                    egui::TextureFilter::Nearest,
+                                                                ),
+                                                                [image.width(), image.height()],
+                                                            ));
+                                                        }
+                                                    }
+                                                }
+
+                                                if let Some((texture_handle, [width, height])) =
+                                                    state.chip_image_texture_cache.get(&chip.id)
+                                                {
+                                                    ui.image(
+                                                        texture_handle.id(),
+                                                        egui::Vec2::new(*width as f32 * 2.0, *height as f32 * 2.0),
+                                                    );
+                                                }
+                                            });
+                                    }
                                 });
                                 strip.cell(|ui| {
                                     ui.horizontal(|ui| {
@@ -274,7 +279,10 @@ pub fn show<'a>(
                                                     ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone();
                                                 name_style.family = font_families.for_language(game_lang);
                                                 layout_job.append(
-                                                    info.map(|info| info.name.as_str()).unwrap_or("???"),
+                                                    &info
+                                                        .as_ref()
+                                                        .map(|info| info.name())
+                                                        .unwrap_or_else(|| "???".to_string()),
                                                     0.0,
                                                     egui::TextFormat::simple(name_style, ui.visuals().text_color()),
                                                 );
@@ -293,7 +301,9 @@ pub fn show<'a>(
 
                                                 ui.label(layout_job).on_hover_text(
                                                     egui::RichText::new(
-                                                        info.map(|info| info.description.as_str()).unwrap_or("???"),
+                                                        info.as_ref()
+                                                            .map(|info| info.description())
+                                                            .unwrap_or_else(|| "???".to_string()),
                                                     )
                                                     .color(fg_color.unwrap_or(ui.visuals().text_color()))
                                                     .family(font_families.for_language(game_lang)),
@@ -323,38 +333,34 @@ pub fn show<'a>(
                                     });
                                 });
                                 strip.cell(|ui| {
-                                    let element = if let Some(element) = info.map(|info| info.element) {
+                                    let element = if let Some(element) = info.as_ref().map(|info| info.element()) {
                                         element
                                     } else {
                                         return;
                                     };
 
-                                    let icon = if let Some(icon) = assets.element_icon(element) {
-                                        icon
-                                    } else {
-                                        return;
-                                    };
-
-                                    ui.image(
-                                        state
-                                            .element_icon_texture_cache
-                                            .entry(element)
-                                            .or_insert_with(|| {
-                                                ui.ctx().load_texture(
+                                    match state.element_icon_texture_cache.entry(element) {
+                                        std::collections::hash_map::Entry::Occupied(_) => {}
+                                        std::collections::hash_map::Entry::Vacant(e) => {
+                                            if let Some(image) = assets.element_icon(element) {
+                                                e.insert(ui.ctx().load_texture(
                                                     format!("element {}", element),
                                                     egui::ColorImage::from_rgba_unmultiplied(
                                                         [14, 14],
-                                                        &image::imageops::crop_imm(icon, 1, 1, 14, 14).to_image(),
+                                                        &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
                                                     egui::TextureFilter::Nearest,
-                                                )
-                                            })
-                                            .id(),
-                                        egui::Vec2::new(28.0, 28.0),
-                                    );
+                                                ));
+                                            }
+                                        }
+                                    }
+
+                                    if let Some(texture_handle) = state.element_icon_texture_cache.get(&element) {
+                                        ui.image(texture_handle.id(), egui::Vec2::new(28.0, 28.0));
+                                    }
                                 });
                                 strip.cell(|ui| {
-                                    let damage = info.map(|info| info.damage).unwrap_or(0);
+                                    let damage = info.as_ref().map(|info| info.damage()).unwrap_or(0);
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                         if damage > 0 {
                                             ui.strong(format!("{}", damage));
@@ -363,7 +369,7 @@ pub fn show<'a>(
                                 });
                                 if chips_view.chips_have_mb() {
                                     strip.cell(|ui| {
-                                        let mb = info.map(|info| info.mb).unwrap_or(0);
+                                        let mb = info.as_ref().map(|info| info.mb()).unwrap_or(0);
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                             if mb > 0 {
                                                 ui.label(egui::RichText::new(format!("{}MB", mb)).color(

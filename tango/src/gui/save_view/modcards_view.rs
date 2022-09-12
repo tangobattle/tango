@@ -82,7 +82,7 @@ pub fn show_modcard4s<'a>(
                 {
                     row.col(|ui| {
                         ui.vertical(|ui| {
-                            let mut name_label = egui::RichText::new(format!("#{:03} {}", modcard.id, info.name))
+                            let mut name_label = egui::RichText::new(format!("#{:03} {}", modcard.id, info.name()))
                                 .family(font_families.for_language(game_lang));
                             if !modcard.enabled {
                                 name_label = name_label.strikethrough();
@@ -103,12 +103,12 @@ pub fn show_modcard4s<'a>(
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                                 show_effect(
                                     ui,
-                                    egui::RichText::new(info.effect).family(font_families.for_language(game_lang)),
+                                    egui::RichText::new(info.effect()).family(font_families.for_language(game_lang)),
                                     modcard.enabled,
                                     false,
                                 );
 
-                                if let Some(bug) = info.bug {
+                                if let Some(bug) = info.bug() {
                                     show_effect(
                                         ui,
                                         egui::RichText::new(bug).family(font_families.for_language(game_lang)),
@@ -152,8 +152,8 @@ pub fn show_modcard56s<'a>(
             let effects = modcard
                 .as_ref()
                 .and_then(|item| assets.modcard56(item.id))
-                .map(|info| info.effects.as_slice())
-                .unwrap_or(&[][..]);
+                .map(|info| info.effects())
+                .unwrap_or_else(|| vec![]);
             (modcard, effects)
         })
         .collect::<Vec<_>>();
@@ -186,7 +186,7 @@ pub fn show_modcard56s<'a>(
                             return vec![];
                         };
 
-                        vec![format!("{}\t{}", modcard.name, modcard.mb)]
+                        vec![format!("{}\t{}", modcard.name(), modcard.mb())]
                     })
                     .collect::<Vec<_>>()
                     .join("\n"),
@@ -206,8 +206,8 @@ pub fn show_modcard56s<'a>(
             body.heterogeneous_rows(
                 items.iter().map(|(_, effects)| {
                     let num_effects = std::cmp::max(
-                        effects.iter().filter(|effect| effect.is_ability).count(),
-                        effects.iter().filter(|effect| !effect.is_ability).count(),
+                        effects.iter().filter(|effect| effect.is_ability()).count(),
+                        effects.iter().filter(|effect| !effect.is_ability()).count(),
                     );
                     num_effects as f32 * row_height + num_effects as f32 * spacing_y - spacing_y * 0.5
                 }),
@@ -219,13 +219,13 @@ pub fn show_modcard56s<'a>(
                             .and_then(|modcard| assets.modcard56(modcard.id).map(|m| (m, modcard.enabled)))
                         {
                             let mut text =
-                                egui::RichText::new(&modcard.name).family(font_families.for_language(game_lang));
+                                egui::RichText::new(&modcard.name()).family(font_families.for_language(game_lang));
                             if !enabled {
                                 text = text.strikethrough();
                             }
                             ui.vertical(|ui| {
                                 ui.label(text);
-                                ui.small(format!("{}MB", modcard.mb));
+                                ui.small(format!("{}MB", modcard.mb()));
                             });
                         }
                     });
@@ -233,16 +233,17 @@ pub fn show_modcard56s<'a>(
                     row.col(|ui| {
                         ui.vertical(|ui| {
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                for effect in *effects {
-                                    if effect.is_ability {
+                                for effect in effects.iter() {
+                                    if effect.is_ability() {
                                         continue;
                                     }
 
                                     show_effect(
                                         ui,
-                                        egui::RichText::new(&effect.name).family(font_families.for_language(game_lang)),
+                                        egui::RichText::new(&effect.name())
+                                            .family(font_families.for_language(game_lang)),
                                         modcard.as_ref().map(|modcard| modcard.enabled).unwrap_or(false),
-                                        effect.is_debuff,
+                                        effect.is_debuff(),
                                     );
                                 }
                             });
@@ -251,16 +252,17 @@ pub fn show_modcard56s<'a>(
                     row.col(|ui| {
                         ui.vertical(|ui| {
                             ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-                                for effect in *effects {
-                                    if !effect.is_ability {
+                                for effect in effects.iter() {
+                                    if !effect.is_ability() {
                                         continue;
                                     }
 
                                     show_effect(
                                         ui,
-                                        egui::RichText::new(&effect.name).family(font_families.for_language(game_lang)),
+                                        egui::RichText::new(&effect.name())
+                                            .family(font_families.for_language(game_lang)),
                                         modcard.as_ref().map(|modcard| modcard.enabled).unwrap_or(false),
-                                        effect.is_debuff,
+                                        effect.is_debuff(),
                                     );
                                 }
                             });

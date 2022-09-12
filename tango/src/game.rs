@@ -3,12 +3,12 @@ use std::any::Any;
 use crate::{battle, patch, replayer, rom, save, session, shadow};
 
 mod bn1;
-mod bn2;
-mod bn3;
-mod bn4;
-mod bn5;
-mod bn6;
-mod exe45;
+// mod bn2;
+// mod bn3;
+// mod bn4;
+// mod bn5;
+// mod bn6;
+// mod exe45;
 
 impl PartialEq for &'static (dyn Game + Send + Sync) {
     fn eq(&self, other: &Self) -> bool {
@@ -33,25 +33,25 @@ impl std::fmt::Debug for &'static (dyn Game + Send + Sync) {
 pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn1::EXE1,
     bn1::BN1,
-    bn2::EXE2,
-    bn2::BN2,
-    bn3::EXE3W,
-    bn3::EXE3B,
-    bn3::BN3W,
-    bn3::BN3B,
-    bn4::EXE4RS,
-    bn4::EXE4BM,
-    bn4::BN4RS,
-    bn4::BN4BM,
-    exe45::EXE45,
-    bn5::EXE5B,
-    bn5::EXE5C,
-    bn5::BN5P,
-    bn5::BN5C,
-    bn6::EXE6G,
-    bn6::EXE6F,
-    bn6::BN6G,
-    bn6::BN6F,
+    // bn2::EXE2,
+    // bn2::BN2,
+    // bn3::EXE3W,
+    // bn3::EXE3B,
+    // bn3::BN3W,
+    // bn3::BN3B,
+    // bn4::EXE4RS,
+    // bn4::EXE4BM,
+    // bn4::BN4RS,
+    // bn4::BN4BM,
+    // exe45::EXE45,
+    // bn5::EXE5B,
+    // bn5::EXE5C,
+    // bn5::BN5P,
+    // bn5::BN5C,
+    // bn6::EXE6G,
+    // bn6::EXE6F,
+    // bn6::BN6G,
+    // bn6::BN6F,
 ];
 
 pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {

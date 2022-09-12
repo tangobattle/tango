@@ -47,27 +47,24 @@ pub fn show<'a>(
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.vertical_centered_justified(|ui| {
-                ui.image(
-                    state
-                        .emblem_texture_cache
-                        .get_or_insert_with(|| {
-                            (
-                                navi_id,
-                                ui.ctx().load_texture(
-                                    "emblem",
-                                    egui::ColorImage::from_rgba_unmultiplied(
-                                        [15, 15],
-                                        &image::imageops::crop_imm(&navi.emblem, 1, 0, 15, 15).to_image(),
-                                    ),
-                                    egui::TextureFilter::Nearest,
-                                ),
-                            )
-                        })
-                        .1
-                        .id(),
-                    egui::Vec2::new(30.0, 30.0),
-                );
-                ui.heading(egui::RichText::new(&navi.name).family(font_families.for_language(game_lang)));
+                if state.emblem_texture_cache.is_none() {
+                    state.emblem_texture_cache = Some((
+                        navi_id,
+                        ui.ctx().load_texture(
+                            "emblem",
+                            egui::ColorImage::from_rgba_unmultiplied(
+                                [15, 15],
+                                &image::imageops::crop_imm(&navi.emblem(), 1, 0, 15, 15).to_image(),
+                            ),
+                            egui::TextureFilter::Nearest,
+                        ),
+                    ));
+                }
+
+                if let Some((_, texture_handle)) = state.emblem_texture_cache.as_ref() {
+                    ui.image(texture_handle.id(), egui::Vec2::new(30.0, 30.0));
+                }
+                ui.heading(egui::RichText::new(&navi.name()).family(font_families.for_language(game_lang)));
             });
         });
 }

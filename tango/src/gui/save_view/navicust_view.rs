@@ -90,7 +90,7 @@ pub fn show<'a>(
             navicust_view.navicust_part(i).and_then(|ncp| {
                 assets
                     .navicust_part(ncp.id, ncp.variant)
-                    .and_then(|info| info.color.as_ref().map(|color| (info, color)))
+                    .and_then(|info| info.color().map(|color| (info, color)))
             })
         })
         .collect::<Vec<_>>();
@@ -108,8 +108,8 @@ pub fn show<'a>(
                 buf.push(
                     assets
                         .style(style)
-                        .map(|style| style.name.as_str())
-                        .unwrap_or("")
+                        .map(|style| style.name())
+                        .unwrap_or_else(|| "".to_string())
                         .to_owned(),
                 );
             }
@@ -117,12 +117,12 @@ pub fn show<'a>(
                 itertools::Itertools::zip_longest(
                     items
                         .iter()
-                        .filter(|(info, _)| info.is_solid)
-                        .map(|(info, _)| info.name.as_str()),
+                        .filter(|(info, _)| info.is_solid())
+                        .map(|(info, _)| info.name()),
                     items
                         .iter()
-                        .filter(|(info, _)| !info.is_solid)
-                        .map(|(info, _)| info.name.as_str()),
+                        .filter(|(info, _)| !info.is_solid())
+                        .map(|(info, _)| info.name()),
                 )
                 .map(|v| match v {
                     itertools::EitherOrBoth::Both(l, r) => format!("{}\t{}", l, r),
@@ -135,17 +135,22 @@ pub fn show<'a>(
     });
 
     if let Some(style) = navicust_view.style() {
-        ui.label(assets.style(style).map(|style| style.name.as_str()).unwrap_or(""));
+        ui.label(
+            assets
+                .style(style)
+                .map(|style| style.name())
+                .unwrap_or_else(|| "".to_string()),
+        );
     }
 
     ui.horizontal(|ui| {
         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
             ui.set_width(NCP_CHIP_WIDTH);
-            for (info, color) in items.iter().filter(|(info, _)| info.is_solid) {
+            for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
                 show_part_name(
                     ui,
-                    egui::RichText::new(&info.name).family(font_families.for_language(game_lang)),
-                    egui::RichText::new(&info.description).family(font_families.for_language(game_lang)),
+                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
+                    egui::RichText::new(&info.description()).family(font_families.for_language(game_lang)),
                     true,
                     color,
                 );
@@ -153,11 +158,11 @@ pub fn show<'a>(
         });
         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
             ui.set_width(NCP_CHIP_WIDTH);
-            for (info, color) in items.iter().filter(|(info, _)| !info.is_solid) {
+            for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
                 show_part_name(
                     ui,
-                    egui::RichText::new(&info.name).family(font_families.for_language(game_lang)),
-                    egui::RichText::new(&info.description).family(font_families.for_language(game_lang)),
+                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
+                    egui::RichText::new(&info.description()).family(font_families.for_language(game_lang)),
                     true,
                     color,
                 );
