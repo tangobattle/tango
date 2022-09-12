@@ -18,19 +18,17 @@ pub struct Session {
     thread: mgba::thread::Thread,
     joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,
     mode: Mode,
-    completion_rx: oneshot::Receiver<()>,
+    completion_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pause_on_next_frame: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct CompletionToken {
-    tx: std::sync::Arc<parking_lot::Mutex<Option<oneshot::Sender<()>>>>,
+    flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl CompletionToken {
     pub fn complete(&self) {
-        if let Some(tx) = self.tx.lock().take() {
-            let _ = tx.send(());
-        }
+        self.flag.store(true, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -39,9 +37,7 @@ pub struct PvP {
     cancellation_token: tokio_util::sync::CancellationToken,
 }
 
-pub struct SinglePlayer {
-    _completion_tx: oneshot::Sender<()>,
-}
+pub struct SinglePlayer {}
 
 pub enum Mode {
     SinglePlayer(SinglePlayer),
@@ -88,13 +84,13 @@ impl Session {
         let _ = std::fs::create_dir_all(replays_path.parent().unwrap());
         let mut traps = hooks.common_traps();
 
-        let (completion_tx, completion_rx) = oneshot::channel();
+        let completion_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         traps.extend(hooks.primary_traps(
             joyflags.clone(),
             match_.clone(),
             CompletionToken {
-                tx: std::sync::Arc::new(parking_lot::Mutex::new(Some(completion_tx))),
+                flag: completion_flag.clone(),
             },
         ));
         core.set_traps(
@@ -197,7 +193,7 @@ impl Session {
                 match_,
                 cancellation_token,
             }),
-            completion_rx,
+            completion_flag,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
@@ -223,8 +219,6 @@ impl Session {
 
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
-
-        let (completion_tx, completion_rx) = oneshot::channel();
 
         let thread = mgba::thread::Thread::new(core);
 
@@ -266,11 +260,9 @@ impl Session {
             _audio_binding: audio_binding,
             thread,
             joyflags,
-            mode: Mode::SinglePlayer(SinglePlayer {
-                _completion_tx: completion_tx,
-            }),
+            mode: Mode::SinglePlayer(SinglePlayer {}),
             pause_on_next_frame,
-            completion_rx,
+            completion_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         })
     }
 
@@ -290,8 +282,7 @@ impl Session {
         let hooks = game.hooks();
         hooks.patch(core.as_mut());
 
-        let (completion_tx, completion_rx) = oneshot::channel();
-        let completion_tx = std::sync::Arc::new(parking_lot::Mutex::new(Some(completion_tx)));
+        let completion_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let replay_is_complete = replay.is_complete;
         let input_pairs = replay.input_pairs.clone();
@@ -300,11 +291,9 @@ impl Session {
             input_pairs,
             0,
             Box::new({
-                let completion_tx = completion_tx.clone();
+                let completion_flag = completion_flag.clone();
                 move || {
-                    if let Some(tx) = completion_tx.lock().take() {
-                        let _ = tx.send(());
-                    }
+                    completion_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
             }),
         );
@@ -338,7 +327,7 @@ impl Session {
         {
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
-            let completion_tx = completion_tx.clone();
+            let completion_flag = completion_flag.clone();
             let replayer_state = replayer_state.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
             thread.set_frame_callback(move |_core, video_buffer, mut thread_handle| {
@@ -348,12 +337,12 @@ impl Session {
                 emu_tps_counter.lock().mark();
 
                 if !replay_is_complete && replayer_state.lock_inner().input_pairs_left() == 0 {
-                    if let Some(tx) = completion_tx.lock().take() {
-                        let _ = tx.send(());
-                    }
+                    completion_flag.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
 
-                if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst) {
+                if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst)
+                    || completion_flag.load(std::sync::atomic::Ordering::SeqCst)
+                {
                     thread_handle.pause();
                 }
             });
@@ -367,16 +356,13 @@ impl Session {
             thread,
             joyflags: Arc::new(std::sync::atomic::AtomicU32::new(0)),
             mode: Mode::Replayer,
-            completion_rx,
+            completion_flag,
             pause_on_next_frame,
         })
     }
 
     pub fn completed(&self) -> bool {
-        match self.completion_rx.try_recv() {
-            Err(oneshot::TryRecvError::Empty) => false,
-            _ => true,
-        }
+        self.completion_flag.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     pub fn mode(&self) -> &Mode {
