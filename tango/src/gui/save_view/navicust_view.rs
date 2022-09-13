@@ -149,41 +149,257 @@ fn render_navicust<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
-    let mut image = image::ImageBuffer::new(composed.width(), composed.height());
+    const BORDER_WIDTH: f32 = 2.0;
+    const SQUARE_SIZE: f32 = 20.0;
+
+    let mut pixmap = tiny_skia::Pixmap::new(
+        composed.width() * SQUARE_SIZE as u32,
+        composed.height() * SQUARE_SIZE as u32,
+    )
+    .unwrap();
+
+    let mut bg_fill_paint = tiny_skia::Paint::default();
+    bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
+
+    let mut border_stroke_paint = tiny_skia::Paint::default();
+    border_stroke_paint.set_color_rgba8(0x29, 0x31, 0x4a, 0xff);
+
+    let mut stroke = tiny_skia::Stroke::default();
+    stroke.width = BORDER_WIDTH as f32;
+    stroke.line_cap = tiny_skia::LineCap::Square;
+
+    let square_path = {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.push_rect(0.0, 0.0, SQUARE_SIZE, SQUARE_SIZE);
+        pb.finish().unwrap()
+    };
+
+    let plus_path = {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(SQUARE_SIZE / 2.0, 0.0);
+        pb.line_to(SQUARE_SIZE / 2.0, SQUARE_SIZE);
+        pb.move_to(0.0, SQUARE_SIZE / 2.0);
+        pb.line_to(SQUARE_SIZE, SQUARE_SIZE / 2.0);
+        pb.finish().unwrap()
+    };
+
+    let command_line_path = {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.move_to(0.0, 0.0);
+        pb.line_to(SQUARE_SIZE * composed.width() as f32, 0.0);
+        pb.finish().unwrap()
+    };
+
+    struct Neighbor {
+        offset: [isize; 2],
+        border_path: tiny_skia::Path,
+    }
+
+    let neighbors = [
+        Neighbor {
+            offset: [0, -1],
+            border_path: {
+                let mut pb = tiny_skia::PathBuilder::new();
+                pb.move_to(0.0, 0.0);
+                pb.line_to(SQUARE_SIZE, 0.0);
+                pb.finish().unwrap()
+            },
+        },
+        Neighbor {
+            offset: [-1, 0],
+            border_path: {
+                let mut pb = tiny_skia::PathBuilder::new();
+                pb.move_to(0.0, 0.0);
+                pb.line_to(0.0, SQUARE_SIZE);
+                pb.finish().unwrap()
+            },
+        },
+        Neighbor {
+            offset: [0, 1],
+            border_path: {
+                let mut pb = tiny_skia::PathBuilder::new();
+                pb.move_to(0.0, SQUARE_SIZE);
+                pb.line_to(SQUARE_SIZE, SQUARE_SIZE);
+                pb.finish().unwrap()
+            },
+        },
+        Neighbor {
+            offset: [1, 0],
+            border_path: {
+                let mut pb = tiny_skia::PathBuilder::new();
+                pb.move_to(SQUARE_SIZE, 0.0);
+                pb.line_to(SQUARE_SIZE, SQUARE_SIZE);
+                pb.finish().unwrap()
+            },
+        },
+    ];
+
+    // First pass: draw background.
+    for y in 0..composed.width() {
+        for x in 0..composed.height() {
+            if navicust_view.has_out_of_bounds()
+                && ((x == 0 && y == 0)
+                    || (x == 0 && y == composed.height() - 1)
+                    || (x == composed.width() - 1 && y == 0)
+                    || (x == composed.width() - 1 && y == composed.height() - 1))
+            {
+                continue;
+            }
+
+            let transform =
+                tiny_skia::Transform::identity().pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
+
+            pixmap.fill_path(
+                &square_path,
+                &bg_fill_paint,
+                tiny_skia::FillRule::Winding,
+                transform,
+                None,
+            );
+            pixmap.stroke_path(&square_path, &border_stroke_paint, &stroke, transform, None);
+        }
+    }
+
+    // Second pass: draw squares.
     for (i, p) in composed.pixels().enumerate() {
         let x = i % composed.width() as usize;
         let y = i / composed.width() as usize;
         let [l, a] = p.0;
 
-        if a != 0 {
-            let ncp_i = l as usize;
-            let ncp = if let Some(ncp) = navicust_view.navicust_part(ncp_i) {
-                ncp
-            } else {
-                continue;
-            };
+        if a == 0 {
+            continue;
+        }
 
-            let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
-                info
-            } else {
-                continue;
-            };
+        let ncp_i = l as usize;
+        let ncp = if let Some(ncp) = navicust_view.navicust_part(ncp_i) {
+            ncp
+        } else {
+            continue;
+        };
 
-            let color = if let Some(color) = info.color() {
-                color
-            } else {
-                continue;
-            };
+        let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+            info
+        } else {
+            continue;
+        };
 
-            let (solid_color, plus_color) = navicust_part_colors(&color);
-            image.put_pixel(
-                x as u32,
-                y as u32,
-                if info.is_solid() { solid_color } else { plus_color },
-            );
+        let color = if let Some(color) = info.color() {
+            color
+        } else {
+            continue;
+        };
+
+        let (solid_color, plus_color) = navicust_part_colors(&color);
+
+        let transform = tiny_skia::Transform::identity().pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
+
+        let mut fill_paint = tiny_skia::Paint::default();
+        fill_paint.set_color_rgba8(solid_color.0[0], solid_color.0[1], solid_color.0[2], solid_color.0[3]);
+
+        let mut stroke_paint = tiny_skia::Paint::default();
+        stroke_paint.set_color_rgba8(plus_color.0[0], plus_color.0[1], plus_color.0[2], plus_color.0[3]);
+
+        pixmap.fill_path(&square_path, &fill_paint, tiny_skia::FillRule::Winding, transform, None);
+        pixmap.stroke_path(&square_path, &stroke_paint, &stroke, transform, None);
+        if !info.is_solid() {
+            pixmap.stroke_path(&plus_path, &stroke_paint, &stroke, transform, None);
         }
     }
-    image
+
+    // Third pass: draw borders.
+    for (i, p) in composed.pixels().enumerate() {
+        let x = i % composed.width() as usize;
+        let y = i / composed.width() as usize;
+        let [l, a] = p.0;
+
+        if a == 0 {
+            continue;
+        }
+
+        let transform = tiny_skia::Transform::identity().pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
+
+        let ncp_i = l as usize;
+        for neighbor in neighbors.iter() {
+            let x = x as isize + neighbor.offset[0];
+            let y = y as isize + neighbor.offset[1];
+
+            let mut should_stroke = x < 0 || x >= composed.width() as isize || y < 0 || y >= composed.height() as isize;
+            if !should_stroke {
+                let [l, a] = composed.get_pixel(x as u32, y as u32).0;
+                if a == 0 || l as usize != ncp_i {
+                    should_stroke = true;
+                }
+            }
+
+            if should_stroke {
+                pixmap.stroke_path(&neighbor.border_path, &border_stroke_paint, &stroke, transform, None);
+            }
+        }
+    }
+
+    // Fourth pass: draw command line.
+    let command_line_top = navicust_view.command_line() as f32 * SQUARE_SIZE;
+    pixmap.stroke_path(
+        &command_line_path,
+        &border_stroke_paint,
+        &stroke,
+        tiny_skia::Transform::identity().pre_translate(0.0, command_line_top + SQUARE_SIZE * 1.0 / 4.0),
+        None,
+    );
+    pixmap.stroke_path(
+        &command_line_path,
+        &border_stroke_paint,
+        &stroke,
+        tiny_skia::Transform::identity().pre_translate(0.0, command_line_top + SQUARE_SIZE * 3.0 / 4.0),
+        None,
+    );
+
+    // Fifth pass: draw out of bounds overlay.
+    if navicust_view.has_out_of_bounds() {
+        let path = {
+            let mut pb = tiny_skia::PathBuilder::new();
+
+            let w = SQUARE_SIZE + BORDER_WIDTH / 2.0;
+            let h = (composed.height() - 2) as f32 * SQUARE_SIZE + BORDER_WIDTH;
+
+            // Left
+            pb.push_rect(0.0, 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h);
+
+            // Right
+            pb.push_rect(
+                (composed.width() - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                w,
+                h,
+            );
+
+            // Top
+            pb.push_rect(1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, 0.0, h, w);
+
+            // Bottom
+            pb.push_rect(
+                1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                (composed.height() - 1) as f32 * SQUARE_SIZE - BORDER_WIDTH / 2.0,
+                h,
+                w,
+            );
+
+            pb.finish().unwrap()
+        };
+
+        let mut oob_paint = tiny_skia::Paint::default();
+        oob_paint.set_color_rgba8(0x00, 0x00, 0x00, 0x80);
+
+        pixmap.fill_path(
+            &path,
+            &oob_paint,
+            tiny_skia::FillRule::Winding,
+            tiny_skia::Transform::identity(),
+            None,
+        );
+    }
+
+    image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
 }
 
 pub fn show<'a>(
