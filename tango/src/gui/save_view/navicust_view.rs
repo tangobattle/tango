@@ -175,7 +175,12 @@ fn render_navicust<'a>(
                 continue;
             };
 
-            image.put_pixel(x as u32, y as u32, navicust_part_colors(&color).0);
+            let (solid_color, plus_color) = navicust_part_colors(&color);
+            image.put_pixel(
+                x as u32,
+                y as u32,
+                if info.is_solid() { solid_color } else { plus_color },
+            );
         }
     }
     image
