@@ -1,7 +1,7 @@
-updater = Update
-updater-downloading = Update downloading ({ $percent }%)...
-updater-update-available = Update available!
-updater-ready-to-update = Ready to update!
-updater-current-version = Current version
-updater-latest-version = Latest version
-updater-update-now = Update now!
+updater = Обновить
+updater-downloading = Обновление загружается ({ $percent }%)...
+updater-update-available = Доступно обновление!
+updater-ready-to-update = Готово к обновлению!
+updater-current-version = Текущая версия
+updater-latest-version = Последняя версия
+updater-update-now = Обновить сейчас!
