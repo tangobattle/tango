@@ -1,6 +1,6 @@
 save-tab-cover = カバー
 save-tab-navi = ナビ
-save-tab-navicust = Navicust
+save-tab-navicust = ナビカスとマイザー
 save-tab-folder = チップフォルダ
 save-tab-modcards = 改造カード
 save-tab-dark-ai = ダークソウルAI
@@ -13,5 +13,5 @@ dark-ai-giga-chip = ギガチップ
 dark-ai-combos = コンボ
 dark-ai-program-advance = プログラムアドバンス
 dark-ai-unset = 未設定
-copy-navicust-image-to-clipboard = Copy NaviCust image to clipboard
-    .copied = Copied!
+copy-navicust-image-to-clipboard = ナビカス画像をクリップボードにコピー
+    .copied = コピーしました！
