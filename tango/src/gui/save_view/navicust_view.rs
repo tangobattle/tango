@@ -150,11 +150,18 @@ fn render_navicust<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
-    let color_bar = render_navicust_color_bar456(navicust_view, assets);
     let body = render_navicust_body(composed, navicust_view, assets);
 
     const PADDING_H: u32 = 20;
     const PADDING_V: u32 = 20;
+
+    let (color_bar, color_bar_offset_x) = if let Some(style) = navicust_view.style() {
+        let color_bar = render_navicust_color_bar3(assets.style(style).and_then(|style| style.extra_ncp_color()));
+        let width = color_bar.width();
+        (color_bar, body.width() - width)
+    } else {
+        (render_navicust_color_bar456(navicust_view, assets), 0)
+    };
 
     let mut image = image::RgbaImage::new(
         body.width() + PADDING_H * 2,
@@ -166,7 +173,12 @@ fn render_navicust<'a>(
         *pixel = bg;
     }
 
-    image::imageops::overlay(&mut image, &color_bar, PADDING_H as i64, PADDING_V as i64);
+    image::imageops::overlay(
+        &mut image,
+        &color_bar,
+        PADDING_H as i64 + color_bar_offset_x as i64,
+        PADDING_V as i64,
+    );
     image::imageops::overlay(
         &mut image,
         &body,
@@ -205,6 +217,65 @@ fn gather_ncp_colors<'a>(
         })
         .unique()
         .collect::<Vec<_>>()
+}
+
+fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -> image::RgbaImage {
+    const BORDER_WIDTH: f32 = 6.0;
+    const TILE_WIDTH: f32 = 15.0;
+    const TILE_HEIGHT: f32 = 30.0;
+
+    let mut pixmap = tiny_skia::Pixmap::new(
+        (TILE_WIDTH * 4.0 + BORDER_WIDTH) as u32,
+        (TILE_HEIGHT + BORDER_WIDTH) as u32,
+    )
+    .unwrap();
+
+    let mut bg_fill_paint = tiny_skia::Paint::default();
+    bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
+
+    let mut border_stroke_paint = tiny_skia::Paint::default();
+    border_stroke_paint.set_color_rgba8(0x29, 0x31, 0x4a, 0xff);
+
+    let mut stroke = tiny_skia::Stroke::default();
+    stroke.width = BORDER_WIDTH as f32;
+    stroke.line_cap = tiny_skia::LineCap::Square;
+
+    let path = {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.push_rect(0.0, 0.0, TILE_WIDTH, TILE_HEIGHT);
+        pb.finish().unwrap()
+    };
+
+    let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
+
+    for (i, color) in [
+        Some(rom::NavicustPartColor::White),
+        Some(rom::NavicustPartColor::Pink),
+        Some(rom::NavicustPartColor::Yellow),
+        extra_color,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let transform = root_transform.pre_translate(i as f32 * TILE_WIDTH, 0.0);
+        pixmap.fill_path(
+            &path,
+            &if let Some(color) = color {
+                let (_, plus_color) = navicust_part_colors(&color);
+                let mut fill_paint = tiny_skia::Paint::default();
+                fill_paint.set_color_rgba8(plus_color.0[0], plus_color.0[1], plus_color.0[2], plus_color.0[3]);
+                fill_paint
+            } else {
+                bg_fill_paint.clone()
+            },
+            tiny_skia::FillRule::Winding,
+            transform,
+            None,
+        );
+        pixmap.stroke_path(&path, &border_stroke_paint, &stroke, transform, None);
+    }
+
+    image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
 }
 
 fn render_navicust_color_bar456<'a>(
