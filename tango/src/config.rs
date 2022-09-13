@@ -150,7 +150,7 @@ pub fn get_updater_path() -> Result<std::path::PathBuf, anyhow::Error> {
         .join("updater"))
 }
 
-const DATA_DIR_NAME: &str = "Tango Testing";
+const DATA_DIR_NAME: &str = "Tango";
 
 impl Config {
     pub fn system_defaults() -> Result<Self, anyhow::Error> {
