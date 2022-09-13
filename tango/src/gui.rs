@@ -59,6 +59,7 @@ impl Selection {
     pub fn reload_save(&mut self) -> anyhow::Result<()> {
         let raw = std::fs::read(&self.save.path)?;
         self.save.save = self.game.parse_save(&raw)?;
+        self.save_view_state = save_view::State::new();
         Ok(())
     }
 }

@@ -5,7 +5,7 @@ use fluent_templates::Loader;
 use crate::{gui, i18n, rom, save};
 
 pub struct State {
-    emblem_texture_cache: Option<(usize, egui::TextureHandle)>,
+    emblem_texture_cache: Option<egui::TextureHandle>,
 }
 
 impl State {
@@ -33,35 +33,23 @@ pub fn show<'a>(
         return;
     };
 
-    if !state
-        .emblem_texture_cache
-        .as_ref()
-        .map(|(id, _)| *id == navi_id)
-        .unwrap_or(false)
-    {
-        state.emblem_texture_cache = None;
-    }
-
     egui::ScrollArea::vertical()
         .id_source("navi-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.vertical_centered_justified(|ui| {
                 if state.emblem_texture_cache.is_none() {
-                    state.emblem_texture_cache = Some((
-                        navi_id,
-                        ui.ctx().load_texture(
-                            "emblem",
-                            egui::ColorImage::from_rgba_unmultiplied(
-                                [15, 15],
-                                &image::imageops::crop_imm(&navi.emblem(), 1, 0, 15, 15).to_image(),
-                            ),
-                            egui::TextureFilter::Nearest,
+                    state.emblem_texture_cache = Some(ui.ctx().load_texture(
+                        "emblem",
+                        egui::ColorImage::from_rgba_unmultiplied(
+                            [15, 15],
+                            &image::imageops::crop_imm(&navi.emblem(), 1, 0, 15, 15).to_image(),
                         ),
+                        egui::TextureFilter::Nearest,
                     ));
                 }
 
-                if let Some((_, texture_handle)) = state.emblem_texture_cache.as_ref() {
+                if let Some(texture_handle) = state.emblem_texture_cache.as_ref() {
                     ui.image(texture_handle.id(), egui::Vec2::new(30.0, 30.0));
                 }
                 ui.heading(egui::RichText::new(&navi.name()).family(font_families.for_language(game_lang)));
