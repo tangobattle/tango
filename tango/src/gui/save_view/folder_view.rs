@@ -135,7 +135,7 @@ pub fn show<'a>(
     });
 
     egui::ScrollArea::vertical()
-        .id_source("dark-ai-view")
+        .id_source("folder-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             egui_extras::StripBuilder::new(ui)

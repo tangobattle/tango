@@ -48,6 +48,7 @@ pub fn show(
     save: &Box<dyn save::Save + Send + Sync>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
     state: &mut State,
+    prefer_vertical: bool,
 ) {
     ui.vertical(|ui| {
         let navi_view = save.view_navi();
@@ -136,6 +137,7 @@ pub fn show(
                         &navicust_view,
                         assets,
                         &mut state.navicust_view,
+                        prefer_vertical,
                     );
                 }
             }

@@ -1,14 +1,20 @@
-use crate::{discord, gui, input, session, video};
+use fluent_templates::Loader;
+
+use crate::{discord, gui, i18n, input, session, video};
 
 mod replay_controls_window;
 
 pub struct State {
     vbuf: Option<VBuf>,
+    opponent_save_view: gui::save_view::State,
 }
 
 impl State {
     pub fn new() -> State {
-        Self { vbuf: None }
+        Self {
+            vbuf: None,
+            opponent_save_view: gui::save_view::State::new(),
+        }
     }
 }
 
@@ -88,6 +94,8 @@ fn show_emulator(
 pub fn show(
     ctx: &egui::Context,
     language: &unic_langid::LanguageIdentifier,
+    clipboard: &mut arboard::Clipboard,
+    font_families: &gui::FontFamilies,
     input_state: &input::State,
     input_mapping: &input::Mapping,
     session: &session::Session,
@@ -202,6 +210,24 @@ cpsr = {:08x}"#,
         log::error!("writing crashstate to {}", crashstate_path.display());
         std::fs::write(crashstate_path, state.as_slice()).unwrap();
         panic!("not possible to proceed any further! aborting!");
+    }
+
+    if let Some(opponent_setup) = session.opponent_setup().as_ref() {
+        egui::SidePanel::right("opponent-setup-panel").show(ctx, |ui| {
+            ui.heading(i18n::LOCALES.lookup(language, "opponent-setup").unwrap());
+            gui::save_view::show(
+                ui,
+                false,
+                clipboard,
+                font_families,
+                language,
+                &opponent_setup.game_lang,
+                &opponent_setup.save,
+                &opponent_setup.assets,
+                &mut state.opponent_save_view,
+                true,
+            )
+        });
     }
 
     egui::CentralPanel::default()

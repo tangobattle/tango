@@ -646,6 +646,7 @@ pub fn show<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
     state: &mut State,
+    prefer_vertical: bool,
 ) {
     const NCP_CHIP_WIDTH: f32 = 150.0;
 
@@ -720,53 +721,72 @@ pub fn show<'a>(
         }
     });
 
-    ui.horizontal(|ui| {
-        if !state.rendered_navicust_cache.is_some() {
-            let composed = compose_navicust(navicust_view, assets);
-            let image = render_navicust(
-                &composed,
-                navicust_view,
-                assets,
-                font_families.raw_for_language(game_lang),
-            );
-            let texture = ui.ctx().load_texture(
-                "navicust",
-                egui::ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], &image),
-                egui::TextureFilter::Nearest,
-            );
-            state.rendered_navicust_cache = Some((image, texture));
-        }
+    egui::ScrollArea::vertical()
+        .id_source("navicust-view")
+        .auto_shrink([false, false])
+        .show(ui, |ui| {
+            ui.with_layout(
+                if prefer_vertical {
+                    egui::Layout::top_down(egui::Align::Min)
+                } else {
+                    egui::Layout::left_to_right(egui::Align::Min)
+                },
+                |ui| {
+                    if !state.rendered_navicust_cache.is_some() {
+                        let composed = compose_navicust(navicust_view, assets);
+                        let image = render_navicust(
+                            &composed,
+                            navicust_view,
+                            assets,
+                            font_families.raw_for_language(game_lang),
+                        );
+                        let texture = ui.ctx().load_texture(
+                            "navicust",
+                            egui::ColorImage::from_rgba_unmultiplied(
+                                [image.width() as usize, image.height() as usize],
+                                &image,
+                            ),
+                            egui::TextureFilter::Nearest,
+                        );
+                        state.rendered_navicust_cache = Some((image, texture));
+                    }
 
-        if let Some((image, texture_handle)) = state.rendered_navicust_cache.as_ref() {
-            ui.image(
-                texture_handle.id(),
-                egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
-            );
-        }
+                    if let Some((image, texture_handle)) = state.rendered_navicust_cache.as_ref() {
+                        ui.image(
+                            texture_handle.id(),
+                            egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
+                        );
+                    }
 
-        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-            ui.set_width(NCP_CHIP_WIDTH);
-            for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
-                show_part_name(
-                    ui,
-                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
-                    egui::RichText::new(&info.description()).family(font_families.for_language(game_lang)),
-                    true,
-                    color,
-                );
-            }
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                            ui.set_width(NCP_CHIP_WIDTH);
+                            for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
+                                show_part_name(
+                                    ui,
+                                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
+                                    egui::RichText::new(&info.description())
+                                        .family(font_families.for_language(game_lang)),
+                                    true,
+                                    color,
+                                );
+                            }
+                        });
+                        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                            ui.set_width(NCP_CHIP_WIDTH);
+                            for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
+                                show_part_name(
+                                    ui,
+                                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
+                                    egui::RichText::new(&info.description())
+                                        .family(font_families.for_language(game_lang)),
+                                    true,
+                                    color,
+                                );
+                            }
+                        });
+                    });
+                },
+            );
         });
-        ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
-            ui.set_width(NCP_CHIP_WIDTH);
-            for (info, color) in items.iter().filter(|(info, _)| !info.is_solid()) {
-                show_part_name(
-                    ui,
-                    egui::RichText::new(&info.name()).family(font_families.for_language(game_lang)),
-                    egui::RichText::new(&info.description()).family(font_families.for_language(game_lang)),
-                    true,
-                    color,
-                );
-            }
-        });
-    });
 }

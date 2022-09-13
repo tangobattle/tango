@@ -404,6 +404,7 @@ pub fn show(
                             &selection.save,
                             &assets,
                             &mut selection.save_view,
+                            false,
                         );
                     }
                 });

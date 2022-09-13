@@ -402,6 +402,8 @@ pub fn show(
         session_view::show(
             ctx,
             &config.language,
+            &mut state.clipboard,
+            &state.font_families,
             input_state,
             &config.input_mapping,
             session,

@@ -2320,6 +2320,7 @@ pub fn show(
                             &selection.save.save,
                             assets,
                             &mut selection.save_view_state,
+                            false,
                         );
                     }
                 }
