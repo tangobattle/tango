@@ -32,23 +32,28 @@ pub struct Replay {
     pub input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
 }
 
-pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(bool, Metadata), std::io::Error> {
+fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
+    Ok(protos::replay11::Metadata::decode(&raw[..])?)
+}
+
+pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(usize, Metadata), std::io::Error> {
     let mut header = [0u8; 4];
     r.read_exact(&mut header)?;
     if &header != HEADER {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
     }
 
-    if r.read_u8()? != VERSION {
+    let version = r.read_u8()?;
+    if version != VERSION {
         return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid version"));
     }
 
-    let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
+    let num_inputs = r.read_u32::<byteorder::LittleEndian>()? as usize;
 
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
-    let mut raw_metadata = vec![0u8; metadata_len as usize];
-    r.read_exact(&mut raw_metadata[..])?;
-    Ok((num_inputs > 0, protos::replay11::Metadata::decode(&raw_metadata[..])?))
+    let mut raw = vec![0u8; metadata_len as usize];
+    r.read_exact(&mut raw[..])?;
+    Ok((num_inputs, decode_metadata(version, &raw)?))
 }
 
 impl Replay {
@@ -65,22 +70,7 @@ impl Replay {
     }
 
     pub fn decode(mut r: impl std::io::Read) -> std::io::Result<Self> {
-        let mut header = [0u8; 4];
-        r.read_exact(&mut header)?;
-        if &header != HEADER {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid header"));
-        }
-
-        if r.read_u8()? != VERSION {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid version"));
-        }
-
-        let num_inputs = r.read_u32::<byteorder::LittleEndian>()?;
-
-        let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
-        let mut raw_metadata = vec![0u8; metadata_len as usize];
-        r.read_exact(&mut raw_metadata[..])?;
-        let metadata = protos::replay11::Metadata::decode(&raw_metadata[..])?;
+        let (num_inputs, metadata) = read_metadata(&mut r)?;
 
         let mut zr = zstd::stream::read::Decoder::new(r)?;
 

@@ -55,14 +55,14 @@ impl State {
                             }
                         };
 
-                        let metadata = match replay::read_metadata(&mut f) {
-                            Ok(metadata) => metadata,
+                        let (num_inputs, metadata) = match replay::read_metadata(&mut f) {
+                            Ok((n, metadata)) => (n, metadata),
                             Err(_) => {
                                 continue;
                             }
                         };
 
-                        replays.insert(path.to_path_buf(), metadata);
+                        replays.insert(path.to_path_buf(), (num_inputs > 0, metadata));
                     }
                     Some(replays)
                 });
