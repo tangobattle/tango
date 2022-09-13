@@ -1,4 +1,4 @@
-mod ipc;
+mod rpc;
 
 #[allow(dead_code)]
 use fluent_templates::Loader;
@@ -135,17 +135,48 @@ pub fn make_in_progress_activity(
 }
 
 pub struct Client {
-    current_activity: std::sync::Arc<parking_lot::Mutex<Option<()>>>,
-    current_join_secret: std::sync::Arc<parking_lot::Mutex<Option<String>>>,
+    rpc: std::sync::Arc<tokio::sync::Mutex<Option<rpc::Client>>>,
+    current_activity: std::sync::Arc<tokio::sync::Mutex<Option<()>>>,
+    current_join_secret: std::sync::Arc<tokio::sync::Mutex<Option<String>>>,
 }
 
 impl Client {
     pub fn new() -> Self {
-        let current_activity: std::sync::Arc<parking_lot::Mutex<Option<()>>> =
-            std::sync::Arc::new(parking_lot::Mutex::new(None));
-        let current_join_secret = std::sync::Arc::new(parking_lot::Mutex::new(None));
+        let current_activity: std::sync::Arc<tokio::sync::Mutex<Option<()>>> =
+            std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let current_join_secret = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+        let rpc = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+
+        {
+            let rpc = rpc.clone();
+            tokio::task::spawn(async move {
+                loop {
+                    // Try establish RPC connection, if not already open.
+                    let mut rpc = rpc.lock().await;
+                    if rpc.is_none() {
+                        *rpc = match rpc::Client::connect(APP_ID).await {
+                            Ok(rpc) => {
+                                log::info!("connected to discord RPC");
+                                Some(rpc)
+                            }
+                            Err(err) => {
+                                log::warn!("did not open discord RPC client: {:?}", err);
+                                None
+                            }
+                        };
+                    }
+
+                    if let Some(rpc) = &*rpc {
+                        // Do stuff with RPC connection.
+                    }
+
+                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                }
+            });
+        }
 
         let client = Self {
+            rpc,
             current_activity,
             current_join_secret,
         };
@@ -153,7 +184,7 @@ impl Client {
     }
 
     pub fn set_current_activity(&self, activity: Option<()>) {
-        let mut current_activity = self.current_activity.lock();
+        let mut current_activity = self.current_activity.blocking_lock();
         if activity == *current_activity {
             return;
         }
@@ -164,10 +195,10 @@ impl Client {
     }
 
     pub fn has_current_join_secret(&self) -> bool {
-        self.current_join_secret.lock().is_some()
+        self.current_join_secret.blocking_lock().is_some()
     }
 
     pub fn take_current_join_secret(&self) -> Option<String> {
-        self.current_join_secret.lock().take()
+        self.current_join_secret.blocking_lock().take()
     }
 }

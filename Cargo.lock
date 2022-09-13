@@ -5208,6 +5208,8 @@ dependencies = [
  "mailparse",
  "mgba",
  "mmpx",
+ "num-derive",
+ "num-traits",
  "oneshot",
  "open",
  "parking_lot 0.12.1",

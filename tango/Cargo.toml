@@ -93,6 +93,8 @@ sha2 = "0.10"
 serde-hex = "0.1"
 futures = "0.3"
 fontdue = "0.7"
+num-traits = "0.2"
+num-derive = "0.3"
 
 [build-dependencies]
 embed-resource = "1.7"
