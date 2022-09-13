@@ -31,6 +31,7 @@ AutoCloseWindow true
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
 BrandingText " "
+ChangeUI all "${{NSISDIR}}\\Contrib\\UIs\\sdbarker_tiny.exe"
 
 InstallDir ""
 InstallDirRegKey HKCU "${{REGPATH_UNINSTSUBKEY}}" "UninstallString"
