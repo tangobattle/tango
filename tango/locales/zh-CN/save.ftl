@@ -1,6 +1,6 @@
 save-tab-cover = 封面
 save-tab-navi = 领航员
-save-tab-navicust = 个性化
+save-tab-navicust = Navicust
 save-tab-folder = 芯片夹
 save-tab-modcards = 改造卡
 save-tab-dark-ai = 黑暗灵魂AI
@@ -13,3 +13,5 @@ dark-ai-giga-chip = 究极芯片
 dark-ai-combos = 组合
 dark-ai-program-advance = 程序强化
 dark-ai-unset = 未設定
+copy-navicust-image-to-clipboard = Copy NaviCust image to clipboard
+    .copied = Copied!
