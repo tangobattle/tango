@@ -317,7 +317,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         raw[0x01] == 0
     }
 
-    fn compressed_bitmap(&self) -> rom::NavicustBitmap {
+    fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
         let raw = self.raw_info();
         image::ImageBuffer::from_vec(
             5,
@@ -330,7 +330,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
         .unwrap()
     }
 
-    fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
+    fn compressed_bitmap(&self) -> rom::NavicustBitmap {
         let raw = self.raw_info();
         image::ImageBuffer::from_vec(
             5,

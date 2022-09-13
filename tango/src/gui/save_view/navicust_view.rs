@@ -3,54 +3,54 @@ use fluent_templates::Loader;
 use crate::{gui, i18n, rom, save};
 
 pub struct State {
-    navicust_texture_cache: Option<egui::TextureHandle>,
+    rendered_navicust_cache: Option<(image::RgbaImage, egui::TextureHandle)>,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            navicust_texture_cache: None,
+            rendered_navicust_cache: None,
         }
     }
 }
 
-fn navicust_part_colors(color: &rom::NavicustPartColor) -> (egui::Color32, egui::Color32) {
+fn navicust_part_colors(color: &rom::NavicustPartColor) -> (image::Rgba<u8>, image::Rgba<u8>) {
     match color {
         rom::NavicustPartColor::Red => (
-            egui::Color32::from_rgb(0xde, 0x10, 0x00),
-            egui::Color32::from_rgb(0xbd, 0x00, 0x00),
+            image::Rgba([0xde, 0x10, 0x00, 0xff]),
+            image::Rgba([0xbd, 0x00, 0x00, 0xff]),
         ),
         rom::NavicustPartColor::Pink => (
-            egui::Color32::from_rgb(0xde, 0x8c, 0xc6),
-            egui::Color32::from_rgb(0xbd, 0x6b, 0xa5),
+            image::Rgba([0xde, 0x8c, 0xc6, 0xff]),
+            image::Rgba([0xbd, 0x6b, 0xa5, 0xff]),
         ),
         rom::NavicustPartColor::Yellow => (
-            egui::Color32::from_rgb(0xde, 0xde, 0x00),
-            egui::Color32::from_rgb(0xbd, 0xbd, 0x00),
+            image::Rgba([0xde, 0xde, 0x00, 0xff]),
+            image::Rgba([0xbd, 0xbd, 0x00, 0xff]),
         ),
         rom::NavicustPartColor::Green => (
-            egui::Color32::from_rgb(0x18, 0xc6, 0x00),
-            egui::Color32::from_rgb(0x00, 0xa5, 0x00),
+            image::Rgba([0x18, 0xc6, 0x00, 0xff]),
+            image::Rgba([0x00, 0xa5, 0x00, 0xff]),
         ),
         rom::NavicustPartColor::Blue => (
-            egui::Color32::from_rgb(0x29, 0x84, 0xde),
-            egui::Color32::from_rgb(0x08, 0x60, 0xb8),
+            image::Rgba([0x29, 0x84, 0xde, 0xff]),
+            image::Rgba([0x08, 0x60, 0xb8, 0xff]),
         ),
         rom::NavicustPartColor::White => (
-            egui::Color32::from_rgb(0xde, 0xde, 0xde),
-            egui::Color32::from_rgb(0xbd, 0xbd, 0xbd),
+            image::Rgba([0xde, 0xde, 0xde, 0xff]),
+            image::Rgba([0xbd, 0xbd, 0xbd, 0xff]),
         ),
         rom::NavicustPartColor::Orange => (
-            egui::Color32::from_rgb(0xde, 0x7b, 0x00),
-            egui::Color32::from_rgb(0xbd, 0x5a, 0x00),
+            image::Rgba([0xde, 0x7b, 0x00, 0xff]),
+            image::Rgba([0xbd, 0x5a, 0x00, 0xff]),
         ),
         rom::NavicustPartColor::Purple => (
-            egui::Color32::from_rgb(0x94, 0x00, 0xce),
-            egui::Color32::from_rgb(0x73, 0x00, 0xad),
+            image::Rgba([0x94, 0x00, 0xce, 0xff]),
+            image::Rgba([0x73, 0x00, 0xad, 0xff]),
         ),
         rom::NavicustPartColor::Gray => (
-            egui::Color32::from_rgb(0x84, 0x84, 0x84),
-            egui::Color32::from_rgb(0x63, 0x63, 0x63),
+            image::Rgba([0x84, 0x84, 0x84, 0xff]),
+            image::Rgba([0x63, 0x63, 0x63, 0xff]),
         ),
     }
 }
@@ -66,7 +66,8 @@ fn show_part_name(
         .inner_margin(egui::style::Margin::symmetric(4.0, 0.0))
         .rounding(egui::Rounding::same(2.0))
         .fill(if is_enabled {
-            navicust_part_colors(color).0
+            let (color, _) = navicust_part_colors(color);
+            egui::Color32::from_rgb(color.0[0], color.0[1], color.0[2])
         } else {
             egui::Color32::from_rgb(0xbd, 0xbd, 0xbd)
         })
@@ -77,7 +78,7 @@ fn show_part_name(
         .on_hover_text(description);
 }
 
-fn ncp_bitmap(info: &Box<dyn rom::NavicustPart>, compressed: bool, rot: i32) -> rom::NavicustBitmap {
+fn ncp_bitmap<'a>(info: &'a Box<dyn rom::NavicustPart + 'a>, compressed: bool, rot: u8) -> rom::NavicustBitmap {
     let mut bitmap = if compressed {
         info.compressed_bitmap()
     } else {
@@ -100,6 +101,86 @@ fn ncp_bitmap(info: &Box<dyn rom::NavicustPart>, compressed: bool, rot: i32) -> 
     bitmap
 }
 
+type ComposedNavicust = image::ImageBuffer<image::LumaA<u8>, Vec<u8>>;
+
+fn compose_navicust<'a>(
+    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+) -> ComposedNavicust {
+    let mut composed = image::ImageBuffer::new(navicust_view.width() as u32, navicust_view.height() as u32);
+    for i in 0..navicust_view.count() {
+        let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
+            ncp
+        } else {
+            continue;
+        };
+
+        let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+            info
+        } else {
+            continue;
+        };
+
+        let bitmap = ncp_bitmap(&info, ncp.compressed, ncp.rot);
+        let width = bitmap.width();
+        let height = bitmap.height();
+
+        // Convert bitmap to composable Navicust image (LumaA).
+        image::imageops::overlay(
+            &mut composed,
+            &image::ImageBuffer::from_vec(
+                width,
+                height,
+                bitmap
+                    .into_iter()
+                    .flat_map(|b| [i as u8, if *b != 0 { 0xff } else { 0 }])
+                    .collect::<Vec<u8>>(),
+            )
+            .unwrap(),
+            ncp.col as i64 - (width / 2) as i64,
+            ncp.row as i64 - (height / 2) as i64,
+        );
+    }
+    composed
+}
+
+fn render_navicust<'a>(
+    composed: &ComposedNavicust,
+    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+) -> image::RgbaImage {
+    let mut image = image::ImageBuffer::new(composed.width(), composed.height());
+    for (i, p) in composed.pixels().enumerate() {
+        let x = i % composed.width() as usize;
+        let y = i / composed.width() as usize;
+        let [l, a] = p.0;
+
+        if a != 0 {
+            let ncp_i = l as usize;
+            let ncp = if let Some(ncp) = navicust_view.navicust_part(ncp_i) {
+                ncp
+            } else {
+                continue;
+            };
+
+            let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+                info
+            } else {
+                continue;
+            };
+
+            let color = if let Some(color) = info.color() {
+                color
+            } else {
+                continue;
+            };
+
+            image.put_pixel(x as u32, y as u32, navicust_part_colors(&color).0);
+        }
+    }
+    image
+}
+
 pub fn show<'a>(
     ui: &mut egui::Ui,
     clipboard: &mut arboard::Clipboard,
@@ -108,7 +189,7 @@ pub fn show<'a>(
     game_lang: &unic_langid::LanguageIdentifier,
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
-    _state: &mut State,
+    state: &mut State,
 ) {
     const NCP_CHIP_WIDTH: f32 = 150.0;
 
@@ -159,6 +240,28 @@ pub fn show<'a>(
             );
             let _ = clipboard.set_text(buf.join("\n"));
         }
+
+        if ui
+            .button(format!(
+                "📋 {}",
+                i18n::LOCALES.lookup(lang, "copy-navicust-image-to-clipboard").unwrap(),
+            ))
+            .clicked()
+        {
+            (|| {
+                let image = if let Some((image, _)) = state.rendered_navicust_cache.as_ref() {
+                    image
+                } else {
+                    return;
+                };
+
+                let _ = clipboard.set_image(arboard::ImageData {
+                    width: image.width() as usize,
+                    height: image.height() as usize,
+                    bytes: std::borrow::Cow::Borrowed(&image),
+                });
+            })()
+        }
     });
 
     if let Some(style) = navicust_view.style() {
@@ -171,6 +274,21 @@ pub fn show<'a>(
     }
 
     ui.horizontal(|ui| {
+        if !state.rendered_navicust_cache.is_some() {
+            let composed = compose_navicust(navicust_view, assets);
+            let image = render_navicust(&composed, navicust_view, assets);
+            let texture = ui.ctx().load_texture(
+                "navicust",
+                egui::ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], &image),
+                egui::TextureFilter::Nearest,
+            );
+            state.rendered_navicust_cache = Some((image, texture));
+        }
+
+        if let Some((_, texture_handle)) = state.rendered_navicust_cache.as_ref() {
+            ui.image(texture_handle.id(), egui::Vec2::new(70.0, 70.0));
+        }
+
         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
             ui.set_width(NCP_CHIP_WIDTH);
             for (info, color) in items.iter().filter(|(info, _)| info.is_solid()) {
