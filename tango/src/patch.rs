@@ -434,6 +434,11 @@ pub fn apply_patch_from_disk(
     patch_name: &str,
     patch_version: &semver::Version,
 ) -> Result<Vec<u8>, anyhow::Error> {
+    let patch_name = std::path::Path::new(patch_name);
+    if patch_name.components().count() > 1 {
+        anyhow::bail!("attempted path traversal in patch name");
+    }
+
     let (rom_code, revision) = game.rom_code_and_revision();
     let raw = std::fs::read(
         patches_path

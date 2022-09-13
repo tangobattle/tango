@@ -525,14 +525,6 @@ impl Lobby {
                     if let Some(pi) = gi.patch.as_ref() {
                         let (rom_code, revision) = game.rom_code_and_revision();
 
-                        let rom = match patch::apply_patch_from_disk(&rom, game, patches_path, &pi.name, &pi.version) {
-                            Ok(r) => r,
-                            Err(e) => {
-                                log::error!("failed to apply patch {}: {:?}: {:?}", pi.name, (rom_code, revision), e);
-                                return None;
-                            }
-                        };
-
                         let patch_version_metadata = if let Some(version_meta) = self
                             .patches_scanner
                             .read()
@@ -542,8 +534,16 @@ impl Lobby {
                         {
                             version_meta
                         } else {
-                            log::error!("missing remove version metadata?");
+                            log::error!("missing remote version metadata?");
                             return None;
+                        };
+
+                        let rom = match patch::apply_patch_from_disk(&rom, game, patches_path, &pi.name, &pi.version) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                log::error!("failed to apply patch {}: {:?}: {:?}", pi.name, (rom_code, revision), e);
+                                return None;
+                            }
                         };
 
                         Some(RemoteSelection {
