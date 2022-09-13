@@ -151,13 +151,22 @@ impl Updater {
                     let config = config.clone();
                     if let Err(e) = (move || async move {
                         let client = reqwest::Client::new();
-                        let releases = client
-                            .get(GITHUB_RELEASES_URL)
-                            .header("User-Agent", "tango")
-                            .send()
-                            .await?
-                            .json::<Vec<GithubReleaseInfo>>()
-                            .await?;
+                        let releases = tokio::time::timeout(
+                            // 30 second timeout to get release info.
+                            std::time::Duration::from_secs(30),
+                            (|| async {
+                                Ok::<_, anyhow::Error>(
+                                    client
+                                        .get(GITHUB_RELEASES_URL)
+                                        .header("User-Agent", "tango")
+                                        .send()
+                                        .await?
+                                        .json::<Vec<GithubReleaseInfo>>()
+                                        .await?,
+                                )
+                            })(),
+                        )
+                        .await??;
 
                         let (version, info) = if let Some(release) = releases
                             .into_iter()
@@ -190,7 +199,8 @@ impl Updater {
                         {
                             asset
                         } else {
-                            anyhow::bail!("version {} is missing assets", version);
+                            log::info!("version {} has no assets right now", version);
+                            return Ok(());
                         };
 
                         // If this version is older or the one we already know about, skip.
@@ -221,7 +231,12 @@ impl Updater {
                             cb();
                         }
 
-                        let resp = reqwest::get(&asset.browser_download_url).await?;
+                        let resp = tokio::time::timeout(
+                            // 30 second timeout to initiate connection.
+                            std::time::Duration::from_secs(30),
+                            reqwest::get(&asset.browser_download_url),
+                        )
+                        .await??;
                         let mut current = 0u64;
                         let total = resp.content_length().unwrap_or(0);
 
@@ -229,7 +244,13 @@ impl Updater {
                         {
                             let mut output_file = tokio::fs::File::create(&incomplete_output_path).await?;
                             let mut stream = resp.bytes_stream();
-                            while let Some(chunk) = stream.next().await {
+                            while let Some(chunk) = tokio::time::timeout(
+                                // 30 second timeout per stream chunk.
+                                std::time::Duration::from_secs(30),
+                                stream.next(),
+                            )
+                            .await?
+                            {
                                 let chunk = chunk?;
                                 output_file.write_all(&chunk).await?;
                                 current += chunk.len() as u64;

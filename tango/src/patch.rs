@@ -127,13 +127,22 @@ lazy_static! {
 
 pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::Error> {
     let client = reqwest::Client::new();
-    let entries = client
-        .get(format!("{}/index.json", url))
-        .header("User-Agent", "tango")
-        .send()
-        .await?
-        .json::<filesync::Entries>()
-        .await?;
+    let entries = tokio::time::timeout(
+        // 30 second timeout to fetch JSON.
+        std::time::Duration::from_secs(30),
+        (|| async {
+            Ok::<_, anyhow::Error>(
+                client
+                    .get(format!("{}/index.json", url))
+                    .header("User-Agent", "tango")
+                    .send()
+                    .await?
+                    .json::<filesync::Entries>()
+                    .await?,
+            )
+        })(),
+    )
+    .await??;
 
     let root = root.to_path_buf();
     filesync::sync(
@@ -148,18 +157,28 @@ pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::
                 Box::pin(async move {
                     let mut output_file = tokio::fs::File::create(&root.join(path)).await?;
                     let client = reqwest::Client::new();
-                    let mut stream = client
-                        .get(format!(
-                            "{}/{}",
-                            url,
-                            path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
-                        ))
-                        .header("User-Agent", "tango")
-                        .send()
-                        .await
-                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
-                        .bytes_stream();
-                    while let Some(chunk) = stream.next().await {
+                    let mut stream = tokio::time::timeout(
+                        // 30 second timeout to initiate connection.
+                        std::time::Duration::from_secs(30),
+                        client
+                            .get(format!(
+                                "{}/{}",
+                                url,
+                                path.components().map(|v| v.as_os_str().to_string_lossy()).join("/")
+                            ))
+                            .header("User-Agent", "tango")
+                            .send(),
+                    )
+                    .await?
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+                    .bytes_stream();
+                    while let Some(chunk) = tokio::time::timeout(
+                        // 30 second timeout per stream chunk.
+                        std::time::Duration::from_secs(30),
+                        stream.next(),
+                    )
+                    .await?
+                    {
                         let chunk = chunk.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                         output_file.write_all(&chunk).await?;
                     }
