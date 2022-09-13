@@ -104,10 +104,22 @@ impl State {
         patches_scanner: patch::Scanner,
     ) -> Self {
         let font_families = FontFamilies {
-            latn: egui::FontFamily::Name("Latn".into()),
-            jpan: egui::FontFamily::Name("Jpan".into()),
-            hans: egui::FontFamily::Name("Hans".into()),
-            hant: egui::FontFamily::Name("Hant".into()),
+            latn: FontFamily {
+                egui: egui::FontFamily::Name("Latn".into()),
+                raw: include_bytes!("fonts/NotoSans-Regular.ttf"),
+            },
+            jpan: FontFamily {
+                egui: egui::FontFamily::Name("Jpan".into()),
+                raw: include_bytes!("fonts/NotoSansJP-Regular.otf"),
+            },
+            hans: FontFamily {
+                egui: egui::FontFamily::Name("Hans".into()),
+                raw: include_bytes!("fonts/NotoSansSC-Regular.otf"),
+            },
+            hant: FontFamily {
+                egui: egui::FontFamily::Name("Hant".into()),
+                raw: include_bytes!("fonts/NotoSansTC-Regular.otf"),
+            },
         };
 
         ctx.set_fonts(egui::FontDefinitions {
@@ -115,10 +127,10 @@ impl State {
             families: std::collections::BTreeMap::from([
                 (egui::FontFamily::Proportional, vec![]),
                 (egui::FontFamily::Monospace, vec![]),
-                (font_families.latn.clone(), vec![]),
-                (font_families.jpan.clone(), vec![]),
-                (font_families.hans.clone(), vec![]),
-                (font_families.hant.clone(), vec![]),
+                (font_families.latn.egui.clone(), vec![]),
+                (font_families.jpan.egui.clone(), vec![]),
+                (font_families.hans.egui.clone(), vec![]),
+                (font_families.hant.egui.clone(), vec![]),
             ]),
         });
 
@@ -171,19 +183,19 @@ impl State {
             font_data: std::collections::BTreeMap::from([
                 (
                     "NotoSans-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/NotoSans-Regular.ttf")),
+                    egui::FontData::from_static(font_families.latn.raw),
                 ),
                 (
                     "NotoSansJP-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/NotoSansJP-Regular.otf")),
+                    egui::FontData::from_static(font_families.jpan.raw),
                 ),
                 (
                     "NotoSansSC-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/NotoSansSC-Regular.otf")),
+                    egui::FontData::from_static(font_families.hans.raw),
                 ),
                 (
                     "NotoSansTC-Regular".to_string(),
-                    egui::FontData::from_static(include_bytes!("fonts/NotoSansTC-Regular.otf")),
+                    egui::FontData::from_static(font_families.hant.raw),
                 ),
                 (
                     "NotoSansMono-Regular".to_string(),
@@ -220,12 +232,16 @@ struct Themes {
     dark: egui::style::Visuals,
 }
 
-#[derive(Clone)]
+pub struct FontFamily {
+    pub egui: egui::FontFamily,
+    pub raw: &'static [u8],
+}
+
 pub struct FontFamilies {
-    latn: egui::FontFamily,
-    jpan: egui::FontFamily,
-    hans: egui::FontFamily,
-    hant: egui::FontFamily,
+    latn: FontFamily,
+    jpan: FontFamily,
+    hans: FontFamily,
+    hant: FontFamily,
 }
 
 impl FontFamilies {
@@ -233,10 +249,21 @@ impl FontFamilies {
         let mut lang = lang.clone();
         lang.maximize();
         match lang.script {
-            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => self.jpan.clone(),
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => self.hans.clone(),
-            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => self.hant.clone(),
-            _ => self.latn.clone(),
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => self.jpan.egui.clone(),
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => self.hans.egui.clone(),
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => self.hant.egui.clone(),
+            _ => self.latn.egui.clone(),
+        }
+    }
+
+    pub fn raw_for_language(&self, lang: &unic_langid::LanguageIdentifier) -> &[u8] {
+        let mut lang = lang.clone();
+        lang.maximize();
+        match lang.script {
+            Some(s) if s == unic_langid::subtags::Script::from_str("Jpan").unwrap() => self.jpan.raw,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hans").unwrap() => self.hans.raw,
+            Some(s) if s == unic_langid::subtags::Script::from_str("Hant").unwrap() => self.hant.raw,
+            _ => self.latn.raw,
         }
     }
 }
@@ -286,10 +313,22 @@ pub fn show(
             families: std::collections::BTreeMap::from([
                 (egui::FontFamily::Proportional, proportional),
                 (egui::FontFamily::Monospace, monospace),
-                (state.font_families.jpan.clone(), vec!["NotoSansJP-Regular".to_string()]),
-                (state.font_families.hans.clone(), vec!["NotoSansSC-Regular".to_string()]),
-                (state.font_families.hant.clone(), vec!["NotoSansTC-Regular".to_string()]),
-                (state.font_families.latn.clone(), vec!["NotoSans-Regular".to_string()]),
+                (
+                    state.font_families.jpan.egui.clone(),
+                    vec!["NotoSansJP-Regular".to_string()],
+                ),
+                (
+                    state.font_families.hans.egui.clone(),
+                    vec!["NotoSansSC-Regular".to_string()],
+                ),
+                (
+                    state.font_families.hant.egui.clone(),
+                    vec!["NotoSansTC-Regular".to_string()],
+                ),
+                (
+                    state.font_families.latn.egui.clone(),
+                    vec!["NotoSans-Regular".to_string()],
+                ),
             ]),
         });
         state.current_language = Some(config.language.clone());

@@ -149,6 +149,7 @@ fn render_navicust<'a>(
     composed: &ComposedNavicust,
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+    raw_font: &[u8],
 ) -> image::RgbaImage {
     let body = render_navicust_body(composed, navicust_view, assets);
 
@@ -165,6 +166,25 @@ fn render_navicust<'a>(
             (width - color_bar_right.width()) as i64,
             0,
         );
+
+        if let Some(info) = assets.style(style) {
+            let font = fontdue::Font::from_bytes(raw_font, fontdue::FontSettings::default()).unwrap();
+            let px = color_bar.height() as f32 * 2.0 / 3.0;
+            let mut layout = fontdue::layout::Layout::new(fontdue::layout::CoordinateSystem::PositiveYDown);
+            layout.append(&[&font], &fontdue::layout::TextStyle::new(&info.name(), px, 0));
+
+            for glyph in layout.glyphs() {
+                let (metrics, coverage) = font.rasterize(glyph.parent, px);
+                let g = image::RgbaImage::from_vec(
+                    metrics.width as u32,
+                    metrics.height as u32,
+                    coverage.into_iter().flat_map(|a| [0xff, 0xff, 0xff, a]).collect(),
+                )
+                .unwrap();
+                image::imageops::overlay(&mut color_bar, &g, glyph.x as i64, glyph.y as i64);
+            }
+        }
+
         color_bar
     } else {
         render_navicust_color_bar456(navicust_view, assets)
@@ -700,19 +720,15 @@ pub fn show<'a>(
         }
     });
 
-    if let Some(style) = navicust_view.style() {
-        ui.label(
-            assets
-                .style(style)
-                .map(|style| style.name())
-                .unwrap_or_else(|| "".to_string()),
-        );
-    }
-
     ui.horizontal(|ui| {
         if !state.rendered_navicust_cache.is_some() {
             let composed = compose_navicust(navicust_view, assets);
-            let image = render_navicust(&composed, navicust_view, assets);
+            let image = render_navicust(
+                &composed,
+                navicust_view,
+                assets,
+                font_families.raw_for_language(game_lang),
+            );
             let texture = ui.ctx().load_texture(
                 "navicust",
                 egui::ColorImage::from_rgba_unmultiplied([image.width() as usize, image.height() as usize], &image),

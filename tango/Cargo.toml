@@ -92,6 +92,7 @@ async-recursion = "1.0"
 sha2 = "0.10"
 serde-hex = "0.1"
 futures = "0.3"
+fontdue = "0.7"
 
 [build-dependencies]
 embed-resource = "1.7"
