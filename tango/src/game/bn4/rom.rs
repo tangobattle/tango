@@ -14,7 +14,11 @@ pub struct Offsets {
     ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
+    navicust_bg: image::Rgba<u8>,
 }
+
+const NAVICUST_BG_RS: image::Rgba<u8> = image::Rgba([0x8c, 0x10, 0x10, 0xff]);
+const NAVICUST_BG_BM: image::Rgba<u8> = image::Rgba([0x52, 0x10, 0xad, 0xff]);
 
 #[rustfmt::skip]
 pub static B4WJ_01: Offsets = Offsets {
@@ -27,6 +31,8 @@ pub static B4WJ_01: Offsets = Offsets {
     ncp_descriptions_pointer:       0x0803e55c,
     element_icon_palette_pointer:   0x081098ac,
     element_icons_pointer:          0x081098a0,
+
+    navicust_bg: NAVICUST_BG_RS,
 };
 
 #[rustfmt::skip]
@@ -40,6 +46,8 @@ pub static B4BJ_00: Offsets = Offsets {
     ncp_descriptions_pointer:       0x0803e528,
     element_icon_palette_pointer:   0x0810983c,
     element_icons_pointer:          0x08109830,
+
+    navicust_bg: NAVICUST_BG_BM,
 };
 
 #[rustfmt::skip]
@@ -53,6 +61,8 @@ pub static B4WE_00: Offsets = Offsets {
     ncp_descriptions_pointer:       0x0803e63c,
     element_icon_palette_pointer:   0x08106bd8,
     element_icons_pointer:          0x081099cc,
+
+    navicust_bg: NAVICUST_BG_RS,
 };
 
 #[rustfmt::skip]
@@ -66,6 +76,8 @@ pub static B4BE_00: Offsets = Offsets {
     ncp_descriptions_pointer:       0x0803e644,
     element_icon_palette_pointer:   0x081099e4,
     element_icons_pointer:          0x081099d8,
+
+    navicust_bg: NAVICUST_BG_BM,
 };
 
 const EREADER_COMMAND: u8 = 0xff;
@@ -498,6 +510,10 @@ impl rom::Assets for Assets {
 
     fn num_navicust_parts(&self) -> (usize, usize) {
         (47, 4)
+    }
+
+    fn navicust_bg(&self) -> Option<image::Rgba<u8>> {
+        Some(self.offsets.navicust_bg)
     }
 
     fn modcard4<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Modcard4 + 'a>> {

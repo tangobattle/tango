@@ -15,7 +15,11 @@ pub struct Offsets {
     modcard_data: u32,
     modcard_names_pointer: u32,
     modcard_details_names_pointer: u32,
+    navicust_bg: image::Rgba<u8>,
 }
+
+const NAVICUST_BG_TOB: image::Rgba<u8> = image::Rgba([0x21, 0x8c, 0xa5, 0xff]);
+const NAVICUST_BG_TOC: image::Rgba<u8> = image::Rgba([0x5a, 0x5a, 0x4a, 0xff]);
 
 #[rustfmt::skip]
 pub static BRBJ_00: Offsets = Offsets {
@@ -31,6 +35,8 @@ pub static BRBJ_00: Offsets = Offsets {
     modcard_data:                   0x0813842c,
     modcard_names_pointer:          0x081373c4,
     modcard_details_names_pointer:  0x081373d0,
+
+    navicust_bg: NAVICUST_BG_TOB,
 };
 
 #[rustfmt::skip]
@@ -47,6 +53,8 @@ pub static BRKJ_00: Offsets = Offsets {
     modcard_data:                   0x08138514,
     modcard_names_pointer:          0x081374ac,
     modcard_details_names_pointer:  0x081374b8,
+
+    navicust_bg: NAVICUST_BG_TOC,
 };
 
 #[rustfmt::skip]
@@ -63,6 +71,8 @@ pub static BRBE_00: Offsets = Offsets {
     modcard_data:                   0x08138874,
     modcard_names_pointer:          0x0813780c,
     modcard_details_names_pointer:  0x08137818,
+
+    navicust_bg: NAVICUST_BG_TOB,
 };
 
 #[rustfmt::skip]
@@ -79,6 +89,8 @@ pub static BRKE_00: Offsets = Offsets {
     modcard_data:                   0x0813895c,
     modcard_names_pointer:          0x081378f4,
     modcard_details_names_pointer:  0x08137900,
+
+    navicust_bg: NAVICUST_BG_TOC,
 };
 
 const PRINT_VAR_COMMAND: u8 = 0xfa;
@@ -592,6 +604,10 @@ impl rom::Assets for Assets {
 
     fn num_navicust_parts(&self) -> (usize, usize) {
         (48, 4)
+    }
+
+    fn navicust_bg(&self) -> Option<image::Rgba<u8>> {
+        Some(self.offsets.navicust_bg)
     }
 
     fn modcard56<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Modcard56 + 'a>> {
