@@ -96,3 +96,4 @@ fontdue = "0.7"
 
 [build-dependencies]
 embed-resource = "1.7"
+prost-build = "0.10"

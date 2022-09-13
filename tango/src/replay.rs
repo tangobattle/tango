@@ -9,6 +9,11 @@ impl<T: std::io::Write + std::io::Seek> WriteSeek for T {}
 
 pub mod export;
 
+mod protos;
+
+pub use protos::replay11::metadata;
+pub type Metadata = protos::replay11::Metadata;
+
 pub struct Writer {
     encoder: Option<zstd::stream::write::Encoder<'static, Box<dyn WriteSeek + Send>>>,
     num_inputs: u32,
@@ -16,8 +21,6 @@ pub struct Writer {
 
 const HEADER: &[u8] = b"TOOT";
 const VERSION: u8 = 0x11;
-
-pub type Metadata = tango_protos::replay::ReplayMetadata;
 
 #[derive(Clone)]
 pub struct Replay {
@@ -45,10 +48,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(bool, Metadata), std
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
     let mut raw_metadata = vec![0u8; metadata_len as usize];
     r.read_exact(&mut raw_metadata[..])?;
-    Ok((
-        num_inputs > 0,
-        tango_protos::replay::ReplayMetadata::decode(&raw_metadata[..])?,
-    ))
+    Ok((num_inputs > 0, protos::replay11::Metadata::decode(&raw_metadata[..])?))
 }
 
 impl Replay {
@@ -80,7 +80,7 @@ impl Replay {
         let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
         let mut raw_metadata = vec![0u8; metadata_len as usize];
         r.read_exact(&mut raw_metadata[..])?;
-        let metadata = tango_protos::replay::ReplayMetadata::decode(&raw_metadata[..])?;
+        let metadata = protos::replay11::Metadata::decode(&raw_metadata[..])?;
 
         let mut zr = zstd::stream::read::Decoder::new(r)?;
 
@@ -169,7 +169,7 @@ impl Replay {
 impl Writer {
     pub fn new(
         mut writer: Box<dyn WriteSeek + Send>,
-        metadata: tango_protos::replay::ReplayMetadata,
+        metadata: Metadata,
         local_player_index: u8,
         raw_input_size: u8,
     ) -> std::io::Result<Self> {

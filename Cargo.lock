@@ -5213,6 +5213,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "png 0.17.6",
  "prost",
+ "prost-build",
  "rand 0.8.5",
  "rand_pcg",
  "regex",

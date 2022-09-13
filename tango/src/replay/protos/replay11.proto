@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package tango.replay;
+package tango.replay.protos.replay11;
 
-message ReplayMetadata {
+message Metadata {
   message GameInfo {
     message Patch {
       string name = 1;
