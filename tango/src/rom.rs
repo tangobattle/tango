@@ -47,7 +47,7 @@ pub trait Modcard4 {
     fn bug(&self) -> Option<String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
 pub enum NavicustPartColor {
     White,
     Yellow,

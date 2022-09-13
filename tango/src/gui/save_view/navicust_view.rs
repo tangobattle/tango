@@ -1,4 +1,5 @@
 use fluent_templates::Loader;
+use itertools::Itertools;
 
 use crate::{gui, i18n, rom, save};
 
@@ -149,14 +150,163 @@ fn render_navicust<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
-    const BORDER_WIDTH: f32 = 2.0;
-    const SQUARE_SIZE: f32 = 20.0;
+    let color_bar = render_navicust_color_bar456(navicust_view, assets);
+    let body = render_navicust_body(composed, navicust_view, assets);
 
+    const PADDING_H: u32 = 20;
+    const PADDING_V: u32 = 20;
+
+    let mut image = image::RgbaImage::new(
+        body.width() + PADDING_H * 2,
+        body.height() + PADDING_V * 2 + color_bar.height() + PADDING_V,
+    );
+
+    let bg = assets.navicust_bg().unwrap_or(image::Rgba([0, 0, 0, 0]));
+    for pixel in image.pixels_mut() {
+        *pixel = bg;
+    }
+
+    image::imageops::overlay(&mut image, &color_bar, PADDING_H as i64, PADDING_V as i64);
+    image::imageops::overlay(
+        &mut image,
+        &body,
+        PADDING_H as i64,
+        (PADDING_V + color_bar.height() + PADDING_V) as i64,
+    );
+
+    image
+}
+
+fn gather_ncp_colors<'a>(
+    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+) -> Vec<rom::NavicustPartColor> {
+    (0..navicust_view.count())
+        .flat_map(|i| {
+            let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
+                ncp
+            } else {
+                return vec![];
+            };
+
+            let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
+                info
+            } else {
+                return vec![];
+            };
+
+            let color = if let Some(color) = info.color() {
+                color
+            } else {
+                return vec![];
+            };
+
+            return vec![color];
+        })
+        .unique()
+        .collect::<Vec<_>>()
+}
+
+fn render_navicust_color_bar456<'a>(
+    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+) -> image::RgbaImage {
+    const BORDER_WIDTH: f32 = 6.0;
+    const TILE_WIDTH: f32 = 40.0;
+    const TILE_HEIGHT: f32 = 30.0;
+
+    let colors = gather_ncp_colors(navicust_view, assets);
     let mut pixmap = tiny_skia::Pixmap::new(
-        composed.width() * SQUARE_SIZE as u32,
-        composed.height() * SQUARE_SIZE as u32,
+        TILE_WIDTH as u32 * std::cmp::max(4, colors.len()) as u32 + BORDER_WIDTH as u32 + BORDER_WIDTH as u32,
+        (TILE_HEIGHT + BORDER_WIDTH) as u32,
     )
     .unwrap();
+
+    let nonbug_colors = &colors[..std::cmp::min(colors.len(), 4)];
+    let bug_colors = colors.get(4..).unwrap_or(&[]);
+
+    let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
+
+    let mut bg_fill_paint = tiny_skia::Paint::default();
+    bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
+
+    let mut border_stroke_paint = tiny_skia::Paint::default();
+    border_stroke_paint.set_color_rgba8(0x29, 0x31, 0x4a, 0xff);
+
+    let mut stroke = tiny_skia::Stroke::default();
+    stroke.width = BORDER_WIDTH as f32;
+    stroke.line_cap = tiny_skia::LineCap::Square;
+
+    let outline_path = {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.push_rect(0.0, 0.0, TILE_WIDTH, TILE_HEIGHT);
+        pb.finish().unwrap()
+    };
+
+    let tile_path = {
+        let mut pb = tiny_skia::PathBuilder::new();
+        pb.push_rect(
+            BORDER_WIDTH / 2.0,
+            BORDER_WIDTH / 2.0,
+            TILE_WIDTH - BORDER_WIDTH,
+            TILE_HEIGHT - BORDER_WIDTH,
+        );
+        pb.finish().unwrap()
+    };
+
+    for i in 0..4 {
+        let transform = root_transform.pre_translate(i as f32 * TILE_WIDTH, 0.0);
+        pixmap.fill_path(
+            &tile_path,
+            &if let Some(color) = nonbug_colors.get(i) {
+                let (_, plus_color) = navicust_part_colors(color);
+                let mut fill_paint = tiny_skia::Paint::default();
+                fill_paint.set_color_rgba8(plus_color.0[0], plus_color.0[1], plus_color.0[2], plus_color.0[3]);
+                fill_paint
+            } else {
+                bg_fill_paint.clone()
+            },
+            tiny_skia::FillRule::Winding,
+            transform,
+            None,
+        );
+        pixmap.stroke_path(&outline_path, &border_stroke_paint, &stroke, transform, None);
+    }
+
+    for (i, bug_color) in bug_colors.iter().enumerate() {
+        let transform = root_transform.pre_translate((i + 4) as f32 * TILE_WIDTH + BORDER_WIDTH, 0.0);
+        pixmap.fill_path(
+            &tile_path,
+            &{
+                let (_, plus_color) = navicust_part_colors(bug_color);
+                let mut fill_paint = tiny_skia::Paint::default();
+                fill_paint.set_color_rgba8(plus_color.0[0], plus_color.0[1], plus_color.0[2], plus_color.0[3]);
+                fill_paint
+            },
+            tiny_skia::FillRule::Winding,
+            transform,
+            None,
+        );
+    }
+
+    image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
+}
+
+fn render_navicust_body<'a>(
+    composed: &ComposedNavicust,
+    navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
+    assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
+) -> image::RgbaImage {
+    const BORDER_WIDTH: f32 = 6.0;
+    const SQUARE_SIZE: f32 = 60.0;
+
+    let mut pixmap = tiny_skia::Pixmap::new(
+        (composed.width() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
+        (composed.height() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
+    )
+    .unwrap();
+
+    let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
 
     let mut bg_fill_paint = tiny_skia::Paint::default();
     bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
@@ -246,8 +396,7 @@ fn render_navicust<'a>(
                 continue;
             }
 
-            let transform =
-                tiny_skia::Transform::identity().pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
+            let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
 
             pixmap.fill_path(
                 &square_path,
@@ -289,10 +438,9 @@ fn render_navicust<'a>(
             continue;
         };
 
+        let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
+
         let (solid_color, plus_color) = navicust_part_colors(&color);
-
-        let transform = tiny_skia::Transform::identity().pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
-
         let mut fill_paint = tiny_skia::Paint::default();
         fill_paint.set_color_rgba8(solid_color.0[0], solid_color.0[1], solid_color.0[2], solid_color.0[3]);
 
@@ -316,7 +464,7 @@ fn render_navicust<'a>(
             continue;
         }
 
-        let transform = tiny_skia::Transform::identity().pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
+        let transform = root_transform.pre_translate(x as f32 * SQUARE_SIZE, y as f32 * SQUARE_SIZE);
 
         let ncp_i = l as usize;
         for neighbor in neighbors.iter() {
@@ -343,14 +491,14 @@ fn render_navicust<'a>(
         &command_line_path,
         &border_stroke_paint,
         &stroke,
-        tiny_skia::Transform::identity().pre_translate(0.0, command_line_top + SQUARE_SIZE * 1.0 / 4.0),
+        root_transform.pre_translate(0.0, command_line_top + SQUARE_SIZE * 1.0 / 4.0),
         None,
     );
     pixmap.stroke_path(
         &command_line_path,
         &border_stroke_paint,
         &stroke,
-        tiny_skia::Transform::identity().pre_translate(0.0, command_line_top + SQUARE_SIZE * 3.0 / 4.0),
+        root_transform.pre_translate(0.0, command_line_top + SQUARE_SIZE * 3.0 / 4.0),
         None,
     );
 
@@ -359,11 +507,11 @@ fn render_navicust<'a>(
         let path = {
             let mut pb = tiny_skia::PathBuilder::new();
 
-            let w = SQUARE_SIZE + BORDER_WIDTH / 2.0;
+            let w = SQUARE_SIZE + BORDER_WIDTH;
             let h = (composed.height() - 2) as f32 * SQUARE_SIZE + BORDER_WIDTH;
 
             // Left
-            pb.push_rect(0.0, 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h);
+            pb.push_rect(-BORDER_WIDTH / 2.0, 1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, w, h);
 
             // Right
             pb.push_rect(
@@ -374,7 +522,7 @@ fn render_navicust<'a>(
             );
 
             // Top
-            pb.push_rect(1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, 0.0, h, w);
+            pb.push_rect(1.0 * SQUARE_SIZE - BORDER_WIDTH / 2.0, -BORDER_WIDTH / 2.0, h, w);
 
             // Bottom
             pb.push_rect(
@@ -390,13 +538,7 @@ fn render_navicust<'a>(
         let mut oob_paint = tiny_skia::Paint::default();
         oob_paint.set_color_rgba8(0x00, 0x00, 0x00, 0x80);
 
-        pixmap.fill_path(
-            &path,
-            &oob_paint,
-            tiny_skia::FillRule::Winding,
-            tiny_skia::Transform::identity(),
-            None,
-        );
+        pixmap.fill_path(&path, &oob_paint, tiny_skia::FillRule::Winding, root_transform, None);
     }
 
     image::ImageBuffer::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap()
@@ -506,8 +648,11 @@ pub fn show<'a>(
             state.rendered_navicust_cache = Some((image, texture));
         }
 
-        if let Some((_, texture_handle)) = state.rendered_navicust_cache.as_ref() {
-            ui.image(texture_handle.id(), egui::Vec2::new(70.0, 70.0));
+        if let Some((image, texture_handle)) = state.rendered_navicust_cache.as_ref() {
+            ui.image(
+                texture_handle.id(),
+                egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
+            );
         }
 
         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
