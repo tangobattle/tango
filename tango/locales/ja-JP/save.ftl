@@ -13,3 +13,5 @@ dark-ai-giga-chip = ギガチップ
 dark-ai-combos = コンボ
 dark-ai-program-advance = プログラムアドバンス
 dark-ai-unset = 未設定
+copy-navicust-image-to-clipboard = ナビカス画像をクリップボードにコピー
+    .copied = コピーしました！

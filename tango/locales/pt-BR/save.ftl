@@ -13,3 +13,5 @@ dark-ai-giga-chip = Giga chip
 dark-ai-combos = Combos
 dark-ai-program-advance = Program advance
 dark-ai-unset = Desativar
+copy-navicust-image-to-clipboard = Copy NaviCust image to clipboard
+    .copied = Copied!

@@ -13,3 +13,5 @@ dark-ai-giga-chip = 究極晶片
 dark-ai-combos = 組合
 dark-ai-program-advance = 程式強化
 dark-ai-unset = 未設定
+copy-navicust-image-to-clipboard = 複製個性化截圖到剪貼板
+    .copied = 複製了！
