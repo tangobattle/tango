@@ -1,5 +1,6 @@
 use byteorder::ByteOrder;
 use bytes::{Buf, BufMut};
+use num_traits::FromPrimitive;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(unix)]
@@ -174,11 +175,107 @@ async fn connect(client_id: u64) -> std::io::Result<(Receiver, Sender)> {
     Ok((receiver, sender))
 }
 
-pub struct Client {}
+struct Inner {
+    current_request: Option<(String, tokio::sync::oneshot::Sender<Payload>)>,
+    sender: Sender,
+}
+
+pub struct Client {
+    inner: std::sync::Arc<tokio::sync::Mutex<Option<Inner>>>,
+}
 
 impl Client {
     pub async fn connect(client_id: u64) -> std::io::Result<Self> {
         let (mut receiver, sender) = connect(client_id).await?;
-        Ok(Client {})
+
+        let inner = std::sync::Arc::new(tokio::sync::Mutex::new(Some(Inner {
+            current_request: None,
+            sender,
+        })));
+        tokio::task::spawn({
+            let inner = inner.clone();
+            async move {
+                let receiver = &mut receiver;
+                let inner2 = inner.clone();
+                if let Err(e) = (move || async move {
+                    loop {
+                        let (opcode, raw) = receiver.receive_packet().await?;
+                        let opcode = Opcode::from_u32(opcode).ok_or_else(|| {
+                            std::io::Error::new(std::io::ErrorKind::InvalidData, format!("invalid opcode: {}", opcode))
+                        })?;
+                        let mut inner = inner2.lock().await;
+                        let inner = inner
+                            .as_mut()
+                            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
+                        match opcode {
+                            Opcode::Close => {
+                                let close = serde_json::from_slice::<Close>(&raw)?;
+                                return Err(std::io::Error::new(
+                                    std::io::ErrorKind::ConnectionAborted,
+                                    format!("{}: {}", close.code, close.message),
+                                ));
+                            }
+                            Opcode::Frame => {
+                                let payload = serde_json::from_slice::<Payload>(&raw)?;
+                                let (nonce, tx) = if let Some((nonce, tx)) = inner.current_request.take() {
+                                    (nonce, tx)
+                                } else {
+                                    return Err::<(), std::io::Error>(std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        format!("no current request"),
+                                    ));
+                                };
+                                if payload.nonce != nonce {
+                                    return Err::<(), std::io::Error>(std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        format!("unexpected nonce: {:?}", payload.nonce),
+                                    ));
+                                }
+
+                                let _ = tx.send(payload);
+                            }
+                            Opcode::Ping => {
+                                inner.sender.send_packet(Opcode::Pong, &raw).await?;
+                                continue;
+                            }
+                            Opcode::Pong => {}
+                            opcode => {
+                                return Err::<(), std::io::Error>(std::io::Error::new(
+                                    std::io::ErrorKind::InvalidData,
+                                    format!("unexpected opcode: {:?}", opcode),
+                                ));
+                            }
+                        }
+                    }
+                })()
+                .await
+                {
+                    log::warn!("discord rpc disconnected with error: {:?}", e);
+                }
+                *inner.lock().await = None;
+            }
+        });
+        Ok(Client { inner })
+    }
+
+    async fn do_request(&self, payload: &Payload) -> std::io::Result<Payload> {
+        let (rpc_tx, rpc_rx) = tokio::sync::oneshot::channel();
+        {
+            let mut inner = self.inner.lock().await;
+            let inner = inner
+                .as_mut()
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
+            if inner.current_request.is_some() {
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, "rpc in progress"));
+            }
+            inner.current_request = Some((payload.nonce.clone(), rpc_tx));
+            inner
+                .sender
+                .send_packet(Opcode::Frame, &serde_json::to_vec(payload)?)
+                .await?;
+        }
+        Ok(rpc_rx
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, e))?)
     }
 }
