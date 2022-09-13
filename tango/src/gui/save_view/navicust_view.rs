@@ -77,20 +77,14 @@ fn show_part_name(
         .on_hover_text(description);
 }
 
-fn ncp_bitmap(ncp: &save::NavicustPart, assets: &Box<dyn rom::Assets + Send + Sync>) -> Option<rom::NavicustBitmap> {
-    let ncp_info = if let Some(ncp_info) = assets.navicust_part(ncp.id, ncp.variant) {
-        ncp_info
+fn ncp_bitmap(info: &Box<dyn rom::NavicustPart>, compressed: bool, rot: i32) -> rom::NavicustBitmap {
+    let mut bitmap = if compressed {
+        info.compressed_bitmap()
     } else {
-        return None;
+        info.uncompressed_bitmap()
     };
 
-    let mut bitmap = if ncp.compressed {
-        ncp_info.compressed_bitmap()
-    } else {
-        ncp_info.uncompressed_bitmap()
-    };
-
-    match ncp.rot {
+    match rot {
         1 => {
             bitmap = image::imageops::rotate90(&bitmap);
         }
@@ -103,7 +97,7 @@ fn ncp_bitmap(ncp: &save::NavicustPart, assets: &Box<dyn rom::Assets + Send + Sy
         _ => {}
     }
 
-    Some(bitmap)
+    bitmap
 }
 
 pub fn show<'a>(
