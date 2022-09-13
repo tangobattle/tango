@@ -1870,6 +1870,7 @@ pub fn show(
                                         None
                                     })();
 
+                                    let checked = selection.patch.is_none();
                                     let mut layout_job = egui::text::LayoutJob::default();
                                     if warning.is_some() {
                                         gui::warning::append_to_layout_job(ui, &mut layout_job);
@@ -1879,10 +1880,14 @@ pub fn show(
                                         0.0,
                                         egui::TextFormat::simple(
                                             ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
-                                            ui.visuals().text_color(),
+                                            if checked {
+                                                ui.visuals().selection.stroke.color
+                                            } else {
+                                                ui.visuals().text_color()
+                                            },
                                         ),
                                     );
-                                    let mut resp = ui.selectable_label(selection.patch.is_none(), layout_job);
+                                    let mut resp = ui.selectable_label(checked, layout_job);
                                     if let Some(warning) = warning {
                                         resp = resp.on_hover_text(warning.description(&config.language));
                                     }
@@ -1948,6 +1953,7 @@ pub fn show(
                                         None
                                     })();
 
+                                    let checked = selection.patch.as_ref().map(|(name, _, _)| name) == Some(*name);
                                     let mut layout_job = egui::text::LayoutJob::default();
                                     if warning.is_some() {
                                         gui::warning::append_to_layout_job(ui, &mut layout_job);
@@ -1957,13 +1963,14 @@ pub fn show(
                                         0.0,
                                         egui::TextFormat::simple(
                                             ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
-                                            ui.visuals().text_color(),
+                                            if checked {
+                                                ui.visuals().selection.stroke.color
+                                            } else {
+                                                ui.visuals().text_color()
+                                            },
                                         ),
                                     );
-                                    let mut resp = ui.selectable_label(
-                                        selection.patch.as_ref().map(|(name, _, _)| name) == Some(*name),
-                                        layout_job,
-                                    );
+                                    let mut resp = ui.selectable_label(checked, layout_job);
                                     if let Some(warning) = warning {
                                         resp = resp.on_hover_text(warning.description(&config.language));
                                     }
@@ -2179,6 +2186,7 @@ pub fn show(
                                                 None
                                             })();
 
+                                            let checked = &patch_version == *version;
                                             let mut layout_job = egui::text::LayoutJob::default();
                                             if warning.is_some() {
                                                 gui::warning::append_to_layout_job(ui, &mut layout_job);
@@ -2188,11 +2196,15 @@ pub fn show(
                                                 0.0,
                                                 egui::TextFormat::simple(
                                                     ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
-                                                    ui.visuals().text_color(),
+                                                    if checked {
+                                                        ui.visuals().selection.stroke.color
+                                                    } else {
+                                                        ui.visuals().text_color()
+                                                    },
                                                 ),
                                             );
 
-                                            let mut resp = ui.selectable_label(&patch_version == *version, layout_job);
+                                            let mut resp = ui.selectable_label(checked, layout_job);
                                             if let Some(warning) = warning {
                                                 resp = resp.on_hover_text(warning.description(&config.language));
                                             }
