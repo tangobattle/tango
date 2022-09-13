@@ -42,8 +42,8 @@ pub fn show<'a>(
 
     if !chips_view.regular_chip_is_in_place() {
         if let Some(regular_chip_index) = chips_view.regular_chip_index(chips_view.equipped_folder_index()) {
-            let spliced = chips.splice(0..1, vec![]).collect::<Vec<_>>();
-            chips.splice(regular_chip_index..regular_chip_index + 1, spliced);
+            let chip = chips.remove(0);
+            chips.insert(regular_chip_index, chip);
         }
     }
 

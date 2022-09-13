@@ -154,7 +154,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn regular_chip_is_in_place(&self) -> bool {
-        false
+        true
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
