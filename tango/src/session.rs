@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, game, net, replay, replayer, stats, video};
+use crate::{audio, battle, config, game, net, replay, replayer, rom, save, stats, video};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -8,6 +8,12 @@ pub const EXPECTED_FPS: f32 = 60.0;
 pub struct GameInfo {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub patch: Option<(String, semver::Version)>,
+}
+
+pub struct OpponentSetup {
+    pub game_lang: unic_langid::LanguageIdentifier,
+    pub save: Box<dyn save::Save + Send + Sync>,
+    pub assets: Box<dyn rom::Assets + Send + Sync>,
 }
 
 pub struct Session {
@@ -20,6 +26,7 @@ pub struct Session {
     mode: Mode,
     completion_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pause_on_next_frame: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    opponent_setup: Option<OpponentSetup>,
 }
 
 pub struct CompletionToken {
@@ -195,6 +202,7 @@ impl Session {
             }),
             completion_flag,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            opponent_setup: None,
         })
     }
 
@@ -263,6 +271,7 @@ impl Session {
             mode: Mode::SinglePlayer(SinglePlayer {}),
             pause_on_next_frame,
             completion_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            opponent_setup: None,
         })
     }
 
@@ -358,6 +367,7 @@ impl Session {
             mode: Mode::Replayer,
             completion_flag,
             pause_on_next_frame,
+            opponent_setup: None,
         })
     }
 
@@ -435,6 +445,10 @@ impl Session {
 
     pub fn start_time(&self) -> std::time::SystemTime {
         self.start_time
+    }
+
+    pub fn opponent_setup(&self) -> &Option<OpponentSetup> {
+        &self.opponent_setup
     }
 }
 
