@@ -1,6 +1,6 @@
 save-tab-cover = Cubierta
 save-tab-navi = Navi
-save-tab-navicust = NaviCust
+save-tab-navicust = Navicust
 save-tab-folder = Folder
 save-tab-modcards = Modcards
 save-tab-dark-ai = IA de tu Dark Soul
@@ -13,3 +13,5 @@ dark-ai-giga-chip = Giga chip
 dark-ai-combos = Combos
 dark-ai-program-advance = Program advance
 dark-ai-unset = Borrar
+copy-navicust-image-to-clipboard = Copy NaviCust image to clipboard
+    .copied = Copied!
