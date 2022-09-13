@@ -1,3 +1,5 @@
+mod ipc;
+
 #[allow(dead_code)]
 use fluent_templates::Loader;
 
