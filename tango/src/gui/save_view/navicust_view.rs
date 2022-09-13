@@ -2,11 +2,15 @@ use fluent_templates::Loader;
 
 use crate::{gui, i18n, rom, save};
 
-pub struct State {}
+pub struct State {
+    navicust_texture_cache: Option<egui::TextureHandle>,
+}
 
 impl State {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            navicust_texture_cache: None,
+        }
     }
 }
 
@@ -71,6 +75,35 @@ fn show_part_name(
         })
         .response
         .on_hover_text(description);
+}
+
+fn ncp_bitmap(ncp: &save::NavicustPart, assets: &Box<dyn rom::Assets + Send + Sync>) -> Option<rom::NavicustBitmap> {
+    let ncp_info = if let Some(ncp_info) = assets.navicust_part(ncp.id, ncp.variant) {
+        ncp_info
+    } else {
+        return None;
+    };
+
+    let mut bitmap = if ncp.compressed {
+        ncp_info.compressed_bitmap()
+    } else {
+        ncp_info.uncompressed_bitmap()
+    };
+
+    match ncp.rot {
+        1 => {
+            bitmap = image::imageops::rotate90(&bitmap);
+        }
+        2 => {
+            image::imageops::rotate180_in_place(&mut bitmap);
+        }
+        3 => {
+            bitmap = image::imageops::rotate270(&bitmap);
+        }
+        _ => {}
+    }
+
+    Some(bitmap)
 }
 
 pub fn show<'a>(
