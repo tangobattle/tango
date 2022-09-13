@@ -33,4 +33,4 @@ lobby-issue-incompatible = 選択した作品に互換性がありません。
 lobby-issue-match-type-mismatch = 自分と相手のマッチタイプは異なります。
 lobby-issue-no-local-selection = 自分は作品を選択していません。
 lobby-issue-no-remote-selection = 相手は作品を選択していません。
-opponent-setup = Opponent's setup
+opponent-setup = 相手の構築
