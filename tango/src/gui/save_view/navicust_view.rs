@@ -155,12 +155,19 @@ fn render_navicust<'a>(
     const PADDING_H: u32 = 20;
     const PADDING_V: u32 = 20;
 
-    let (color_bar, color_bar_offset_x) = if let Some(style) = navicust_view.style() {
-        let color_bar = render_navicust_color_bar3(assets.style(style).and_then(|style| style.extra_ncp_color()));
+    let color_bar = if let Some(style) = navicust_view.style() {
+        let color_bar_right = render_navicust_color_bar3(assets.style(style).and_then(|style| style.extra_ncp_color()));
+        let mut color_bar = image::RgbaImage::new(body.width(), color_bar_right.height());
         let width = color_bar.width();
-        (color_bar, body.width() - width)
+        image::imageops::overlay(
+            &mut color_bar,
+            &color_bar_right,
+            (width - color_bar_right.width()) as i64,
+            0,
+        );
+        color_bar
     } else {
-        (render_navicust_color_bar456(navicust_view, assets), 0)
+        render_navicust_color_bar456(navicust_view, assets)
     };
 
     let mut image = image::RgbaImage::new(
@@ -173,12 +180,7 @@ fn render_navicust<'a>(
         *pixel = bg;
     }
 
-    image::imageops::overlay(
-        &mut image,
-        &color_bar,
-        PADDING_H as i64 + color_bar_offset_x as i64,
-        PADDING_V as i64,
-    );
+    image::imageops::overlay(&mut image, &color_bar, PADDING_H as i64, PADDING_V as i64);
     image::imageops::overlay(
         &mut image,
         &body,
