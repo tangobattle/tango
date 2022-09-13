@@ -126,6 +126,8 @@ lazy_static! {
 }
 
 pub async fn update(url: &String, root: &std::path::Path) -> Result<(), anyhow::Error> {
+    std::fs::create_dir_all(root)?;
+
     let client = reqwest::Client::new();
     let entries = tokio::time::timeout(
         // 30 second timeout to fetch JSON.
