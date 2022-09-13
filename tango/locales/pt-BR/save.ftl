@@ -1,6 +1,6 @@
 save-tab-cover = Capa
 save-tab-navi = Navi
-save-tab-navicust = Navicust
+save-tab-navicust = NaviCust
 save-tab-folder = Folder
 save-tab-modcards = Modcards
 save-tab-dark-ai = Dark Soul IA
