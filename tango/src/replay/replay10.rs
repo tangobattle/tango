@@ -53,7 +53,7 @@ fn convert_side(v10: &super::protos::replay10::metadata::Side) -> Result<super::
     })
 }
 
-pub fn decode_and_convert(raw: &[u8]) -> Result<super::Metadata, std::io::Error> {
+pub fn decode_metadata(raw: &[u8]) -> Result<super::Metadata, std::io::Error> {
     let metadata = super::protos::replay10::Metadata::decode(raw)?;
 
     Ok(super::Metadata {

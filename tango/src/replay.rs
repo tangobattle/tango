@@ -35,7 +35,7 @@ pub struct Replay {
 
 fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
     Ok(match version {
-        0x10 => replay10::decode_and_convert(&raw[..])?,
+        0x10 => replay10::decode_metadata(&raw[..])?,
         0x11 => protos::replay11::Metadata::decode(&raw[..])?,
         _ => {
             return Err(std::io::Error::new(
