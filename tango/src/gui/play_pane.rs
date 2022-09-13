@@ -104,8 +104,8 @@ fn make_warning(
     roms: &std::collections::HashMap<&'static (dyn game::Game + Send + Sync), Vec<u8>>,
     patches: &std::collections::BTreeMap<String, patch::Patch>,
 ) -> Option<Warning> {
-    let selection = if let Some(selection) = lobby.selection.as_ref() {
-        selection
+    let local_selection = if let Some(local_selection) = lobby.local_selection.as_ref() {
+        local_selection
     } else {
         return Some(Warning::NoLocalSelection);
     };
@@ -132,9 +132,9 @@ fn make_warning(
         .remote_settings
         .available_games
         .iter()
-        .any(|(family, variant)| selection.game.family_and_variant() == (family, *variant))
+        .any(|(family, variant)| local_selection.game.family_and_variant() == (family, *variant))
     {
-        return Some(Warning::NoRemoteROM(selection.game));
+        return Some(Warning::NoRemoteROM(local_selection.game));
     }
 
     if let Some(pi) = remote_gi.patch.as_ref() {
@@ -145,7 +145,7 @@ fn make_warning(
         }
     }
 
-    if let Some((patch_name, patch_version, _)) = selection.patch.as_ref() {
+    if let Some((patch_name, patch_version, _)) = local_selection.patch.as_ref() {
         if !lobby
             .remote_settings
             .available_patches
@@ -157,8 +157,8 @@ fn make_warning(
     }
 
     let local_netplay_compatibility = get_netplay_compatibility(
-        selection.game,
-        selection
+        local_selection.game,
+        local_selection
             .patch
             .as_ref()
             .map(|(name, version, _)| (name.as_str(), version)),
@@ -177,9 +177,15 @@ fn make_warning(
 
     None
 }
-struct LobbySelection {
+struct LocalSelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub save: Box<dyn save::Save + Send + Sync>,
+    pub rom: Vec<u8>,
+    pub patch: Option<(String, semver::Version, patch::Version)>,
+}
+
+struct RemoteSelection {
+    pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
     pub patch: Option<(String, semver::Version, patch::Version)>,
 }
@@ -188,11 +194,11 @@ struct Lobby {
     attention_requested: bool,
     link_code: String,
     sender: Option<net::Sender>,
-    selection: Option<LobbySelection>,
+    local_selection: Option<LocalSelection>,
+    remote_selection: Option<RemoteSelection>,
     nickname: String,
     match_type: (u8, u8),
     reveal_setup: bool,
-    remote_rom: Option<Vec<u8>>,
     remote_settings: net::protocol::Settings,
     remote_commitment: Option<[u8; 16]>,
     latencies: stats::DeltaCounter,
@@ -363,11 +369,11 @@ impl Lobby {
         net::protocol::Settings {
             nickname: self.nickname.clone(),
             match_type: self.match_type,
-            game_info: self.selection.as_ref().map(|selection| {
-                let (family, variant) = selection.game.family_and_variant();
+            game_info: self.local_selection.as_ref().map(|local_selection| {
+                let (family, variant) = local_selection.game.family_and_variant();
                 net::protocol::GameInfo {
                     family_and_variant: (family.to_string(), variant),
-                    patch: selection
+                    patch: local_selection
                         .patch
                         .as_ref()
                         .map(|(name, version, _)| net::protocol::PatchInfo {
@@ -440,7 +446,7 @@ impl Lobby {
                     .map(|(name, version, _)| (name.clone(), version.clone())),
                 selection.save.save.as_raw_wram(),
             )
-        }) == self.selection.as_ref().map(|selection| {
+        }) == self.local_selection.as_ref().map(|selection| {
             (
                 selection.game,
                 selection
@@ -484,8 +490,8 @@ impl Lobby {
             ..self.make_local_settings()
         })
         .await?;
-        self.selection = if let Some(selection) = selection.as_ref() {
-            Some(LobbySelection {
+        self.local_selection = if let Some(selection) = selection.as_ref() {
+            Some(LocalSelection {
                 game: selection.game,
                 save: selection.save.save.clone(),
                 rom: selection.rom.clone(),
@@ -513,7 +519,7 @@ impl Lobby {
         let roms = self.roms_scanner.read();
 
         let old_reveal_setup = self.remote_settings.reveal_setup;
-        self.remote_rom = settings.game_info.as_ref().and_then(|gi| {
+        self.remote_selection = settings.game_info.as_ref().and_then(|gi| {
             game::find_by_family_and_variant(&gi.family_and_variant.0, gi.family_and_variant.1).and_then(|game| {
                 roms.get(&game).and_then(|rom| {
                     if let Some(pi) = gi.patch.as_ref() {
@@ -527,9 +533,30 @@ impl Lobby {
                             }
                         };
 
-                        Some(rom)
+                        let patch_version_metadata = if let Some(version_meta) = self
+                            .patches_scanner
+                            .read()
+                            .get(&pi.name)
+                            .and_then(|p| p.versions.get(&pi.version))
+                            .cloned()
+                        {
+                            version_meta
+                        } else {
+                            log::error!("missing remove version metadata?");
+                            return None;
+                        };
+
+                        Some(RemoteSelection {
+                            rom,
+                            game,
+                            patch: Some((pi.name.clone(), pi.version.clone(), patch_version_metadata)),
+                        })
                     } else {
-                        Some(rom.clone())
+                        Some(RemoteSelection {
+                            rom: rom.clone(),
+                            game,
+                            patch: None,
+                        })
                     }
                 })
             })
@@ -624,12 +651,12 @@ async fn run_connection_task(
                     let lobby = std::sync::Arc::new(tokio::sync::Mutex::new(Lobby{
                         attention_requested: false,
                         sender: Some(sender),
-                        selection: None,
+                        local_selection: None,
+                        remote_selection: None,
                         nickname,
                         link_code,
                         match_type: (default_match_type, 0),
                         reveal_setup: false,
-                        remote_rom: None,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
                         latencies: stats::DeltaCounter::new(10),
@@ -701,7 +728,7 @@ async fn run_connection_task(
 
                     log::info!("ending lobby");
 
-                    let (mut sender, match_type, local_settings, mut remote_rom, remote_settings, remote_commitment, local_negotiated_state, selection, link_code) = {
+                    let (mut sender, match_type, local_settings, remote_selection, remote_settings, remote_commitment, local_negotiated_state, local_selection, link_code) = {
                         let mut lobby = lobby.lock().await;
                         let local_settings = lobby.make_local_settings();
                         let sender = if let Some(sender) = lobby.sender.take() {
@@ -709,14 +736,16 @@ async fn run_connection_task(
                         } else {
                             anyhow::bail!("no sender?");
                         };
-                        (sender, lobby.match_type, local_settings, lobby.remote_rom.clone(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take(), lobby.selection.take(), lobby.link_code.clone())
+                        (sender, lobby.match_type, local_settings, lobby.remote_selection.take(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take(), lobby.local_selection.take(), lobby.link_code.clone())
                     };
 
-                    let remote_rom = if let Some(remote_rom) = remote_rom.take() {
-                        remote_rom
+                    let remote_selection = if let Some(remote_selection) = remote_selection {
+                        remote_selection
                     } else {
                         anyhow::bail!("missing shadow rom");
                     };
+
+                    let remote_patch_overrides = remote_selection.patch.as_ref().map(|(_, _, version_meta)| version_meta.rom_overrides.clone()).unwrap_or_default();
 
                     let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = local_negotiated_state {
                         (negotiated_state, raw_local_state)
@@ -770,8 +799,8 @@ async fn run_connection_task(
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
 
-                    let selection = if let Some(selection) = selection {
-                        selection
+                    let local_selection = if let Some(local_selection) = local_selection {
+                        local_selection
                     } else {
                         anyhow::bail!("attempted to start match in invalid state");
                     };
@@ -789,18 +818,20 @@ async fn run_connection_task(
                             config.clone(),
                             audio_binder,
                             link_code,
-                            selection.patch.as_ref()
+                            local_selection.patch.as_ref()
                                 .map(|(_, _, metadata)| metadata.netplay_compatibility.clone())
-                                .unwrap_or(selection.game.family_and_variant().0.to_owned()),
+                                .unwrap_or(local_selection.game.family_and_variant().0.to_owned()),
                             local_settings,
-                            selection.game,
-                            selection.patch.as_ref().map(|(name, version, _)| {
+                            local_selection.game,
+                            local_selection.patch.as_ref().map(|(name, version, _)| {
                                 (name.clone(), version.clone())
                             }),
-                            &selection.rom,
+                            &local_selection.rom,
                             &local_negotiated_state.save_data,
                             remote_settings,
-                            &remote_rom,
+                            remote_selection.game,
+                            &remote_patch_overrides,
+                            &remote_selection.rom,
                             &remote_negotiated_state.save_data,
                             emu_tps_counter.clone(),
                             sender,
@@ -879,7 +910,11 @@ fn show_lobby_table(
     egui_extras::StripBuilder::new(ui)
         .size(egui_extras::Size::exact(row_height + spacing_y))
         .size(egui_extras::Size::exact(
-            if lobby.selection.as_ref().map(|s| s.patch.is_some()).unwrap_or(false)
+            if lobby
+                .local_selection
+                .as_ref()
+                .map(|s| s.patch.is_some())
+                .unwrap_or(false)
                 || lobby
                     .remote_settings
                     .game_info
@@ -893,7 +928,7 @@ fn show_lobby_table(
             },
         ))
         .size(egui_extras::Size::exact(row_height + spacing_y))
-        // .size(egui_extras::Size::exact(row_height + spacing_y))
+        .size(egui_extras::Size::exact(row_height + spacing_y))
         .size(egui_extras::Size::exact(row_height + spacing_y))
         .vertical(|mut outer_strip| {
             const CELL_WIDTH: f32 = 200.0;
@@ -961,8 +996,8 @@ fn show_lobby_table(
                         });
                         strip.cell(|ui| {
                             ui.vertical(|ui| {
-                                if let Some(selection) = lobby.selection.as_ref() {
-                                    let (family, variant) = selection.game.family_and_variant();
+                                if let Some(local_selection) = lobby.local_selection.as_ref() {
+                                    let (family, variant) = local_selection.game.family_and_variant();
                                     ui.label(if game::find_by_family_and_variant(family, variant).is_some() {
                                         i18n::LOCALES
                                             .lookup(&config.language, &format!("game-{}", family))
@@ -972,7 +1007,7 @@ fn show_lobby_table(
                                             .lookup(&config.language, "play-details-game.unknown")
                                             .unwrap()
                                     });
-                                    if let Some((patch_name, version, _)) = selection.patch.as_ref() {
+                                    if let Some((patch_name, version, _)) = local_selection.patch.as_ref() {
                                         ui.label(format!("{} v{}", patch_name, version));
                                     }
                                 } else {
@@ -1017,7 +1052,7 @@ fn show_lobby_table(
                                         .lookup(&config.language, "play-details-match-type")
                                         .unwrap(),
                                 );
-                                if lobby.selection.is_some()
+                                if lobby.local_selection.is_some()
                                     && lobby.remote_settings.game_info.is_some()
                                     && lobby.match_type != lobby.remote_settings.match_type
                                 {
@@ -1031,7 +1066,10 @@ fn show_lobby_table(
                             });
                         });
                         strip.cell(|ui| {
-                            let game = lobby.selection.as_ref().map(|selection| selection.game);
+                            let game = lobby
+                                .local_selection
+                                .as_ref()
+                                .map(|local_selection| local_selection.game);
                             ui.add_enabled_ui(game.is_some(), |ui| {
                                 egui::ComboBox::new("start-match-type-combobox", "")
                                     .width(150.0)
@@ -1288,7 +1326,7 @@ fn show_bottom_pane(
                                 discord_client.set_current_activity(Some(discord::make_in_lobby_activity(
                                     &lobby.link_code,
                                     &config.language,
-                                    lobby.selection.as_ref().map(|selection| {
+                                    lobby.local_selection.as_ref().map(|selection| {
                                         discord::make_game_info(
                                             selection.game,
                                             selection.patch.as_ref().map(|(patch_name, patch_version, _)| {
@@ -1382,7 +1420,8 @@ fn show_bottom_pane(
                             if lobby.sender.is_some() {
                                 if !was_ready && ready {
                                     *show_save_select = None;
-                                    let save_data = lobby.selection.as_ref().map(|selection| selection.save.to_vec());
+                                    let save_data =
+                                        lobby.local_selection.as_ref().map(|selection| selection.save.to_vec());
                                     if let Some(save_data) = save_data {
                                         let _ = sync::block_on(lobby.commit(&save_data));
                                     }
