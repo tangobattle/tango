@@ -30,6 +30,7 @@ RequestExecutionLevel user
 AutoCloseWindow true
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
+BrandingText " "
 
 InstallDir ""
 InstallDirRegKey HKCU "${{REGPATH_UNINSTSUBKEY}}" "UninstallString"
