@@ -10,6 +10,7 @@ impl<T: std::io::Write + std::io::Seek> WriteSeek for T {}
 pub mod export;
 
 mod protos;
+mod replay10;
 
 pub use protos::replay11::metadata;
 pub type Metadata = protos::replay11::Metadata;
@@ -33,7 +34,16 @@ pub struct Replay {
 }
 
 fn decode_metadata(version: u8, raw: &[u8]) -> Result<Metadata, std::io::Error> {
-    Ok(protos::replay11::Metadata::decode(&raw[..])?)
+    Ok(match version {
+        0x10 => replay10::decode_and_convert(&raw[..])?,
+        0x11 => protos::replay11::Metadata::decode(&raw[..])?,
+        _ => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid version: {:02x}", version),
+            ));
+        }
+    })
 }
 
 pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(usize, Metadata), std::io::Error> {
@@ -44,12 +54,7 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(usize, Metadata), st
     }
 
     let version = r.read_u8()?;
-    if version != VERSION {
-        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid version"));
-    }
-
     let num_inputs = r.read_u32::<byteorder::LittleEndian>()? as usize;
-
     let metadata_len = r.read_u32::<byteorder::LittleEndian>()?;
     let mut raw = vec![0u8; metadata_len as usize];
     r.read_exact(&mut raw[..])?;
