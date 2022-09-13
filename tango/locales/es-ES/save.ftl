@@ -1,6 +1,6 @@
 save-tab-cover = Cubierta
 save-tab-navi = Navi
-save-tab-navicust = Navicust
+save-tab-navicust = NaviCust
 save-tab-folder = Folder
 save-tab-modcards = Modcards
 save-tab-dark-ai = IA de tu Dark Soul
