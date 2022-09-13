@@ -1,10 +1,10 @@
 crash =
-    Oops, Tango has encountered an error and has crashed!
+    Ой, Танго столкнулся с ошибкой и Сломался!
     
-    When reporting this crash, please include the following log file:
+    При сообщении о Поломке, пожалуйста, укажите следующий файл журнала:
     
     { $path }
 crash-no-log =
-    Oops, Tango has encountered an error and has crashed!
+    Упс, Танго столкнулся с ошибкой и Сломался!
     
     { $error }
