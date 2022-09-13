@@ -92,10 +92,12 @@ Section
     WriteRegDWORD HKCU "${{REGPATH_UNINSTSUBKEY}}" "NoModify" 1
     WriteRegDWORD HKCU "${{REGPATH_UNINSTSUBKEY}}" "NoRepair" 1
     CreateShortcut "$SMPROGRAMS\\Tango.lnk" "$INSTDIR\\tango.exe"
+    CreateShortcut "$DESKTOP\\Tango.lnk" "$INSTDIR\\tango.exe"
 SectionEnd
 
 Section "uninstall"
     SetDetailsPrint none
+    Delete "$DESKTOP\\Tango.lnk"
     Delete "$SMPROGRAMS\\Tango.lnk"
     Delete "$INSTDIR\\libstdc++-6.dll"
     Delete "$INSTDIR\\libEGL.dll"
