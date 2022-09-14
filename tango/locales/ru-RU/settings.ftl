@@ -1,6 +1,6 @@
 settings = Настройки
-settings-tab-general = Общее
-settings-tab-input = Ввод
+settings-tab-general = Основные
+settings-tab-input = Управление
 settings-tab-graphics = Графика
 settings-tab-audio = Аудио
 settings-tab-netplay = Сетевая игра
@@ -20,7 +20,7 @@ settings-video-filter = Видео фильтр
 settings-max-scale = Максимальное масштабирование
     .unset = Снять
 settings-language = Язык
-settings-nickname = Никнейм
+settings-nickname = Ник
 settings-streamer-mode = Режим приватности стримера
     .tooltip = Включение этого режима добавит дополнительную вкладку "Обложение" в окно сохранения, которая скрывает всю информацию о вашем текущем файле сохранения.
 settings-debug-overlay = Показывать отладку
