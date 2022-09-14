@@ -1,6 +1,8 @@
 use byteorder::ByteOrder;
 use bytes::{Buf, BufMut};
 use num_traits::FromPrimitive;
+use rand::{Rng, RngCore};
+use serde_hex::SerHex;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 trait AsyncReadWrite
@@ -44,7 +46,7 @@ async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::
     return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"));
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
 enum Command {
@@ -52,29 +54,24 @@ enum Command {
     Subscribe,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct SubscribeArgs {
-    guild_id: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
-enum Event {
+pub enum Event {
     Ready,
     ActivityJoin,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Payload {
-    nonce: String,
+    nonce: Option<String>,
     cmd: Command,
     args: Option<serde_json::Value>,
-    evt: Event,
+    evt: Option<Event>,
     data: Option<serde_json::Value>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 struct Close {
     code: u32,
     message: String,
@@ -190,6 +187,13 @@ pub struct Client {
     inner: std::sync::Arc<tokio::sync::Mutex<Option<Inner>>>,
 }
 
+fn generate_nonce() -> String {
+    let mut rng = rand::thread_rng();
+    let mut nonce = [0u8; 32];
+    rng.fill_bytes(&mut nonce);
+    serde_hex::SerHex::<serde_hex::Strict>::into_hex(&nonce).unwrap()
+}
+
 impl Client {
     pub async fn connect(client_id: u64) -> std::io::Result<Self> {
         let (mut receiver, sender) = connect(client_id).await?;
@@ -223,7 +227,14 @@ impl Client {
                             }
 
                             Opcode::Frame => {
-                                let payload = serde_json::from_slice::<Payload>(&raw)?;
+                                let mut payload = serde_json::from_slice::<Payload>(&raw)?;
+                                let incoming_nonce = if let Some(nonce) = payload.nonce.take() {
+                                    nonce
+                                } else {
+                                    // TODO: Handle events.
+                                    continue;
+                                };
+
                                 let (nonce, tx) = if let Some((nonce, tx)) = inner.current_request.take() {
                                     (nonce, tx)
                                 } else {
@@ -232,7 +243,7 @@ impl Client {
                                         format!("no current request"),
                                     ));
                                 };
-                                if payload.nonce != nonce {
+                                if incoming_nonce != nonce {
                                     return Err::<(), std::io::Error>(std::io::Error::new(
                                         std::io::ErrorKind::InvalidData,
                                         format!("unexpected nonce: {:?}", payload.nonce),
@@ -269,6 +280,12 @@ impl Client {
     }
 
     async fn do_request(&self, payload: &Payload) -> std::io::Result<Payload> {
+        let nonce = if let Some(nonce) = payload.nonce.as_ref() {
+            nonce
+        } else {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "expected nonce"));
+        };
+
         let (rpc_tx, rpc_rx) = tokio::sync::oneshot::channel();
         {
             let mut inner = self.inner.lock().await;
@@ -278,7 +295,7 @@ impl Client {
             if inner.current_request.is_some() {
                 return Err(std::io::Error::new(std::io::ErrorKind::Other, "rpc in progress"));
             }
-            inner.current_request = Some((payload.nonce.clone(), rpc_tx));
+            inner.current_request = Some((nonce.clone(), rpc_tx));
             inner
                 .sender
                 .send_packet(Opcode::Frame, &serde_json::to_vec(payload)?)
@@ -287,5 +304,17 @@ impl Client {
         Ok(rpc_rx
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, e))?)
+    }
+
+    pub async fn subscribe(&self, evt: Event) -> std::io::Result<()> {
+        self.do_request(&Payload {
+            nonce: Some(generate_nonce()),
+            cmd: Command::Subscribe,
+            args: None,
+            evt: Some(evt),
+            data: None,
+        })
+        .await?;
+        Ok(())
     }
 }

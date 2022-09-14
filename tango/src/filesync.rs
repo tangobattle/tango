@@ -7,7 +7,7 @@ pub type Entries = std::collections::HashMap<String, Entry>;
 #[serde(untagged)]
 pub enum Entry {
     Directory(Entries),
-    File(#[serde(with = "serde_hex::SerHex::<serde_hex::StrictPfx>")] [u8; 32]),
+    File(#[serde(with = "serde_hex::SerHex::<serde_hex::Strict>")] [u8; 32]),
 }
 
 #[async_recursion::async_recursion]

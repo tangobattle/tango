@@ -156,6 +156,7 @@ impl Client {
                     if rpc.is_none() {
                         *rpc = match rpc::Client::connect(APP_ID).await {
                             Ok(rpc) => {
+                                let _ = rpc.subscribe(rpc::Event::ActivityJoin).await;
                                 log::info!("connected to discord RPC");
                                 Some(rpc)
                             }
