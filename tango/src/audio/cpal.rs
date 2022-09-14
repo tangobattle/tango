@@ -120,7 +120,7 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn new(stream: impl audio::Stream + Send) -> Result<Self, anyhow::Error> {
+    pub fn new(stream: impl audio::Stream + Send + 'static) -> Result<Self, anyhow::Error> {
         use cpal::traits::{HostTrait, StreamTrait};
 
         let audio_device = cpal::default_host()
@@ -133,8 +133,7 @@ impl Backend {
         let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
         log::info!("selected audio config: {:?}", audio_supported_config);
 
-        let audio_binder = audio::LateBinder::new(audio_supported_config.sample_rate().0);
-        let stream = open_stream(&audio_device, &audio_supported_config, audio_binder.clone())?;
+        let stream = open_stream(&audio_device, &audio_supported_config, stream)?;
         stream.play()?;
 
         Ok(Self {

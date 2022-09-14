@@ -1,9 +1,10 @@
 use byteorder::ByteOrder;
 use bytes::{Buf, BufMut};
 use num_traits::FromPrimitive;
-use rand::{Rng, RngCore};
-use serde_hex::SerHex;
+use rand::RngCore;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+pub mod activity;
 
 trait AsyncReadWrite
 where
@@ -52,27 +53,33 @@ async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::
 enum Command {
     Dispatch,
     Subscribe,
+    SetActivity,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
 pub enum Event {
     Ready,
     ActivityJoin,
+    Error,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Payload {
+    #[serde(skip_serializing_if = "Option::is_none")]
     nonce: Option<String>,
     cmd: Command,
+    #[serde(skip_serializing_if = "Option::is_none")]
     args: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     evt: Option<Event>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<serde_json::Value>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-struct Close {
+struct Error {
     code: u32,
     message: String,
 }
@@ -168,10 +175,10 @@ async fn connect(client_id: u64) -> std::io::Result<(Receiver, Sender)> {
 
     let (opcode, raw) = receiver.receive_packet().await?;
     if opcode == Opcode::Close as u32 {
-        let close = serde_json::from_slice::<Close>(&raw)?;
+        let error = serde_json::from_slice::<Error>(&raw)?;
         return Err(std::io::Error::new(
             std::io::ErrorKind::ConnectionAborted,
-            format!("{}: {}", close.code, close.message),
+            format!("{}: {}", error.code, error.message),
         ));
     }
 
@@ -189,7 +196,7 @@ pub struct Client {
 
 fn generate_nonce() -> String {
     let mut rng = rand::thread_rng();
-    let mut nonce = [0u8; 32];
+    let mut nonce = [0u8; 16];
     rng.fill_bytes(&mut nonce);
     serde_hex::SerHex::<serde_hex::Strict>::into_hex(&nonce).unwrap()
 }
@@ -219,10 +226,10 @@ impl Client {
                             .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotConnected, "not connected"))?;
                         match opcode {
                             Opcode::Close => {
-                                let close = serde_json::from_slice::<Close>(&raw)?;
+                                let error = serde_json::from_slice::<Error>(&raw)?;
                                 return Err(std::io::Error::new(
                                     std::io::ErrorKind::ConnectionAborted,
-                                    format!("{}: {}", close.code, close.message),
+                                    format!("{}: {}", error.code, error.message),
                                 ));
                             }
 
@@ -285,7 +292,6 @@ impl Client {
         } else {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "expected nonce"));
         };
-
         let (rpc_tx, rpc_rx) = tokio::sync::oneshot::channel();
         {
             let mut inner = self.inner.lock().await;
@@ -301,9 +307,21 @@ impl Client {
                 .send_packet(Opcode::Frame, &serde_json::to_vec(payload)?)
                 .await?;
         }
-        Ok(rpc_rx
+        let payload = rpc_rx
             .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, e))?)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::UnexpectedEof, e))?;
+        if payload.evt == Some(Event::Error) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::ConnectionAborted,
+                if let Some(data) = payload.data {
+                    let error = serde_json::from_value::<Error>(data)?;
+                    format!("{}: {}", error.code, error.message)
+                } else {
+                    "received error event with no details".to_string()
+                },
+            ));
+        }
+        Ok(payload)
     }
 
     pub async fn subscribe(&self, evt: Event) -> std::io::Result<()> {
@@ -312,6 +330,21 @@ impl Client {
             cmd: Command::Subscribe,
             args: None,
             evt: Some(evt),
+            data: None,
+        })
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_activity(&self, activity: &activity::Activity) -> std::io::Result<()> {
+        self.do_request(&Payload {
+            nonce: Some(generate_nonce()),
+            cmd: Command::SetActivity,
+            args: Some(serde_json::json!({
+                "pid": std::process::id(),
+                "activity": activity,
+            })),
+            evt: None,
             data: None,
         })
         .await?;
