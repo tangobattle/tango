@@ -1,5 +1,5 @@
-replays = Повторы
-replays-export = Экспорт
+replays = Реплеи
+replays-export = Экспортировать
 replays-play = Играть
 replays-scanning = Сканирование...
 replay-subtitle = { $game_family } @ { $link_code }: против{ $nickname }
@@ -11,7 +11,7 @@ replays-export-success = Ваш повтор был успешно экспор�
 replays-export-error = Произошла ошибка при экспорте вашего риплея: { $error }
 replays-export-cancel = Отмена
 replays-export-confirm-success = Ура!
-replays-export-confirm-error = Ну блин!
+replays-export-confirm-error = Черт!
 replay-viewer-pause = Пауза
 replay-viewer-step = Этап
 replay-viewer-speed = Скорость
