@@ -628,7 +628,7 @@ async fn run_connection_task(
                             &link_code,
                         ),
                     )
-                    .await??;
+                    .await.map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))??;
 
                     *connection_task.lock().await =
                         Some(ConnectionTask::InProgress {
@@ -719,7 +719,7 @@ async fn run_connection_task(
                                         break 'l;
                                     },
                                     p => {
-                                        anyhow::bail!("unexpected packet: {:?}", p);
+                                        return Err(ConnectionError::Other(anyhow::anyhow!("unexpected packet: {:?}", p)));
                                     }
                                 }
                             }
@@ -734,7 +734,7 @@ async fn run_connection_task(
                         let sender = if let Some(sender) = lobby.sender.take() {
                             sender
                         } else {
-                            anyhow::bail!("no sender?");
+                            return Err(ConnectionError::Other(anyhow::anyhow!("no sender?")));
                         };
                         (sender, lobby.match_type, local_settings, lobby.remote_selection.take(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take(), lobby.local_selection.take(), lobby.link_code.clone())
                     };
@@ -742,7 +742,7 @@ async fn run_connection_task(
                     let remote_selection = if let Some(remote_selection) = remote_selection {
                         remote_selection
                     } else {
-                        anyhow::bail!("missing shadow rom");
+                        return Err(ConnectionError::Other(anyhow::anyhow!("missing shadow rom")));
                     };
 
                     let remote_patch_overrides = remote_selection.patch.as_ref().map(|(_, _, version_meta)| version_meta.rom_overrides.clone()).unwrap_or_default();
@@ -750,7 +750,7 @@ async fn run_connection_task(
                     let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = local_negotiated_state {
                         (negotiated_state, raw_local_state)
                     } else {
-                        anyhow::bail!("attempted to start match in invalid state");
+                        return Err(ConnectionError::Other(anyhow::anyhow!("attempted to start match in invalid state")));
                     };
 
                     const CHUNK_SIZE: usize = 32 * 1024;
@@ -773,7 +773,7 @@ async fn run_connection_task(
                                         break;
                                     },
                                     p => {
-                                        anyhow::bail!("unexpected packet: {:?}", p);
+                                        return Err(ConnectionError::Other(anyhow::format_err!("unexpected packet: {:?}", p)));
                                     }
                                 }
                             }
@@ -785,16 +785,18 @@ async fn run_connection_task(
                     let received_remote_commitment = if let Some(commitment) = remote_commitment {
                         commitment
                     } else {
-                        anyhow::bail!("no remote commitment?");
+                        return Err(ConnectionError::Other(anyhow::anyhow!("no remote commitment?")));
                     };
 
                     log::info!("remote commitment = {:02x?}", received_remote_commitment);
 
                     if !bool::from(make_commitment(&raw_remote_negotiated_state).ct_eq(&received_remote_commitment)) {
-                        anyhow::bail!("commitment did not match");
+                        return Err(ConnectionError::Other(anyhow::anyhow!("commitment mismatch?")));
                     }
 
-                    let remote_negotiated_state = zstd::stream::decode_all(&raw_remote_negotiated_state[..]).map_err(|e| e.into()).and_then(|r| net::protocol::NegotiatedState::deserialize(&r))?;
+                    let raw_remote_negotiated_state = zstd::stream::decode_all(&raw_remote_negotiated_state[..])?;
+                    let remote_negotiated_state = net::protocol::NegotiatedState::deserialize(&raw_remote_negotiated_state)
+                        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
 
                     let rng_seed = std::iter::zip(local_negotiated_state.nonce, remote_negotiated_state.nonce).map(|(x, y)| x ^ y).collect::<Vec<_>>().try_into().unwrap();
                     log::info!("session verified! rng seed = {:02x?}", rng_seed);
@@ -802,13 +804,13 @@ async fn run_connection_task(
                     let local_selection = if let Some(local_selection) = local_selection {
                         local_selection
                     } else {
-                        anyhow::bail!("attempted to start match in invalid state");
+                        return Err(ConnectionError::Other(anyhow::anyhow!("attempted to start match in invalid state")));
                     };
 
                     sender.send_start_match().await?;
                     match receiver.receive().await? {
                         net::protocol::Packet::StartMatch(_) => {},
-                        p => anyhow::bail!("unexpected packet when expecting start match: {:?}", p),
+                        p => return Err(ConnectionError::Other(anyhow::anyhow!("unexpected packet when expecting start match: {:?}", p))),
                     }
 
                     log::info!("starting session");
@@ -865,12 +867,24 @@ async fn run_connection_task(
     }
 }
 
+#[derive(thiserror::Error, Debug)]
+enum ConnectionError {
+    #[error(transparent)]
+    Negotiation(#[from] net::NegotiationError),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
 enum ConnectionTask {
     InProgress {
         state: ConnectionState,
         cancellation_token: tokio_util::sync::CancellationToken,
     },
-    Failed(anyhow::Error),
+    Failed(ConnectionError),
 }
 
 enum ConnectionState {
@@ -1227,15 +1241,45 @@ fn show_bottom_pane(
     let error_window_open = {
         if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref() {
             let mut open = true;
-            egui::Window::new("")
-                .id(egui::Id::new("connection-failed-window"))
-                .open(&mut open)
-                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(ui.ctx(), |ui| {
-                    // TODO: Localization
-                    ui.label(format!("{:?}", err));
+            let mut open2 = true;
+            egui::Window::new(format!(
+                "🔌 {}",
+                i18n::LOCALES.lookup(&config.language, "connection-error").unwrap()
+            ))
+            .id(egui::Id::new("connection-failed-window"))
+            .open(&mut open)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                ui.label(match err {
+                    ConnectionError::Negotiation(net::NegotiationError::RemoteProtocolVersionTooOld) => i18n::LOCALES
+                        .lookup(&config.language, "connection-error-remote-protocol-version-too-old")
+                        .unwrap(),
+                    ConnectionError::Negotiation(net::NegotiationError::RemoteProtocolVersionTooNew) => i18n::LOCALES
+                        .lookup(&config.language, "connection-error-remote-protocol-version-too-new")
+                        .unwrap(),
+                    ConnectionError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                        i18n::LOCALES.lookup(&config.language, "connection-error-eof").unwrap()
+                    }
+                    e => i18n::LOCALES
+                        .lookup_with_args(
+                            &config.language,
+                            "connection-error-other",
+                            &std::collections::HashMap::from([("error", format!("{:?}", e).into())]),
+                        )
+                        .unwrap(),
                 });
-            open
+                if ui
+                    .button(
+                        i18n::LOCALES
+                            .lookup(&config.language, "connection-error-confirm")
+                            .unwrap(),
+                    )
+                    .clicked()
+                {
+                    open2 = false;
+                }
+            });
+            open && open2
         } else {
             false
         }

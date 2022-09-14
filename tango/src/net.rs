@@ -4,36 +4,39 @@ pub mod signaling;
 pub const PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
+pub enum NegotiationError {
     #[error("expected hello")]
     ExpectedHello,
 
-    #[error("protocol version too old")]
-    ProtocolVersionTooOld,
+    #[error("remote protocol version too old")]
+    RemoteProtocolVersionTooOld,
 
-    #[error("protocol version too new")]
-    ProtocolVersionTooNew,
+    #[error("remote protocol version too new")]
+    RemoteProtocolVersionTooNew,
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
 
-pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(), Error> {
-    sender.send_hello().await.map_err(|e| Error::Other(e.into()))?;
+pub async fn negotiate(sender: &mut Sender, receiver: &mut Receiver) -> Result<(), NegotiationError> {
+    sender
+        .send_hello()
+        .await
+        .map_err(|e| NegotiationError::Other(e.into()))?;
 
-    let hello = match receiver.receive().await.map_err(|_| Error::ExpectedHello)? {
+    let hello = match receiver.receive().await.map_err(|_| NegotiationError::ExpectedHello)? {
         protocol::Packet::Hello(hello) => hello,
         _ => {
-            return Err(Error::ExpectedHello);
+            return Err(NegotiationError::ExpectedHello);
         }
     };
 
     if hello.protocol_version < protocol::VERSION {
-        return Err(Error::ProtocolVersionTooOld);
+        return Err(NegotiationError::RemoteProtocolVersionTooOld);
     }
 
     if hello.protocol_version > protocol::VERSION {
-        return Err(Error::ProtocolVersionTooNew);
+        return Err(NegotiationError::RemoteProtocolVersionTooNew);
     }
 
     Ok(())
