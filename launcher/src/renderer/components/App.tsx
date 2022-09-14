@@ -6,6 +6,7 @@ import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CssBaseline from "@mui/material/CssBaseline";
+import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
@@ -33,7 +34,63 @@ import { TempDirProvider } from "./TempDirContext";
 import { UpdateStatusProvider } from "./UpdaterStatusContext";
 
 function ReadyAppBody() {
+  const [eolAcknowledged, setEolAcknowledged] = React.useState<boolean>(false);
   const [selected, setSelected] = React.useState<NavbarSelection>("play");
+
+  if (!eolAcknowledged) {
+    return (
+      <>
+        <Box
+          sx={{
+            width: 400,
+            py: 3,
+            pt: 3,
+            mx: "auto",
+          }}
+        >
+          <p lang="en">
+            <strong>Tango 3 is no longer supported after September 30.</strong>
+            <br />
+            Please download Tango 4 from{" "}
+            <Link href="https://tangobattle.com" target="_blank">
+              tangobattle.com
+            </Link>{" "}
+            at your earliest convenience.
+          </p>
+          <p lang="ja">
+            <strong>Tango 3は9月30日以降サポートを終了します。</strong>
+            <br />
+            Tango 4は
+            <Link href="https://tangobattle.com" target="_blank">
+              tangobattle.com
+            </Link>
+            からお早めにダウンロードをお願いします。
+          </p>
+          <p lang="zh-Hans">
+            <strong>9月30日之后不再支持Tango 3。</strong>
+            <br />
+            请尽早从
+            <Link href="https://tangobattle.com" target="_blank">
+              tangobattle.com
+            </Link>
+            下载Tango 4。
+          </p>
+          <Button
+            variant="contained"
+            color="warning"
+            fullWidth
+            onClick={() => {
+              setEolAcknowledged(true);
+            }}
+          >
+            <span lang="en">Acknowledge</span>&nbsp;/&nbsp;
+            <span lang="ja">確認</span>&nbsp;/&nbsp;
+            <span lang="zh-Hans">确认</span>
+          </Button>
+        </Box>
+      </>
+    );
+  }
 
   return (
     <>
