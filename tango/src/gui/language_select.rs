@@ -3,8 +3,8 @@ use crate::gui;
 pub fn show(ui: &mut egui::Ui, font_families: &gui::FontFamilies, language: &mut unic_langid::LanguageIdentifier) {
     let en_us_label = egui::RichText::new("English").family(font_families.latn.egui.clone());
     let ja_jp_label = egui::RichText::new("日本語").family(font_families.jpan.egui.clone());
-    let zh_cn_label = egui::RichText::new("简体中文").family(font_families.hans.egui.clone());
-    let zh_tw_label = egui::RichText::new("繁體中文").family(font_families.hant.egui.clone());
+    let zh_cn_label = egui::RichText::new("普通话（中国大陆）").family(font_families.hans.egui.clone());
+    let zh_tw_label = egui::RichText::new("國語（港台澳）").family(font_families.hant.egui.clone());
     let es_es_label = egui::RichText::new("Español").family(font_families.latn.egui.clone());
     let pt_br_label = egui::RichText::new("Português (Brasil)").family(font_families.latn.egui.clone());
     let fr_fr_label = egui::RichText::new("Français").family(font_families.latn.egui.clone());
