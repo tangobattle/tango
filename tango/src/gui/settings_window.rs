@@ -821,6 +821,32 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             });
         });
 
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.label(" • ");
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label("Vietnamese: ");
+
+                ui.hyperlink_to("ExeDesmond", "https://twitter.com/exedesmond");
+
+                ui.label(", ");
+
+                ui.hyperlink_to("ShironaNep", "https://www.youtube.com/user/minhduc1411vip");
+            });
+        });
+
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.label(" • ");
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label("Russian: ");
+
+                ui.label("Passbyword");
+            });
+        });
+
         ui.heading("Art");
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
