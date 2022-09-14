@@ -107,9 +107,9 @@ impl Sender {
     }
 
     async fn send_packet(&mut self, opcode: Opcode, body: &[u8]) -> std::io::Result<()> {
-        // ON WINDOWS, A NAMED PIPE CAN BE OPENED IN MESSAGE MODE, DESPITE THE INTERFACE CLEARLY BEING A STREAM INTERFACE.
-        // WE'LL TRY FLUSH THE BUFFER WE HAVE AND FUCKING HOPE THAT IT'S OK WHEN WE SEND THE NEXT ONE AND THAT IT'S ATOMIC.
-        // I HATE WINDOWS
+        // Let's try flush what's left of the buffer first, if we have anything.
+        // On Windows, Discord requires us to do an atomic write to the pipe. If we were interrupted writing the last buffer, this will flush that message first and guarantee we only write one at a time.
+        // On Unix, this just doesn't really matter.
         self.w.write_all_buf(&mut self.buf).await?;
 
         self.buf.put_u32_le(opcode as u32);
