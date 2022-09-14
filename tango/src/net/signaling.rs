@@ -3,6 +3,8 @@ use futures_util::TryStreamExt;
 use prost::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
+use crate::version;
+
 async fn create_data_channel(
     ice_servers: &[String],
 ) -> Result<
@@ -60,7 +62,7 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
     let mut req = url.to_string().into_client_request()?;
     req.headers_mut().append(
         "User-Agent",
-        tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("tango/{}", git_version::git_version!()))?,
+        tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("tango/{}", version::VERSION))?,
     );
     let (mut signaling_stream, _) = tokio_tungstenite::connect_async(req).await?;
 

@@ -27,6 +27,7 @@ mod shadow;
 mod stats;
 mod sync;
 mod updater;
+mod version;
 mod video;
 
 use fluent_templates::Loader;
@@ -46,7 +47,7 @@ fn main() -> Result<(), anyhow::Error> {
         .filter(Some("mgba"), log::LevelFilter::Info)
         .init();
 
-    log::info!("welcome to tango {}!", git_version::git_version!());
+    log::info!("welcome to tango {}!", version::VERSION);
 
     let config = config::Config::load_or_create()?;
     config.ensure_dirs()?;
