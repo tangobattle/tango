@@ -740,7 +740,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Simplified Chinese: ");
+                ui.label("Mandarin (mainland China): ");
 
                 ui.hyperlink_to("weenie", "https://github.com/bigfarts");
 
@@ -755,7 +755,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Traditional Chinese: ");
+                ui.label("Mandarin (Taiwan): ");
 
                 ui.hyperlink_to("weenie", "https://github.com/bigfarts");
 
