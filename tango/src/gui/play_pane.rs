@@ -1299,9 +1299,9 @@ fn show_bottom_pane(
             egui::Frame::none()
                 .fill(ui.style().visuals.window_fill())
                 .inner_margin(egui::style::Margin {
-                    left: 0.0,
-                    right: 0.0,
-                    bottom: 0.0,
+                    left: 8.0,
+                    right: 8.0,
+                    bottom: 8.0,
                     top: 8.0,
                 }),
         )
@@ -1640,7 +1640,12 @@ pub fn show(
         .frame(
             egui::Frame::none()
                 .fill(ui.style().visuals.window_fill())
-                .inner_margin(egui::style::Margin::symmetric(0.0, 0.0)),
+                .inner_margin(egui::style::Margin {
+                    left: 8.0,
+                    right: 8.0,
+                    bottom: 8.0,
+                    top: 8.0,
+                }),
         )
         .show_inside(ui, |ui| {
             let lobby = connection_task.as_ref().and_then(|task| match task {

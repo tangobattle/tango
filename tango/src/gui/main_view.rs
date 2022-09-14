@@ -146,58 +146,64 @@ pub fn show(
         state.tab = Tab::Play;
     }
 
-    egui::CentralPanel::default().show(ctx, |ui| match state.tab {
-        Tab::Play => {
-            gui::play_pane::show(
-                ui,
-                &font_families,
-                window,
-                clipboard,
-                config,
-                config_arc,
-                roms_scanner.clone(),
-                saves_scanner.clone(),
-                patches_scanner.clone(),
-                audio_binder.clone(),
-                session.clone(),
-                selection,
-                &mut state.patch_selection,
-                emu_tps_counter.clone(),
-                &mut state.play_pane,
-                discord_client,
-            );
-        }
-        Tab::Replays => {
-            gui::replays_pane::show(
-                ui,
-                clipboard,
-                &font_families,
-                &mut state.replays_pane,
-                replay_dump_windows,
-                &config.language,
-                &config.patches_path(),
-                patches_scanner.clone(),
-                roms_scanner.clone(),
-                &config.replays_path(),
-                audio_binder.clone(),
-                emu_tps_counter.clone(),
-                session.clone(),
-            );
-        }
-        Tab::Patches => {
-            gui::patches_pane::show(
-                ui,
-                &mut state.patches_pane,
-                &config.language,
-                if !config.patch_repo.is_empty() {
-                    config.patch_repo.as_str()
-                } else {
-                    config::DEFAULT_PATCH_REPO
-                },
-                &mut state.patch_selection,
-                &config.patches_path(),
-                patches_scanner.clone(),
-            );
-        }
-    });
+    egui::CentralPanel::default()
+        .frame(
+            egui::Frame::none()
+                .fill(ctx.style().visuals.window_fill())
+                .inner_margin(egui::style::Margin::same(0.0)),
+        )
+        .show(ctx, |ui| match state.tab {
+            Tab::Play => {
+                gui::play_pane::show(
+                    ui,
+                    &font_families,
+                    window,
+                    clipboard,
+                    config,
+                    config_arc,
+                    roms_scanner.clone(),
+                    saves_scanner.clone(),
+                    patches_scanner.clone(),
+                    audio_binder.clone(),
+                    session.clone(),
+                    selection,
+                    &mut state.patch_selection,
+                    emu_tps_counter.clone(),
+                    &mut state.play_pane,
+                    discord_client,
+                );
+            }
+            Tab::Replays => {
+                gui::replays_pane::show(
+                    ui,
+                    clipboard,
+                    &font_families,
+                    &mut state.replays_pane,
+                    replay_dump_windows,
+                    &config.language,
+                    &config.patches_path(),
+                    patches_scanner.clone(),
+                    roms_scanner.clone(),
+                    &config.replays_path(),
+                    audio_binder.clone(),
+                    emu_tps_counter.clone(),
+                    session.clone(),
+                );
+            }
+            Tab::Patches => {
+                gui::patches_pane::show(
+                    ui,
+                    &mut state.patches_pane,
+                    &config.language,
+                    if !config.patch_repo.is_empty() {
+                        config.patch_repo.as_str()
+                    } else {
+                        config::DEFAULT_PATCH_REPO
+                    },
+                    &mut state.patch_selection,
+                    &config.patches_path(),
+                    patches_scanner.clone(),
+                );
+            }
+        });
 }

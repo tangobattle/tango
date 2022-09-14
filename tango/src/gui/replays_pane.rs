@@ -98,9 +98,9 @@ pub fn show(
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
     let replays = state.replays_scanner.read();
-    ui.horizontal_top(|ui| {
+
+    egui::SidePanel::left("replays-window-left-panel").show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
-            .max_width(200.0)
             .auto_shrink([false, false])
             .id_source("replays-window-left")
             .show(ui, |ui| {
@@ -305,7 +305,9 @@ pub fn show(
                     }
                 });
             });
+    });
 
+    egui::CentralPanel::default().show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .id_source("replays-window-info")

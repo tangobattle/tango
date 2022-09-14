@@ -19,7 +19,7 @@ pub fn show(
     patches_path: &std::path::Path,
     patches_scanner: patch::Scanner,
 ) {
-    ui.horizontal_top(|ui| {
+    egui::TopBottomPanel::top("patches-window-top-panel").show_inside(ui, |ui| {
         ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {
             if ui
                 .button(format!(
@@ -51,12 +51,9 @@ pub fn show(
         }
     });
 
-    ui.separator();
-
     let patches = patches_scanner.read();
-    ui.horizontal_top(|ui| {
+    egui::SidePanel::left("patches-window-left-panel").show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
-            .max_width(200.0)
             .auto_shrink([false, false])
             .id_source("patch-window-left")
             .show(ui, |ui| {
@@ -71,7 +68,9 @@ pub fn show(
                     }
                 });
             });
+    });
 
+    egui::CentralPanel::default().show_inside(ui, |ui| {
         let patch = if let Some(patch) = patch_selection.as_ref().and_then(|n| patches.get(n)) {
             patch
         } else {
