@@ -1,0 +1,17 @@
+replays = Реплеи
+replays-export = Экспортировать
+replays-play = Воспроизвести
+replays-scanning = Сканирование...
+replay-subtitle = { $game_family } @ { $link_code }: против{ $nickname }
+replays-export-path = Сохранить в
+    .change = Изменить
+replays-export-scale-factor = Масштаб нормалей
+replays-export-disable-bgm = Отключить музыку
+replays-export-success = Ваш повтор был успешно экспортирован.
+replays-export-error = Произошла ошибка при экспорте вашего риплея: { $error }
+replays-export-cancel = Отмена
+replays-export-confirm-success = Ура!
+replays-export-confirm-error = Ну блин!
+replay-viewer-pause = Пауза
+replay-viewer-step = Этап
+replay-viewer-speed = Скорость

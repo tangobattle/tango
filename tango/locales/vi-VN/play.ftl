@@ -33,3 +33,4 @@ lobby-issue-incompatible = Game không tương thích với đối thủ.
 lobby-issue-match-type-mismatch = Thể thức không giống với đối thủ.
 lobby-issue-no-local-selection = Bạn chưa chọn game.
 lobby-issue-no-remote-selection = Đối thủ chưa chọn game.
+opponent-setup = Opponent's setup

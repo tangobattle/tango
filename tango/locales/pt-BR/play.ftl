@@ -33,3 +33,4 @@ lobby-issue-incompatible = O jogo não é compatível com o do oponente.
 lobby-issue-match-type-mismatch = Tipo de jogo não corresponde ao do oponente.
 lobby-issue-no-local-selection = Você não selecionou um jogo.
 lobby-issue-no-remote-selection = O oponente não selecionou um jogo.
+opponent-setup = Configuração do oponente

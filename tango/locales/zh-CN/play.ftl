@@ -33,3 +33,4 @@ lobby-issue-incompatible = 游戏与对方的不兼容。
 lobby-issue-match-type-mismatch = 对方的战斗类型设置不匹配。
 lobby-issue-no-local-selection = 你没有选择游戏。
 lobby-issue-no-remote-selection = 对方没有选择游戏。
+opponent-setup = 对方的配置
