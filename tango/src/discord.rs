@@ -3,7 +3,7 @@ mod rpc;
 #[allow(dead_code)]
 use fluent_templates::Loader;
 
-use crate::{game, i18n, sync};
+use crate::{game, i18n};
 
 const APP_ID: u64 = 974089681333534750;
 
@@ -189,18 +189,20 @@ impl Client {
     }
 
     pub fn set_current_activity(&self, activity: Option<rpc::activity::Activity>) {
-        // RPC lock must be acquired first.
-        let rpc = self.rpc.blocking_lock();
-
         let mut current_activity = self.current_activity.blocking_lock();
         if activity == *current_activity {
             return;
         }
 
         if let Some(activity) = activity.as_ref() {
-            if let Some(rpc) = &*rpc {
-                let _ = sync::block_on(rpc.set_activity(activity));
-            }
+            let activity = activity.clone();
+            let rpc = self.rpc.clone();
+            // Do not block main thread on setting activity.
+            tokio::task::spawn(async move {
+                if let Some(rpc) = &*rpc.lock().await {
+                    let _ = rpc.set_activity(&activity).await;
+                }
+            });
         }
 
         *current_activity = activity;

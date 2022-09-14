@@ -1,4 +1,4 @@
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Activity {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamps: Option<Timestamps>,
@@ -18,7 +18,7 @@ pub struct Activity {
     pub buttons: Vec<Button>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Timestamps {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start: Option<u64>,
@@ -26,7 +26,7 @@ pub struct Timestamps {
     pub end: Option<u64>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Emoji {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -35,7 +35,7 @@ pub struct Emoji {
     pub animated: Option<bool>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Party {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
@@ -43,7 +43,7 @@ pub struct Party {
     pub size: Option<[u32; 2]>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Assets {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub large_image: Option<String>,
@@ -55,7 +55,7 @@ pub struct Assets {
     pub small_text: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Secrets {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub join: Option<String>,
@@ -65,7 +65,7 @@ pub struct Secrets {
     pub r#match: Option<String>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Clone, Debug, Default)]
 pub struct Button {
     pub label: String,
     pub url: String,

@@ -47,7 +47,7 @@ async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::
     return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"));
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[non_exhaustive]
 enum Command {
@@ -235,11 +235,19 @@ impl Client {
 
                             Opcode::Frame => {
                                 let mut payload = serde_json::from_slice::<Payload>(&raw)?;
+
+                                if payload.cmd == Command::Dispatch {
+                                    // This is an event that we've subscribed to.
+                                    continue;
+                                }
+
                                 let incoming_nonce = if let Some(nonce) = payload.nonce.take() {
                                     nonce
                                 } else {
-                                    // TODO: Handle events.
-                                    continue;
+                                    return Err::<(), std::io::Error>(std::io::Error::new(
+                                        std::io::ErrorKind::InvalidData,
+                                        format!("no nonce received"),
+                                    ));
                                 };
 
                                 let (nonce, tx) = if let Some((nonce, tx)) = inner.current_request.take() {
