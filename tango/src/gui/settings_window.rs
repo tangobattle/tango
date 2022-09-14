@@ -770,7 +770,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Spanish: ");
+                ui.label("Spanish (Latin America): ");
 
                 ui.hyperlink_to("Karate_Bugman", "https://twitter.com/Karate_Bugman");
             });
@@ -781,7 +781,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Brazilian Portuguese: ");
+                ui.label("Portuguese (Brazil): ");
 
                 ui.hyperlink_to("Darkgaia", "https://ayo.so/darkgaiagames");
 
@@ -796,7 +796,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("French: ");
+                ui.label("French (France): ");
 
                 ui.hyperlink_to("Sheriel Phoenix", "https://twitter.com/Sheriel_Phoenix");
 
@@ -811,7 +811,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("German: ");
+                ui.label("German (Germany): ");
 
                 ui.hyperlink_to("KenDeep", "https://twitch.tv/kendeep_fgc");
             });
@@ -837,7 +837,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             ui.label(" • ");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
-                ui.label("Russian: ");
+                ui.label("Russian (Russia): ");
 
                 ui.label("Passbyword");
 
