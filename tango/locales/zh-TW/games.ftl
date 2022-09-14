@@ -1,6 +1,6 @@
-game-exe1 = 洛克人
+game-exe1 = 洛克人EXE
     .short = EXE1
-    .variant-0 = 洛克人
+    .variant-0 = 洛克人EXE
     .match-type-0-0 = 一局
 game-bn1 = 洛克人EXE（英文版）
     .short = BN1

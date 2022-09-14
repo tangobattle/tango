@@ -1,11 +1,11 @@
-replays = Реплеи
-replays-export = Экспортировать
-replays-play = Воспроизвести
+replays = Повторы
+replays-export = Экспорт
+replays-play = Играть
 replays-scanning = Сканирование...
 replay-subtitle = { $game_family } @ { $link_code }: против{ $nickname }
 replays-export-path = Сохранить в
     .change = Изменить
-replays-export-scale-factor = Масштаб нормалей
+replays-export-scale-factor = Коэффициент масштабирования
 replays-export-disable-bgm = Отключить музыку
 replays-export-success = Ваш повтор был успешно экспортирован.
 replays-export-error = Произошла ошибка при экспорте вашего риплея: { $error }

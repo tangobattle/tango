@@ -4,4 +4,4 @@ updater-update-available = Доступно обновление!
 updater-ready-to-update = Готово к обновлению!
 updater-current-version = Текущая версия
 updater-latest-version = Последняя версия
-updater-update-now = Обновить сейчас!
+updater-update-now = Обновите сейчас!

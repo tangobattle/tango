@@ -1,2 +1,2 @@
 escape-settings = Paramètres
-escape-end-game = Fin du jeu
+escape-end-game = Fermer le jeu
