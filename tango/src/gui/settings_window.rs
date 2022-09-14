@@ -580,11 +580,7 @@ fn show_advanced_tab(
 
 fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
     egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
-        ui.heading(format!(
-            "Tango v{}-{}",
-            env!("CARGO_PKG_VERSION"),
-            git_version::git_version!(),
-        ));
+        ui.heading(format!("Tango {}", git_version::git_version!()));
 
         ui.add_space(8.0);
         ui.vertical_centered(|ui| {
