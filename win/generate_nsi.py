@@ -49,13 +49,15 @@ Function .onInit
         StrCpy $INSTDIR "$LocalAppData\\Programs"
         StrCpy $INSTDIR "$INSTDIR\\$(^Name)"
     ${{EndIf}}
+
+    ExecWait '"$INSTDIR\\Uninstall Tango.exe" /S'
 FunctionEnd
 
 Function un.onInit
     SetShellVarContext Current
 FunctionEnd
 
-Function .oninstsuccess
+Function .onInstSuccess
     Exec "$INSTDIR\\tango.exe"
 FunctionEnd
 
