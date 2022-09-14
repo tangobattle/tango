@@ -131,38 +131,76 @@ impl Client {
         {
             let rpc = rpc.clone();
             let current_activity = current_activity.clone();
+            let current_join_secret = current_join_secret.clone();
 
             tokio::task::spawn(async move {
                 loop {
                     {
-                        // Try establish RPC connection, if not already open.
-                        let mut rpc_guard = rpc.lock().await;
-                        let current_activity = current_activity.clone();
+                        let mut events_rx = {
+                            // Try establish RPC connection, if not already open.
+                            let mut rpc_guard = rpc.lock().await;
+                            let current_activity = current_activity.clone();
 
-                        if rpc_guard.is_none() {
-                            *rpc_guard = match (|| async {
-                                let rpc = rpc::Client::connect(APP_ID).await?;
+                            let (rpc, events_rx) = match (|| async {
+                                let (rpc, events_rx) = rpc::Client::connect(APP_ID).await?;
                                 rpc.subscribe(rpc::Event::ActivityJoin).await?;
-                                Ok::<_, anyhow::Error>(rpc)
+                                if let Some(activity) = current_activity.lock().await.as_ref() {
+                                    rpc.set_activity(activity).await?;
+                                }
+                                Ok::<_, anyhow::Error>((rpc, events_rx))
                             })()
                             .await
                             {
-                                Ok(rpc) => {
+                                Ok((rpc, events_rx)) => {
                                     log::info!("connected to discord RPC");
-                                    Some(rpc)
+                                    (rpc, events_rx)
                                 }
                                 Err(err) => {
                                     log::warn!("did not open discord RPC client: {:?}", err);
-                                    None
+                                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                                    continue;
                                 }
                             };
-                        }
+                            *rpc_guard = Some(rpc);
+                            events_rx
+                        };
 
-                        if let Some(rpc) = &*rpc_guard {
+                        loop {
+                            // Service any events.
+                            'l: loop {
+                                let event = tokio::select! {
+                                    event = events_rx.recv() => { event }
+                                    else => { break 'l; }
+                                };
+
+                                let (event, v) = if let Some(event) = event {
+                                    event
+                                } else {
+                                    break;
+                                };
+
+                                // We only care about activity joins.
+                                if event != rpc::Event::ActivityJoin {
+                                    continue;
+                                }
+
+                                let secret = if let Some(secret) =
+                                    v.and_then(|v| v.get("secret").and_then(|v| v.as_str().map(|v| v.to_string())))
+                                {
+                                    secret
+                                } else {
+                                    continue;
+                                };
+
+                                *current_join_secret.lock().await = Some(secret);
+                            }
+
                             // Do stuff with RPC connection.
                             if let Err(err) = (|| async {
-                                if let Some(activity) = current_activity.lock().await.as_ref() {
-                                    rpc.set_activity(activity).await?;
+                                if let Some(rpc) = rpc.lock().await.as_ref() {
+                                    if let Some(activity) = current_activity.lock().await.as_ref() {
+                                        rpc.set_activity(activity).await?;
+                                    }
                                 }
 
                                 Ok::<_, anyhow::Error>(())
@@ -170,12 +208,16 @@ impl Client {
                             .await
                             {
                                 log::warn!("discord RPC client encountered error: {:?}", err);
-                                *rpc_guard = None;
+                                tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                                break;
                             }
                         }
-                    }
 
-                    tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                        {
+                            let mut rpc_guard = rpc.lock().await;
+                            *rpc_guard = None;
+                        }
+                    }
                 }
             });
         }
@@ -189,9 +231,12 @@ impl Client {
     }
 
     pub fn set_current_activity(&self, activity: Option<rpc::activity::Activity>) {
-        let mut current_activity = self.current_activity.blocking_lock();
-        if activity == *current_activity {
-            return;
+        {
+            let mut current_activity = self.current_activity.blocking_lock();
+            if activity == *current_activity {
+                return;
+            }
+            *current_activity = activity.clone();
         }
 
         if let Some(activity) = activity.as_ref() {
@@ -204,8 +249,6 @@ impl Client {
                 }
             });
         }
-
-        *current_activity = activity;
     }
 
     pub fn has_current_join_secret(&self) -> bool {

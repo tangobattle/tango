@@ -66,7 +66,7 @@ pub enum Event {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct Payload {
+struct Payload {
     #[serde(skip_serializing_if = "Option::is_none")]
     nonce: Option<String>,
     cmd: Command,
@@ -202,8 +202,11 @@ fn generate_nonce() -> String {
 }
 
 impl Client {
-    pub async fn connect(client_id: u64) -> std::io::Result<Self> {
+    pub async fn connect(
+        client_id: u64,
+    ) -> std::io::Result<(Self, tokio::sync::mpsc::Receiver<(Event, Option<serde_json::Value>)>)> {
         let (mut receiver, sender) = connect(client_id).await?;
+        let (events_tx, events_rx) = tokio::sync::mpsc::channel(100);
 
         let inner = std::sync::Arc::new(tokio::sync::Mutex::new(Some(Inner {
             current_request: None,
@@ -238,6 +241,13 @@ impl Client {
 
                                 if payload.cmd == Command::Dispatch {
                                     // This is an event that we've subscribed to.
+                                    let event = if let Some(event) = payload.evt.take() {
+                                        event
+                                    } else {
+                                        continue;
+                                    };
+
+                                    let _ = events_tx.send((event, payload.data)).await;
                                     continue;
                                 }
 
@@ -291,7 +301,7 @@ impl Client {
                 *inner.lock().await = None;
             }
         });
-        Ok(Client { inner })
+        Ok((Client { inner }, events_rx))
     }
 
     async fn do_request(&self, payload: &Payload) -> std::io::Result<Payload> {
