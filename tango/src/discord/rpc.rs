@@ -3,11 +3,16 @@ use bytes::{Buf, BufMut};
 use num_traits::FromPrimitive;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+trait AsyncReadWrite
+where
+    Self: tokio::io::AsyncRead + tokio::io::AsyncWrite,
+{
+}
+
+impl<T> AsyncReadWrite for T where T: tokio::io::AsyncRead + tokio::io::AsyncWrite {}
+
 #[cfg(unix)]
-async fn open() -> std::io::Result<(
-    Box<dyn tokio::io::AsyncRead + Send + std::marker::Unpin>,
-    Box<dyn tokio::io::AsyncWrite + Send + std::marker::Unpin>,
-)> {
+async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>> {
     let tmpdir = if let Some(tmpdir) = ["XDG_RUNTIME_DIR", "TMPDIR", "TMP", "TEMP"]
         .iter()
         .flat_map(|key| std::env::var_os(key))
@@ -19,9 +24,8 @@ async fn open() -> std::io::Result<(
     };
 
     for i in 0..10 {
-        if let Ok(mut stream) = tokio::net::UnixStream::connect(&tmpdir.join(format!("discord-ipc-{}", i))).await {
-            let (r, w) = stream.into_split();
-            return Ok((Box::new(r), Box::new(w)));
+        if let Ok(stream) = tokio::net::UnixStream::connect(&tmpdir.join(format!("discord-ipc-{}", i))).await {
+            return Ok(Box::new(stream));
         }
     }
 
@@ -29,18 +33,15 @@ async fn open() -> std::io::Result<(
 }
 
 #[cfg(windows)]
-fn open() -> std::io::Result<Box<dyn ReadWrite + Send>> {
-    use std::os::windows::fs::OpenOptionsExt;
-    (0..10)
-        .flat_map(|i| {
-            std::fs::OpenOptions::new()
-                .access_mode(0x3)
-                .open(format!(r"\\?\pipe\discord-ipc-{}", i))
-                .ok()
-        })
-        .next()
-        .map(|s| Box::new(s) as Box<dyn ReadWrite + Send>)
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"))
+async fn open() -> std::io::Result<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>> {
+    for i in 0..10 {
+        if let Ok(pipe) =
+            tokio::net::windows::named_pipe::ClientOptions::new().open(format!(r"\\?\pipe\discord-ipc-{}", i))
+        {
+            return Ok(Box::new(pipe));
+        }
+    }
+    return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "could not connect"));
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -90,11 +91,11 @@ enum Opcode {
 
 struct Sender {
     buf: bytes::BytesMut,
-    w: Box<dyn tokio::io::AsyncWrite + Send + std::marker::Unpin>,
+    w: tokio::io::WriteHalf<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>>,
 }
 
 impl Sender {
-    fn new(w: Box<dyn tokio::io::AsyncWrite + Send + std::marker::Unpin>) -> Self {
+    fn new(w: tokio::io::WriteHalf<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>>) -> Self {
         Self {
             buf: bytes::BytesMut::new(),
             w,
@@ -102,6 +103,11 @@ impl Sender {
     }
 
     async fn send_packet(&mut self, opcode: Opcode, body: &[u8]) -> std::io::Result<()> {
+        // ON WINDOWS, A NAMED PIPE CAN BE OPENED IN MESSAGE MODE, DESPITE THE INTERFACE CLEARLY BEING A STREAM INTERFACE.
+        // WE'LL TRY FLUSH THE BUFFER WE HAVE AND FUCKING HOPE THAT IT'S OK WHEN WE SEND THE NEXT ONE AND THAT IT'S ATOMIC.
+        // I HATE WINDOWS
+        self.w.write_all_buf(&mut self.buf).await?;
+
         self.buf.put_u32_le(opcode as u32);
         self.buf.put_u32_le(body.len() as u32);
         self.buf.put_slice(body);
@@ -112,11 +118,11 @@ impl Sender {
 
 struct Receiver {
     buf: bytes::BytesMut,
-    r: Box<dyn tokio::io::AsyncRead + Send + std::marker::Unpin>,
+    r: tokio::io::ReadHalf<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>>,
 }
 
 impl Receiver {
-    fn new(r: Box<dyn tokio::io::AsyncRead + Send + std::marker::Unpin>) -> Self {
+    fn new(r: tokio::io::ReadHalf<Box<dyn AsyncReadWrite + Send + std::marker::Unpin>>) -> Self {
         Self {
             buf: bytes::BytesMut::new(),
             r,
@@ -147,7 +153,7 @@ impl Receiver {
 }
 
 async fn connect(client_id: u64) -> std::io::Result<(Receiver, Sender)> {
-    let (r, w) = open().await?;
+    let (r, w) = tokio::io::split(open().await?);
     let mut receiver = Receiver::new(r);
     let mut sender = Sender::new(w);
 
@@ -215,6 +221,7 @@ impl Client {
                                     format!("{}: {}", close.code, close.message),
                                 ));
                             }
+
                             Opcode::Frame => {
                                 let payload = serde_json::from_slice::<Payload>(&raw)?;
                                 let (nonce, tx) = if let Some((nonce, tx)) = inner.current_request.take() {
@@ -234,11 +241,14 @@ impl Client {
 
                                 let _ = tx.send(payload);
                             }
+
                             Opcode::Ping => {
                                 inner.sender.send_packet(Opcode::Pong, &raw).await?;
                                 continue;
                             }
+
                             Opcode::Pong => {}
+
                             opcode => {
                                 return Err::<(), std::io::Error>(std::io::Error::new(
                                     std::io::ErrorKind::InvalidData,
