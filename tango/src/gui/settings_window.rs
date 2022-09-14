@@ -840,6 +840,13 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
                 ui.label("Russian: ");
 
                 ui.label("Passbyword");
+
+                ui.label(", ");
+
+                ui.hyperlink_to(
+                    "Sest0E1emento5",
+                    "https://www.youtube.com/channel/UCwpjuY9bYqNzsUG1QP50PLQ",
+                );
             });
         });
 
