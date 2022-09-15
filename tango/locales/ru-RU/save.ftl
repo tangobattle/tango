@@ -1,4 +1,4 @@
-save-tab-cover = Прикрытие
+save-tab-cover = Покрытие
 save-tab-navi = Нави
 save-tab-navicust = НавиКаст
 save-tab-folder = Папка
