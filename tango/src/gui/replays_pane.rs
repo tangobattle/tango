@@ -87,14 +87,6 @@ pub fn show(
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
 ) {
-    if state.replays_scanner.is_scanning() {
-        ui.horizontal(|ui| {
-            ui.spinner();
-            ui.label(i18n::LOCALES.lookup(language, "replays-scanning").unwrap());
-        });
-        return;
-    }
-
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
     let replays = state.replays_scanner.read();
@@ -104,6 +96,14 @@ pub fn show(
             .auto_shrink([false, false])
             .id_source("replays-window-left")
             .show(ui, |ui| {
+                if state.replays_scanner.is_scanning() {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(i18n::LOCALES.lookup(language, "replays-scanning").unwrap());
+                    });
+                    return;
+                }
+
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     for (path, (_is_complete, metadata)) in replays.iter().rev() {
                         let ts = if let Some(ts) =

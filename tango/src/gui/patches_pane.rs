@@ -20,35 +20,37 @@ pub fn show(
     patches_scanner: patch::Scanner,
 ) {
     egui::TopBottomPanel::top("patches-window-top-panel").show_inside(ui, |ui| {
-        ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {
-            if ui
-                .button(format!(
-                    "🔄 {}",
-                    i18n::LOCALES.lookup(language, "patches-update").unwrap()
-                ))
-                .clicked()
-            {
-                let egui_ctx = ui.ctx().clone();
-                tokio::task::spawn_blocking({
-                    let patches_scanner = patches_scanner.clone();
-                    let repo_url = repo_url.to_owned();
-                    let patches_path = patches_path.to_path_buf();
-                    move || {
-                        patches_scanner.rescan(move || {
-                            if let Err(e) = sync::block_on(patch::update(&repo_url, &patches_path)) {
-                                log::error!("failed to update patches: {:?}", e);
-                            }
-                            patch::scan(&patches_path).ok()
-                        });
-                        egui_ctx.request_repaint();
-                    }
-                });
+        ui.horizontal(|ui| {
+            ui.add_enabled_ui(!patches_scanner.is_scanning(), |ui| {
+                if ui
+                    .button(format!(
+                        "🔄 {}",
+                        i18n::LOCALES.lookup(language, "patches-update").unwrap()
+                    ))
+                    .clicked()
+                {
+                    let egui_ctx = ui.ctx().clone();
+                    tokio::task::spawn_blocking({
+                        let patches_scanner = patches_scanner.clone();
+                        let repo_url = repo_url.to_owned();
+                        let patches_path = patches_path.to_path_buf();
+                        move || {
+                            patches_scanner.rescan(move || {
+                                if let Err(e) = sync::block_on(patch::update(&repo_url, &patches_path)) {
+                                    log::error!("failed to update patches: {:?}", e);
+                                }
+                                patch::scan(&patches_path).ok()
+                            });
+                            egui_ctx.request_repaint();
+                        }
+                    });
+                }
+            });
+
+            if patches_scanner.is_scanning() {
+                ui.spinner();
             }
         });
-
-        if patches_scanner.is_scanning() {
-            ui.spinner();
-        }
     });
 
     let patches = patches_scanner.read();
