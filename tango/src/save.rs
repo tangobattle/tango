@@ -142,16 +142,11 @@ pub fn mask_save(buf: &mut [u8], mask_offset: usize) {
 }
 
 pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
-    buf.iter()
-        .enumerate()
-        .map(|(i, b)| {
-            if i < checksum_offset || i >= checksum_offset + 4 {
-                *b as u32
-            } else {
-                0
-            }
-        })
-        .sum::<u32>()
+    buf.iter().map(|v| *v as u32).sum::<u32>()
+        - buf[checksum_offset..checksum_offset + 4]
+            .iter()
+            .map(|v| *v as u32)
+            .sum::<u32>()
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]

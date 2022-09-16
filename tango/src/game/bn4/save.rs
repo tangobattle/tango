@@ -68,23 +68,34 @@ impl Save {
             const RED_SUN: u32 = checksum_start_for_variant(Variant::RedSun);
             const BLUE_MOON: u32 = checksum_start_for_variant(Variant::BlueMoon);
 
-            let (variant, region) =
-                match byteorder::LittleEndian::read_u32(&buf[shift + CHECKSUM_OFFSET..shift + CHECKSUM_OFFSET + 4])
-                    .checked_sub(compute_raw_checksum(&buf, shift))
-                {
-                    Some(RED_SUN) => (Variant::RedSun, Region::US),
-                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
-                    Some(c) => match c.checked_sub(buf[0] as u32) {
-                        Some(RED_SUN) => (Variant::RedSun, Region::JP),
-                        Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
-                        _ => {
-                            anyhow::bail!("unknown game, bad checksum");
-                        }
-                    },
-                    None => {
-                        anyhow::bail!("unknown game, bad checksum");
+            let expected_checksum =
+                byteorder::LittleEndian::read_u32(&buf[shift + CHECKSUM_OFFSET..shift + CHECKSUM_OFFSET + 4]);
+            let raw_checksum = compute_raw_checksum(&buf, shift);
+
+            let (variant, region) = match expected_checksum.checked_sub(raw_checksum) {
+                Some(RED_SUN) => (Variant::RedSun, Region::US),
+                Some(BLUE_MOON) => (Variant::BlueMoon, Region::US),
+                None => match expected_checksum.checked_sub(raw_checksum - buf[0] as u32) {
+                    Some(RED_SUN) => (Variant::RedSun, Region::JP),
+                    Some(BLUE_MOON) => (Variant::BlueMoon, Region::JP),
+                    _ => {
+                        anyhow::bail!(
+                            "unknown game, bad checksum: got checksum {} but read checksum {}, shift {} (attempt 2)",
+                            expected_checksum,
+                            raw_checksum,
+                            shift,
+                        );
                     }
-                };
+                },
+                _ => {
+                    anyhow::bail!(
+                        "unknown game, bad checksum: got checksum {} but read checksum {}, shift {}",
+                        expected_checksum,
+                        raw_checksum,
+                        shift,
+                    );
+                }
+            };
 
             GameInfo {
                 variant,
