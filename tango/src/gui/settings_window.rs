@@ -590,7 +590,7 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
 
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            ui.hyperlink_to("Tango", "https://tangobattle.com");
+            ui.hyperlink_to("Tango", "https://tango.n1gp.net");
             ui.label(" would not be a reality without the work of the many people who have helped make this possible.");
         });
 

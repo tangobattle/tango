@@ -111,7 +111,7 @@ impl Default for Config {
             max_scale: 0,
             input_mapping: Default::default(),
             matchmaking_endpoint: "".to_string(),
-            replaycollector_endpoint: "https://replaycollector.tangobattle.com".to_string(),
+            replaycollector_endpoint: "https://replaycollector.tango.n1gp.net".to_string(),
             patch_repo: "".to_string(),
             enable_patch_autoupdate: true,
             input_delay: 2,
@@ -133,7 +133,7 @@ impl Default for Config {
 }
 
 fn get_project_dirs() -> Option<directories_next::ProjectDirs> {
-    directories_next::ProjectDirs::from("com.tangobattle", "", "Tango")
+    directories_next::ProjectDirs::from("net.n1gp", "", "Tango")
 }
 
 fn get_config_path() -> Result<std::path::PathBuf, anyhow::Error> {
@@ -240,5 +240,5 @@ impl Config {
     }
 }
 
-pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tangobattle.com";
-pub const DEFAULT_PATCH_REPO: &str = "https://patches.tangobattle.com";
+pub const DEFAULT_MATCHMAKING_ENDPOINT: &str = "wss://matchmaking.tango.n1gp.net";
+pub const DEFAULT_PATCH_REPO: &str = "https://patches.tango.n1gp.net";

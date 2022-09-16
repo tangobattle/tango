@@ -27,7 +27,7 @@ BEGIN
             VALUE "ProductVersion", "{version.major}.{version.minor}.{version.patch}.0\\0"
             VALUE "FileVersion", "{version.major}.{version.minor}.{version.patch}.0\\0"
             VALUE "OriginalFilename", "tango.exe\\0"
-            VALUE "Info", "https://tangobattle.com\\0"
+            VALUE "Info", "https://tango.n1gp.net\\0"
         END
     END
     BLOCK "VarFileInfo"

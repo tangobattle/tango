@@ -20,7 +20,7 @@ print(
 		<key>CFBundleExecutable</key>
 		<string>tango</string>
 		<key>CFBundleIdentifier</key>
-		<string>com.tangobattle.Tango</string>
+		<string>net.n1gp.Tango</string>
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
