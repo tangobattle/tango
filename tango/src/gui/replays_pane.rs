@@ -89,7 +89,6 @@ pub fn show(
 ) {
     let roms = roms_scanner.read();
     let patches = patches_scanner.read();
-    let replays = state.replays_scanner.read();
 
     egui::SidePanel::left("replays-window-left-panel").show_inside(ui, |ui| {
         egui::ScrollArea::vertical()
@@ -104,6 +103,7 @@ pub fn show(
                     return;
                 }
 
+                let replays = state.replays_scanner.read();
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                     for (path, (_is_complete, metadata)) in replays.iter().rev() {
                         let ts = if let Some(ts) =
