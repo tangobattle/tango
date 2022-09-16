@@ -4,7 +4,7 @@ use itertools::Itertools;
 use crate::{gui, i18n, rom, save};
 
 pub struct State {
-    rendered_navicust_cache: Option<(image::RgbaImage, egui::TextureHandle)>,
+    rendered_navicust_cache: Option<(image::RgbaImage, ComposedNavicust, egui::TextureHandle)>,
 }
 
 impl State {
@@ -145,6 +145,12 @@ fn compose_navicust<'a>(
     composed
 }
 
+const PADDING_H: u32 = 20;
+const PADDING_V: u32 = 20;
+
+const BORDER_WIDTH: f32 = 6.0;
+const SQUARE_SIZE: f32 = 60.0;
+
 fn render_navicust<'a>(
     composed: &ComposedNavicust,
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
@@ -152,9 +158,6 @@ fn render_navicust<'a>(
     raw_font: &[u8],
 ) -> image::RgbaImage {
     let body = render_navicust_body(composed, navicust_view, assets);
-
-    const PADDING_H: u32 = 20;
-    const PADDING_V: u32 = 20;
 
     let color_bar = if let Some(style) = navicust_view.style() {
         let color_bar_right = render_navicust_color_bar3(assets.style(style).and_then(|style| style.extra_ncp_color()));
@@ -242,13 +245,9 @@ fn gather_ncp_colors<'a>(
 }
 
 fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -> image::RgbaImage {
-    const BORDER_WIDTH: f32 = 6.0;
-    const TILE_WIDTH: f32 = 15.0;
-    const TILE_HEIGHT: f32 = 30.0;
-
     let mut pixmap = tiny_skia::Pixmap::new(
-        (TILE_WIDTH * 4.0 + BORDER_WIDTH) as u32,
-        (TILE_HEIGHT + BORDER_WIDTH) as u32,
+        (SQUARE_SIZE / 4.0 * 2.0 + BORDER_WIDTH) as u32,
+        (SQUARE_SIZE / 2.0 + BORDER_WIDTH) as u32,
     )
     .unwrap();
 
@@ -264,7 +263,7 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -
 
     let path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, TILE_WIDTH, TILE_HEIGHT);
+        pb.push_rect(0.0, 0.0, SQUARE_SIZE / 4.0, SQUARE_SIZE / 2.0);
         pb.finish().unwrap()
     };
 
@@ -279,7 +278,7 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -
     .into_iter()
     .enumerate()
     {
-        let transform = root_transform.pre_translate(i as f32 * TILE_WIDTH, 0.0);
+        let transform = root_transform.pre_translate(i as f32 * SQUARE_SIZE / 4.0, 0.0);
         pixmap.fill_path(
             &path,
             &if let Some(color) = color {
@@ -304,14 +303,10 @@ fn render_navicust_color_bar456<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
-    const BORDER_WIDTH: f32 = 6.0;
-    const TILE_WIDTH: f32 = 40.0;
-    const TILE_HEIGHT: f32 = 30.0;
-
     let colors = gather_ncp_colors(navicust_view, assets);
     let mut pixmap = tiny_skia::Pixmap::new(
-        TILE_WIDTH as u32 * std::cmp::max(4, colors.len()) as u32 + BORDER_WIDTH as u32 + BORDER_WIDTH as u32,
-        (TILE_HEIGHT + BORDER_WIDTH) as u32,
+        (SQUARE_SIZE / 2.0) as u32 * std::cmp::max(4, colors.len()) as u32 + BORDER_WIDTH as u32 + BORDER_WIDTH as u32,
+        (SQUARE_SIZE / 2.0 + BORDER_WIDTH) as u32,
     )
     .unwrap();
 
@@ -332,7 +327,7 @@ fn render_navicust_color_bar456<'a>(
 
     let outline_path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, TILE_WIDTH, TILE_HEIGHT);
+        pb.push_rect(0.0, 0.0, SQUARE_SIZE / 2.0, SQUARE_SIZE / 2.0);
         pb.finish().unwrap()
     };
 
@@ -341,14 +336,14 @@ fn render_navicust_color_bar456<'a>(
         pb.push_rect(
             BORDER_WIDTH / 2.0,
             BORDER_WIDTH / 2.0,
-            TILE_WIDTH - BORDER_WIDTH,
-            TILE_HEIGHT - BORDER_WIDTH,
+            SQUARE_SIZE / 2.0 - BORDER_WIDTH,
+            SQUARE_SIZE / 2.0 - BORDER_WIDTH,
         );
         pb.finish().unwrap()
     };
 
     for i in 0..4 {
-        let transform = root_transform.pre_translate(i as f32 * TILE_WIDTH, 0.0);
+        let transform = root_transform.pre_translate(i as f32 * SQUARE_SIZE / 2.0, 0.0);
         pixmap.fill_path(
             &tile_path,
             &if let Some(color) = nonbug_colors.get(i) {
@@ -367,7 +362,7 @@ fn render_navicust_color_bar456<'a>(
     }
 
     for (i, bug_color) in bug_colors.iter().enumerate() {
-        let transform = root_transform.pre_translate((i + 4) as f32 * TILE_WIDTH + BORDER_WIDTH, 0.0);
+        let transform = root_transform.pre_translate((i + 4) as f32 * SQUARE_SIZE / 2.0 + BORDER_WIDTH, 0.0);
         pixmap.fill_path(
             &tile_path,
             &{
@@ -390,9 +385,6 @@ fn render_navicust_body<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
-    const BORDER_WIDTH: f32 = 6.0;
-    const SQUARE_SIZE: f32 = 60.0;
-
     let mut pixmap = tiny_skia::Pixmap::new(
         (composed.width() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
         (composed.height() as f32 * SQUARE_SIZE + BORDER_WIDTH) as u32,
@@ -706,7 +698,7 @@ pub fn show<'a>(
             .clicked()
         {
             (|| {
-                let image = if let Some((image, _)) = state.rendered_navicust_cache.as_ref() {
+                let image = if let Some((image, _, _)) = state.rendered_navicust_cache.as_ref() {
                     image
                 } else {
                     return;
@@ -748,14 +740,49 @@ pub fn show<'a>(
                             ),
                             egui::TextureFilter::Nearest,
                         );
-                        state.rendered_navicust_cache = Some((image, texture));
+                        state.rendered_navicust_cache = Some((image, composed, texture));
                     }
 
-                    if let Some((image, texture_handle)) = state.rendered_navicust_cache.as_ref() {
-                        ui.image(
+                    if let Some((image, composed, texture_handle)) = state.rendered_navicust_cache.as_ref() {
+                        let resp = ui.image(
                             texture_handle.id(),
                             egui::Vec2::new((image.width() / 2) as f32, (image.height() / 2) as f32),
                         );
+                        if let Some(hover_pos) = resp.hover_pos() {
+                            let x = ((hover_pos.x - resp.rect.min.x) * 2.0) as u32;
+                            let y = ((hover_pos.y - resp.rect.min.y) * 2.0) as u32;
+
+                            const LEFT: u32 = PADDING_H + (BORDER_WIDTH / 2.0) as u32;
+                            const TOP: u32 = PADDING_V
+                                + (SQUARE_SIZE / 2.0) as u32
+                                + BORDER_WIDTH as u32
+                                + PADDING_V
+                                + (BORDER_WIDTH / 2.0) as u32;
+
+                            if x >= LEFT
+                                && x < image.width() - PADDING_H - (BORDER_WIDTH / 2.0) as u32
+                                && y >= TOP
+                                && y < image.height() - PADDING_V - (BORDER_WIDTH / 2.0) as u32
+                            {
+                                let tx = (x - LEFT) / SQUARE_SIZE as u32;
+                                let ty = (y - TOP) / SQUARE_SIZE as u32;
+
+                                let [l, a] = composed.get_pixel(tx, ty).0;
+                                if a != 0 {
+                                    let ncp_i = l as usize;
+
+                                    if let Some(info) = navicust_view
+                                        .navicust_part(ncp_i)
+                                        .and_then(|ncp| assets.navicust_part(ncp.id, ncp.variant))
+                                    {
+                                        resp.on_hover_text_at_pointer(
+                                            egui::RichText::new(&info.name())
+                                                .family(font_families.for_language(game_lang)),
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     ui.horizontal(|ui| {
