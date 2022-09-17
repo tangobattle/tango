@@ -43,3 +43,4 @@ settings-audio-backend = Backend de Audio (require reinicio)
 settings-volume = Volúmen
 settings-enable-updater = Enable updater
 settings-allow-prerelease-upgrades = Allow prerelease upgrades
+settings-show-own-setup = Show own setup in multiplayer
