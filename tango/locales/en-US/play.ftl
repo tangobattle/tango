@@ -48,3 +48,5 @@ connection-error-remote-protocol-version-too-new = The other player is using a n
 connection-error-eof = The other player disconnected.
 connection-error-other = A connection error has occurred: { $error }
 connection-error-confirm = Damn!
+
+play-show-link-code = Show link code

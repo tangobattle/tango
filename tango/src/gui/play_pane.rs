@@ -896,6 +896,7 @@ enum ConnectionState {
 
 pub struct State {
     link_code: String,
+    show_link_code: bool,
     connection_task: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     show_save_select: Option<gui::save_select_view::State>,
 }
@@ -904,6 +905,7 @@ impl State {
     pub fn new() -> Self {
         Self {
             link_code: String::new(),
+            show_link_code: false,
             connection_task: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
             show_save_select: None,
         }
@@ -1250,6 +1252,7 @@ fn show_bottom_pane(
     connection_task: &mut Option<ConnectionTask>,
     connection_task_arc: std::sync::Arc<tokio::sync::Mutex<Option<ConnectionTask>>>,
     link_code: &mut String,
+    show_link_code: &mut bool,
     show_save_select: &mut Option<gui::save_select_view::State>,
 ) {
     let error_window_open = {
@@ -1441,6 +1444,16 @@ fn show_bottom_pane(
                             *link_code = randomcode::generate(&config.language);
                             let _ = clipboard.set_text(link_code.clone());
                         }
+
+                        if config.streamer_mode {
+                            if ui
+                                .selectable_label(*show_link_code, "👁️")
+                                .on_hover_text(i18n::LOCALES.lookup(&config.language, "play-show-link-code").unwrap())
+                                .clicked()
+                            {
+                                *show_link_code = !*show_link_code;
+                            }
+                        }
                     }
 
                     if let Some(lobby) = lobby {
@@ -1479,6 +1492,7 @@ fn show_bottom_pane(
                     let input_resp = ui.add_enabled(
                         cancellation_token.is_none() && !error_window_open,
                         egui::TextEdit::singleline(link_code)
+                            .password(config.streamer_mode && !*show_link_code)
                             .hint_text(i18n::LOCALES.lookup(&config.language, "play-link-code").unwrap())
                             .desired_width(f32::INFINITY),
                     );
@@ -1632,6 +1646,7 @@ pub fn show(
             &mut *connection_task,
             connection_task_arc,
             &mut state.link_code,
+            &mut state.show_link_code,
             &mut state.show_save_select,
         );
     }
