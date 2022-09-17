@@ -79,9 +79,18 @@ impl PhysicalInput {
             }),
         }
     }
+
+    pub fn is_pressed(&self, input: &State) -> bool {
+        match *self {
+            PhysicalInput::Key(key) => input.is_key_pressed(key),
+            PhysicalInput::Button(button) => input.iter_controllers().any(|(_, c)| c.is_button_pressed(button)),
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(default)]
 pub struct Mapping {
     pub up: Vec<PhysicalInput>,
     pub down: Vec<PhysicalInput>,
@@ -94,6 +103,7 @@ pub struct Mapping {
     pub select: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
     pub speed_up: Vec<PhysicalInput>,
+    pub menu: Vec<PhysicalInput>,
 }
 
 impl Default for Mapping {
@@ -164,6 +174,7 @@ impl Default for Mapping {
                 PhysicalInput::Button(sdl2::controller::Button::Start),
             ],
             speed_up: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::LShift)],
+            menu: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::Escape)],
         }
     }
 }

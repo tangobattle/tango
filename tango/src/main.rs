@@ -381,7 +381,9 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             }
                         }
                         sdl2::event::Event::ControllerAxisMotion { axis, value, which, .. } => {
-                            if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
+                            if (value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD)
+                                && state.steal_input.as_ref().map(|s| s.steal_axes).unwrap_or(false)
+                            {
                                 if let Some(steal_input) = state.steal_input.take() {
                                     steal_input.run_callback(
                                         input::PhysicalInput::Axis {
