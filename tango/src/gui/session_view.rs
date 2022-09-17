@@ -218,38 +218,46 @@ cpsr = {:08x}"#,
     if show_own_setup {
         if let Some(own_setup) = session.own_setup().as_ref() {
             egui::SidePanel::left("own-setup-panel").show(ctx, |ui| {
-                ui.heading(i18n::LOCALES.lookup(language, "own-setup").unwrap());
-                gui::save_view::show(
-                    ui,
-                    false,
-                    clipboard,
-                    font_families,
-                    language,
-                    &own_setup.game_lang,
-                    &own_setup.save,
-                    &own_setup.assets,
-                    &mut state.own_save_view,
-                    true,
-                )
+                egui::ScrollArea::horizontal()
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.heading(i18n::LOCALES.lookup(language, "own-setup").unwrap());
+                        gui::save_view::show(
+                            ui,
+                            false,
+                            clipboard,
+                            font_families,
+                            language,
+                            &own_setup.game_lang,
+                            &own_setup.save,
+                            &own_setup.assets,
+                            &mut state.own_save_view,
+                            true,
+                        )
+                    });
             });
         }
     }
 
     if let Some(opponent_setup) = session.opponent_setup().as_ref() {
         egui::SidePanel::right("opponent-setup-panel").show(ctx, |ui| {
-            ui.heading(i18n::LOCALES.lookup(language, "opponent-setup").unwrap());
-            gui::save_view::show(
-                ui,
-                false,
-                clipboard,
-                font_families,
-                language,
-                &opponent_setup.game_lang,
-                &opponent_setup.save,
-                &opponent_setup.assets,
-                &mut state.opponent_save_view,
-                true,
-            )
+            egui::ScrollArea::horizontal()
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.heading(i18n::LOCALES.lookup(language, "opponent-setup").unwrap());
+                    gui::save_view::show(
+                        ui,
+                        false,
+                        clipboard,
+                        font_families,
+                        language,
+                        &opponent_setup.game_lang,
+                        &opponent_setup.save,
+                        &opponent_setup.assets,
+                        &mut state.opponent_save_view,
+                        true,
+                    );
+                });
         });
     }
 
