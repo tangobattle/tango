@@ -45,3 +45,4 @@ settings-volume = Громкость
 settings-enable-updater = Включить обновителя
 settings-allow-prerelease-upgrades = Разрешить обновление пререлизов
 settings-show-own-setup = Show own setup in multiplayer
+settings-integer-scaling = Integer scaling
