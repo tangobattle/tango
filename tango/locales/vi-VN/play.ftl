@@ -34,6 +34,7 @@ lobby-issue-match-type-mismatch = Thể thức không giống với đối thủ
 lobby-issue-no-local-selection = Bạn chưa chọn game.
 lobby-issue-no-remote-selection = Đối thủ chưa chọn game.
 opponent-setup = Opponent's setup
+own-setup = Own setup
 connection-error = Connection error
 connection-error-remote-protocol-version-too-old = Unable to connect to the other player: they are using an older version of Tango.
 connection-error-remote-protocol-version-too-new = The other player is using a newer version of Tango. Please update.
