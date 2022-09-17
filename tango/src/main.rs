@@ -192,6 +192,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             &event_loop,
         )),
     };
+    gfx_backend.set_ui_scale(config.read().ui_scale_percent as f32 / 100.0);
 
     let egui_ctx = gfx_backend.egui_ctx();
     egui_ctx.set_request_repaint_callback({
@@ -429,7 +430,8 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             let r = next_config.save();
             log::info!("config save: {:?}", r);
         }
+        gfx_backend.set_ui_scale(next_config.ui_scale_percent as f32 / 100.0);
         patch_autoupdater.set_enabled(next_config.enable_patch_autoupdate);
-        updater.set_enabled(config.read().enable_updater);
+        updater.set_enabled(next_config.enable_updater);
     });
 }

@@ -96,6 +96,7 @@ pub struct Config {
     pub graphics_backend: GraphicsBackend,
     pub audio_backend: AudioBackend,
     pub volume: i32,
+    pub ui_scale_percent: u32,
     pub allow_prerelease_upgrades: bool,
     pub enable_updater: bool,
 }
@@ -124,6 +125,7 @@ impl Default for Config {
             graphics_backend: Default::default(),
             audio_backend: Default::default(),
             volume: 0x100,
+            ui_scale_percent: 100,
             allow_prerelease_upgrades: !env!("CARGO_PKG_VERSION")
                 .parse::<semver::Version>()
                 .unwrap()

@@ -29,6 +29,7 @@ settings-streamer-mode = Streamer privacy mode
     .tooltip = Enabling this mode will add an additional "Cover" tab to the save viewer that hides all information about your current save file.
 settings-debug-overlay = Show debug overlay
 settings-input-delay = Input delay
+settings-ui-scale = UI scale
 settings-max-queue-length = Max queue length
 settings-matchmaking-endpoint = Matchmaking endpoint
 settings-replaycollector-endpoint = Replay collector endpoint

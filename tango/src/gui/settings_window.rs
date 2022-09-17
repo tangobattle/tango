@@ -304,6 +304,20 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
             );
             ui.end_row();
 
+            ui.strong(i18n::LOCALES.lookup(&config.language, "settings-ui-scale").unwrap());
+            egui::ComboBox::from_id_source("settings-ui-scale")
+                .selected_text(format!("{}%", config.ui_scale_percent))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut config.ui_scale_percent, 50, "50%");
+                    ui.selectable_value(&mut config.ui_scale_percent, 75, "75%");
+                    ui.selectable_value(&mut config.ui_scale_percent, 100, "100%");
+                    ui.selectable_value(&mut config.ui_scale_percent, 125, "125%");
+                    ui.selectable_value(&mut config.ui_scale_percent, 150, "150%");
+                    ui.selectable_value(&mut config.ui_scale_percent, 175, "175%");
+                    ui.selectable_value(&mut config.ui_scale_percent, 200, "200%");
+                });
+            ui.end_row();
+
             ui.strong(i18n::LOCALES.lookup(&config.language, "settings-full-screen").unwrap());
             ui.add(egui::Checkbox::new(&mut config.full_screen, ""));
             if config.full_screen && window.fullscreen().is_none() {

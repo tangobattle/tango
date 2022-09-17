@@ -7,6 +7,7 @@ pub struct Backend<'a> {
     egui_winit: egui_winit::State,
     shapes: Vec<egui::epaint::ClippedShape>,
     textures_delta: egui::TexturesDelta,
+    ui_scale: f32,
 }
 
 impl<'a> Backend<'a> {
@@ -34,11 +35,18 @@ impl<'a> Backend<'a> {
             egui_winit,
             shapes: vec![],
             textures_delta: egui::TexturesDelta::default(),
+            ui_scale: 1.0,
         }
     }
 }
 
 impl<'a> graphics::Backend for Backend<'a> {
+    fn set_ui_scale(&mut self, scale: f32) {
+        self.ui_scale = scale;
+        self.egui_winit
+            .set_pixels_per_point(self.window.scale_factor() as f32 * self.ui_scale);
+    }
+
     fn window(&self) -> &winit::window::Window {
         &self.window
     }
@@ -85,12 +93,8 @@ impl<'a> graphics::Backend for Backend<'a> {
                         .on_window_resized(physical_size.width, physical_size.height);
                 }
             }
-            winit::event::WindowEvent::ScaleFactorChanged {
-                scale_factor,
-                new_inner_size,
-                ..
-            } => {
-                self.egui_winit.set_pixels_per_point(*scale_factor as f32);
+            winit::event::WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                self.egui_winit.set_pixels_per_point(self.window.scale_factor() as f32);
                 self.painter
                     .on_window_resized(new_inner_size.width, new_inner_size.height);
             }

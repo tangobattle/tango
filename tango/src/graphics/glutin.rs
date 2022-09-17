@@ -6,6 +6,7 @@ pub struct Backend {
     gl_window: glutin::ContextWrapper<glutin::PossiblyCurrent, winit::window::Window>,
     gl: std::sync::Arc<glow::Context>,
     egui_glow: egui_glow::EguiGlow,
+    ui_scale: f32,
 }
 
 impl Backend {
@@ -37,11 +38,19 @@ impl Backend {
             gl_window,
             gl: gl.clone(),
             egui_glow,
+            ui_scale: 1.0,
         }
     }
 }
 
 impl graphics::Backend for Backend {
+    fn set_ui_scale(&mut self, scale: f32) {
+        self.ui_scale = scale;
+        self.egui_glow
+            .egui_winit
+            .set_pixels_per_point(self.gl_window.window().scale_factor() as f32 * self.ui_scale);
+    }
+
     fn window(&self) -> &winit::window::Window {
         self.gl_window.window()
     }
@@ -77,7 +86,7 @@ impl graphics::Backend for Backend {
             winit::event::WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                 self.egui_glow
                     .egui_winit
-                    .set_pixels_per_point(self.gl_window.window().scale_factor() as f32);
+                    .set_pixels_per_point(self.gl_window.window().scale_factor() as f32 * self.ui_scale);
                 self.gl_window.resize(**new_inner_size);
             }
             _ => {}
