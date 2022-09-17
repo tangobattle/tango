@@ -944,6 +944,7 @@ fn show_lobby_table(
         .size(egui_extras::Size::exact(row_height + spacing_y))
         .size(egui_extras::Size::exact(row_height + spacing_y))
         .size(egui_extras::Size::exact(row_height + spacing_y))
+        .size(egui_extras::Size::exact(row_height + spacing_y))
         .vertical(|mut outer_strip| {
             const CELL_WIDTH: f32 = 200.0;
             outer_strip.strip(|sb| {
@@ -1180,11 +1181,7 @@ fn show_lobby_table(
                     .size(egui_extras::Size::exact(CELL_WIDTH * 2.0 + spacing_x))
                     .horizontal(|mut strip| {
                         strip.cell(|ui| {
-                            ui.strong(
-                                i18n::LOCALES
-                                    .lookup(&config.language, "play-details-input-delay")
-                                    .unwrap(),
-                            );
+                            ui.strong(i18n::LOCALES.lookup(&config.language, "settings-input-delay").unwrap());
                         });
                         strip.cell(|ui| {
                             ui.horizontal(|ui| {
@@ -1214,6 +1211,23 @@ fn show_lobby_table(
                                     ) as u32;
                                 }
                             });
+                        });
+                    });
+            });
+
+            outer_strip.strip(|sb| {
+                sb.size(egui_extras::Size::remainder())
+                    .size(egui_extras::Size::exact(CELL_WIDTH * 2.0 + spacing_x))
+                    .horizontal(|mut strip| {
+                        strip.cell(|ui| {
+                            ui.strong(
+                                i18n::LOCALES
+                                    .lookup(&config.language, "settings-show-own-setup")
+                                    .unwrap(),
+                            );
+                        });
+                        strip.cell(|ui| {
+                            ui.checkbox(&mut config.show_own_setup, "");
                         });
                     });
             });
