@@ -151,6 +151,9 @@ const PADDING_V: u32 = 20;
 const BORDER_WIDTH: f32 = 6.0;
 const SQUARE_SIZE: f32 = 60.0;
 
+const BG_FILL_COLOR: image::Rgba<u8> = image::Rgba([0x20, 0x20, 0x20, 0xff]);
+const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff]);
+
 fn render_navicust<'a>(
     composed: &ComposedNavicust,
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
@@ -245,17 +248,29 @@ fn gather_ncp_colors<'a>(
 }
 
 fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -> image::RgbaImage {
+    const TILE_WIDTH: f32 = SQUARE_SIZE / 4.0;
+
     let mut pixmap = tiny_skia::Pixmap::new(
-        (SQUARE_SIZE / 4.0 * 2.0 + BORDER_WIDTH) as u32,
+        (TILE_WIDTH * 4.0 + BORDER_WIDTH) as u32,
         (SQUARE_SIZE / 2.0 + BORDER_WIDTH) as u32,
     )
     .unwrap();
 
     let mut bg_fill_paint = tiny_skia::Paint::default();
-    bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
+    bg_fill_paint.set_color_rgba8(
+        BG_FILL_COLOR.0[0],
+        BG_FILL_COLOR.0[1],
+        BG_FILL_COLOR.0[2],
+        BG_FILL_COLOR.0[3],
+    );
 
     let mut border_stroke_paint = tiny_skia::Paint::default();
-    border_stroke_paint.set_color_rgba8(0x29, 0x31, 0x4a, 0xff);
+    border_stroke_paint.set_color_rgba8(
+        BORDER_STROKE_COLOR.0[0],
+        BORDER_STROKE_COLOR.0[1],
+        BORDER_STROKE_COLOR.0[2],
+        BORDER_STROKE_COLOR.0[3],
+    );
 
     let mut stroke = tiny_skia::Stroke::default();
     stroke.width = BORDER_WIDTH as f32;
@@ -263,7 +278,7 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -
 
     let path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, SQUARE_SIZE / 4.0, SQUARE_SIZE / 2.0);
+        pb.push_rect(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0);
         pb.finish().unwrap()
     };
 
@@ -278,7 +293,7 @@ fn render_navicust_color_bar3<'a>(extra_color: Option<rom::NavicustPartColor>) -
     .into_iter()
     .enumerate()
     {
-        let transform = root_transform.pre_translate(i as f32 * SQUARE_SIZE / 4.0, 0.0);
+        let transform = root_transform.pre_translate(i as f32 * TILE_WIDTH, 0.0);
         pixmap.fill_path(
             &path,
             &if let Some(color) = color {
@@ -303,9 +318,11 @@ fn render_navicust_color_bar456<'a>(
     navicust_view: &Box<dyn save::NavicustView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
+    const TILE_WIDTH: f32 = SQUARE_SIZE * 3.0 / 4.0;
+
     let colors = gather_ncp_colors(navicust_view, assets);
     let mut pixmap = tiny_skia::Pixmap::new(
-        (SQUARE_SIZE / 2.0) as u32 * std::cmp::max(4, colors.len()) as u32 + BORDER_WIDTH as u32 + BORDER_WIDTH as u32,
+        TILE_WIDTH as u32 * std::cmp::max(4, colors.len()) as u32 + BORDER_WIDTH as u32 + BORDER_WIDTH as u32,
         (SQUARE_SIZE / 2.0 + BORDER_WIDTH) as u32,
     )
     .unwrap();
@@ -316,10 +333,20 @@ fn render_navicust_color_bar456<'a>(
     let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
 
     let mut bg_fill_paint = tiny_skia::Paint::default();
-    bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
+    bg_fill_paint.set_color_rgba8(
+        BG_FILL_COLOR.0[0],
+        BG_FILL_COLOR.0[1],
+        BG_FILL_COLOR.0[2],
+        BG_FILL_COLOR.0[3],
+    );
 
     let mut border_stroke_paint = tiny_skia::Paint::default();
-    border_stroke_paint.set_color_rgba8(0x29, 0x31, 0x4a, 0xff);
+    border_stroke_paint.set_color_rgba8(
+        BORDER_STROKE_COLOR.0[0],
+        BORDER_STROKE_COLOR.0[1],
+        BORDER_STROKE_COLOR.0[2],
+        BORDER_STROKE_COLOR.0[3],
+    );
 
     let mut stroke = tiny_skia::Stroke::default();
     stroke.width = BORDER_WIDTH as f32;
@@ -327,7 +354,7 @@ fn render_navicust_color_bar456<'a>(
 
     let outline_path = {
         let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(0.0, 0.0, SQUARE_SIZE / 2.0, SQUARE_SIZE / 2.0);
+        pb.push_rect(0.0, 0.0, TILE_WIDTH, SQUARE_SIZE / 2.0);
         pb.finish().unwrap()
     };
 
@@ -336,14 +363,14 @@ fn render_navicust_color_bar456<'a>(
         pb.push_rect(
             BORDER_WIDTH / 2.0,
             BORDER_WIDTH / 2.0,
-            SQUARE_SIZE / 2.0 - BORDER_WIDTH,
+            TILE_WIDTH - BORDER_WIDTH,
             SQUARE_SIZE / 2.0 - BORDER_WIDTH,
         );
         pb.finish().unwrap()
     };
 
     for i in 0..4 {
-        let transform = root_transform.pre_translate(i as f32 * SQUARE_SIZE / 2.0, 0.0);
+        let transform = root_transform.pre_translate(i as f32 * TILE_WIDTH, 0.0);
         pixmap.fill_path(
             &tile_path,
             &if let Some(color) = nonbug_colors.get(i) {
@@ -362,7 +389,7 @@ fn render_navicust_color_bar456<'a>(
     }
 
     for (i, bug_color) in bug_colors.iter().enumerate() {
-        let transform = root_transform.pre_translate((i + 4) as f32 * SQUARE_SIZE / 2.0 + BORDER_WIDTH, 0.0);
+        let transform = root_transform.pre_translate((i + 4) as f32 * TILE_WIDTH + BORDER_WIDTH, 0.0);
         pixmap.fill_path(
             &tile_path,
             &{
@@ -394,10 +421,20 @@ fn render_navicust_body<'a>(
     let root_transform = tiny_skia::Transform::from_translate(BORDER_WIDTH / 2.0, BORDER_WIDTH / 2.0);
 
     let mut bg_fill_paint = tiny_skia::Paint::default();
-    bg_fill_paint.set_color_rgba8(0x10, 0x52, 0x84, 0xff);
+    bg_fill_paint.set_color_rgba8(
+        BG_FILL_COLOR.0[0],
+        BG_FILL_COLOR.0[1],
+        BG_FILL_COLOR.0[2],
+        BG_FILL_COLOR.0[3],
+    );
 
     let mut border_stroke_paint = tiny_skia::Paint::default();
-    border_stroke_paint.set_color_rgba8(0x29, 0x31, 0x4a, 0xff);
+    border_stroke_paint.set_color_rgba8(
+        BORDER_STROKE_COLOR.0[0],
+        BORDER_STROKE_COLOR.0[1],
+        BORDER_STROKE_COLOR.0[2],
+        BORDER_STROKE_COLOR.0[3],
+    );
 
     let mut stroke = tiny_skia::Stroke::default();
     stroke.width = BORDER_WIDTH as f32;
