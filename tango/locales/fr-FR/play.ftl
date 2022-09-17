@@ -41,3 +41,4 @@ connection-error-remote-protocol-version-too-new = L'adversaire utilise une vers
 connection-error-eof = L'adversaire a été déconnecté(e).
 connection-error-other = A connection error has occurred: { $error }
 connection-error-confirm = Mince !
+play-show-link-code = Show link code
