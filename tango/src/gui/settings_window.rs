@@ -397,11 +397,13 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
                         config::GraphicsBackend::Wgpu => &wgpu_label,
                     })
                     .show_ui(ui, |ui| {
+                        #[cfg(feature = "glutin")]
                         ui.selectable_value(
                             &mut config.graphics_backend,
                             config::GraphicsBackend::Glutin,
                             &glutin_label,
                         );
+                        #[cfg(feature = "wgpu")]
                         ui.selectable_value(&mut config.graphics_backend, config::GraphicsBackend::Wgpu, &wgpu_label);
                     });
                 ui.end_row();
@@ -444,7 +446,9 @@ fn show_audio_tab(ui: &mut egui::Ui, config: &mut config::Config) {
                         config::AudioBackend::Cpal => &cpal_label,
                     })
                     .show_ui(ui, |ui| {
+                        #[cfg(feature = "sdl2-audio")]
                         ui.selectable_value(&mut config.audio_backend, config::AudioBackend::Sdl2, &sdl2_label);
+                        #[cfg(feature = "cpal")]
                         ui.selectable_value(&mut config.audio_backend, config::AudioBackend::Cpal, &cpal_label);
                     });
                 ui.end_row();
