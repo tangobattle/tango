@@ -270,13 +270,13 @@ fn show_input_tab(
             add_row("input-button-right", true, |input_mapping| &mut input_mapping.right);
             add_row("input-button-up", true, |input_mapping| &mut input_mapping.up);
             add_row("input-button-down", true, |input_mapping| &mut input_mapping.down);
-            add_row("input-button-a", false, |input_mapping| &mut input_mapping.a);
-            add_row("input-button-b", false, |input_mapping| &mut input_mapping.b);
-            add_row("input-button-l", false, |input_mapping| &mut input_mapping.l);
-            add_row("input-button-r", false, |input_mapping| &mut input_mapping.r);
-            add_row("input-button-start", false, |input_mapping| &mut input_mapping.start);
-            add_row("input-button-select", false, |input_mapping| &mut input_mapping.select);
-            add_row("input-button-speed-up", false, |input_mapping| {
+            add_row("input-button-a", true, |input_mapping| &mut input_mapping.a);
+            add_row("input-button-b", true, |input_mapping| &mut input_mapping.b);
+            add_row("input-button-l", true, |input_mapping| &mut input_mapping.l);
+            add_row("input-button-r", true, |input_mapping| &mut input_mapping.r);
+            add_row("input-button-start", true, |input_mapping| &mut input_mapping.start);
+            add_row("input-button-select", true, |input_mapping| &mut input_mapping.select);
+            add_row("input-button-speed-up", true, |input_mapping| {
                 &mut input_mapping.speed_up
             });
             add_row("input-button-menu", false, |input_mapping| &mut input_mapping.menu);
