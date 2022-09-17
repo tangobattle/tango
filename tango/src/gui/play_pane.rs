@@ -1889,16 +1889,34 @@ pub fn show(
                             gui::warning::append_to_layout_job(ui, &mut layout_job);
                         }
                         layout_job.append(
-                            &selection
-                                .as_ref()
-                                .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
-                                .unwrap_or(&i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap()),
+                            &format!(
+                                "{} ",
+                                selection
+                                    .as_ref()
+                                    .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
+                                    .unwrap_or(&i18n::LOCALES.lookup(&config.language, "play-no-patch").unwrap())
+                            ),
                             0.0,
                             egui::TextFormat::simple(
                                 ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
                                 ui.visuals().text_color(),
                             ),
                         );
+
+                        if let Some(name) = selection
+                            .as_ref()
+                            .and_then(|s| s.patch.as_ref().map(|(name, _, _)| name.as_str()))
+                        {
+                            layout_job.append(
+                                patches.get(name).as_ref().map(|p| p.title.as_str()).unwrap_or(""),
+                                0.0,
+                                egui::TextFormat::simple(
+                                    ui.style().text_styles.get(&egui::TextStyle::Small).unwrap().clone(),
+                                    ui.visuals().text_color(),
+                                ),
+                            );
+                        }
+
                         let resp = egui::ComboBox::from_id_source("patch-select-combobox")
                             .selected_text(layout_job)
                             .width(ui.available_width() - ui.spacing().item_spacing.x - PATCH_VERSION_COMBOBOX_WIDTH)
@@ -1976,7 +1994,7 @@ pub fn show(
                                     }
                                 }
 
-                                for (name, (_, supported_versions)) in supported_patches.iter() {
+                                for (name, (meta, supported_versions)) in supported_patches.iter() {
                                     let warning = (|| {
                                         let lobby = if let Some(lobby) = lobby.as_ref() {
                                             lobby
@@ -2034,10 +2052,22 @@ pub fn show(
                                         gui::warning::append_to_layout_job(ui, &mut layout_job);
                                     }
                                     layout_job.append(
-                                        *name,
+                                        &format!("{} ", *name),
                                         0.0,
                                         egui::TextFormat::simple(
                                             ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                                            if checked {
+                                                ui.visuals().selection.stroke.color
+                                            } else {
+                                                ui.visuals().text_color()
+                                            },
+                                        ),
+                                    );
+                                    layout_job.append(
+                                        meta.title.as_str(),
+                                        0.0,
+                                        egui::TextFormat::simple(
+                                            ui.style().text_styles.get(&egui::TextStyle::Small).unwrap().clone(),
                                             if checked {
                                                 ui.visuals().selection.stroke.color
                                             } else {
