@@ -34,6 +34,7 @@ lobby-issue-match-type-mismatch = 对方的战斗类型设置不匹配。
 lobby-issue-no-local-selection = 你没有选择游戏。
 lobby-issue-no-remote-selection = 对方没有选择游戏。
 opponent-setup = 对方的配置
+own-setup = 自己的配置
 connection-error = 连接错误
 connection-error-remote-protocol-version-too-old = 对方的Tango版本过旧，无法连接。
 connection-error-remote-protocol-version-too-new = 对方的Tango版本过新，请更新。

@@ -10,6 +10,7 @@ input-button-r = Кнопка R
 input-button-start = Кнопка Старт
 input-button-select = Кнопка Селект
 input-button-speed-up = Ускорить
+input-button-menu = Menu
 physical-input-button-dpup = Дпад ⬆
 physical-input-button-dpdown = Дпад ⬇
 physical-input-button-dpleft = Дпад ⬅

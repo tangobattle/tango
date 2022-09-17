@@ -34,6 +34,7 @@ lobby-issue-match-type-mismatch = Тип матча не соответству�
 lobby-issue-no-local-selection = Вы не выбрали игру.
 lobby-issue-no-remote-selection = Оппонент не выбрал игру.
 opponent-setup = Сетап противника
+own-setup = Own setup
 connection-error = Ошибка подключения
 connection-error-remote-protocol-version-too-old = Не удалось подключиться к другому игроку: они используют старую версию Танго.
 connection-error-remote-protocol-version-too-new = Другой игрок использует более новую версию Танго. Пожалуйста, обновите.
