@@ -25,6 +25,7 @@ settings-streamer-mode = Mode de confidentialité du Streamer
     .tooltip = L'activation de ce mode ajoutera un onglet supplémentaire "Couverture" au visualiseur de sauvegarde qui masquera toutes les informations sur votre fichier de sauvegarde actuel.
 settings-debug-overlay = Afficher la superposition de débogage
 settings-input-delay = Délai d'entrée
+settings-ui-scale = UI scale
 settings-max-queue-length = Longueur maximale de la queue
 settings-matchmaking-endpoint = Point d'arrivée de matchmaking
 settings-replaycollector-endpoint = Point d'arrivée de récolteur de matchs passés
