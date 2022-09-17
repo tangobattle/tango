@@ -44,5 +44,5 @@ settings-audio-backend = Аудио бэкэнд (требуется перез�
 settings-volume = Громкость
 settings-enable-updater = Включить обновителя
 settings-allow-prerelease-upgrades = Разрешить обновление пререлизов
-settings-show-own-setup = Show own setup in multiplayer
+settings-show-own-setup = Show own setup
 settings-integer-scaling = Integer scaling
