@@ -34,6 +34,7 @@ lobby-issue-match-type-mismatch = 自分と相手のマッチタイプは異な�
 lobby-issue-no-local-selection = 自分は作品を選択していません。
 lobby-issue-no-remote-selection = 相手は作品を選択していません。
 opponent-setup = 相手の構築
+own-setup = Own setup
 connection-error = 接続エラー
 connection-error-remote-protocol-version-too-old = 相手方のTangoバージョンが古いため、通信できません。
 connection-error-remote-protocol-version-too-new = 相手方のTangoバージョンが新しすぎます。更新してください。
