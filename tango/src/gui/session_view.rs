@@ -7,6 +7,7 @@ mod replay_controls_window;
 pub struct State {
     vbuf: Option<VBuf>,
     opponent_save_view: gui::save_view::State,
+    own_save_view: gui::save_view::State,
 }
 
 impl State {
@@ -14,6 +15,7 @@ impl State {
         Self {
             vbuf: None,
             opponent_save_view: gui::save_view::State::new(),
+            own_save_view: gui::save_view::State::new(),
         }
     }
 }
@@ -102,6 +104,7 @@ pub fn show(
     video_filter: &str,
     volume: i32,
     max_scale: u32,
+    show_own_setup: bool,
     crashstates_path: &std::path::Path,
     last_mouse_motion_time: &Option<std::time::Instant>,
     show_escape_window: &mut Option<gui::escape_window::State>,
@@ -210,6 +213,26 @@ cpsr = {:08x}"#,
         log::error!("writing crashstate to {}", crashstate_path.display());
         std::fs::write(crashstate_path, state.as_slice()).unwrap();
         panic!("not possible to proceed any further! aborting!");
+    }
+
+    if show_own_setup {
+        if let Some(own_setup) = session.own_setup().as_ref() {
+            egui::SidePanel::left("own-setup-panel").show(ctx, |ui| {
+                ui.heading(i18n::LOCALES.lookup(language, "own-setup").unwrap());
+                gui::save_view::show(
+                    ui,
+                    false,
+                    clipboard,
+                    font_families,
+                    language,
+                    &own_setup.game_lang,
+                    &own_setup.save,
+                    &own_setup.assets,
+                    &mut state.own_save_view,
+                    true,
+                )
+            });
+        }
     }
 
     if let Some(opponent_setup) = session.opponent_setup().as_ref() {

@@ -410,6 +410,7 @@ pub fn show(
             &config.video_filter,
             config.volume,
             config.max_scale,
+            config.show_own_setup,
             &config.crashstates_path(),
             &state.last_mouse_motion_time,
             &mut state.show_escape_window,

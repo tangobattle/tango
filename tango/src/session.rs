@@ -10,7 +10,7 @@ pub struct GameInfo {
     pub patch: Option<(String, semver::Version)>,
 }
 
-pub struct OpponentSetup {
+pub struct Setup {
     pub game_lang: unic_langid::LanguageIdentifier,
     pub save: Box<dyn save::Save + Send + Sync>,
     pub assets: Box<dyn rom::Assets + Send + Sync>,
@@ -26,7 +26,8 @@ pub struct Session {
     mode: Mode,
     completion_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pause_on_next_frame: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    opponent_setup: Option<OpponentSetup>,
+    opponent_setup: Option<Setup>,
+    own_setup: Option<Setup>,
 }
 
 pub struct CompletionToken {
@@ -206,10 +207,22 @@ impl Session {
             }),
             completion_flag,
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            own_setup: {
+                let save = local_game.parse_save(&local_save)?;
+                let assets = local_game.load_rom_assets(&local_rom, save.as_raw_wram(), remote_patch_overrides)?;
+                Some(Setup {
+                    game_lang: remote_patch_overrides
+                        .language
+                        .clone()
+                        .unwrap_or_else(|| game.language()),
+                    save,
+                    assets,
+                })
+            },
             opponent_setup: if reveal_setup {
                 let save = remote_game.parse_save(&remote_save)?;
                 let assets = remote_game.load_rom_assets(&remote_rom, save.as_raw_wram(), remote_patch_overrides)?;
-                Some(OpponentSetup {
+                Some(Setup {
                     game_lang: remote_patch_overrides
                         .language
                         .clone()
@@ -288,6 +301,7 @@ impl Session {
             mode: Mode::SinglePlayer(SinglePlayer {}),
             pause_on_next_frame,
             completion_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            own_setup: None,
             opponent_setup: None,
         })
     }
@@ -384,6 +398,7 @@ impl Session {
             mode: Mode::Replayer,
             completion_flag,
             pause_on_next_frame,
+            own_setup: None,
             opponent_setup: None,
         })
     }
@@ -464,8 +479,12 @@ impl Session {
         self.start_time
     }
 
-    pub fn opponent_setup(&self) -> &Option<OpponentSetup> {
+    pub fn opponent_setup(&self) -> &Option<Setup> {
         &self.opponent_setup
+    }
+
+    pub fn own_setup(&self) -> &Option<Setup> {
+        &self.own_setup
     }
 }
 
