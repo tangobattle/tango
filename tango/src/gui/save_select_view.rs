@@ -164,12 +164,14 @@ pub fn show(
                                 if let Some(netplay_compatibility) =
                                     gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, &patches)
                                 {
-                                    if !patches.values().any(|metadata| {
-                                        metadata.versions.values().any(|version| {
-                                            version.supported_games.contains(game)
-                                                && version.netplay_compatibility == netplay_compatibility
+                                    if &netplay_compatibility != family
+                                        && !patches.values().any(|metadata| {
+                                            metadata.versions.values().any(|version| {
+                                                version.supported_games.contains(game)
+                                                    && version.netplay_compatibility == netplay_compatibility
+                                            })
                                         })
-                                    }) {
+                                    {
                                         return Some(gui::play_pane::Warning::Incompatible);
                                     }
                                 }
