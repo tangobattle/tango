@@ -179,18 +179,24 @@ impl Session {
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
                 as usize
         ]));
-        {
+        thread.set_frame_callback({
+            let completion_flag = completion_flag.clone();
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
-            thread.set_frame_callback(move |mut core, video_buffer, _thread_handle| {
+            move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 video::fix_vbuf_alpha(&mut *vbuf);
                 core.set_keys(joyflags.load(std::sync::atomic::Ordering::Relaxed));
                 emu_tps_counter.lock().mark();
-            });
-        }
+
+                if completion_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                    thread_handle.pause();
+                }
+            }
+        });
+
         Ok(Session {
             start_time: std::time::SystemTime::now(),
             game_info: GameInfo {
@@ -274,12 +280,12 @@ impl Session {
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
                 as usize
         ]));
-        {
+        thread.set_frame_callback({
             let joyflags = joyflags.clone();
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
-            thread.set_frame_callback(move |mut core, video_buffer, mut thread_handle| {
+            move |mut core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 video::fix_vbuf_alpha(&mut *vbuf);
@@ -289,8 +295,8 @@ impl Session {
                 if pause_on_next_frame.swap(false, std::sync::atomic::Ordering::SeqCst) {
                     thread_handle.pause();
                 }
-            });
-        }
+            }
+        });
         Ok(Session {
             start_time: std::time::SystemTime::now(),
             game_info: GameInfo { game, patch },
@@ -364,13 +370,13 @@ impl Session {
             (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4)
                 as usize
         ]));
-        {
+        thread.set_frame_callback({
             let vbuf = vbuf.clone();
             let emu_tps_counter = emu_tps_counter.clone();
             let completion_flag = completion_flag.clone();
             let replayer_state = replayer_state.clone();
             let pause_on_next_frame = pause_on_next_frame.clone();
-            thread.set_frame_callback(move |_core, video_buffer, mut thread_handle| {
+            move |_core, video_buffer, mut thread_handle| {
                 let mut vbuf = vbuf.lock();
                 vbuf.copy_from_slice(video_buffer);
                 video::fix_vbuf_alpha(&mut *vbuf);
@@ -385,8 +391,8 @@ impl Session {
                 {
                     thread_handle.pause();
                 }
-            });
-        }
+            }
+        });
 
         Ok(Session {
             start_time: std::time::SystemTime::now(),
