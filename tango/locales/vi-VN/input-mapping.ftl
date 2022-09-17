@@ -10,6 +10,7 @@ input-button-r = R
 input-button-start = START
 input-button-select = SELECT
 input-button-speed-up = Tua nhanh
+input-button-menu = Menu
 physical-input-button-dpup = Phím hướng ⬆
 physical-input-button-dpdown = Phím hướng ⬇
 physical-input-button-dpleft = Phím hướng ⬅
