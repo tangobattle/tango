@@ -45,3 +45,4 @@ settings-volume = Volúmen
 settings-enable-updater = Enable updater
 settings-allow-prerelease-upgrades = Allow prerelease upgrades
 settings-show-own-setup = Show own setup in multiplayer
+settings-integer-scaling = Integer scaling
