@@ -25,6 +25,7 @@ settings-streamer-mode = Modo de privacidad del streamer
     .tooltip = Si activas este modo, se añadirá una pestaña adicional de "Cubierta" al visor de guardado que oculta toda la información sobre tu archivo de guardado actual.
 settings-debug-overlay = Mostrar superposición de depuración
 settings-input-delay = Retraso
+settings-ui-scale = UI scale
 settings-max-queue-length = Máximo largo de la cola
 settings-matchmaking-endpoint = Salida de emparejamiento
 settings-replaycollector-endpoint = Salida para el recolector de repeticiones
