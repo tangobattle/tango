@@ -25,6 +25,7 @@ settings-streamer-mode = Chế độ riêng tư
     .tooltip = Bật chế độ này để che đi tất cả thông tin setup của bạn.
 settings-debug-overlay = Hiện lớp phủ debug
 settings-input-delay = Độ trễ đầu vào
+settings-ui-scale = UI scale
 settings-max-queue-length = Thời gian chờ đối thủ tối đa
 settings-matchmaking-endpoint = Điểm cuối tạo trận đấu
 settings-replaycollector-endpoint = Điểm cuối thu thập replay
