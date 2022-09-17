@@ -45,3 +45,4 @@ settings-volume = 音量
 settings-enable-updater = 啟用自動更新
 settings-allow-prerelease-upgrades = 允許預先發布升級
 settings-show-own-setup = 對戰中顯示自己配置
+settings-integer-scaling = Integer scaling
