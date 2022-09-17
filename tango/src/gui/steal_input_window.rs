@@ -4,21 +4,15 @@ use crate::{i18n, input};
 
 pub struct State {
     callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
-    pub steal_axes: bool,
     userdata: Box<dyn std::any::Any>,
 }
 
 impl State {
     pub fn new(
         callback: Box<dyn Fn(input::PhysicalInput, &mut input::Mapping)>,
-        steal_axes: bool,
         userdata: Box<dyn std::any::Any>,
     ) -> Self {
-        Self {
-            callback,
-            steal_axes,
-            userdata,
-        }
+        Self { callback, userdata }
     }
 
     pub fn run_callback(&self, phy: input::PhysicalInput, mapping: &mut input::Mapping) {

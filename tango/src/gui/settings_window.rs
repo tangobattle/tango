@@ -197,7 +197,7 @@ fn show_input_tab(
         .num_columns(2)
         .show(ui, |ui| {
             let mut add_row =
-                |label_text_id, steal_axes, get_mapping: fn(&mut input::Mapping) -> &mut Vec<input::PhysicalInput>| {
+                |label_text_id, get_mapping: fn(&mut input::Mapping) -> &mut Vec<input::PhysicalInput>| {
                     ui.strong(i18n::LOCALES.lookup(lang, label_text_id).unwrap());
                     ui.horizontal_wrapped(|ui| {
                         let mapping = get_mapping(input_mapping);
@@ -258,7 +258,6 @@ fn show_input_tab(
                                         mapping.dedup();
                                     })
                                 },
-                                steal_axes,
                                 Box::new(label_text_id),
                             ));
                         }
@@ -266,20 +265,18 @@ fn show_input_tab(
                     ui.end_row();
                 };
 
-            add_row("input-button-left", true, |input_mapping| &mut input_mapping.left);
-            add_row("input-button-right", true, |input_mapping| &mut input_mapping.right);
-            add_row("input-button-up", true, |input_mapping| &mut input_mapping.up);
-            add_row("input-button-down", true, |input_mapping| &mut input_mapping.down);
-            add_row("input-button-a", true, |input_mapping| &mut input_mapping.a);
-            add_row("input-button-b", true, |input_mapping| &mut input_mapping.b);
-            add_row("input-button-l", true, |input_mapping| &mut input_mapping.l);
-            add_row("input-button-r", true, |input_mapping| &mut input_mapping.r);
-            add_row("input-button-start", true, |input_mapping| &mut input_mapping.start);
-            add_row("input-button-select", true, |input_mapping| &mut input_mapping.select);
-            add_row("input-button-speed-up", true, |input_mapping| {
-                &mut input_mapping.speed_up
-            });
-            add_row("input-button-menu", false, |input_mapping| &mut input_mapping.menu);
+            add_row("input-button-left", |input_mapping| &mut input_mapping.left);
+            add_row("input-button-right", |input_mapping| &mut input_mapping.right);
+            add_row("input-button-up", |input_mapping| &mut input_mapping.up);
+            add_row("input-button-down", |input_mapping| &mut input_mapping.down);
+            add_row("input-button-a", |input_mapping| &mut input_mapping.a);
+            add_row("input-button-b", |input_mapping| &mut input_mapping.b);
+            add_row("input-button-l", |input_mapping| &mut input_mapping.l);
+            add_row("input-button-r", |input_mapping| &mut input_mapping.r);
+            add_row("input-button-start", |input_mapping| &mut input_mapping.start);
+            add_row("input-button-select", |input_mapping| &mut input_mapping.select);
+            add_row("input-button-speed-up", |input_mapping| &mut input_mapping.speed_up);
+            add_row("input-button-menu", |input_mapping| &mut input_mapping.menu);
         });
 }
 

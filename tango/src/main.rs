@@ -382,9 +382,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             }
                         }
                         sdl2::event::Event::ControllerAxisMotion { axis, value, which, .. } => {
-                            if (value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD)
-                                && state.steal_input.as_ref().map(|s| s.steal_axes).unwrap_or(false)
-                            {
+                            if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
                                 if let Some(steal_input) = state.steal_input.take() {
                                     steal_input.run_callback(
                                         input::PhysicalInput::Axis {
@@ -402,6 +400,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                                 }
                             }
                             input_state.handle_controller_axis_motion(which, axis as usize, value);
+                            gfx_backend.window().request_redraw();
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
                             if let Some(steal_input) = state.steal_input.take() {
@@ -410,9 +409,11 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             } else {
                                 input_state.handle_controller_button_down(which, button);
                             }
+                            gfx_backend.window().request_redraw();
                         }
                         sdl2::event::Event::ControllerButtonUp { button, which, .. } => {
                             input_state.handle_controller_button_up(which, button);
+                            gfx_backend.window().request_redraw();
                         }
                         _ => {}
                     })();

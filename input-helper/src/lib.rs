@@ -42,6 +42,11 @@ where
         self.axes[axis] - self.last_axes[axis]
     }
 
+    pub fn is_axis_leaving_threshold(&self, axis: usize, threshold: i16) -> bool {
+        (threshold > 0 && self.axes[axis] > threshold && self.last_axes[axis] <= threshold)
+            || (threshold < 0 && self.axes[axis] < threshold && self.last_axes[axis] <= threshold)
+    }
+
     pub fn digest(&mut self) {
         self.last_buttons_held = self.buttons_held.clone();
         self.last_axes = self.axes.clone();

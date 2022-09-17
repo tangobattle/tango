@@ -84,7 +84,15 @@ impl PhysicalInput {
         match *self {
             PhysicalInput::Key(key) => input.is_key_pressed(key),
             PhysicalInput::Button(button) => input.iter_controllers().any(|(_, c)| c.is_button_pressed(button)),
-            _ => false,
+            PhysicalInput::Axis { axis, direction } => input.iter_controllers().any(|(_, c)| {
+                c.is_axis_leaving_threshold(
+                    axis as usize,
+                    match direction {
+                        AxisDirection::Positive => AXIS_THRESHOLD,
+                        AxisDirection::Negative => -AXIS_THRESHOLD,
+                    },
+                )
+            }),
         }
     }
 }
