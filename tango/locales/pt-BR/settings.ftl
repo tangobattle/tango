@@ -44,5 +44,5 @@ settings-audio-backend = Backend do áudio (requer reinicialização)
 settings-volume = Volume
 settings-enable-updater = Habilitar atualizações automáticas
 settings-allow-prerelease-upgrades = Permitir atualizações de pré-lançamento
-settings-show-own-setup = Show own setup in multiplayer
+settings-show-own-setup = Show own setup
 settings-integer-scaling = Integer scaling
