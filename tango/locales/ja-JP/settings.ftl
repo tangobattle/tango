@@ -43,3 +43,4 @@ settings-audio-backend = オーディオバックエンド（再起動が必要�
 settings-volume = 音量
 settings-enable-updater = 自動更新を許可
 settings-allow-prerelease-upgrades = プレリリースのアップグレードを許可
+settings-show-own-setup = Show own setup in multiplayer
