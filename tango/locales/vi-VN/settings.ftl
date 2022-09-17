@@ -43,3 +43,4 @@ settings-audio-backend = Chế độ âm thanh (cần restart)
 settings-volume = Âm lượng
 settings-enable-updater = Mở tính năng cập nhật
 settings-allow-prerelease-upgrades = Cho phép cập nhật các phiên bản thử nghiệm
+settings-show-own-setup = Show own setup in multiplayer
