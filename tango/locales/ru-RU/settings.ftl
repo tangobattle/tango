@@ -25,6 +25,7 @@ settings-streamer-mode = Режим приватности стримера
     .tooltip = Включение этого режима добавит дополнительную вкладку "Обложение" в окно сохранения, которая скрывает всю информацию о вашем текущем файле сохранения.
 settings-debug-overlay = Показывать отладку
 settings-input-delay = Задержка ввода
+settings-ui-scale = UI scale
 settings-max-queue-length = Максимальная длина очереди
 settings-matchmaking-endpoint = Точка окончания матча
 settings-replaycollector-endpoint = Конечная точка коллектора Риплеев
