@@ -44,4 +44,5 @@ settings-audio-backend = 音频后端 （需要重启）
 settings-volume = 音量
 settings-enable-updater = 启用自动更新
 settings-allow-prerelease-upgrades = 允许预先发布升级
-settings-show-own-setup = 对战中显示自己配置
+settings-show-own-setup = 显示自己配置
+settings-integer-scaling = 整数缩放

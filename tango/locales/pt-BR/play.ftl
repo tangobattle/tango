@@ -41,3 +41,4 @@ connection-error-remote-protocol-version-too-new = O outro jogador está usando 
 connection-error-eof = O outro jogador desconectou.
 connection-error-other = Ocorreu um erro de conexão: { $error }
 connection-error-confirm = Droga!
+play-show-link-code = Show link code

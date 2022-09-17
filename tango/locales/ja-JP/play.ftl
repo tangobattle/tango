@@ -41,3 +41,4 @@ connection-error-remote-protocol-version-too-new = 相手方のTangoバージョ
 connection-error-eof = 相手方が切断しました。
 connection-error-other = 接続エラーが発生しました：{ $error }
 connection-error-confirm = やべっ！
+play-show-link-code = リンクコードを表示

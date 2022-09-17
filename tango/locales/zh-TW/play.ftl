@@ -41,3 +41,4 @@ connection-error-remote-protocol-version-too-new = 對方的Tango版本過新，
 connection-error-eof = 與對方的連接已中斷。
 connection-error-other = 發生連接錯誤：{ $error }
 connection-error-confirm = 哎呀！
+play-show-link-code = 顯示鏈接代碼

@@ -41,3 +41,4 @@ connection-error-remote-protocol-version-too-new = Другой игрок ис�
 connection-error-eof = Другой игрок отключился от сети.
 connection-error-other = Произошла ошибка соединения: { $error }
 connection-error-confirm = Черт!
+play-show-link-code = Show link code
