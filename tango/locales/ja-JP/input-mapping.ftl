@@ -10,6 +10,7 @@ input-button-r = R
 input-button-start = START
 input-button-select = SELECT
 input-button-speed-up = 加速
+input-button-menu = Menu
 physical-input-button-dpup = 十字ボタン ⬆
 physical-input-button-dpdown = 十字ボタン ⬇
 physical-input-button-dpleft = 十字ボタン ⬅
