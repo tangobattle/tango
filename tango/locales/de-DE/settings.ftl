@@ -25,6 +25,7 @@ settings-streamer-mode = Streamer-Datenschutzmodus
     .tooltip = Wenn Sie diesen Modus aktivieren, wird der Speicheranzeige eine zusätzliche Registerkarte "Deckel" hinzugefügt, die alle Informationen über Ihre aktuelle Speicherdatei verbirgt.
 settings-debug-overlay = Debug-Overlay anzeigen
 settings-input-delay = Vorschlagen
+settings-ui-scale = UI scale
 settings-max-queue-length = Maximale Warteschlangenlänge
 settings-matchmaking-endpoint = Matchmaking-Endpunkt
 settings-replaycollector-endpoint = Aufzeichnungskollektor-Endpunkt
