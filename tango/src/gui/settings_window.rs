@@ -304,6 +304,14 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
             );
             ui.end_row();
 
+            ui.strong(
+                i18n::LOCALES
+                    .lookup(&config.language, "settings-integer-scaling")
+                    .unwrap(),
+            );
+            ui.checkbox(&mut config.integer_scaling, "");
+            ui.end_row();
+
             ui.strong(i18n::LOCALES.lookup(&config.language, "settings-ui-scale").unwrap());
             egui::ComboBox::from_id_source("settings-ui-scale")
                 .selected_text(format!("{}%", config.ui_scale_percent))

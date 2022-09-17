@@ -99,6 +99,7 @@ pub struct Config {
     pub ui_scale_percent: u32,
     pub allow_prerelease_upgrades: bool,
     pub enable_updater: bool,
+    pub integer_scaling: bool,
 }
 
 impl Default for Config {
@@ -132,6 +133,7 @@ impl Default for Config {
                 .pre
                 .is_empty(),
             enable_updater: true,
+            integer_scaling: false,
         }
     }
 }

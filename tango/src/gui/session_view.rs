@@ -43,6 +43,7 @@ fn show_emulator(
     session: &session::Session,
     video_filter: &str,
     max_scale: u32,
+    integer_scaling: bool,
     vbuf: &mut Option<VBuf>,
 ) {
     let video_filter = video::filter_by_name(video_filter).unwrap_or(Box::new(video::NullFilter));
@@ -70,16 +71,17 @@ fn show_emulator(
 
     vbuf.texture.set(vbuf.image.clone(), egui::TextureFilter::Nearest);
 
-    let mut scaling_factor = std::cmp::max_by(
-        std::cmp::min_by(
-            ui.available_width() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_WIDTH as f32,
-            ui.available_height() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_HEIGHT as f32,
-            |a, b| a.partial_cmp(b).unwrap(),
-        )
-        .floor(),
-        1.0,
+    let mut scaling_factor = std::cmp::min_by(
+        ui.available_width() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_WIDTH as f32,
+        ui.available_height() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_HEIGHT as f32,
         |a, b| a.partial_cmp(b).unwrap(),
     );
+
+    if integer_scaling {
+        scaling_factor = scaling_factor.floor();
+    }
+
+    scaling_factor = std::cmp::max_by(scaling_factor, 1.0, |a, b| a.partial_cmp(b).unwrap());
     if max_scale > 0 {
         scaling_factor = std::cmp::min_by(scaling_factor, max_scale as f32, |a, b| a.partial_cmp(b).unwrap());
     }
@@ -102,6 +104,7 @@ pub fn show(
     input_mapping: &input::Mapping,
     session: &session::Session,
     video_filter: &str,
+    integer_scaling: bool,
     volume: i32,
     max_scale: u32,
     show_own_setup: bool,
@@ -267,7 +270,7 @@ cpsr = {:08x}"#,
             ui.with_layout(
                 egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
                 |ui| {
-                    show_emulator(ui, session, video_filter, max_scale, &mut state.vbuf);
+                    show_emulator(ui, session, video_filter, max_scale, integer_scaling, &mut state.vbuf);
                 },
             );
         });
