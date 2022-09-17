@@ -61,6 +61,11 @@ fn is_target_installer(s: &str) -> bool {
     s.ends_with("-x86_64-windows.exe")
 }
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+fn is_target_installer(s: &str) -> bool {
+    s.ends_with("-x86_64-linux.AppImage")
+}
+
 const INCOMPLETE_FILENAME: &str = "incomplete";
 
 #[cfg(target_os = "macos")]
@@ -72,6 +77,11 @@ const IN_PROGRESS_FILENAME: &str = "in_progress.dmg";
 const PENDING_FILENAME: &str = "pending.exe";
 #[cfg(target_os = "windows")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.exe";
+
+#[cfg(target_os = "linux")]
+const PENDING_FILENAME: &str = "pending.AppImage";
+#[cfg(target_os = "linux")]
+const IN_PROGRESS_FILENAME: &str = "in_progress.AppImage";
 
 #[cfg(target_os = "macos")]
 fn do_update(path: &std::path::Path) {
@@ -92,6 +102,18 @@ fn do_update(path: &std::path::Path) {
         .spawn()
         .unwrap();
     // Is this racy? Can we exit before the installer finishes?
+    std::process::exit(0);
+}
+
+#[cfg(target_os = "linux")]
+fn do_update(path: &std::path::Path) {
+    use std::os::unix::process::CommandExt;
+    let appimage_path = std::env::var("APPIMAGE").unwrap();
+    std::fs::copy(path, appimage_path).unwrap();
+    if fork::daemon(false, false).unwrap() == fork::Fork::Child {
+        let mut command = std::process::Command::new(appimage_path);
+        command.exec();
+    }
     std::process::exit(0);
 }
 

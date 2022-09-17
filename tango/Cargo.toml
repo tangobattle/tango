@@ -96,6 +96,9 @@ fontdue = "0.7"
 num-traits = "0.2"
 num-derive = "0.3"
 
+[target.'cfg(unix)'.dependencies]
+fork = "0.1"
+
 [build-dependencies]
 embed-resource = "1.7"
 prost-build = "0.10"
