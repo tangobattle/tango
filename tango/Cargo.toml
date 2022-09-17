@@ -86,7 +86,7 @@ chrono_locale = "0.1"
 itertools = "0.10"
 reqwest = { version = "0.11", features = ["stream", "json"] }
 oneshot = "0.1"
-winit = "0.27"
+winit = { version = "0.27", features = ["serde"] }
 wgpu = { version = "0.13", optional = true, features = ["angle"] }
 async-recursion = "1.0"
 sha2 = "0.10"
