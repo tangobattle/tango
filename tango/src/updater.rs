@@ -110,7 +110,7 @@ fn do_update(path: &std::path::Path) {
     use std::os::unix::process::CommandExt;
     let appimage_path = std::env::var("APPIMAGE").unwrap();
     std::fs::copy(path, appimage_path).unwrap();
-    if fork::daemon(false, false).unwrap() == fork::Fork::Child {
+    if let fork::Fork::Child = fork::daemon(false, false).unwrap() {
         let mut command = std::process::Command::new(appimage_path);
         command.exec();
     }
