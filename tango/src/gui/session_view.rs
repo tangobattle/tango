@@ -282,7 +282,7 @@ cpsr = {:08x}"#,
 
     gui::debug_window::show(ctx, language, session, &mut state.debug_window);
 
-    const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
+    const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
     if last_mouse_motion_time
         .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
         .unwrap_or(false)
