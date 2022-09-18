@@ -604,12 +604,8 @@ fn show_advanced_tab(
             }
 
             {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-debug-overlay")
-                        .unwrap(),
-                );
-                ui.checkbox(&mut config.show_debug_overlay, "");
+                ui.strong(i18n::LOCALES.lookup(&config.language, "settings-debug").unwrap());
+                ui.checkbox(&mut config.show_debug, "");
                 ui.end_row();
             }
         });

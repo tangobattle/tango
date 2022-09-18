@@ -659,7 +659,7 @@ async fn run_connection_task(
                         reveal_setup: false,
                         remote_settings: net::protocol::Settings::default(),
                         remote_commitment: None,
-                        latencies: stats::DeltaCounter::new(10),
+                        latencies: stats::DeltaCounter::new(5),
                         local_negotiated_state: None,
                         roms_scanner: roms_scanner.clone(),
                         patches_scanner: patches_scanner.clone(),

@@ -8,6 +8,7 @@ use crate::replay;
 use crate::replayer;
 use crate::session;
 use crate::shadow;
+use crate::stats;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum BattleResult {
@@ -66,6 +67,7 @@ pub struct Match {
     primary_thread_handle: mgba::thread::Handle,
     round_started_tx: tokio::sync::mpsc::Sender<u8>,
     round_started_rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<u8>>,
+    connection_latency_counter: tokio::sync::Mutex<stats::DeltaCounter>,
 }
 
 impl Match {
@@ -126,6 +128,7 @@ impl Match {
             primary_thread_handle,
             round_started_tx,
             round_started_rx: tokio::sync::Mutex::new(round_started_rx),
+            connection_latency_counter: tokio::sync::Mutex::new(stats::DeltaCounter::new(5)),
         });
         Ok(match_)
     }
@@ -150,6 +153,10 @@ impl Match {
         self.shadow.lock().advance_until_first_committed_state()
     }
 
+    pub async fn latency(&self) -> std::time::Duration {
+        self.connection_latency_counter.lock().await.median()
+    }
+
     pub async fn run(&self, mut receiver: net::Receiver) -> anyhow::Result<()> {
         let mut last_round_number = 0;
         let mut ping_timer = tokio::time::interval(net::PING_INTERVAL);
@@ -164,7 +171,9 @@ impl Match {
                             self.sender.lock().await.send_pong(ping.ts).await?;
                         }
                         net::protocol::Packet::Pong(pong) => {
-                            let _ = std::time::SystemTime::now().duration_since(pong.ts);
+                            if let Ok(dt) = std::time::SystemTime::now().duration_since(pong.ts) {
+                                self.connection_latency_counter.lock().await.mark(dt);
+                            }
                         }
                         net::protocol::Packet::Input(input) => {
                             // We need to wait for the next round to start to avoid dropping inputs on the floor.

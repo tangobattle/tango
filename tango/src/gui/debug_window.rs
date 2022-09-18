@@ -1,103 +1,124 @@
-use crate::{config, session, stats, sync};
+use fluent_templates::Loader;
 
-mod memory_view_window;
+use crate::{i18n, session};
 
 pub struct State {
-    memory_view_window: Option<memory_view_window::State>,
+    jump_to: String,
 }
 
 impl State {
     pub fn new() -> Self {
         Self {
-            memory_view_window: None,
+            jump_to: "".to_string(),
         }
     }
 }
 
 pub fn show(
     ctx: &egui::Context,
-    config: &mut config::Config,
-    session: std::sync::Arc<parking_lot::Mutex<Option<session::Session>>>,
-    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
-    state: &mut State,
+    language: &unic_langid::LanguageIdentifier,
+    session: &session::Session,
+    state: &mut Option<State>,
 ) {
-    egui::Window::new("")
-        .id(egui::Id::new("debug-window"))
-        .resizable(false)
-        .title_bar(false)
-        .open(&mut config.show_debug_overlay)
+    let mut open = state.is_some();
+    egui::Window::new(format!("🪲 {}", i18n::LOCALES.lookup(language, "debug").unwrap()))
+        .id(egui::Id::new("debug"))
+        .open(&mut open)
         .show(ctx, |ui| {
-            if ui.button("Open memory viewer").clicked() {
-                state.memory_view_window = if state.memory_view_window.is_none() {
-                    Some(memory_view_window::State::new())
-                } else {
-                    None
-                };
-            }
+            ui.horizontal(|ui| {
+                let _ = ui.selectable_label(true, "Memory");
+            });
 
-            egui::Grid::new("debug-window-grid").num_columns(2).show(ui, |ui| {
-                ui.strong("FPS");
-                ui.label(
-                    egui::RichText::new(format!(
-                        "{:3.02}",
-                        1.0 / fps_counter.lock().mean_duration().as_secs_f32()
-                    ))
-                    .monospace(),
+            ui.separator();
+
+            let state = state.as_mut().unwrap();
+
+            let mut jumping = false;
+            ui.horizontal(|ui| {
+                let input_resp = ui.add(
+                    egui::TextEdit::singleline(&mut state.jump_to)
+                        .desired_width(8.0 * FONT_WIDTH)
+                        .hint_text("Jump to")
+                        .font(egui::TextStyle::Monospace),
                 );
-                ui.end_row();
+                state.jump_to = state
+                    .jump_to
+                    .chars()
+                    .filter(|c| "0123456789abcdefABCDEF".chars().any(|c2| c2 == *c))
+                    .collect();
+                if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
+                    jumping = true;
+                }
 
-                if let Some(session) = session.lock().as_ref() {
-                    let tps_adjustment = if let session::Mode::PvP(pvp) = session.mode() {
-                        if let Some(match_) = &*sync::block_on(pvp.match_.lock()) {
-                            ui.label("Match active");
-                            ui.end_row();
-
-                            let round_state = sync::block_on(match_.lock_round_state());
-                            if let Some(round) = round_state.round.as_ref() {
-                                ui.strong("Current tick");
-                                ui.label(egui::RichText::new(format!("{:4}", round.current_tick())).monospace());
-                                ui.end_row();
-
-                                ui.strong("Local player index");
-                                ui.label(egui::RichText::new(format!("{:1}", round.local_player_index())).monospace());
-                                ui.end_row();
-
-                                ui.strong("Queue length");
-                                ui.label(
-                                    egui::RichText::new(format!(
-                                        "{:2} vs {:2} (delay = {:1})",
-                                        round.local_queue_length(),
-                                        round.remote_queue_length(),
-                                        round.local_delay(),
-                                    ))
-                                    .monospace(),
-                                );
-                                ui.end_row();
-                                round.tps_adjustment()
-                            } else {
-                                0.0
-                            }
-                        } else {
-                            0.0
-                        }
-                    } else {
-                        0.0
-                    };
-
-                    ui.strong("Emu TPS");
-                    ui.label(
-                        egui::RichText::new(format!(
-                            "{:3.02} ({:+1.02})",
-                            1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                            tps_adjustment
-                        ))
-                        .monospace(),
-                    );
-                    ui.end_row();
+                if ui.button("Go!").clicked() {
+                    jumping = true;
                 }
             });
-        });
 
-    memory_view_window::show(ctx, session.clone(), &mut state.memory_view_window);
+            let thread_handle = session.thread_handle();
+            let mut audio_guard = thread_handle.lock_audio();
+
+            let row_height = ui.text_style_height(&egui::TextStyle::Body);
+            let mut sa = egui::ScrollArea::vertical().auto_shrink([true, false]);
+            if jumping {
+                if let Ok(jump_to) = u32::from_str_radix(&state.jump_to, 16) {
+                    sa =
+                        sa.vertical_scroll_offset((row_height + ui.spacing().item_spacing.y) * (jump_to / 0x10) as f32);
+                }
+            }
+
+            const FONT_WIDTH: f32 = 8.0;
+            sa.show_rows(ui, row_height, 0x0fffffff / 0x10, |ui, range| {
+                egui_extras::StripBuilder::new(ui)
+                    .sizes(egui_extras::Size::exact(row_height), range.len())
+                    .vertical(|mut outer_strip| {
+                        for i in range {
+                            outer_strip.cell(|ui| {
+                                let rect = ui.available_rect_before_wrap().expand(ui.spacing().item_spacing.y);
+                                if i % 2 == 0 {
+                                    ui.painter().rect_filled(rect, 0.0, ui.visuals().faint_bg_color);
+                                }
+
+                                egui_extras::StripBuilder::new(ui)
+                                    .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                                    .size(egui_extras::Size::exact(8.0 * FONT_WIDTH))
+                                    .size(egui_extras::Size::exact(48.0 * FONT_WIDTH))
+                                    .size(egui_extras::Size::remainder())
+                                    .horizontal(|mut strip| {
+                                        let offset = i * 16;
+                                        strip.cell(|ui| {
+                                            ui.label(egui::RichText::new(format!("{:08x}", offset)).monospace().weak());
+                                        });
+                                        let bs = audio_guard.core_mut().raw_read_range::<16>(offset as u32, -1);
+                                        strip.cell(|ui| {
+                                            ui.add(
+                                                egui::TextEdit::singleline(
+                                                    &mut bs
+                                                        .iter()
+                                                        .map(|b| format!("{:02x}", b))
+                                                        .collect::<Vec<_>>()
+                                                        .join(" "),
+                                                )
+                                                .desired_width(ui.available_width())
+                                                .frame(false)
+                                                .font(egui::TextStyle::Monospace),
+                                            );
+                                        });
+
+                                        strip.cell(|ui| {
+                                            ui.monospace(
+                                                bs.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
+                                                    .iter()
+                                                    .collect::<String>(),
+                                            );
+                                        });
+                                    });
+                            });
+                        }
+                    });
+            });
+        });
+    if !open {
+        *state = None;
+    }
 }

@@ -79,7 +79,6 @@ pub struct State {
     main_view: main_view::State,
     show_escape_window: Option<escape_window::State>,
     show_settings: Option<settings_window::State>,
-    show_debug_window: Option<debug_window::State>,
     replay_dump_windows: replay_dump_windows::State,
     clipboard: arboard::Clipboard,
     font_data: std::collections::BTreeMap<String, egui::FontData>,
@@ -175,7 +174,6 @@ impl State {
             steal_input: None,
             show_settings: None,
             show_escape_window: None,
-            show_debug_window: None,
             session_view: None,
             welcome: None,
             replay_dump_windows: replay_dump_windows::State::new(),
@@ -358,18 +356,6 @@ pub fn show(
         state.welcome = None;
     }
 
-    if config.show_debug_overlay {
-        debug_window::show(
-            ctx,
-            config,
-            state.session.clone(),
-            state.fps_counter.clone(),
-            state.emu_tps_counter.clone(),
-            state
-                .show_debug_window
-                .get_or_insert_with(|| debug_window::State::new()),
-        );
-    }
     settings_window::show(
         ctx,
         &mut state.show_settings,
@@ -415,6 +401,9 @@ pub fn show(
             &config.crashstates_path(),
             &state.last_mouse_motion_time,
             &mut state.show_escape_window,
+            state.fps_counter.clone(),
+            state.emu_tps_counter.clone(),
+            config.show_debug,
             state.session_view.get_or_insert_with(|| session_view::State::new()),
             &mut state.discord_client,
         );

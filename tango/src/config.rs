@@ -73,7 +73,7 @@ where
 pub struct Config {
     pub nickname: Option<String>,
     pub theme: Theme,
-    pub show_debug_overlay: bool,
+    pub show_debug: bool,
     #[serde(
         serialize_with = "serialize_language_identifier",
         deserialize_with = "deserialize_language_identifier"
@@ -107,7 +107,7 @@ impl Default for Config {
         Self {
             nickname: None,
             theme: Theme::System,
-            show_debug_overlay: Default::default(),
+            show_debug: Default::default(),
             language: i18n::FALLBACK_LANG.parse().unwrap(),
             max_queue_length: 1200,
             video_filter: "".to_string(),
