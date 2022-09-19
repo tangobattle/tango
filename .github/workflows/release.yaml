@@ -92,3 +92,42 @@ jobs:
                   asset_path: ./dist/tango-macos.dmg
                   asset_name: tango-${{ github.ref_name }}-macos.dmg
                   asset_content_type: application/octet-stream
+    release-linux-x86_64:
+        runs-on: ubuntu-20.04 # Ubuntu 20.04 is used for higher glibc compatibility across users
+
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                  submodules: recursive
+
+            - run: git fetch --tags --force
+
+            - uses: pat-s/always-upload-cache@v2
+              with:
+                  path: |
+                      ~/.cargo/registry
+                      ~/.cargo/git
+                      core/target
+                  key: linux-x86_64-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+            - uses: dtolnay/rust-toolchain@stable
+              with:
+                  toolchain: stable
+                  targets: x86_64-unknown-linux-gnu
+
+            - run: >
+                  sudo apt-get update -y &&
+                  sudo apt-get upgrade -y &&
+                  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y alsa build-essential clang cmake curl fuse git libnss3 librust-atk-dev librust-gdk-pixbuf-dev librust-gdk-sys-dev librust-pango-dev libsdl2-dev pkgconf sudo wget
+
+            - run: >
+                  ./linux/build.sh
+
+            - uses: actions/upload-release-asset@v1
+              env:
+                  GITHUB_TOKEN: ${{ github.token }}
+              with:
+                  upload_url: ${{ github.event.release.upload_url }}
+                  asset_path: ./dist/Tango-x86_64-linux.AppImage
+                  asset_name: Tango-x86_64-linux.AppImage
+                  asset_content_type: application/octet-stream
