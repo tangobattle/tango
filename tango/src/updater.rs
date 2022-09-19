@@ -109,6 +109,8 @@ fn do_update(path: &std::path::Path) {
 fn do_update(path: &std::path::Path) {
     use std::os::unix::process::CommandExt;
     let appimage_path = std::env::var("APPIMAGE").unwrap();
+    // Unlink the current file first, otherwise we will get ETXTBSY while copying.
+    std::fs::remove_file(&appimage_path).unwrap();
     std::fs::copy(path, &appimage_path).unwrap();
     if let fork::Fork::Child = fork::daemon(false, false).unwrap() {
         let mut command = std::process::Command::new(appimage_path);
