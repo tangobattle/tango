@@ -62,6 +62,7 @@ impl Session {
         local_settings: net::protocol::Settings,
         local_game: &'static (dyn game::Game + Send + Sync),
         local_patch: Option<(String, semver::Version)>,
+        local_patch_overrides: &patch::ROMOverrides,
         local_rom: &[u8],
         local_save: &[u8],
         remote_settings: net::protocol::Settings,
@@ -215,7 +216,7 @@ impl Session {
             pause_on_next_frame: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             own_setup: {
                 let save = local_game.parse_save(&local_save)?;
-                let assets = local_game.load_rom_assets(&local_rom, save.as_raw_wram(), remote_patch_overrides)?;
+                let assets = local_game.load_rom_assets(&local_rom, save.as_raw_wram(), local_patch_overrides)?;
                 Some(Setup {
                     game_lang: remote_patch_overrides
                         .language

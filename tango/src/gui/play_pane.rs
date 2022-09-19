@@ -828,6 +828,9 @@ async fn run_connection_task(
                             local_selection.patch.as_ref().map(|(name, version, _)| {
                                 (name.clone(), version.clone())
                             }),
+                            &local_selection.patch.as_ref().map(|(_, _, meta)| {
+                                meta.rom_overrides.clone()
+                            }).unwrap_or_default(),
                             &local_selection.rom,
                             &local_negotiated_state.save_data,
                             remote_settings,
