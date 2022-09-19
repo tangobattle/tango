@@ -47,7 +47,7 @@ cargo build --bin tango --target="${LINUX_ARCH}-unknown-linux-gnu" --no-default-
 mkdir -p "${APPIMAGE_BIN_DIR}"
 
 # Copy tango icon into packaging directory
-cp tango/src/icon.png "${LINUX_PACKAGING}/logo.png"
+cp tango/src/icon.png "${LINUX_PACKAGING}/tango.png"
 
 # Copy AppRun into packaging directory and make executable
 cp linux/AppRun "${LINUX_PACKAGING}/AppRun"
