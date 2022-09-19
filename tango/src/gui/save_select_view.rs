@@ -66,40 +66,129 @@ pub fn show(
         });
 
         ui.group(|ui| {
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
-                        if ui
-                            .selectable_label(
-                                false,
-                                format!(
-                                    "⬅️ {}",
-                                    i18n::LOCALES
-                                        .lookup(language, "select-save.return-to-games-list")
-                                        .unwrap()
-                                ),
-                            )
-                            .clicked()
-                        {
-                            show.as_mut().unwrap().selection = None;
-                        }
+            ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                if show.as_ref().unwrap().selection.is_some() {
+                    if ui
+                        .selectable_label(
+                            false,
+                            format!(
+                                "⬅️ {}",
+                                i18n::LOCALES
+                                    .lookup(language, "select-save.return-to-games-list")
+                                    .unwrap()
+                            ),
+                        )
+                        .clicked()
+                    {
+                        show.as_mut().unwrap().selection = None;
+                    }
+                }
 
-                        if let Some(saves) = saves.get(&game) {
-                            for save in saves {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
+                        if let Some((game, _)) = show.as_ref().unwrap().selection.clone() {
+                            if let Some(saves) = saves.get(&game) {
+                                for save in saves {
+                                    let selected = selection
+                                        .as_ref()
+                                        .map(|selection| selection.save.path.as_path() == save.path.as_path())
+                                        .unwrap_or(false);
+                                    let mut layout_job = egui::text::LayoutJob::default();
+                                    layout_job.append(
+                                        &format!(
+                                            "{}",
+                                            save.path
+                                                .as_path()
+                                                .strip_prefix(saves_path)
+                                                .unwrap_or(save.path.as_path())
+                                                .display()
+                                        ),
+                                        0.0,
+                                        egui::TextFormat::simple(
+                                            ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                                            if selected {
+                                                ui.visuals().selection.stroke.color
+                                            } else {
+                                                ui.visuals().text_color()
+                                            },
+                                        ),
+                                    );
+                                    if ui.selectable_label(selected, layout_job).clicked() {
+                                        let (game, rom, patch) = if let Some(selection) = selection.take() {
+                                            if selection.game == game {
+                                                (selection.game, selection.rom, selection.patch)
+                                            } else {
+                                                (game, roms.get(&game).unwrap().clone(), None)
+                                            }
+                                        } else {
+                                            (game, roms.get(&game).unwrap().clone(), None)
+                                        };
+
+                                        *show = None;
+                                        *selection = Some(gui::Selection::new(game, save.clone(), patch, rom));
+                                    }
+                                }
+                            }
+                        } else {
+                            for (available, game) in games
+                                .iter()
+                                .filter(|g| roms.contains_key(*g))
+                                .map(|g| (true, g))
+                                .chain(games.iter().filter(|g| !roms.contains_key(*g)).map(|g| (false, g)))
+                            {
+                                let (family, variant) = game.family_and_variant();
+
                                 let selected = selection
                                     .as_ref()
-                                    .map(|selection| selection.save.path.as_path() == save.path.as_path())
+                                    .map(|selection| selection.game == *game)
                                     .unwrap_or(false);
+
+                                let warning = (|| {
+                                    let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
+                                        remote_settings
+                                    } else {
+                                        return None;
+                                    };
+
+                                    if !remote_settings
+                                        .available_games
+                                        .iter()
+                                        .any(|(family, variant)| game.family_and_variant() == (family, *variant))
+                                    {
+                                        return Some(gui::play_pane::Warning::NoRemoteROM(*game));
+                                    }
+
+                                    let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
+                                        remote_gi
+                                    } else {
+                                        return None;
+                                    };
+
+                                    if let Some(netplay_compatibility) =
+                                        gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, &patches)
+                                    {
+                                        if &netplay_compatibility != family
+                                            && !patches.values().any(|metadata| {
+                                                metadata.versions.values().any(|version| {
+                                                    version.supported_games.contains(game)
+                                                        && version.netplay_compatibility == netplay_compatibility
+                                                })
+                                            })
+                                        {
+                                            return Some(gui::play_pane::Warning::Incompatible);
+                                        }
+                                    }
+                                    None
+                                })();
+
                                 let mut layout_job = egui::text::LayoutJob::default();
+                                if warning.is_some() {
+                                    gui::warning::append_to_layout_job(ui, &mut layout_job);
+                                }
                                 layout_job.append(
-                                    &format!(
-                                        "{}",
-                                        save.path
-                                            .as_path()
-                                            .strip_prefix(saves_path)
-                                            .unwrap_or(save.path.as_path())
-                                            .display()
-                                    ),
+                                    &i18n::LOCALES
+                                        .lookup(language, &format!("game-{}.variant-{}", family, variant))
+                                        .unwrap(),
                                     0.0,
                                     egui::TextFormat::simple(
                                         ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
@@ -110,103 +199,19 @@ pub fn show(
                                         },
                                     ),
                                 );
-                                if ui.selectable_label(selected, layout_job).clicked() {
-                                    let (game, rom, patch) = if let Some(selection) = selection.take() {
-                                        if selection.game == game {
-                                            (selection.game, selection.rom, selection.patch)
-                                        } else {
-                                            (game, roms.get(&game).unwrap().clone(), None)
-                                        }
-                                    } else {
-                                        (game, roms.get(&game).unwrap().clone(), None)
-                                    };
 
-                                    *show = None;
-                                    *selection = Some(gui::Selection::new(game, save.clone(), patch, rom));
+                                let mut resp =
+                                    ui.add_enabled(available, egui::SelectableLabel::new(selected, layout_job));
+                                if let Some(warning) = warning {
+                                    resp = resp.on_hover_text(warning.description(language));
+                                }
+
+                                if resp.clicked() {
+                                    show.as_mut().unwrap().selection = Some((*game, None));
                                 }
                             }
                         }
-                    } else {
-                        for (available, game) in games
-                            .iter()
-                            .filter(|g| roms.contains_key(*g))
-                            .map(|g| (true, g))
-                            .chain(games.iter().filter(|g| !roms.contains_key(*g)).map(|g| (false, g)))
-                        {
-                            let (family, variant) = game.family_and_variant();
-
-                            let selected = selection
-                                .as_ref()
-                                .map(|selection| selection.game == *game)
-                                .unwrap_or(false);
-
-                            let warning = (|| {
-                                let remote_settings = if let Some(remote_settings) = remote_settings.as_ref() {
-                                    remote_settings
-                                } else {
-                                    return None;
-                                };
-
-                                if !remote_settings
-                                    .available_games
-                                    .iter()
-                                    .any(|(family, variant)| game.family_and_variant() == (family, *variant))
-                                {
-                                    return Some(gui::play_pane::Warning::NoRemoteROM(*game));
-                                }
-
-                                let remote_gi = if let Some(remote_gi) = remote_settings.game_info.as_ref() {
-                                    remote_gi
-                                } else {
-                                    return None;
-                                };
-
-                                if let Some(netplay_compatibility) =
-                                    gui::play_pane::get_netplay_compatibility_from_game_info(remote_gi, &patches)
-                                {
-                                    if &netplay_compatibility != family
-                                        && !patches.values().any(|metadata| {
-                                            metadata.versions.values().any(|version| {
-                                                version.supported_games.contains(game)
-                                                    && version.netplay_compatibility == netplay_compatibility
-                                            })
-                                        })
-                                    {
-                                        return Some(gui::play_pane::Warning::Incompatible);
-                                    }
-                                }
-                                None
-                            })();
-
-                            let mut layout_job = egui::text::LayoutJob::default();
-                            if warning.is_some() {
-                                gui::warning::append_to_layout_job(ui, &mut layout_job);
-                            }
-                            layout_job.append(
-                                &i18n::LOCALES
-                                    .lookup(language, &format!("game-{}.variant-{}", family, variant))
-                                    .unwrap(),
-                                0.0,
-                                egui::TextFormat::simple(
-                                    ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
-                                    if selected {
-                                        ui.visuals().selection.stroke.color
-                                    } else {
-                                        ui.visuals().text_color()
-                                    },
-                                ),
-                            );
-
-                            let mut resp = ui.add_enabled(available, egui::SelectableLabel::new(selected, layout_job));
-                            if let Some(warning) = warning {
-                                resp = resp.on_hover_text(warning.description(language));
-                            }
-
-                            if resp.clicked() {
-                                show.as_mut().unwrap().selection = Some((*game, None));
-                            }
-                        }
-                    }
+                    });
                 });
             });
         });
