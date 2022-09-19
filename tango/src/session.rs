@@ -218,7 +218,7 @@ impl Session {
                 let save = local_game.parse_save(&local_save)?;
                 let assets = local_game.load_rom_assets(&local_rom, save.as_raw_wram(), local_patch_overrides)?;
                 Some(Setup {
-                    game_lang: remote_patch_overrides
+                    game_lang: local_patch_overrides
                         .language
                         .clone()
                         .unwrap_or_else(|| game.language()),
