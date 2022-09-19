@@ -47,15 +47,15 @@ cargo build --bin tango --target="${LINUX_ARCH}-unknown-linux-gnu" --no-default-
 mkdir -p "${APPIMAGE_BIN_DIR}"
 
 # Copy tango icon into packaging directory
-cp tango/src/icon.png "${LINUX_PACKAGING}/tango.png"
+cp tango/src/icon.png "${LINUX_PACKAGING}/logo.png"
 
 # Copy AppRun into packaging directory and make executable
 cp linux/AppRun "${LINUX_PACKAGING}/AppRun"
 chmod 755 "${LINUX_PACKAGING}/AppRun"
 
 # Copy .desktop file into packaging directory and make executable
-cp linux/Tango.desktop "${LINUX_PACKAGING}/Tango.desktop"
-chmod 755 "${LINUX_PACKAGING}/Tango.desktop"
+cp linux/Tango.desktop "${LINUX_PACKAGING}/tango.desktop"
+chmod 755 "${LINUX_PACKAGING}/tango.desktop"
 
 # Download ffmpeg binary and make executable
 retry wget "${STATIC_FFMPEG_URL}" -O "${APPIMAGE_BIN_DIR}/ffmpeg"

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Tango
-Icon=tango
+Icon=logo.png
 Exec=tango
 Categories=Game;
 Terminal=false
