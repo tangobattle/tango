@@ -3,4 +3,4 @@
 cd "$(dirname "$0")"
 export ARCH="$(uname -m)"
 export PATH="$(pwd)/${ARCH}/bin:${PATH}"
-exec "$(pwd)/${ARCH}/bin/Tango"
+exec "$(pwd)/${ARCH}/bin/tango"

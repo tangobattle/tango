@@ -47,7 +47,7 @@ cargo build --bin tango --target="${LINUX_ARCH}-unknown-linux-gnu" --no-default-
 mkdir -p "${APPIMAGE_BIN_DIR}"
 
 # Copy tango icon into packaging directory
-cp tango/src/icon.png "${LINUX_PACKAGING}/Tango.png"
+cp tango/src/icon.png "${LINUX_PACKAGING}/tango.png"
 
 # Copy AppRun into packaging directory and make executable
 cp linux/AppRun "${LINUX_PACKAGING}/AppRun"
@@ -62,8 +62,8 @@ retry wget "${STATIC_FFMPEG_URL}" -O "${APPIMAGE_BIN_DIR}/ffmpeg"
 chmod 755 "${APPIMAGE_BIN_DIR}/ffmpeg"
 
 # Copy Tango binary and make executable
-cp "target/${LINUX_ARCH}-unknown-linux-gnu/release/tango" "${APPIMAGE_BIN_DIR}/Tango"
-chmod 755 "${APPIMAGE_BIN_DIR}/Tango"
+cp "target/${LINUX_ARCH}-unknown-linux-gnu/release/tango" "${APPIMAGE_BIN_DIR}/tango"
+chmod 755 "${APPIMAGE_BIN_DIR}/tango"
 
 # Download appimagetool
 # We don't need to change the arch here for cross compiling, GitHub Actions is x86_64
@@ -72,4 +72,4 @@ chmod +x appimagetool-x86_64.AppImage
 
 # Package Tango into an AppImage
 mkdir -p ./dist
-./appimagetool-x86_64.AppImage "${LINUX_PACKAGING}" "./dist/Tango-${LINUX_ARCH}-linux.AppImage"
+./appimagetool-x86_64.AppImage "${LINUX_PACKAGING}" "./dist/tango-${LINUX_ARCH}-linux.AppImage"

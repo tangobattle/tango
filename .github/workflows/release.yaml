@@ -128,6 +128,6 @@ jobs:
                   GITHUB_TOKEN: ${{ github.token }}
               with:
                   upload_url: ${{ github.event.release.upload_url }}
-                  asset_path: ./dist/Tango-x86_64-linux.AppImage
-                  asset_name: Tango-x86_64-linux.AppImage
+                  asset_path: ./dist/tango-x86_64-linux.AppImage
+                  asset_name: tango-x86_64-linux.AppImage
                   asset_content_type: application/octet-stream
