@@ -40,7 +40,7 @@ export LINUX_PACKAGING="linux/packaging"
 # Define the ./bin directory inside the AppImage for this arch
 export APPIMAGE_BIN_DIR="${LINUX_PACKAGING}/${LINUX_ARCH}/bin"
 
-# Build Tango
+# Build tango
 cargo build --bin tango --target="${LINUX_ARCH}-unknown-linux-gnu" --no-default-features --features=sdl2-audio,wgpu,cpal --release
 
 # Create AppImage packaging directory and a bin folder inside it
@@ -54,14 +54,14 @@ cp linux/AppRun "${LINUX_PACKAGING}/AppRun"
 chmod 755 "${LINUX_PACKAGING}/AppRun"
 
 # Copy .desktop file into packaging directory and make executable
-cp linux/Tango.desktop "${LINUX_PACKAGING}/tango.desktop"
+cp linux/tango.desktop "${LINUX_PACKAGING}/tango.desktop"
 chmod 755 "${LINUX_PACKAGING}/tango.desktop"
 
 # Download ffmpeg binary and make executable
 retry wget "${STATIC_FFMPEG_URL}" -O "${APPIMAGE_BIN_DIR}/ffmpeg"
 chmod 755 "${APPIMAGE_BIN_DIR}/ffmpeg"
 
-# Copy Tango binary and make executable
+# Copy tango binary and make executable
 cp "target/${LINUX_ARCH}-unknown-linux-gnu/release/tango" "${APPIMAGE_BIN_DIR}/tango"
 chmod 755 "${APPIMAGE_BIN_DIR}/tango"
 
@@ -70,6 +70,6 @@ chmod 755 "${APPIMAGE_BIN_DIR}/tango"
 retry wget https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
 chmod +x appimagetool-x86_64.AppImage
 
-# Package Tango into an AppImage
+# Package tango into an AppImage
 mkdir -p ./dist
 ./appimagetool-x86_64.AppImage "${LINUX_PACKAGING}" "./dist/tango-${LINUX_ARCH}-linux.AppImage"
