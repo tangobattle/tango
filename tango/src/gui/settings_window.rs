@@ -184,6 +184,16 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                 ui.checkbox(&mut config.show_own_setup, "");
                 ui.end_row();
             }
+
+            {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(&config.language, "settings-always-show-status-bar")
+                        .unwrap(),
+                );
+                ui.checkbox(&mut config.always_show_status_bar, "");
+                ui.end_row();
+            }
         });
 }
 

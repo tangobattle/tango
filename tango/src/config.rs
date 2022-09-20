@@ -100,6 +100,7 @@ pub struct Config {
     pub allow_prerelease_upgrades: bool,
     pub enable_updater: bool,
     pub integer_scaling: bool,
+    pub always_show_status_bar: bool,
 }
 
 impl Default for Config {
@@ -134,6 +135,7 @@ impl Default for Config {
                 .is_empty(),
             enable_updater: true,
             integer_scaling: false,
+            always_show_status_bar: false,
         }
     }
 }

@@ -116,6 +116,7 @@ pub fn show(
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     show_debug: bool,
+    always_show_status_bar: bool,
     state: &mut State,
     discord_client: &mut discord::Client,
 ) {
@@ -269,6 +270,18 @@ cpsr = {:08x}"#,
         });
     }
 
+    if always_show_status_bar {
+        show_status_bar(
+            ctx,
+            language,
+            session,
+            show_debug,
+            &mut state.debug_window,
+            fps_counter.clone(),
+            emu_tps_counter.clone(),
+        );
+    }
+
     egui::CentralPanel::default()
         .frame(egui::Frame::none().fill(egui::Color32::BLACK))
         .show(ctx, |ui| {
@@ -281,9 +294,10 @@ cpsr = {:08x}"#,
         });
 
     const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
-    if last_mouse_motion_time
-        .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
-        .unwrap_or(false)
+    if !always_show_status_bar
+        && last_mouse_motion_time
+            .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
+            .unwrap_or(false)
     {
         show_status_bar(
             ctx,
@@ -294,8 +308,8 @@ cpsr = {:08x}"#,
             fps_counter.clone(),
             emu_tps_counter.clone(),
         );
-        gui::debug_window::show(ctx, language, session, &mut state.debug_window);
     }
+    gui::debug_window::show(ctx, language, session, &mut state.debug_window);
 }
 
 fn show_status_bar(
