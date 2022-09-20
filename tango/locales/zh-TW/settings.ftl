@@ -46,3 +46,4 @@ settings-enable-updater = 啟用自動更新
 settings-allow-prerelease-upgrades = 允許預先發布升級
 settings-show-own-setup = 顯示自己配置
 settings-integer-scaling = 整數縮放
+settings-always-show-status-bar = Always show status bar
