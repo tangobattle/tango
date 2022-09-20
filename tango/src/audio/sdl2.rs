@@ -21,7 +21,7 @@ pub struct Backend {
 
 impl Backend {
     pub fn new(sdl: &sdl2::Sdl, stream: impl audio::Stream + Send + 'static) -> Result<Self, anyhow::Error> {
-        let audio = sdl.audio().unwrap();
+        let audio = sdl.audio().map_err(|e| anyhow::format_err!("{}", e))?;
         let audio_device = audio
             .open_playback(
                 None,
