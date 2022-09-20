@@ -46,3 +46,4 @@ settings-enable-updater = Enable updater
 settings-allow-prerelease-upgrades = Allow prerelease upgrades
 settings-show-own-setup = Show own setup
 settings-integer-scaling = Integer scaling
+settings-always-show-status-bar = Always show status bar
