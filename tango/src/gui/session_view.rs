@@ -280,104 +280,123 @@ cpsr = {:08x}"#,
             );
         });
 
-    gui::debug_window::show(ctx, language, session, &mut state.debug_window);
-
     const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
     if last_mouse_motion_time
         .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
         .unwrap_or(false)
     {
-        egui::TopBottomPanel::bottom("session-status-bar").show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let (tps_adjustment, latency, round_info) = (|| {
-                        let pvp = if let session::Mode::PvP(pvp) = session.mode() {
-                            pvp
+        show_status_bar(
+            ctx,
+            language,
+            session,
+            show_debug,
+            &mut state.debug_window,
+            fps_counter.clone(),
+            emu_tps_counter.clone(),
+        );
+        gui::debug_window::show(ctx, language, session, &mut state.debug_window);
+    }
+}
+
+fn show_status_bar(
+    ctx: &egui::Context,
+    language: &unic_langid::LanguageIdentifier,
+    session: &session::Session,
+    show_debug: bool,
+    debug_window: &mut Option<gui::debug_window::State>,
+    fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+    emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
+) {
+    egui::TopBottomPanel::bottom("session-status-bar").show(ctx, |ui| {
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let (tps_adjustment, latency, round_info) = (|| {
+                    let pvp = if let session::Mode::PvP(pvp) = session.mode() {
+                        pvp
+                    } else {
+                        return (0.0, None, None);
+                    };
+
+                    let match_ = sync::block_on(pvp.match_.lock());
+                    let match_ = if let Some(match_) = &*match_ {
+                        match_
+                    } else {
+                        return (0.0, None, None);
+                    };
+
+                    let latency = sync::block_on(match_.latency());
+
+                    let round_state = sync::block_on(match_.lock_round_state());
+                    let round = if let Some(round) = round_state.round.as_ref() {
+                        round
+                    } else {
+                        return (0.0, Some(latency), None);
+                    };
+
+                    (
+                        round.tps_adjustment(),
+                        Some(latency),
+                        Some((
+                            round.local_queue_length(),
+                            round.remote_queue_length(),
+                            round.local_delay(),
+                            round.current_tick(),
+                            round.local_player_index(),
+                        )),
+                    )
+                })();
+
+                if show_debug {
+                    let debug_window_open = debug_window.is_some();
+                    if ui
+                        .selectable_label(debug_window_open, "🪲")
+                        .on_hover_text(i18n::LOCALES.lookup(language, "debug").unwrap())
+                        .clicked()
+                    {
+                        *debug_window = if debug_window.is_some() {
+                            None
                         } else {
-                            return (0.0, None, None);
+                            Some(gui::debug_window::State::new())
                         };
+                    }
+                    ui.add(egui::Separator::default().vertical());
+                }
 
-                        let match_ = sync::block_on(pvp.match_.lock());
-                        let match_ = if let Some(match_) = &*match_ {
-                            match_
-                        } else {
-                            return (0.0, None, None);
-                        };
+                ui.monospace(format!(
+                    "fps {:7.2}",
+                    1.0 / fps_counter.lock().mean_duration().as_secs_f32()
+                ));
 
-                        let latency = sync::block_on(match_.latency());
+                ui.add(egui::Separator::default().vertical());
+                ui.monospace(format!(
+                    "tps {:7.2} ({:+5.2})",
+                    1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                    tps_adjustment
+                ));
 
-                        let round_state = sync::block_on(match_.lock_round_state());
-                        let round = if let Some(round) = round_state.round.as_ref() {
-                            round
-                        } else {
-                            return (0.0, Some(latency), None);
-                        };
+                if let Some(latency) = latency {
+                    ui.add(egui::Separator::default().vertical());
+                    ui.monospace(format!("ping {:4}ms", latency.as_millis()));
+                }
 
-                        (
-                            round.tps_adjustment(),
-                            Some(latency),
-                            Some((
-                                round.local_queue_length(),
-                                round.remote_queue_length(),
-                                round.local_delay(),
-                                round.current_tick(),
-                                round.local_player_index(),
-                            )),
-                        )
-                    })();
-
+                if let Some((local_qlen, remote_qlen, local_delay, current_tick, local_player_index)) = round_info {
                     if show_debug {
-                        let debug_window_open = state.debug_window.is_some();
-                        if ui
-                            .selectable_label(debug_window_open, "🪲")
-                            .on_hover_text(i18n::LOCALES.lookup(language, "debug").unwrap())
-                            .clicked()
-                        {
-                            state.debug_window = if state.debug_window.is_some() {
-                                None
-                            } else {
-                                Some(gui::debug_window::State::new())
-                            };
-                        }
                         ui.add(egui::Separator::default().vertical());
-                    }
-
-                    ui.monospace(format!(
-                        "fps {:7.2}",
-                        1.0 / fps_counter.lock().mean_duration().as_secs_f32()
-                    ));
-
-                    ui.add(egui::Separator::default().vertical());
-                    ui.monospace(format!(
-                        "tps {:7.2} ({:+5.2})",
-                        1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                        tps_adjustment
-                    ));
-
-                    if let Some(latency) = latency {
-                        ui.add(egui::Separator::default().vertical());
-                        ui.monospace(format!("ping {:4}ms", latency.as_millis()));
-                    }
-
-                    if let Some((local_qlen, remote_qlen, local_delay, current_tick, local_player_index)) = round_info {
-                        if show_debug {
-                            ui.add(egui::Separator::default().vertical());
-                            ui.monospace(format!(
-                                "qlen {:2} vs {:2} (delay = {:2})",
-                                local_qlen, remote_qlen, local_delay
-                            ));
-
-                            ui.add(egui::Separator::default().vertical());
-                            ui.monospace(format!("tick {:5}", current_tick));
-                        }
+                        ui.monospace(format!(
+                            "qlen {:2} vs {:2} (delay = {:2})",
+                            local_qlen, remote_qlen, local_delay
+                        ));
 
                         ui.add(egui::Separator::default().vertical());
-                        ui.monospace(format!("P{}", local_player_index + 1));
+                        ui.monospace(format!("tick {:5}", current_tick));
                     }
 
                     ui.add(egui::Separator::default().vertical());
-                });
+                    ui.monospace(format!("P{}", local_player_index + 1));
+                }
+
+                ui.add(egui::Separator::default().vertical());
             });
         });
-    }
+    });
 }
