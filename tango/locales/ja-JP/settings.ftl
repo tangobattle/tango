@@ -46,3 +46,4 @@ settings-enable-updater = 自動更新を許可
 settings-allow-prerelease-upgrades = プレリリースのアップグレードを許可
 settings-show-own-setup = 自分の構築を表示
 settings-integer-scaling = 整数スケール
+settings-always-show-status-bar = Always show status bar
