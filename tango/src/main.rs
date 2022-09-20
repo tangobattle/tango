@@ -193,6 +193,8 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         )),
     };
     gfx_backend.set_ui_scale(config.read().ui_scale_percent as f32 / 100.0);
+    gfx_backend.run(Box::new(|_, _| {}));
+    gfx_backend.paint();
 
     let egui_ctx = gfx_backend.egui_ctx();
     egui_ctx.set_request_repaint_callback({

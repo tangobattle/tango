@@ -15,13 +15,7 @@ impl Backend {
         event_loop: &winit::event_loop::EventLoopWindowTarget<T>,
     ) -> Self {
         let gl_window = unsafe { gl_window.make_current().unwrap() };
-
         let gl = std::sync::Arc::new(unsafe { glow::Context::from_loader_function(|s| gl_window.get_proc_address(s)) });
-        unsafe {
-            gl.clear_color(0.0, 0.0, 0.0, 1.0);
-            gl.clear(glow::COLOR_BUFFER_BIT);
-        }
-        gl_window.swap_buffers().unwrap();
 
         let mut egui_glow = egui_glow::EguiGlow::new(&event_loop, gl.clone());
         egui_glow
