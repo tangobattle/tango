@@ -132,7 +132,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     updater.set_enabled(config.read().enable_updater);
 
     let sdl = sdl2::init().unwrap();
-    let audio = sdl.audio().unwrap();
     let game_controller = sdl.game_controller().unwrap();
 
     let event_loop = winit::event_loop::EventLoopBuilder::with_user_event().build();
@@ -216,7 +215,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         #[cfg(feature = "cpal")]
         config::AudioBackend::Cpal => Box::new(audio::cpal::Backend::new(audio_binder.clone())?),
         #[cfg(feature = "sdl2-audio")]
-        config::AudioBackend::Sdl2 => Box::new(audio::sdl2::Backend::new(&audio, audio_binder.clone())?),
+        config::AudioBackend::Sdl2 => Box::new(audio::sdl2::Backend::new(&sdl, audio_binder.clone())?),
     };
 
     let fps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(30)));

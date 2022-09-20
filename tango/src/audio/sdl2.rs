@@ -15,14 +15,13 @@ impl sdl2::audio::AudioCallback for StreamWrapper {
 }
 
 pub struct Backend {
+    _audio: sdl2::AudioSubsystem,
     _audio_device: sdl2::audio::AudioDevice<StreamWrapper>,
 }
 
 impl Backend {
-    pub fn new(
-        audio: &sdl2::AudioSubsystem,
-        stream: impl audio::Stream + Send + 'static,
-    ) -> Result<Self, anyhow::Error> {
+    pub fn new(sdl: &sdl2::Sdl, stream: impl audio::Stream + Send + 'static) -> Result<Self, anyhow::Error> {
+        let audio = sdl.audio().unwrap();
         let audio_device = audio
             .open_playback(
                 None,
@@ -37,6 +36,7 @@ impl Backend {
         log::info!("sdl2 audio spec: {:?}", audio_device.spec());
         audio_device.resume();
         Ok(Self {
+            _audio: audio,
             _audio_device: audio_device,
         })
     }
