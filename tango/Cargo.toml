@@ -97,7 +97,7 @@ num-traits = "0.2"
 num-derive = "0.3"
 
 [target.'cfg(unix)'.dependencies]
-fork = "0.1"
+nix = "0.25"
 
 [build-dependencies]
 embed-resource = "1.7"

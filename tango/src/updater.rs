@@ -114,9 +114,10 @@ fn do_update(path: &std::path::Path) {
     std::fs::remove_file(&appimage_path).unwrap();
     std::fs::copy(path, &appimage_path).unwrap();
     std::fs::set_permissions(&appimage_path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    if let fork::Fork::Child = fork::daemon(false, false).unwrap() {
+    if let nix::unistd::ForkResult::Child = unsafe { nix::unistd::fork() }.unwrap() {
+        nix::unistd::setsid().unwrap();
         let mut command = std::process::Command::new(appimage_path);
-        command.exec();
+        Err::<(), _>(command.exec()).unwrap();
     }
     std::process::exit(0);
 }
