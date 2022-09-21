@@ -49,7 +49,7 @@ pub fn show(ui: &mut egui::Ui, font_families: &gui::FontFamilies, language: &mut
         .selected_text(
             languages
                 .iter()
-                .find(|(lang, _)| language.matches(lang, false, true))
+                .find(|(lang, _)| language.matches(lang, false, false))
                 .map(|(_, label)| label.clone())
                 .unwrap_or_else(|| egui::RichText::new("")),
         )

@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 
+use fluent_templates::Loader;
 use serde::Deserialize;
 
 use crate::{i18n, input};
@@ -109,7 +110,7 @@ impl Default for Config {
             nickname: None,
             theme: Theme::System,
             show_debug: Default::default(),
-            language: i18n::FALLBACK_LANG.parse().unwrap(),
+            language: i18n::FALLBACK_LANG.clone(),
             max_queue_length: 1200,
             video_filter: "".to_string(),
             max_scale: 0,
@@ -170,10 +171,22 @@ impl Config {
             .ok_or_else(|| anyhow::anyhow!("could not get tango data directory"))?
             .join(DATA_DIR_NAME);
 
+        let sys_language: unic_langid::LanguageIdentifier = sys_locale::get_locale()
+            .unwrap_or(i18n::FALLBACK_LANG.to_string())
+            .parse()?;
+        let language = fluent_langneg::negotiate_languages(
+            &[sys_language],
+            i18n::LOCALES.locales().cloned().collect::<Vec<_>>().as_slice(),
+            Some(&i18n::FALLBACK_LANG),
+            fluent_langneg::NegotiationStrategy::Lookup,
+        )
+        .first()
+        .cloned()
+        .unwrap()
+        .clone();
+
         Ok(Self {
-            language: sys_locale::get_locale()
-                .unwrap_or(i18n::FALLBACK_LANG.to_string())
-                .parse()?,
+            language,
             data_path: tango_data_dir,
             ..Default::default()
         })
