@@ -80,9 +80,6 @@ async fn handle_matchmaking_request(
             .body(hyper::StatusCode::BAD_REQUEST.canonical_reason().unwrap().into())?);
     }
 
-    let skip_hello =
-        request.headers().get("X-Tango-Skip-Hello") == Some(&hyper::header::HeaderValue::from_static("skip"));
-
     let (response, websocket) = hyper_tungstenite::upgrade(
         &mut request,
         Some(tungstenite::protocol::WebSocketConfig {
@@ -103,7 +100,7 @@ async fn handle_matchmaking_request(
         };
 
         if let Err(e) = matchmaking_server
-            .handle_stream(websocket, remote_ip, &session_id, skip_hello)
+            .handle_stream(websocket, remote_ip, &session_id)
             .await
         {
             log::error!("error in websocket connection: {}", e);
