@@ -1207,7 +1207,8 @@ fn show_lobby_table(
                                         10,
                                         std::cmp::max(
                                             2,
-                                            ((lobby.latencies.median() / 2 * 60).as_nanos()
+                                            ((lobby.latencies.median() * 60).as_nanos()
+                                                / 2
                                                 / std::time::Duration::from_secs(1).as_nanos())
                                                 as i32
                                                 + 1
