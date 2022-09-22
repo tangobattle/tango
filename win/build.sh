@@ -37,10 +37,8 @@ mkdir angle
 wget -O - "${ANGLE_ZIP_URL}" | bsdtar -Cangle -xvf- lib/{libEGL.dll,libGLESv2.dll}
 cp angle/lib/{libEGL.dll,libGLESv2.dll} .
 
-FFMPEG_ZIP_URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
-mkdir ffmpeg
-wget -O - "${FFMPEG_ZIP_URL}" | bsdtar -Cffmpeg -xvf- ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
-cp ffmpeg/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe .
+FFMPEG="https://github.com/eugeneware/ffmpeg-static/releases/download/b5.0.1/win32-x64"
+wget -O ffmpeg.exe "${FFMPEG}"
 
 makensis installer.nsi
 popd
