@@ -430,13 +430,13 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
         if next_config != old_config {
             last_config_dirty_time = Some(std::time::Instant::now());
+            *config.write() = next_config.clone();
         }
 
         if last_config_dirty_time
             .map(|t| (std::time::Instant::now() - t) > std::time::Duration::from_secs(1))
             .unwrap_or(false)
         {
-            *config.write() = next_config.clone();
             let r = next_config.save();
             log::info!("config flushed: {:?}", r);
             last_config_dirty_time = None;
