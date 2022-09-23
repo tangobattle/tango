@@ -23,6 +23,10 @@ pub struct Save {
     game_info: GameInfo,
 }
 
+fn compute_checksum(buf: &[u8]) -> u32 {
+    save::compute_save_raw_checksum(buf, CHECKSUM_OFFSET) + 0x16
+}
+
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let buf: [u8; SRAM_SIZE] = buf
@@ -38,18 +42,17 @@ impl Save {
             }
         };
 
-        let save = Self { buf, game_info };
-
-        let computed_checksum = save.compute_checksum();
-        if save.checksum() != computed_checksum {
+        let expected_checksum = byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4]);
+        let computed_checksum = compute_checksum(&buf);
+        if expected_checksum != computed_checksum {
             anyhow::bail!(
                 "checksum mismatch: expected {:08x}, got {:08x}",
-                save.checksum(),
+                expected_checksum,
                 computed_checksum
             );
         }
 
-        Ok(save)
+        Ok(Self { buf, game_info })
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
@@ -64,14 +67,6 @@ impl Save {
 
     pub fn game_info(&self) -> &GameInfo {
         &self.game_info
-    }
-
-    pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
-    }
-
-    pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
 
     #[allow(dead_code)]
@@ -92,6 +87,12 @@ impl save::Save for Save {
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
         buf[..SRAM_SIZE].copy_from_slice(&self.buf);
+        buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20].copy_from_slice(match self.game_info.region {
+            Region::US => b"ROCKMAN EXE 20010727",
+            Region::JP => b"ROCKMAN EXE 20010120",
+        });
+        let checksum = compute_checksum(&buf);
+        byteorder::LittleEndian::write_u32(&mut buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
         buf
     }
 }
