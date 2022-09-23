@@ -14,6 +14,11 @@ print(
 !define NAME "Tango"
 !define REGPATH_UNINSTSUBKEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{NAME}}"
 
+LoadLanguageFile "${{NSISDIR}}\Contrib\Language files\English.nlf"
+LoadLanguageFile "${{NSISDIR}}\Contrib\Language files\Japanese.nlf"
+LoadLanguageFile "${{NSISDIR}}\Contrib\Language files\TradChinese.nlf"
+LoadLanguageFile "${{NSISDIR}}\Contrib\Language files\SimpChinese.nlf"
+
 Name "${{NAME}}"
 Icon "icon.ico"
 OutFile "installer.exe"
@@ -55,6 +60,18 @@ FunctionEnd
 
 Function un.onInit
     SetShellVarContext Current
+FunctionEnd
+
+LangString MessageDeleteConfig ${{LANG_ENGLISH}} "Would you also like to delete configuration settings?"
+LangString MessageDeleteConfig ${{LANG_JAPANESE}} "コンフィギュレーション設定も削除しますか？"
+LangString MessageDeleteConfig ${{LANG_SIMPCHINESE}} "您是否也想删除配置设置？"
+LangString MessageDeleteConfig ${{LANG_TRADCHINESE}} "您是否也想刪除配置設置？"
+
+Function un.onGUIInit
+    MessageBox MB_YESNO "$(MessageDeleteConfig)" /SD IDNO IDYES true IDNO false
+    true:
+        Delete "$APPDATA\\Tango\\config\\config.json"
+    false:
 FunctionEnd
 
 Function .onInstSuccess
