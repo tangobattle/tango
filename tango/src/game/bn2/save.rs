@@ -17,6 +17,11 @@ pub struct Save {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
+        let buf: [u8; SRAM_SIZE] = buf
+            .get(..SRAM_SIZE)
+            .and_then(|buf| buf.try_into().ok())
+            .ok_or(anyhow::anyhow!("save is wrong size"))?;
+
         let n = &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20];
         if n != b"ROCKMANEXE2 20011016" {
             anyhow::bail!("unknown game name: {:02x?}", n);
@@ -32,7 +37,7 @@ impl Save {
             );
         }
 
-        Ok(Save::from_wram(buf)?)
+        Ok(Save { buf })
     }
 
     pub fn from_wram(buf: &[u8]) -> Result<Self, anyhow::Error> {
