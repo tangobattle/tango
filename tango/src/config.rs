@@ -102,6 +102,7 @@ pub struct Config {
     pub enable_updater: bool,
     pub integer_scaling: bool,
     pub always_show_status_bar: bool,
+    pub window_size: winit::dpi::LogicalSize<u32>,
 }
 
 impl Default for Config {
@@ -137,6 +138,7 @@ impl Default for Config {
             enable_updater: true,
             integer_scaling: false,
             always_show_status_bar: false,
+            window_size: winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3),
         }
     }
 }

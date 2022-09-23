@@ -148,10 +148,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
             icon_width,
             icon_height,
         )?))
-        .with_inner_size(winit::dpi::LogicalSize::new(
-            mgba::gba::SCREEN_WIDTH * 3,
-            mgba::gba::SCREEN_HEIGHT * 3,
-        ))
+        .with_inner_size(config.read().window_size.clone())
         .with_min_inner_size(winit::dpi::LogicalSize::new(
             mgba::gba::SCREEN_WIDTH,
             mgba::gba::SCREEN_HEIGHT,
@@ -264,6 +261,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let mut patch_autoupdater = patch::Autoupdater::new(config.clone(), patches_scanner.clone());
     patch_autoupdater.set_enabled(config.read().enable_patch_autoupdate);
 
+    let mut last_config_dirty_time = None;
     event_loop.run(move |event, _, control_flow| {
         let mut next_config = config.read().clone();
         let old_config = next_config.clone();
@@ -345,6 +343,9 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             }
                             winit::event::WindowEvent::CloseRequested => {
                                 control_flow.set_exit();
+                            }
+                            winit::event::WindowEvent::Resized(size) => {
+                                next_config.window_size = size.to_logical(gfx_backend.window().scale_factor());
                             }
                             _ => {}
                         }
@@ -428,10 +429,19 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         }
 
         if next_config != old_config {
+            last_config_dirty_time = Some(std::time::Instant::now());
+        }
+
+        if last_config_dirty_time
+            .map(|t| (std::time::Instant::now() - t) > std::time::Duration::from_millis(100))
+            .unwrap_or(false)
+        {
             *config.write() = next_config.clone();
             let r = next_config.save();
-            log::info!("config save: {:?}", r);
+            log::info!("config flushed: {:?}", r);
+            last_config_dirty_time = None;
         }
+
         gfx_backend.set_ui_scale(next_config.ui_scale_percent as f32 / 100.0);
         patch_autoupdater.set_enabled(next_config.enable_patch_autoupdate);
         updater.set_enabled(next_config.enable_updater);
