@@ -433,7 +433,7 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
         }
 
         if last_config_dirty_time
-            .map(|t| (std::time::Instant::now() - t) > std::time::Duration::from_millis(100))
+            .map(|t| (std::time::Instant::now() - t) > std::time::Duration::from_secs(1))
             .unwrap_or(false)
         {
             *config.write() = next_config.clone();
