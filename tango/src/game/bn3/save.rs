@@ -30,6 +30,10 @@ pub struct Save {
     game_info: GameInfo,
 }
 
+fn compute_raw_checksum(buf: &[u8]) -> u32 {
+    save::compute_save_raw_checksum(buf, CHECKSUM_OFFSET)
+}
+
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let buf: [u8; SRAM_SIZE] = buf
@@ -47,7 +51,7 @@ impl Save {
             const BLUE: u32 = checksum_start_for_variant(Variant::Blue);
             GameInfo {
                 variant: match byteorder::LittleEndian::read_u32(&buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
-                    .checked_sub(save::compute_save_raw_checksum(&buf, CHECKSUM_OFFSET))
+                    .checked_sub(compute_raw_checksum(&buf))
                 {
                     Some(WHITE) => Variant::White,
                     Some(BLUE) => Variant::Blue,
@@ -58,7 +62,9 @@ impl Save {
             }
         };
 
-        Ok(Self { buf, game_info })
+        let save = Self { buf, game_info };
+
+        Ok(save)
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, anyhow::Error> {
@@ -78,7 +84,7 @@ impl Save {
 
     #[allow(dead_code)]
     pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + checksum_start_for_variant(self.game_info.variant)
+        compute_raw_checksum(&self.buf) + checksum_start_for_variant(self.game_info.variant)
     }
 
     pub fn game_info(&self) -> &GameInfo {
