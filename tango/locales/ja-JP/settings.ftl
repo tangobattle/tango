@@ -47,3 +47,5 @@ settings-allow-prerelease-upgrades = プレリリースのアップグレード�
 settings-show-own-setup = 自分の構築を表示
 settings-integer-scaling = 整数スケール
 settings-always-show-status-bar = ステータスバーを常に表示
+settings-preset-sizes = Preset sizes
+    .format = { $size }x
