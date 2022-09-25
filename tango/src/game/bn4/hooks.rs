@@ -101,36 +101,42 @@ impl game::Hooks for Hooks {
                     munger.open_comm_menu_from_overworld(core);
                 })
             }),
-            // (self.offsets.rom.battle_pizzazz_init_mov, {
-            //     Box::new(move |mut core| {
-            //         let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
-            //         core.gba_mut().cpu_mut().set_gpr(0, v);
-            //     })
-            // }),
-            // (self.offsets.rom.battle_pizzazz_bg_mov, {
-            //     Box::new(move |mut core| {
-            //         let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
-            //         core.gba_mut().cpu_mut().set_gpr(1, v);
-            //     })
-            // }),
-            // (self.offsets.rom.battle_pizzazz_self_mov, {
-            //     Box::new(move |mut core| {
-            //         let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
-            //         core.gba_mut().cpu_mut().set_gpr(1, v);
-            //     })
-            // }),
-            // (self.offsets.rom.battle_pizzazz_opponent_mov, {
-            //     Box::new(move |mut core| {
-            //         let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
-            //         core.gba_mut().cpu_mut().set_gpr(0, v);
-            //     })
-            // }),
-            // (self.offsets.rom.battle_pizzazz_final_mov, {
-            //     Box::new(move |mut core| {
-            //         let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
-            //         core.gba_mut().cpu_mut().set_gpr(1, v);
-            //     })
-            // }),
+            (self.offsets.rom.battle_pizzazz_init_mov, {
+                Box::new(move |mut core| {
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_bg_mov, {
+                Box::new(move |mut core| {
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_self_mov, {
+                Box::new(move |mut core| {
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_opponent_mov, {
+                Box::new(move |mut core| {
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_silhouette_mov, {
+                Box::new(move |mut core| {
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_final_mov, {
+                Box::new(move |mut core| {
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
         ]
     }
 
