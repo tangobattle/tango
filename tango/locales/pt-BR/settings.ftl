@@ -47,3 +47,5 @@ settings-allow-prerelease-upgrades = Permitir atualizações de pré-lançamento
 settings-show-own-setup = Mostrar sua configuração
 settings-integer-scaling = Redimensionamento Inteiro
 settings-always-show-status-bar = Sempre mostrar a barra de status
+settings-preset-sizes = Preset sizes
+    .format = { $size }x

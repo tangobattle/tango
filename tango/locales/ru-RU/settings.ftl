@@ -47,3 +47,5 @@ settings-allow-prerelease-upgrades = Разрешить обновление п�
 settings-show-own-setup = Показать собственный сетап
 settings-integer-scaling = Целое масштабирование
 settings-always-show-status-bar = Всегда показывать строку состояния
+settings-preset-sizes = Preset sizes
+    .format = { $size }x

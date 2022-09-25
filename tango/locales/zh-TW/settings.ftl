@@ -47,3 +47,5 @@ settings-allow-prerelease-upgrades = 允許預先發布升級
 settings-show-own-setup = 顯示自己配置
 settings-integer-scaling = 整數縮放
 settings-always-show-status-bar = 始終顯示狀態欄
+settings-preset-sizes = 預設尺寸
+    .format = { $size }倍
