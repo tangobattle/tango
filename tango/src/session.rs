@@ -334,6 +334,7 @@ impl Session {
         let replay_is_complete = replay.is_complete;
         let input_pairs = replay.input_pairs.clone();
         let replayer_state = replayer::State::new(
+            (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
             replay.local_player_index,
             input_pairs,
             0,

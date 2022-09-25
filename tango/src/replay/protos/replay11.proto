@@ -23,4 +23,7 @@ message Metadata {
   string link_code = 2;
   Side local_side = 3;
   Side remote_side = 4;
+  uint32 round = 5;
+  uint32 match_type = 6;
+  uint32 match_subtype = 7;
 }

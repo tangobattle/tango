@@ -11,6 +11,7 @@ pub struct InnerState {
     apply_shadow_input: Box<
         dyn FnMut(lockstep::Pair<lockstep::Input, lockstep::PartialInput>) -> anyhow::Result<Vec<u8>> + Sync + Send,
     >,
+    match_type: (u8, u8),
     local_packet: Option<lockstep::Packet>,
     commit_tick: u32,
     committed_state: Option<battle::CommittedState>,
@@ -37,6 +38,10 @@ impl InnerState {
 
     pub fn commit_tick(&self) -> u32 {
         self.commit_tick
+    }
+
+    pub fn match_type(&self) -> (u8, u8) {
+        self.match_type
     }
 
     pub fn set_round_result(&mut self, result: BattleResult) {
@@ -192,6 +197,7 @@ pub struct Fastforwarder {
     core: mgba::core::Core,
     state: State,
     hooks: &'static (dyn game::Hooks + Send + Sync),
+    match_type: (u8, u8),
     local_player_index: u8,
 }
 
@@ -200,6 +206,7 @@ pub struct State(std::sync::Arc<parking_lot::Mutex<Option<InnerState>>>);
 
 impl State {
     pub fn new(
+        match_type: (u8, u8),
         local_player_index: u8,
         input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
         commit_tick: u32,
@@ -239,6 +246,7 @@ impl State {
                     Ok(ip.remote.packet)
                 }
             }),
+            match_type,
             output_pairs: vec![],
             local_packet,
             commit_tick,
@@ -261,6 +269,7 @@ impl Fastforwarder {
     pub fn new(
         rom: &[u8],
         hooks: &'static (dyn game::Hooks + Send + Sync),
+        match_type: (u8, u8),
         local_player_index: u8,
     ) -> anyhow::Result<Self> {
         let mut core = mgba::core::Core::new_gba("tango")?;
@@ -279,6 +288,7 @@ impl Fastforwarder {
             core,
             state,
             hooks,
+            match_type,
             local_player_index,
         })
     }
@@ -305,6 +315,7 @@ impl Fastforwarder {
             input_pairs: input_pairs.into_iter().collect(),
             output_pairs: vec![],
             apply_shadow_input,
+            match_type: self.match_type,
             local_packet: Some(lockstep::Packet {
                 tick: current_tick,
                 packet: last_local_packet.to_vec(),

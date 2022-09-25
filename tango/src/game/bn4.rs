@@ -4,7 +4,7 @@ mod save;
 
 use crate::{game, patch};
 
-const MATCH_TYPES: &[usize] = &[1, 1];
+const MATCH_TYPES: &[usize] = &[2, 2];
 
 struct EXE4RSImpl;
 pub const EXE4RS: &'static (dyn game::Game + Send + Sync) = &EXE4RSImpl {};

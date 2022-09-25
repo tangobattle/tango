@@ -63,7 +63,13 @@ pub async fn export(
 
     let input_pairs = replay.input_pairs.clone();
 
-    let replayer_state = replayer::State::new(replay.local_player_index, input_pairs, 0, Box::new(|| {}));
+    let replayer_state = replayer::State::new(
+        (replay.metadata.match_type as u8, replay.metadata.match_subtype as u8),
+        replay.local_player_index,
+        input_pairs,
+        0,
+        Box::new(|| {}),
+    );
     replayer_state.lock_inner().set_disable_bgm(settings.disable_bgm);
     let game = game::find_by_family_and_variant(&game_info.rom_family, game_info.rom_variant as u8)
         .ok_or(anyhow::anyhow!("game not found"))?;

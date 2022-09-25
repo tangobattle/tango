@@ -67,5 +67,8 @@ pub fn decode_metadata(raw: &[u8]) -> Result<super::Metadata, std::io::Error> {
             .remote_side
             .map(|side| convert_side(&side))
             .map_or(Ok(None), |v| v.map(Some))?,
+        round: 0,      // Impossible to tell.
+        match_type: 0, // Impossible to tell.
+        match_subtype: 0,
     })
 }

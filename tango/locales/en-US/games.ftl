@@ -41,13 +41,17 @@ game-exe4 = Rockman EXE 4
     .variant-0 = Rockman EXE 4: Tournament Red Sun
     .variant-1 = Rockman EXE 4: Tournament Blue Moon
     .match-type-0-0 = Single
+    .match-type-0-1 = Single (tournament visuals)
     .match-type-1-0 = Triple
+    .match-type-1-1 = Triple (tournament visuals)
 game-bn4 = Mega Man Battle Network 4
     .short = BN4
     .variant-0 = Mega Man Battle Network 4: Red Sun
     .variant-1 = Mega Man Battle Network 4: Blue Moon
     .match-type-0-0 = Single
+    .match-type-0-1 = Single (tournament visuals)
     .match-type-1-0 = Triple
+    .match-type-1-1 = Triple (tournament visuals)
 
 game-exe45 = Rockman EXE 4.5
     .short = EXE4.5

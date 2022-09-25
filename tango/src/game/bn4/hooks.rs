@@ -101,42 +101,6 @@ impl game::Hooks for Hooks {
                     munger.open_comm_menu_from_overworld(core);
                 })
             }),
-            (self.offsets.rom.battle_pizzazz_init_mov, {
-                Box::new(move |mut core| {
-                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
-                    core.gba_mut().cpu_mut().set_gpr(0, v);
-                })
-            }),
-            (self.offsets.rom.battle_pizzazz_bg_mov, {
-                Box::new(move |mut core| {
-                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
-                    core.gba_mut().cpu_mut().set_gpr(1, v);
-                })
-            }),
-            (self.offsets.rom.battle_pizzazz_self_mov, {
-                Box::new(move |mut core| {
-                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
-                    core.gba_mut().cpu_mut().set_gpr(1, v);
-                })
-            }),
-            (self.offsets.rom.battle_pizzazz_opponent_mov, {
-                Box::new(move |mut core| {
-                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
-                    core.gba_mut().cpu_mut().set_gpr(0, v);
-                })
-            }),
-            (self.offsets.rom.battle_pizzazz_silhouette_mov, {
-                Box::new(move |mut core| {
-                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
-                    core.gba_mut().cpu_mut().set_gpr(0, v);
-                })
-            }),
-            (self.offsets.rom.battle_pizzazz_final_mov, {
-                Box::new(move |mut core| {
-                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
-                    core.gba_mut().cpu_mut().set_gpr(1, v);
-                })
-            }),
         ]
     }
 
@@ -147,6 +111,120 @@ impl game::Hooks for Hooks {
         completion_token: session::CompletionToken,
     ) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
+            (self.offsets.rom.battle_pizzazz_init_mov, {
+                let match_ = match_.clone();
+                Box::new(move |mut core| {
+                    let match_ = sync::block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_bg_mov, {
+                let match_ = match_.clone();
+                Box::new(move |mut core| {
+                    let match_ = sync::block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_self_mov, {
+                let match_ = match_.clone();
+                Box::new(move |mut core| {
+                    let match_ = sync::block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_opponent_mov, {
+                let match_ = match_.clone();
+                Box::new(move |mut core| {
+                    let match_ = sync::block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_silhouette_mov, {
+                let match_ = match_.clone();
+                Box::new(move |mut core| {
+                    let match_ = sync::block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_final_mov, {
+                let match_ = match_.clone();
+                Box::new(move |mut core| {
+                    let match_ = sync::block_on(match_.lock());
+                    let match_ = match &*match_ {
+                        Some(match_) => match_,
+                        _ => {
+                            return;
+                        }
+                    };
+
+                    if match_.match_type().1 != 1 {
+                        return;
+                    }
+
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
             (self.offsets.rom.comm_menu_init_ret, {
                 let match_ = match_.clone();
                 let munger = self.munger();
@@ -433,6 +511,66 @@ impl game::Hooks for Hooks {
 
     fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
+            (self.offsets.rom.battle_pizzazz_init_mov, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_bg_mov, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_self_mov, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_opponent_mov, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_silhouette_mov, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_final_mov, {
+                let shadow_state = shadow_state.clone();
+                Box::new(move |mut core| {
+                    if shadow_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
             (self.offsets.rom.comm_menu_init_ret, {
                 let munger = self.munger();
                 let shadow_state = shadow_state.clone();
@@ -698,6 +836,72 @@ impl game::Hooks for Hooks {
 
     fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
         vec![
+            (self.offsets.rom.battle_pizzazz_init_mov, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if replayer_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_bg_mov, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if replayer_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_self_mov, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if replayer_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_opponent_mov, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if replayer_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_silhouette_mov, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if replayer_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(0) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(0, v);
+                })
+            }),
+            (self.offsets.rom.battle_pizzazz_final_mov, {
+                let replayer_state = replayer_state.clone();
+                Box::new(move |mut core| {
+                    let replayer_state = replayer_state.lock_inner();
+                    if replayer_state.match_type().1 != 1 {
+                        return;
+                    }
+                    let v = core.as_ref().gba().cpu().gpr(1) | 0x20;
+                    core.gba_mut().cpu_mut().set_gpr(1, v);
+                })
+            }),
             (self.offsets.rom.battle_start_play_music_call, {
                 let replayer_state = replayer_state.clone();
                 Box::new(move |mut core| {
