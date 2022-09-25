@@ -344,9 +344,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
                             winit::event::WindowEvent::CloseRequested => {
                                 control_flow.set_exit();
                             }
-                            winit::event::WindowEvent::Resized(size) => {
-                                next_config.window_size = size.to_logical(gfx_backend.window().scale_factor());
-                            }
                             _ => {}
                         }
                     }
@@ -427,6 +424,11 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
 
             _ => {}
         }
+
+        next_config.window_size = gfx_backend
+            .window()
+            .inner_size()
+            .to_logical(gfx_backend.window().scale_factor());
 
         if next_config != old_config {
             last_config_dirty_time = Some(std::time::Instant::now());

@@ -311,6 +311,31 @@ fn show_graphics_tab(ui: &mut egui::Ui, config: &mut config::Config, window: &wi
             );
             ui.end_row();
 
+            ui.strong(i18n::LOCALES.lookup(&config.language, "settings-preset-sizes").unwrap());
+
+            ui.horizontal(|ui| {
+                for i in 1..=6 {
+                    if ui
+                        .button(
+                            i18n::LOCALES
+                                .lookup_with_args(
+                                    &config.language,
+                                    "settings-preset-sizes.format",
+                                    &std::collections::HashMap::from([("size", format!("{}", i).into())]),
+                                )
+                                .unwrap(),
+                        )
+                        .clicked()
+                    {
+                        window.set_inner_size(winit::dpi::LogicalSize::new(
+                            mgba::gba::SCREEN_WIDTH * i,
+                            mgba::gba::SCREEN_HEIGHT * i,
+                        ));
+                    }
+                }
+            });
+            ui.end_row();
+
             ui.strong(
                 i18n::LOCALES
                     .lookup(&config.language, "settings-integer-scaling")
