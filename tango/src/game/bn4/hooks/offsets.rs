@@ -116,6 +116,11 @@ pub(super) struct ROMOffsets {
     pub(super) match_end_ret: u32,
 
     pub(super) battle_start_play_music_call: u32,
+    // pub(super) battle_pizzazz_init_mov: u32,
+    // pub(super) battle_pizzazz_bg_mov: u32,
+    // pub(super) battle_pizzazz_self_mov: u32,
+    // pub(super) battle_pizzazz_opponent_mov: u32,
+    // pub(super) battle_pizzazz_final_mov: u32,
 }
 
 #[rustfmt::skip]
@@ -164,6 +169,12 @@ pub static B4BE_00: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006b16,
         match_end_ret:                          0x08004f68,
         battle_start_play_music_call:           0x080074bc,
+        // battle_pizzazz_init_mov:                0x08007490,
+        // battle_pizzazz_bg_mov:                  0x080074ce,
+        // battle_pizzazz_self_mov:                0x08014674,
+        // battle_pizzazz_opponent_mov:            0x0800fcbc,
+        // battle_pizzazz_final_mov:               0x080074e8,
+
     },
 };
 
@@ -194,6 +205,11 @@ pub static B4WE_00: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006b16,
         match_end_ret:                          0x08004f68,
         battle_start_play_music_call:           0x080074bc,
+        // battle_pizzazz_init_mov:                0,
+        // battle_pizzazz_bg_mov:                  0,
+        // battle_pizzazz_self_mov:                0,
+        // battle_pizzazz_opponent_mov:            0,
+        // battle_pizzazz_final_mov:               0,
     },
 };
 
@@ -224,6 +240,11 @@ pub static B4BJ_00: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006af2,
         match_end_ret:                          0x08004f48,
         battle_start_play_music_call:           0x08007490,
+        // battle_pizzazz_init_mov:                0,
+        // battle_pizzazz_bg_mov:                  0,
+        // battle_pizzazz_self_mov:                0,
+        // battle_pizzazz_opponent_mov:            0,
+        // battle_pizzazz_final_mov:               0,
     },
 };
 
@@ -254,6 +275,11 @@ pub static B4WJ_00: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006af2,
         match_end_ret:                          0x08004f48,
         battle_start_play_music_call:           0x08007490,
+        // battle_pizzazz_init_mov:                0,
+        // battle_pizzazz_bg_mov:                  0,
+        // battle_pizzazz_self_mov:                0,
+        // battle_pizzazz_opponent_mov:            0,
+        // battle_pizzazz_final_mov:               0,
     },
 };
 
@@ -284,6 +310,11 @@ pub static B4BJ_01: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006af6,
         match_end_ret:                          0x08004f48,
         battle_start_play_music_call:           0x08007494,
+        // battle_pizzazz_init_mov:                0,
+        // battle_pizzazz_bg_mov:                  0,
+        // battle_pizzazz_self_mov:                0,
+        // battle_pizzazz_opponent_mov:            0,
+        // battle_pizzazz_final_mov:               0,
     },
 };
 
@@ -314,5 +345,10 @@ pub static B4WJ_01: Offsets = Offsets {
         in_battle_call_handle_link_cable_input: 0x08006af6,
         match_end_ret:                          0x08004f48,
         battle_start_play_music_call:           0x08007494,
+        // battle_pizzazz_init_mov:                0,
+        // battle_pizzazz_bg_mov:                  0,
+        // battle_pizzazz_self_mov:                0,
+        // battle_pizzazz_opponent_mov:            0,
+        // battle_pizzazz_final_mov:               0,
     },
 };
