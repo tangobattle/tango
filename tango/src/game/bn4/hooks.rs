@@ -59,15 +59,20 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
-fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
-    let battle_settings = match match_type {
-        0 => rng.gen_range(0..0x44u8),
-        1 => rng.gen_range(0..0x60u8),
-        2 => rng.gen_range(0..0x44u8),
-        _ => 0u8,
-    };
-
-    (battle_settings, rng.gen_range(0..0x18u8))
+fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: (u8, u8)) -> (u8, u8) {
+    (
+        match match_type.0 {
+            0 => rng.gen_range(0..0x44),
+            1 => rng.gen_range(0..0x60),
+            2 => rng.gen_range(0..0x44),
+            _ => 0,
+        },
+        match match_type.1 {
+            0 => rng.gen_range(0..0x18),
+            1 => rng.gen_range(0x18..0x1b),
+            _ => 0,
+        },
+    )
 }
 
 impl game::Hooks for Hooks {
@@ -240,7 +245,7 @@ impl game::Hooks for Hooks {
                     let mut rng = sync::block_on(match_.lock_rng());
 
                     let (battle_settings, background) =
-                        random_battle_settings_and_background(&mut *rng, match_.match_type().0);
+                        random_battle_settings_and_background(&mut *rng, match_.match_type());
 
                     munger.start_battle_from_comm_menu(core, match_.match_type().0, battle_settings, background);
                 })
@@ -578,7 +583,7 @@ impl game::Hooks for Hooks {
                     let mut rng = shadow_state.lock_rng();
 
                     let (battle_settings, background) =
-                        random_battle_settings_and_background(&mut *rng, shadow_state.match_type().0);
+                        random_battle_settings_and_background(&mut *rng, shadow_state.match_type());
 
                     munger.start_battle_from_comm_menu(core, shadow_state.match_type().0, battle_settings, background);
                 })
