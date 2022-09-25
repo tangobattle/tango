@@ -47,3 +47,5 @@ settings-allow-prerelease-upgrades = Cho phép cập nhật các phiên bản th
 settings-show-own-setup = Show own setup
 settings-integer-scaling = Integer scaling
 settings-always-show-status-bar = Always show status bar
+settings-preset-sizes = Preset sizes
+    .format = { $size }x
