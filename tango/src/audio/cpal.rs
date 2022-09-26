@@ -1,7 +1,7 @@
 use crate::audio;
 use cpal::traits::DeviceTrait;
 
-pub fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
+fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
     supported_configs.sort_by_key(|x| {
         // Find the config that's closest to 2 channel 48000 Hz as we can.
@@ -19,14 +19,14 @@ pub fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::Suppo
 
 fn open_stream(
     device: &cpal::Device,
-    supported_config: &cpal::SupportedStreamConfig,
+    config: &cpal::StreamConfig,
+    sample_format: cpal::SampleFormat,
     mut stream: impl audio::Stream + Send + 'static,
 ) -> Result<cpal::Stream, anyhow::Error> {
     let error_callback = |err| log::error!("audio stream error: {}", err);
-    let config = supported_config.config();
     let channels = config.channels;
 
-    Ok(match supported_config.sample_format() {
+    Ok(match sample_format {
         cpal::SampleFormat::U16 => device.build_output_stream(
             &config,
             {
@@ -41,6 +41,11 @@ fn open_stream(
                     realign_samples(&mut buf, channels);
                     for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = (std::num::Wrapping(*y as u16) + std::num::Wrapping(32768)).0;
+                    }
+                    if data.len() > n * channels as usize {
+                        for x in data[n * channels as usize..].iter_mut() {
+                            *x = 32768;
+                        }
                     }
                 }
             },
@@ -61,6 +66,11 @@ fn open_stream(
                     for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = *y;
                     }
+                    if data.len() > n * channels as usize {
+                        for x in data[n * channels as usize..].iter_mut() {
+                            *x = 0;
+                        }
+                    }
                 }
             },
             error_callback,
@@ -79,6 +89,11 @@ fn open_stream(
                     realign_samples(&mut buf, channels);
                     for (x, y) in data.iter_mut().zip(buf[..n * channels as usize].iter()) {
                         *x = *y as f32 / 32768.0;
+                    }
+                    if data.len() > n * channels as usize {
+                        for x in data[n * channels as usize..].iter_mut() {
+                            *x = 0.0;
+                        }
                     }
                 }
             },
@@ -130,10 +145,13 @@ impl Backend {
             "cpal supported audio output configs: {:?}",
             audio_device.supported_output_configs()?.collect::<Vec<_>>()
         );
-        let audio_supported_config = audio::cpal::get_supported_config(&audio_device)?;
+        let audio_supported_config = get_supported_config(&audio_device)?;
         log::info!("selected audio config: {:?}", audio_supported_config);
 
-        let stream = open_stream(&audio_device, &audio_supported_config, stream)?;
+        let mut config = audio_supported_config.config();
+        config.buffer_size = cpal::BufferSize::Fixed(512 * config.channels as u32);
+
+        let stream = open_stream(&audio_device, &config, audio_supported_config.sample_format(), stream)?;
         stream.play()?;
 
         Ok(Self {
