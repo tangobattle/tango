@@ -28,7 +28,7 @@ impl Backend {
                 &sdl2::audio::AudioSpecDesired {
                     freq: Some(48000),
                     channels: Some(audio::NUM_CHANNELS as u8),
-                    samples: Some(512),
+                    samples: Some(audio::SAMPLES as u16),
                 },
                 |_| StreamWrapper(Box::new(stream)),
             )

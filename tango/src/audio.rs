@@ -3,6 +3,8 @@ pub mod cpal;
 #[cfg(feature = "sdl2-audio")]
 pub mod sdl2;
 
+const SAMPLES: usize = 512;
+
 pub trait Stream {
     fn fill(&mut self, buf: &mut [[i16; NUM_CHANNELS]]) -> usize;
 }

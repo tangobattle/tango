@@ -149,7 +149,7 @@ impl Backend {
         log::info!("selected audio config: {:?}", audio_supported_config);
 
         let mut config = audio_supported_config.config();
-        config.buffer_size = cpal::BufferSize::Fixed(512 * config.channels as u32);
+        config.buffer_size = cpal::BufferSize::Fixed(audio::SAMPLES as u32 * config.channels as u32);
 
         let stream = open_stream(&audio_device, &config, audio_supported_config.sample_format(), stream)?;
         stream.play()?;
