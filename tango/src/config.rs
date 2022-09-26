@@ -23,6 +23,17 @@ impl Default for GraphicsBackend {
     }
 }
 
+fn ok_or_default<'a, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: serde::Deserialize<'a> + Default,
+    D: serde::Deserializer<'a>,
+{
+    Ok(match serde::Deserialize::deserialize(deserializer) {
+        Ok(v) => T::deserialize::<serde_json::Value>(v).unwrap_or_default(),
+        Err(_) => T::default(),
+    })
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum AudioBackend {
     #[cfg(feature = "sdl2-audio")]
@@ -94,7 +105,9 @@ pub struct Config {
     pub full_screen: bool,
     pub streamer_mode: bool,
     pub show_own_setup: bool,
+    #[serde(deserialize_with = "ok_or_default")]
     pub graphics_backend: GraphicsBackend,
+    #[serde(deserialize_with = "ok_or_default")]
     pub audio_backend: AudioBackend,
     pub volume: i32,
     pub ui_scale_percent: u32,
