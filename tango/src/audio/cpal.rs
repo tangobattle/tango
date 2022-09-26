@@ -146,7 +146,6 @@ impl Backend {
             audio_device.supported_output_configs()?.collect::<Vec<_>>()
         );
         let audio_supported_config = get_supported_config(&audio_device)?;
-        log::info!("selected audio config: {:?}", audio_supported_config);
 
         let mut config = audio_supported_config.config();
         match audio_supported_config.buffer_size() {
@@ -162,6 +161,7 @@ impl Backend {
                 log::warn!("supported buffer size is unknown, using default (it might be bad)")
             }
         }
+        log::info!("selected audio config: {:?}", config);
 
         let stream = open_stream(&audio_device, &config, audio_supported_config.sample_format(), stream)?;
         stream.play()?;
