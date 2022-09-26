@@ -212,8 +212,6 @@ fn child_main(config: config::Config) -> Result<(), anyhow::Error> {
     let _audio_backend: Box<dyn audio::Backend> = match config.read().audio_backend {
         #[cfg(feature = "cpal")]
         config::AudioBackend::Cpal => Box::new(audio::cpal::Backend::new(audio_binder.clone())?),
-        #[cfg(feature = "sdl2-audio")]
-        config::AudioBackend::Sdl2 => Box::new(audio::sdl2::Backend::new(&sdl, audio_binder.clone())?),
     };
 
     let fps_counter = std::sync::Arc::new(parking_lot::Mutex::new(stats::Counter::new(30)));

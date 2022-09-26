@@ -7,7 +7,6 @@ default-run = "tango"
 
 [features]
 default = ["glutin", "wgpu", "cpal"]
-sdl2-audio = []
 glutin = ["dep:glutin", "dep:egui_glow"]
 cpal = ["dep:cpal"]
 wgpu = ["dep:wgpu", "dep:egui-wgpu"]
