@@ -107,7 +107,6 @@ pub fn show(
     session: &session::Session,
     video_filter: &str,
     integer_scaling: bool,
-    volume: i32,
     max_scale: u32,
     show_own_setup: bool,
     crashstates_path: &std::path::Path,

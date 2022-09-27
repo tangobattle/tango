@@ -395,7 +395,6 @@ pub fn show(
             session,
             &config.video_filter,
             config.integer_scaling,
-            config.volume,
             config.max_scale,
             config.show_own_setup,
             &config.crashstates_path(),
