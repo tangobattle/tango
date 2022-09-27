@@ -882,6 +882,10 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
                 ui.label("German (Germany): ");
 
                 ui.hyperlink_to("KenDeep", "https://twitch.tv/kendeep_fgc");
+
+                ui.label(", ");
+
+                ui.hyperlink_to("ChinaTV", "https://twitter.com/ChinaTV9");
             });
         });
 
