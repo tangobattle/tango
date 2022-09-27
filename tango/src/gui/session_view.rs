@@ -120,9 +120,6 @@ pub fn show(
     state: &mut State,
     discord_client: &mut discord::Client,
 ) {
-    session.set_master_volume(volume);
-    session.set_joyflags(input_mapping.to_mgba_keys(input_state));
-
     if input_mapping.menu.iter().any(|c| c.is_pressed(input_state)) {
         *show_escape_window = if show_escape_window.is_some() {
             None
