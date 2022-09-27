@@ -1,4 +1,4 @@
-copy-to-clipboard = In Zwischenablage kopieren
+copy-to-clipboard = In die Zwischenablage kopieren
     .copied = Kopiert!
 window-title = Tango
     .running = Tango (läuft)
