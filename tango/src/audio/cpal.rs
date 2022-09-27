@@ -148,19 +148,7 @@ impl Backend {
         let audio_supported_config = get_supported_config(&audio_device)?;
 
         let mut config = audio_supported_config.config();
-        match audio_supported_config.buffer_size() {
-            cpal::SupportedBufferSize::Range { min, .. } => {
-                config.buffer_size = cpal::BufferSize::Fixed(
-                    std::cmp::max(
-                        audio::SAMPLES as u32,
-                        (*min + config.channels as u32 - 1) / config.channels as u32,
-                    ) * config.channels as u32,
-                );
-            }
-            cpal::SupportedBufferSize::Unknown => {
-                log::warn!("supported buffer size is unknown, using default (it might be bad)")
-            }
-        }
+        config.buffer_size = cpal::BufferSize::Fixed(audio::SAMPLES as u32 * config.channels as u32);
         log::info!("selected audio config: {:?}", config);
 
         let stream = open_stream(&audio_device, &config, audio_supported_config.sample_format(), stream)?;
