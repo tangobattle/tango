@@ -15,19 +15,17 @@ use crate::config;
 const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct Release {
+    pub version: semver::Version,
+    pub info: String,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     UpToDate,
-    UpdateAvailable {
-        version: semver::Version,
-    },
-    Downloading {
-        version: semver::Version,
-        current: u64,
-        total: u64,
-    },
-    ReadyToUpdate {
-        version: semver::Version,
-    },
+    UpdateAvailable { release: Release },
+    Downloading { release: Release, current: u64, total: u64 },
+    ReadyToUpdate { release: Release },
 }
 
 #[derive(serde::Deserialize)]
@@ -40,6 +38,7 @@ struct GithubReleaseAssetInfo {
 struct GithubReleaseInfo {
     tag_name: String,
     assets: Vec<GithubReleaseAssetInfo>,
+    body: String,
 }
 
 pub struct Updater {
@@ -239,7 +238,11 @@ impl Updater {
                                 }
                             }
                             Status::ReadyToUpdate {
-                                version: update_version,
+                                release:
+                                    Release {
+                                        version: update_version,
+                                        ..
+                                    },
                             } => {
                                 if version <= *update_version {
                                     log::info!("latest version already downloaded: {} vs {}", version, update_version);
@@ -251,8 +254,13 @@ impl Updater {
                             }
                         }
 
-                        *status.lock().await = Status::UpdateAvailable {
+                        let release = Release {
                             version: version.clone(),
+                            info: info.body.clone(),
+                        };
+
+                        *status.lock().await = Status::UpdateAvailable {
+                            release: release.clone(),
                         };
                         if let Some(cb) = ui_callback.lock().await.as_ref() {
                             cb();
@@ -282,7 +290,7 @@ impl Updater {
                                 output_file.write_all(&chunk).await?;
                                 current += chunk.len() as u64;
                                 *status.lock().await = Status::Downloading {
-                                    version: version.clone(),
+                                    release: release.clone(),
                                     current,
                                     total,
                                 };
@@ -293,7 +301,7 @@ impl Updater {
                         }
                         std::fs::rename(incomplete_output_path, path.join(PENDING_FILENAME))?;
 
-                        *status.lock().await = Status::ReadyToUpdate { version };
+                        *status.lock().await = Status::ReadyToUpdate { release };
                         if let Some(cb) = ui_callback.lock().await.as_ref() {
                             cb();
                         }
@@ -312,13 +320,13 @@ impl Updater {
                 }
 
                 let mut status = status.lock().await;
-                if let Status::Downloading { version, .. } = &*status {
+                if let Status::Downloading { release, .. } = &*status {
                     // Do cleanup.
                     let _ = std::fs::remove_file(&path.join(IN_PROGRESS_FILENAME));
                     let _ = std::fs::remove_file(&path.join(INCOMPLETE_FILENAME));
                     let _ = std::fs::remove_file(&path.join(PENDING_FILENAME));
                     *status = Status::UpdateAvailable {
-                        version: version.clone(),
+                        release: release.clone(),
                     };
                     if let Some(cb) = ui_callback.lock().await.as_ref() {
                         cb();

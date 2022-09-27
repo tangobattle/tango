@@ -13,6 +13,13 @@ pub fn show(
         .open(open)
         .show(ctx, |ui| {
             let status = sync::block_on(updater.status());
+            let release = match &status {
+                updater::Status::UpToDate => None,
+                updater::Status::UpdateAvailable { release } => Some(release),
+                updater::Status::Downloading { release, .. } => Some(release),
+                updater::Status::ReadyToUpdate { release } => Some(release),
+            };
+
             egui::Grid::new("updater-window-grid").num_columns(2).show(ui, |ui| {
                 ui.strong(i18n::LOCALES.lookup(language, "updater-current-version").unwrap());
                 ui.label(format!("v{}", updater.current_version()));
@@ -21,23 +28,26 @@ pub fn show(
                 ui.strong(i18n::LOCALES.lookup(language, "updater-latest-version").unwrap());
                 ui.label(format!(
                     "v{}",
-                    match &status {
-                        updater::Status::UpToDate => {
-                            updater.current_version()
-                        }
-                        updater::Status::UpdateAvailable { version } => {
-                            version
-                        }
-                        updater::Status::Downloading { version, .. } => {
-                            version
-                        }
-                        updater::Status::ReadyToUpdate { version } => {
-                            version
-                        }
-                    }
+                    release
+                        .as_ref()
+                        .map(|r| &r.version)
+                        .unwrap_or_else(|| updater.current_version())
                 ));
                 ui.end_row();
             });
+
+            if let Some(release) = release.as_ref() {
+                ui.set_min_height(100.0);
+                ui.group(|ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .max_height(400.0)
+                        .id_source("updater-version-info")
+                        .show(ui, |ui| {
+                            ui.monospace(&release.info);
+                        });
+                });
+            }
 
             match &status {
                 updater::Status::Downloading { current, total, .. } => {
