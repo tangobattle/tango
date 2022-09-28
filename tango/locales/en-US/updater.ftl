@@ -6,4 +6,4 @@ updater-current-version = Current version
 updater-latest-version = Latest version
 updater-update-now = Update now!
 updater-loading = Loading release information...
-updater-no-info = No release information found for this release.
+updater-no-info = No information was found for this release.

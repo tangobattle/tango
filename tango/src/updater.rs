@@ -235,12 +235,13 @@ impl Updater {
                         };
 
                         // If this version is older or the one we already know about, skip.
-                        match &*status.lock().await {
+                        let mut status_guard = status.lock().await;
+                        match &*status_guard {
                             Status::UpToDate { .. } => {
                                 if version <= current_version {
                                     log::info!("current version is already latest: {} vs {}", version, current_version);
 
-                                    *status.lock().await = Status::UpToDate {
+                                    *status_guard = Status::UpToDate {
                                         release: Some(if version == current_version {
                                             Some(release.clone())
                                         } else {
