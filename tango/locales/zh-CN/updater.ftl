@@ -5,3 +5,5 @@ updater-ready-to-update = 更新准备好了！
 updater-current-version = 当前版
 updater-latest-version = 最新版
 updater-update-now = 立即更新！
+updater-loading = Loading release information...
+updater-no-info = No information was found for this release.
