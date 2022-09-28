@@ -5,5 +5,5 @@ updater-ready-to-update = 更新の準備完了！
 updater-current-version = 現バージョン
 updater-latest-version = 最新バージョン
 updater-update-now = 今すぐ更新！
-updater-loading = Loading release information...
-updater-no-info = No information was found for this release.
+updater-loading = 更新情報を読み込んでいます...
+updater-no-info = このバージョンの情報が見つかりませんでした。
