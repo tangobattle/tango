@@ -93,6 +93,7 @@ pub struct State {
 impl State {
     pub fn new(
         ctx: &egui::Context,
+        show_updater: bool,
         config: std::sync::Arc<parking_lot::RwLock<config::Config>>,
         discord_client: discord::Client,
         audio_binder: audio::LateBinder,
@@ -167,7 +168,7 @@ impl State {
             roms_scanner,
             saves_scanner,
             patches_scanner,
-            main_view: main_view::State::new(),
+            main_view: main_view::State::new(show_updater),
             audio_binder,
             fps_counter,
             emu_tps_counter,

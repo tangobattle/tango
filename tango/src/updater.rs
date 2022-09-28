@@ -22,7 +22,7 @@ pub struct Release {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
-    UpToDate,
+    UpToDate { release: Option<Option<Release>> },
     UpdateAvailable { release: Release },
     Downloading { release: Release, current: u64, total: u64 },
     ReadyToUpdate { release: Release },
@@ -129,7 +129,7 @@ impl Updater {
             current_version: current_version.clone(),
             path: path.to_owned(),
             ui_callback: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-            status: std::sync::Arc::new(tokio::sync::Mutex::new(Status::UpToDate)),
+            status: std::sync::Arc::new(tokio::sync::Mutex::new(Status::UpToDate { release: None })),
             cancellation_token: None,
         }
     }
@@ -229,11 +229,25 @@ impl Updater {
                             return Ok(());
                         };
 
+                        let release = Release {
+                            version: version.clone(),
+                            info: info.body.clone(),
+                        };
+
                         // If this version is older or the one we already know about, skip.
                         match &*status.lock().await {
-                            Status::UpToDate => {
+                            Status::UpToDate { .. } => {
                                 if version <= current_version {
                                     log::info!("current version is already latest: {} vs {}", version, current_version);
+
+                                    *status.lock().await = Status::UpToDate {
+                                        release: Some(if version == current_version {
+                                            Some(release.clone())
+                                        } else {
+                                            None
+                                        }),
+                                    };
+
                                     return Ok(());
                                 }
                             }
@@ -253,11 +267,6 @@ impl Updater {
                                 // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
                             }
                         }
-
-                        let release = Release {
-                            version: version.clone(),
-                            info: info.body.clone(),
-                        };
 
                         *status.lock().await = Status::UpdateAvailable {
                             release: release.clone(),

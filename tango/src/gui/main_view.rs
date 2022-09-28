@@ -12,14 +12,14 @@ pub struct State {
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(show_updater: bool) -> Self {
         Self {
             tab: Tab::Play,
             patch_selection: None,
             play_pane: gui::play_pane::State::new(),
             patches_pane: gui::patches_pane::State::new(),
             replays_pane: gui::replays_pane::State::new(),
-            show_updater: false,
+            show_updater,
         }
     }
 }
@@ -67,36 +67,39 @@ pub fn show(
                         };
                     }
                     let updater_status = sync::block_on(updater.status());
-                    if updater_status != updater::Status::UpToDate {
-                        if ui
-                            .selectable_label(state.show_updater, "🆕")
-                            .on_hover_text_at_pointer(match updater_status {
-                                updater::Status::ReadyToUpdate { .. } => i18n::LOCALES
-                                    .lookup(&config.language, "updater-ready-to-update")
-                                    .unwrap(),
-                                updater::Status::UpdateAvailable { .. } => i18n::LOCALES
-                                    .lookup(&config.language, "updater-update-available")
-                                    .unwrap(),
-                                updater::Status::Downloading { current, total, .. } => i18n::LOCALES
-                                    .lookup_with_args(
-                                        &config.language,
-                                        "updater-downloading",
-                                        &std::collections::HashMap::from([(
-                                            "percent",
-                                            if total > 0 {
-                                                format!("{}", current * 100 / total)
-                                            } else {
-                                                "?".to_string()
-                                            }
-                                            .into(),
-                                        )]),
-                                    )
-                                    .unwrap(),
-                                updater::Status::UpToDate => unreachable!(),
-                            })
-                            .clicked()
-                        {
-                            state.show_updater = !state.show_updater;
+                    match updater_status {
+                        updater::Status::UpToDate { .. } => {}
+                        _ => {
+                            if ui
+                                .selectable_label(state.show_updater, "🆕")
+                                .on_hover_text_at_pointer(match updater_status {
+                                    updater::Status::ReadyToUpdate { .. } => i18n::LOCALES
+                                        .lookup(&config.language, "updater-ready-to-update")
+                                        .unwrap(),
+                                    updater::Status::UpdateAvailable { .. } => i18n::LOCALES
+                                        .lookup(&config.language, "updater-update-available")
+                                        .unwrap(),
+                                    updater::Status::Downloading { current, total, .. } => i18n::LOCALES
+                                        .lookup_with_args(
+                                            &config.language,
+                                            "updater-downloading",
+                                            &std::collections::HashMap::from([(
+                                                "percent",
+                                                if total > 0 {
+                                                    format!("{}", current * 100 / total)
+                                                } else {
+                                                    "?".to_string()
+                                                }
+                                                .into(),
+                                            )]),
+                                        )
+                                        .unwrap(),
+                                    updater::Status::UpToDate { .. } => unreachable!(),
+                                })
+                                .clicked()
+                            {
+                                state.show_updater = !state.show_updater;
+                            }
                         }
                     }
                     ui.horizontal(|ui| {

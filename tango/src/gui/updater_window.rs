@@ -13,11 +13,14 @@ pub fn show(
         .open(open)
         .show(ctx, |ui| {
             let status = sync::block_on(updater.status());
-            let release = match &status {
-                updater::Status::UpToDate => None,
-                updater::Status::UpdateAvailable { release } => Some(release),
-                updater::Status::Downloading { release, .. } => Some(release),
-                updater::Status::ReadyToUpdate { release } => Some(release),
+            let (is_loading, release) = match &status {
+                updater::Status::UpToDate { release } => match release.as_ref() {
+                    Some(r) => (false, r.as_ref()),
+                    None => (true, None),
+                },
+                updater::Status::UpdateAvailable { release } => (false, Some(release)),
+                updater::Status::Downloading { release, .. } => (false, Some(release)),
+                updater::Status::ReadyToUpdate { release } => (false, Some(release)),
             };
 
             egui::Grid::new("updater-window-grid").num_columns(2).show(ui, |ui| {
@@ -36,18 +39,27 @@ pub fn show(
                 ui.end_row();
             });
 
-            if let Some(release) = release.as_ref() {
-                ui.set_min_height(100.0);
-                ui.group(|ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .max_height(400.0)
-                        .id_source("updater-version-info")
-                        .show(ui, |ui| {
-                            ui.monospace(&release.info);
-                        });
-                });
-            }
+            ui.set_min_height(100.0);
+            ui.group(|ui| {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .max_height(400.0)
+                    .id_source("updater-version-info")
+                    .show(ui, |ui| {
+                        if is_loading {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label(i18n::LOCALES.lookup(language, "updater-loading").unwrap());
+                            });
+                        } else {
+                            if let Some(release) = release.as_ref() {
+                                ui.monospace(&release.info);
+                            } else {
+                                ui.label(i18n::LOCALES.lookup(language, "updater-no-info").unwrap());
+                            }
+                        }
+                    });
+            });
 
             match &status {
                 updater::Status::Downloading { current, total, .. } => {
