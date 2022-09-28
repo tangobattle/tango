@@ -62,7 +62,7 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
     let mut req = url.to_string().into_client_request()?;
     req.headers_mut().append(
         "User-Agent",
-        tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("tango/{}", version::VERSION))?,
+        tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!("tango/{}", version::current()))?,
     );
     let (mut signaling_stream, _) = tokio_tungstenite::connect_async(req).await?;
 

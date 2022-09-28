@@ -47,7 +47,7 @@ fn main() -> Result<(), anyhow::Error> {
         .filter(Some("mgba"), log::LevelFilter::Info)
         .init();
 
-    log::info!("welcome to tango {}!", version::VERSION);
+    log::info!("welcome to tango {}!", version::current());
 
     let config = config::Config::load_or_create()?;
     config.ensure_dirs()?;

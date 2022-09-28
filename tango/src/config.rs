@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use fluent_templates::Loader;
 use serde::Deserialize;
 
-use crate::{i18n, input};
+use crate::{i18n, input, version};
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum GraphicsBackend {
@@ -116,10 +116,13 @@ pub struct Config {
     pub integer_scaling: bool,
     pub always_show_status_bar: bool,
     pub window_size: winit::dpi::LogicalSize<u32>,
+    pub last_version: semver::Version,
 }
 
 impl Default for Config {
     fn default() -> Self {
+        let version = version::current();
+
         Self {
             nickname: None,
             theme: Theme::System,
@@ -143,15 +146,12 @@ impl Default for Config {
             audio_backend: Default::default(),
             volume: 0x100,
             ui_scale_percent: 100,
-            allow_prerelease_upgrades: !env!("CARGO_PKG_VERSION")
-                .parse::<semver::Version>()
-                .unwrap()
-                .pre
-                .is_empty(),
+            allow_prerelease_upgrades: !version.pre.is_empty(),
             enable_updater: true,
             integer_scaling: false,
             always_show_status_bar: false,
             window_size: winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3),
+            last_version: version,
         }
     }
 }

@@ -10,7 +10,7 @@
 use futures_util::StreamExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::config;
+use crate::{config, version};
 
 const GITHUB_RELEASES_URL: &str = "https://api.github.com/repos/tangobattle/tango/releases";
 
@@ -123,7 +123,7 @@ fn do_update(path: &std::path::Path) {
 
 impl Updater {
     pub fn new(path: &std::path::Path, config: std::sync::Arc<parking_lot::RwLock<config::Config>>) -> Updater {
-        let current_version: semver::Version = env!("CARGO_PKG_VERSION").parse().unwrap();
+        let current_version = version::current();
         Self {
             config,
             current_version: current_version.clone(),
