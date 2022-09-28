@@ -225,37 +225,47 @@ impl Updater {
                         };
 
                         // If this version is older or the one we already know about, skip.
-                        let mut status_guard = status.lock().await;
-                        match &*status_guard {
-                            Status::UpToDate { .. } => {
-                                if version <= current_version {
-                                    log::info!("current version is already latest: {} vs {}", version, current_version);
+                        {
+                            let mut status_guard = status.lock().await;
+                            match &*status_guard {
+                                Status::UpToDate { .. } => {
+                                    if version <= current_version {
+                                        log::info!(
+                                            "current version is already latest: {} vs {}",
+                                            version,
+                                            current_version
+                                        );
 
-                                    *status_guard = Status::UpToDate {
-                                        release: Some(if version == current_version {
-                                            Some(release.clone())
-                                        } else {
-                                            None
-                                        }),
-                                    };
+                                        *status_guard = Status::UpToDate {
+                                            release: Some(if version == current_version {
+                                                Some(release.clone())
+                                            } else {
+                                                None
+                                            }),
+                                        };
 
-                                    return Ok(());
+                                        return Ok(());
+                                    }
                                 }
-                            }
-                            Status::ReadyToUpdate {
-                                release:
-                                    Release {
-                                        version: update_version,
-                                        ..
-                                    },
-                            } => {
-                                if version <= *update_version {
-                                    log::info!("latest version already downloaded: {} vs {}", version, update_version);
-                                    return Ok(());
+                                Status::ReadyToUpdate {
+                                    release:
+                                        Release {
+                                            version: update_version,
+                                            ..
+                                        },
+                                } => {
+                                    if version <= *update_version {
+                                        log::info!(
+                                            "latest version already downloaded: {} vs {}",
+                                            version,
+                                            update_version
+                                        );
+                                        return Ok(());
+                                    }
                                 }
-                            }
-                            _ => {
-                                // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
+                                _ => {
+                                    // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
+                                }
                             }
                         }
 
