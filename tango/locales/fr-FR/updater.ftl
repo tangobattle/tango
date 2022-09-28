@@ -5,3 +5,5 @@ updater-ready-to-update = Prêt à mettre à jour !
 updater-current-version = Version actuelle
 updater-latest-version = Dernière version
 updater-update-now = Mettre à jour maintenant !
+updater-loading = Loading release information...
+updater-no-info = No information was found for this release.
