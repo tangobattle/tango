@@ -219,16 +219,6 @@ impl Updater {
                             anyhow::bail!("no releases found at all");
                         };
 
-                        // Find the appropriate release.
-                        let asset = if let Some(asset) =
-                            info.assets.into_iter().find(|asset| is_target_installer(&asset.name))
-                        {
-                            asset
-                        } else {
-                            log::info!("version {} has no assets right now", version);
-                            return Ok(());
-                        };
-
                         let release = Release {
                             version: version.clone(),
                             info: info.body.clone(),
@@ -268,6 +258,16 @@ impl Updater {
                                 // If we are in update available or downloading, nothing interesting is happening, so let's just clobber it.
                             }
                         }
+
+                        // Find the appropriate release.
+                        let asset = if let Some(asset) =
+                            info.assets.into_iter().find(|asset| is_target_installer(&asset.name))
+                        {
+                            asset
+                        } else {
+                            log::info!("version {} has no assets right now", version);
+                            return Ok(());
+                        };
 
                         *status.lock().await = Status::UpdateAvailable {
                             release: release.clone(),
