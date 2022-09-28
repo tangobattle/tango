@@ -5,3 +5,5 @@ updater-ready-to-update = Sẵn sàng cập nhật!
 updater-current-version = Phiên bản hiện tại
 updater-latest-version = Phiên bản mới nhất
 updater-update-now = Cập nhật ngay!
+updater-loading = Loading release information...
+updater-no-info = No information was found for this release.
