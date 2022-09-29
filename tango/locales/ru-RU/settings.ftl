@@ -49,3 +49,7 @@ settings-integer-scaling = Целое масштабирование
 settings-always-show-status-bar = Всегда показывать строку состояния
 settings-preset-sizes = Поставленный размер
     .format = { $size }x
+settings-use-relay = Use relay
+    .auto = Automatic
+    .always = Always
+    .never = Never
