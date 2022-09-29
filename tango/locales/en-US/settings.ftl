@@ -53,3 +53,7 @@ settings-integer-scaling = Integer scaling
 settings-always-show-status-bar = Always show status bar
 settings-preset-sizes = Preset sizes
     .format = {$size}x
+settings-use-relay = Use relay
+    .auto = Automatic
+    .always = Always
+    .never = Never

@@ -524,6 +524,34 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
             );
             ui.end_row();
 
+            {
+                ui.strong(i18n::LOCALES.lookup(&config.language, "settings-use-relay").unwrap());
+
+                let auto_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-use-relay.auto")
+                    .unwrap();
+                let always_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-use-relay.always")
+                    .unwrap();
+                let never_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-use-relay.never")
+                    .unwrap();
+
+                egui::ComboBox::from_id_source("settings-window-general-use-relay")
+                    .width(200.0)
+                    .selected_text(match config.use_relay {
+                        None => auto_label.clone(),
+                        Some(true) => always_label.clone(),
+                        Some(false) => never_label.clone(),
+                    })
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut config.use_relay, None, &auto_label);
+                        ui.selectable_value(&mut config.use_relay, Some(true), &always_label);
+                        ui.selectable_value(&mut config.use_relay, Some(false), &never_label);
+                    });
+                ui.end_row();
+            }
+
             ui.strong(
                 i18n::LOCALES
                     .lookup(&config.language, "settings-replaycollector-endpoint")
