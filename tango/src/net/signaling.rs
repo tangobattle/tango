@@ -6,7 +6,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use crate::version;
 
 async fn create_data_channel(
-    ice_servers: &[String],
+    rtc_config: datachannel_wrapper::RtcConfig,
 ) -> Result<
     (
         datachannel_wrapper::DataChannel,
@@ -15,8 +15,7 @@ async fn create_data_channel(
     ),
     anyhow::Error,
 > {
-    let (mut peer_conn, mut event_rx) =
-        datachannel_wrapper::PeerConnection::new(datachannel_wrapper::RtcConfig::new(ice_servers))?;
+    let (mut peer_conn, mut event_rx) = datachannel_wrapper::PeerConnection::new(rtc_config)?;
 
     let dc = peer_conn.create_data_channel(
         "tango",
@@ -51,7 +50,7 @@ pub struct PendingConnection {
     peer_conn: datachannel_wrapper::PeerConnection,
 }
 
-pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, anyhow::Error> {
+pub async fn open(addr: &str, session_id: &str, use_relay: Option<bool>) -> Result<PendingConnection, anyhow::Error> {
     let mut url = url::Url::parse(addr)?;
     url.set_query(Some(
         &url::form_urlencoded::Serializer::new(String::new())
@@ -86,7 +85,7 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
 
     log::info!("hello received from signaling stream: {:?}", hello);
 
-    let (dc, event_rx, peer_conn) = create_data_channel(
+    let mut rtc_config = datachannel_wrapper::RtcConfig::new(
         &hello
             .ice_servers
             .into_iter()
@@ -103,6 +102,10 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
 
                         let proto = &url[..colon_idx];
                         let rest = &url[colon_idx + 1..];
+
+                        if (proto == "turn" || proto == "turns") && use_relay == Some(false) {
+                            return vec![];
+                        }
 
                         // libdatachannel doesn't support TURN over TCP: in fact, it explodes!
                         if url.chars().skip_while(|c| *c != '?').collect::<String>() == "?transport=tcp" {
@@ -124,8 +127,11 @@ pub async fn open(addr: &str, session_id: &str) -> Result<PendingConnection, any
                     .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>(),
-    )
-    .await?;
+    );
+    if use_relay == Some(true) {
+        rtc_config.ice_transport_policy = datachannel_wrapper::TransportPolicy::Relay;
+    }
+    let (dc, event_rx, peer_conn) = create_data_channel(rtc_config).await?;
 
     signaling_stream
         .send(tokio_tungstenite::tungstenite::Message::Binary(

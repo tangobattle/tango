@@ -1,6 +1,6 @@
 pub use datachannel::{
     sdp, ConnectionState, DataChannelInit, GatheringState, IceCandidate, Reliability, RtcConfig, SdpType,
-    SessionDescription, SignalingState,
+    SessionDescription, SignalingState, TransportPolicy,
 };
 
 pub struct PeerConnection {

@@ -117,6 +117,7 @@ pub struct Config {
     pub always_show_status_bar: bool,
     pub window_size: winit::dpi::LogicalSize<u32>,
     pub last_version: semver::Version,
+    pub use_relay: Option<bool>,
 }
 
 impl Default for Config {
@@ -152,6 +153,7 @@ impl Default for Config {
             always_show_status_bar: false,
             window_size: winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3),
             last_version: version,
+            use_relay: None,
         }
     }
 }

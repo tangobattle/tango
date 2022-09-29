@@ -621,11 +621,16 @@ async fn run_connection_task(
                         });
                     const OPEN_TIMEOUT: std::time::Duration =
                         std::time::Duration::from_secs(30);
+                    let use_relay = {
+                        let config = config.read();
+                        config.use_relay
+                    };
                     let pending_conn = tokio::time::timeout(
                         OPEN_TIMEOUT,
                         net::signaling::open(
                             &matchmaking_addr,
                             &link_code,
+                            use_relay,
                         ),
                     )
                     .await.map_err(|e| std::io::Error::new(std::io::ErrorKind::TimedOut, e))??;
