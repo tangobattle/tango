@@ -49,3 +49,7 @@ settings-integer-scaling = 整數縮放
 settings-always-show-status-bar = 始終顯示狀態欄
 settings-preset-sizes = 預設尺寸
     .format = { $size }倍
+settings-use-relay = Use relay
+    .auto = Automatic
+    .always = Always
+    .never = Never
