@@ -49,3 +49,7 @@ settings-integer-scaling = Tăng tỉ lệ nguyên
 settings-always-show-status-bar = Luôn hiện thanh trạng thái
 settings-preset-sizes = Kích cỡ có sẵn
     .format = { $size }x
+settings-use-relay = Use relay
+    .auto = Automatic
+    .always = Always
+    .never = Never
