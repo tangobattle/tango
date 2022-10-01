@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use crate::{battle, patch, replayer, rom, save, session, shadow};
+use crate::{battle, replayer, rom, save, session, shadow};
 
 mod bn1;
 mod bn2;
@@ -160,7 +160,7 @@ where
         &self,
         _rom: &[u8],
         _wram: &[u8],
-        _overrides: &patch::ROMOverrides,
+        _overrides: &rom::Overrides,
     ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error> {
         anyhow::bail!("not implemented");
     }

@@ -1,4 +1,4 @@
-use crate::{audio, battle, config, game, net, patch, replay, replayer, rom, save, stats, video};
+use crate::{audio, battle, config, game, net, replay, replayer, rom, save, stats, video};
 use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
@@ -62,12 +62,12 @@ impl Session {
         local_settings: net::protocol::Settings,
         local_game: &'static (dyn game::Game + Send + Sync),
         local_patch: Option<(String, semver::Version)>,
-        local_patch_overrides: &patch::ROMOverrides,
+        local_patch_overrides: &rom::Overrides,
         local_rom: &[u8],
         local_save: &[u8],
         remote_settings: net::protocol::Settings,
         remote_game: &'static (dyn game::Game + Send + Sync),
-        remote_patch_overrides: &patch::ROMOverrides,
+        remote_patch_overrides: &rom::Overrides,
         remote_rom: &[u8],
         remote_save: &[u8],
         emu_tps_counter: Arc<Mutex<stats::Counter>>,

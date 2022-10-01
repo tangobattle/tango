@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::{patch, rom};
+use crate::rom;
 
 pub struct Offsets {
     chip_data: u32,
@@ -98,7 +98,7 @@ const EREADER_COMMAND: u8 = 0xff;
 
 pub struct Assets {
     offsets: &'static Offsets,
-    overrides: patch::ROMOverrides,
+    overrides: rom::Overrides,
     text_parse_options: rom::text::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
@@ -419,7 +419,7 @@ impl Assets {
         rom: Vec<u8>,
         wram: Vec<u8>,
         default_charset: &[&str],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
 

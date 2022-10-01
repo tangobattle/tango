@@ -2,7 +2,7 @@ mod hooks;
 mod rom;
 mod save;
 
-use crate::{game, patch};
+use crate::game;
 
 const MATCH_TYPES: &[usize] = &[4, 1];
 
@@ -59,7 +59,7 @@ impl game::Game for EXE3WImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::A6BJ_01,
@@ -127,7 +127,7 @@ impl game::Game for EXE3BImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::A3XJ_01,
@@ -195,7 +195,7 @@ impl game::Game for BN3WImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::A6BE_00,
@@ -263,7 +263,7 @@ impl game::Game for BN3BImpl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::A3XE_00,

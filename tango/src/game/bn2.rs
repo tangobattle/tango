@@ -2,7 +2,7 @@ mod hooks;
 mod rom;
 mod save;
 
-use crate::{game, patch};
+use crate::game;
 
 const MATCH_TYPES: &[usize] = &[1];
 
@@ -46,7 +46,7 @@ impl game::Game for EXE2Impl {
         &self,
         rom: &[u8],
         save: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::AE2J_00,
@@ -101,7 +101,7 @@ impl game::Game for BN2Impl {
         &self,
         rom: &[u8],
         save: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::AE2E_00,

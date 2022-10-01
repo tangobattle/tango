@@ -2,7 +2,7 @@ mod hooks;
 mod rom;
 mod save;
 
-use crate::{game, patch};
+use crate::game;
 
 const MATCH_TYPES: &[usize] = &[1, 1];
 
@@ -46,7 +46,7 @@ impl game::Game for EXE45Impl {
         &self,
         rom: &[u8],
         wram: &[u8],
-        overrides: &patch::ROMOverrides,
+        overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
             &rom::BR4J_00,
