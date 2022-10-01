@@ -64,10 +64,9 @@ pub fn read_metadata(r: &mut impl std::io::Read) -> Result<(usize, Metadata), st
 impl Replay {
     #[allow(dead_code)]
     pub fn into_remote(mut self) -> Self {
-        let remote_state = self.remote_state.take();
-        self.remote_state = self.local_state;
-        self.local_state = remote_state;
+        std::mem::swap(&mut self.metadata.local_side, &mut self.metadata.remote_side);
         self.local_player_index = 1 - self.local_player_index;
+        std::mem::swap(&mut self.local_state, &mut self.remote_state);
         for ip in self.input_pairs.iter_mut() {
             std::mem::swap(&mut ip.local, &mut ip.remote);
         }
