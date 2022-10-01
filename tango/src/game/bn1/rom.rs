@@ -96,8 +96,6 @@ impl<'a> rom::Chip for Chip<'a> {
                     .collect::<Vec<_>>()
                 })
                 .collect::<String>()
-                .replace("-\n", "-")
-                .replace("\n", " ")
         } else {
             "???".to_string()
         }

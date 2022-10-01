@@ -215,8 +215,6 @@ impl<'a> rom::Chip for Chip<'a> {
                     .collect::<Vec<_>>()
                 })
                 .collect::<String>()
-                .replace("-\n", "-")
-                .replace("\n", " ")
         } else {
             "???".to_string()
         }
@@ -359,8 +357,6 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                     .collect::<Vec<_>>()
                 })
                 .collect::<String>()
-                .replace("-\n", "-")
-                .replace("\n", " ")
         } else {
             "???".to_string()
         }
@@ -493,8 +489,6 @@ impl<'a> rom::Modcard56 for Modcard56<'a> {
         } else {
             "???".to_string()
         }
-        .replace("-\n", "-")
-        .replace("\n", " ")
     }
 
     fn mb(&self) -> u8 {
