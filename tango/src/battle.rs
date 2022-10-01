@@ -286,7 +286,7 @@ impl Match {
                 local_player_index + 1
             )
             .chars()
-            .filter(|c| "/\\?%*:|\"<>. ".chars().any(|c2| c2 != *c))
+            .filter(|c| "/\\?%*:|\"<>. ".chars().all(|c2| c2 != *c))
             .collect::<String>(),
         );
         log::info!("open replay: {}", replay_filename.display());
