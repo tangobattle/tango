@@ -89,11 +89,12 @@ pub fn show(
                                         strip.cell(|ui| {
                                             ui.label(egui::RichText::new(format!("{:08x}", offset)).monospace().weak());
                                         });
-                                        let bs = audio_guard.core_mut().raw_read_range::<16>(offset as u32, -1);
+                                        let mut buf = [0u8; 0x10];
+                                        audio_guard.core_mut().raw_read_range(offset as u32, -1, &mut buf[..]);
                                         strip.cell(|ui| {
                                             ui.add(
                                                 egui::TextEdit::singleline(
-                                                    &mut bs
+                                                    &mut buf
                                                         .iter()
                                                         .map(|b| format!("{:02x}", b))
                                                         .collect::<Vec<_>>()
@@ -107,7 +108,7 @@ pub fn show(
 
                                         strip.cell(|ui| {
                                             ui.monospace(
-                                                bs.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
+                                                buf.map(|b| if b >= 32 && b < 127 { b as char } else { '.' })
                                                     .iter()
                                                     .collect::<String>(),
                                             );

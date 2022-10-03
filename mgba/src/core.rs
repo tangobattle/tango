@@ -177,11 +177,15 @@ impl<'a> CoreMutRef<'a> {
     }
 
     pub fn full_rom_name(&mut self) -> [u8; 16] {
-        self.raw_read_range(0x080000a0, -1)
+        let mut buf = [0u8; 16];
+        self.raw_read_range(0x080000a0, -1, &mut buf[..]);
+        buf
     }
 
     pub fn rom_code(&mut self) -> [u8; 4] {
-        self.raw_read_range::<4>(0x080000ac, -1)
+        let mut buf = [0u8; 4];
+        self.raw_read_range(0x080000ac, -1, &mut buf[..]);
+        buf
     }
 
     pub fn rom_revision(&mut self) -> u8 {
@@ -254,15 +258,10 @@ impl<'a> CoreMutRef<'a> {
         unsafe { (*self.ptr).rawRead32.unwrap()(self.ptr, address, segment) as u32 }
     }
 
-    pub fn raw_read_range<const N: usize>(&mut self, address: u32, segment: i32) -> [u8; N] {
-        let mut buf = [0; N];
-        let ptr = buf.as_mut_ptr();
-        for i in 0..N {
-            unsafe {
-                *ptr.add(i) = self.raw_read_8(address + i as u32, segment);
-            }
+    pub fn raw_read_range(&mut self, address: u32, segment: i32, buf: &mut [u8]) {
+        for (i, v) in buf.iter_mut().enumerate() {
+            *v = self.raw_read_8(address + i as u32, segment);
         }
-        buf
     }
 
     pub fn raw_write_8(&mut self, address: u32, segment: i32, v: u8) {

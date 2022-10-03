@@ -64,7 +64,9 @@ impl Munger {
     }
 
     pub(super) fn tx_packet(&self, mut core: mgba::core::CoreMutRef) -> [u8; 0x10] {
-        core.raw_read_range(self.offsets.ewram.tx_packet, -1)
+        let mut buf = [0u8; 0x10];
+        core.raw_read_range(self.offsets.ewram.tx_packet, -1, &mut buf[..]);
+        buf
     }
 
     pub(super) fn set_link_battle_settings_and_background(&self, mut core: mgba::core::CoreMutRef, v: u16) {
