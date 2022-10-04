@@ -53,4 +53,4 @@ settings-use-relay = 使用中繼服務器
     .auto = 自動
     .always = 總是
     .never = 從不
-settings-speed-change = Speed change
+settings-speed-change = 速度變化量
