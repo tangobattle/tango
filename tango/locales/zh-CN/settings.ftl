@@ -53,3 +53,4 @@ settings-use-relay = 使用中继服务器
     .auto = 自动
     .always = 总是
     .never = 从不
+settings-speed-change = Speed change
