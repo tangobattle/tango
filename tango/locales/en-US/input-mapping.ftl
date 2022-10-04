@@ -10,7 +10,7 @@ input-button-l = L
 input-button-r = R
 input-button-start = START
 input-button-select = SELECT
-input-button-speed-up = Speed up
+input-button-speed-change = Speed change
 input-button-menu = Menu
 
 physical-input-button-dpup = DPad ⬆

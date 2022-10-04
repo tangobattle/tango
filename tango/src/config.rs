@@ -118,6 +118,7 @@ pub struct Config {
     pub window_size: winit::dpi::LogicalSize<u32>,
     pub last_version: semver::Version,
     pub use_relay: Option<bool>,
+    pub speed_change_percent: u32,
 }
 
 impl Default for Config {
@@ -154,6 +155,7 @@ impl Default for Config {
             window_size: winit::dpi::LogicalSize::new(mgba::gba::SCREEN_WIDTH * 3, mgba::gba::SCREEN_HEIGHT * 3),
             last_version: version,
             use_relay: None,
+            speed_change_percent: 300,
         }
     }
 }

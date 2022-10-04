@@ -194,6 +194,17 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                 ui.checkbox(&mut config.always_show_status_bar, "");
                 ui.end_row();
             }
+
+            {
+                ui.strong(i18n::LOCALES.lookup(&config.language, "settings-speed-change").unwrap());
+                ui.add(
+                    egui::DragValue::new(&mut config.speed_change_percent)
+                        .clamp_range(10..=1000)
+                        .suffix("%")
+                        .speed(25),
+                );
+                ui.end_row();
+            }
         });
 }
 
@@ -285,7 +296,9 @@ fn show_input_tab(
             add_row("input-button-r", |input_mapping| &mut input_mapping.r);
             add_row("input-button-start", |input_mapping| &mut input_mapping.start);
             add_row("input-button-select", |input_mapping| &mut input_mapping.select);
-            add_row("input-button-speed-up", |input_mapping| &mut input_mapping.speed_up);
+            add_row("input-button-speed-change", |input_mapping| {
+                &mut input_mapping.speed_change
+            });
             add_row("input-button-menu", |input_mapping| &mut input_mapping.menu);
         });
 }

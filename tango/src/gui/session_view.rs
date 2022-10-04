@@ -108,6 +108,7 @@ pub fn show(
     video_filter: &str,
     integer_scaling: bool,
     max_scale: u32,
+    speed_change_factor: f32,
     show_own_setup: bool,
     crashstates_path: &std::path::Path,
     last_mouse_motion_time: &Option<std::time::Instant>,
@@ -163,11 +164,13 @@ pub fn show(
 
     match session.mode() {
         session::Mode::SinglePlayer(_) => {
-            session.set_fps_target(if input_mapping.speed_up.iter().any(|c| c.is_active(&input_state)) {
-                session::EXPECTED_FPS * 3.0
-            } else {
-                session::EXPECTED_FPS
-            });
+            session.set_fps_target(
+                if input_mapping.speed_change.iter().any(|c| c.is_active(&input_state)) {
+                    session::EXPECTED_FPS * speed_change_factor
+                } else {
+                    session::EXPECTED_FPS
+                },
+            );
         }
         session::Mode::Replayer => {
             replay_controls_window::show(ctx, session, language, last_mouse_motion_time);

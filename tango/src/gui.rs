@@ -397,6 +397,7 @@ pub fn show(
             &config.video_filter,
             config.integer_scaling,
             config.max_scale,
+            config.speed_change_percent as f32 / 100.0,
             config.show_own_setup,
             &config.crashstates_path(),
             &state.last_mouse_motion_time,

@@ -110,7 +110,7 @@ pub struct Mapping {
     pub r: Vec<PhysicalInput>,
     pub select: Vec<PhysicalInput>,
     pub start: Vec<PhysicalInput>,
-    pub speed_up: Vec<PhysicalInput>,
+    pub speed_change: Vec<PhysicalInput>,
     pub menu: Vec<PhysicalInput>,
 }
 
@@ -181,7 +181,7 @@ impl Default for Mapping {
                 PhysicalInput::Key(winit::event::VirtualKeyCode::Return),
                 PhysicalInput::Button(sdl2::controller::Button::Start),
             ],
-            speed_up: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::LShift)],
+            speed_change: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::LShift)],
             menu: vec![PhysicalInput::Key(winit::event::VirtualKeyCode::Escape)],
         }
     }
