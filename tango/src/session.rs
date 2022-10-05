@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 use rand::SeedableRng;
 use std::sync::Arc;
 
-pub const EXPECTED_FPS: f32 = 60.0;
+pub const EXPECTED_FPS: f32 = 16777216.0 / 280896.0;
 
 pub struct GameInfo {
     pub game: &'static (dyn game::Game + Send + Sync),
