@@ -53,3 +53,4 @@ settings-use-relay = Use relay
     .auto = Automatic
     .always = Always
     .never = Never
+settings-speed-change = Speed change

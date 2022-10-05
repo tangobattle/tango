@@ -53,3 +53,4 @@ settings-use-relay = リレーを使用
     .auto = 自動
     .always = 常に
     .never = しない
+settings-speed-change = 速度変更量
