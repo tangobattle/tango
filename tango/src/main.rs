@@ -111,6 +111,7 @@ fn main() -> Result<(), anyhow::Error> {
     }
 
     let status = child.wait()?;
+    log::info!("child exited with {:?}", status);
 
     if !status.success() {
         rfd::MessageDialog::new()
