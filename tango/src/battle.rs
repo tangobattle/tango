@@ -675,7 +675,7 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        (self.dtick * session::EXPECTED_FPS as i32) as f32 / self.iq.max_length() as f32
+        self.dtick as f32 * session::EXPECTED_FPS as f32 / self.iq.max_length() as f32
     }
 }
 
@@ -685,6 +685,6 @@ impl Drop for Round {
         self.primary_thread_handle
             .lock_audio()
             .sync_mut()
-            .set_fps_target(session::EXPECTED_FPS as f32);
+            .set_fps_target(session::EXPECTED_FPS);
     }
 }
