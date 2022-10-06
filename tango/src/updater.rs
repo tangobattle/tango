@@ -82,6 +82,20 @@ const PENDING_FILENAME: &str = "pending.AppImage";
 #[cfg(target_os = "linux")]
 const IN_PROGRESS_FILENAME: &str = "in_progress.AppImage";
 
+fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(&dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            std::fs::copy(&entry.path(), &dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 fn do_update(path: &std::path::Path) {
     let bundle = core_foundation::bundle::CFBundle::main_bundle();
@@ -119,18 +133,19 @@ fn do_update(path: &std::path::Path) {
             .unwrap(),
     );
 
+    log::info!("dmg is mounted at {}", mount_point.display());
+
     if let Err(e) = (|| -> Result<(), anyhow::Error> {
         let bundle_path = bundle.path().ok_or(anyhow::anyhow!("no bundle path"))?;
         std::fs::remove_dir_all(&bundle_path)?;
-        fs_extra::dir::copy(
-            mount_point.join("Tango.app"),
-            &bundle_path,
-            &fs_extra::dir::CopyOptions::default(),
-        )?;
+
+        copy_dir_all(&mount_point.join("Tango.app"), &bundle_path)?;
 
         let _ = std::process::Command::new("/usr/bin/hdiutil")
             .arg("detach")
             .arg(&mount_point)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn()
             .unwrap();
 
