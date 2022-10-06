@@ -52,7 +52,7 @@ pub struct Updater {
 
 #[cfg(target_os = "macos")]
 fn is_target_installer(s: &str) -> bool {
-    s.ends_with("-macos.dmg")
+    s.ends_with("-macos.zip")
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
@@ -68,9 +68,9 @@ fn is_target_installer(s: &str) -> bool {
 const INCOMPLETE_FILENAME: &str = "incomplete";
 
 #[cfg(target_os = "macos")]
-const PENDING_FILENAME: &str = "pending.dmg";
+const PENDING_FILENAME: &str = "pending.zip";
 #[cfg(target_os = "macos")]
-const IN_PROGRESS_FILENAME: &str = "in_progress.dmg";
+const IN_PROGRESS_FILENAME: &str = "in_progress.zip";
 
 #[cfg(target_os = "windows")]
 const PENDING_FILENAME: &str = "pending.exe";
@@ -84,9 +84,70 @@ const IN_PROGRESS_FILENAME: &str = "in_progress.AppImage";
 
 #[cfg(target_os = "macos")]
 fn do_update(path: &std::path::Path) {
-    // Semi-automatic update.
-    let mut command = std::process::Command::new("/usr/bin/open");
-    command.arg(path).spawn().unwrap();
+    let bundle = core_foundation::bundle::CFBundle::main_bundle();
+    if bundle.info_dictionary().is_empty() {
+        // Application is not bundled.
+        return;
+    }
+
+    let output = std::process::Command::new("/usr/bin/hdiutil")
+        .arg("attach")
+        .arg("-noverify")
+        .arg("-plist")
+        .arg(path)
+        .output()
+        .unwrap();
+
+    let mount_point = std::path::PathBuf::from(
+        plist::Value::from_reader_xml(&mut output.stdout.as_slice())
+            .unwrap()
+            .as_dictionary()
+            .and_then(|d| d.get("system-entities"))
+            .and_then(|e| e.as_array())
+            .and_then(|a| {
+                a.iter()
+                    .flat_map(|v| {
+                        v.as_dictionary()
+                            .and_then(|d| {
+                                d.get("mount-point")
+                                    .and_then(|mp| mp.as_string().map(|s| s.to_string()))
+                            })
+                            .into_iter()
+                    })
+                    .next()
+            })
+            .unwrap(),
+    );
+
+    if let Err(e) = (|| -> Result<(), anyhow::Error> {
+        let bundle_path = bundle.path().ok_or(anyhow::anyhow!("no bundle path"))?;
+        std::fs::remove_dir_all(&bundle_path)?;
+        fs_extra::dir::copy(
+            mount_point.join("Tango.app"),
+            &bundle_path,
+            &fs_extra::dir::CopyOptions::default(),
+        )?;
+
+        let _ = std::process::Command::new("/usr/bin/hdiutil")
+            .arg("detach")
+            .arg(&mount_point)
+            .spawn()
+            .unwrap();
+
+        std::process::Command::new("/usr/bin/open")
+            .arg(bundle_path)
+            .spawn()
+            .unwrap();
+
+        Ok(())
+    })() {
+        log::error!("failed to update automatically: {:?}", e);
+        // Unable to update automatically, open DMG.
+        std::process::Command::new("/usr/bin/open")
+            .arg(mount_point)
+            .spawn()
+            .unwrap();
+    }
     std::process::exit(0);
 }
 
