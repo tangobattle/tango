@@ -1,0 +1,9 @@
+updater = Update
+updater-downloading = Update downloading ({ $percent }%)...
+updater-update-available = Update available!
+updater-ready-to-update = Ready to update!
+updater-current-version = Current version
+updater-latest-version = Latest version
+updater-update-now = Update now!
+updater-loading = Loading release information...
+updater-no-info = No information was found for this release.
