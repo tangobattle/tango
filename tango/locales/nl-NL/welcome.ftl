@@ -1,0 +1,10 @@
+welcome-heading = Welkom bij Tango!
+welcome-description = Er zijn slechts een paar stappen die je moet voltooien voordat je van dolle speelpret kunt genieten.
+welcome-step-1 = Voeg uw ROM's toe
+welcome-step-1-description = Zorg ervoor dat het onbewerkte, niet gepatchte ROM's zijn.
+welcome-step-2 = Voeg uw saves toe
+welcome-step-2-description = Zorg ervoor dat ze compatibel zijn met de spellen die je in de ROM map hebt geplaatst. Het moeten .sav of .sa1 bestanden zijn.
+welcome-step-3 = Stel uw gebruikersnaam in
+welcome-step-3-description = U kunt dit op elk moment veranderen.
+welcome-open-folder = Map openen
+welcome-continue = Ik ben klaar!
