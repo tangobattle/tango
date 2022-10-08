@@ -1,2 +1,2 @@
-escape-settings = Settings
-escape-end-game = End game
+escape-settings = Instellingen
+escape-end-game = Beëindig spel
