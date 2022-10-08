@@ -15,3 +15,5 @@ replays-export-confirm-error = Droga!
 replay-viewer-pause = Pausar
 replay-viewer-step = Etapa
 replay-viewer-speed = Velocidade de reprodução
+replay-viewer-speed-up = Speed up
+replay-viewer-slow-down = Slow down
