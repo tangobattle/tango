@@ -1,10 +1,10 @@
 crash =
-    Oops, Tango has encountered an error and has crashed!
+    Oepsie woepsie! Tango is een fout tegengekomen en is gecrasht!
     
-    When reporting this crash, please include the following log file:
+    Bij het rapporteren van deze crash, gaarne het volgende logboekbestand toe te voegen:
     
     { $path }
 crash-no-log =
-    Oops, Tango has encountered an error and has crashed!
+    Oepsie woepsie! Tango is stukkie wukkie!
     
     { $error }
