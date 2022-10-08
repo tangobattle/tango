@@ -15,3 +15,5 @@ replays-export-confirm-error = 哎呀！
 replay-viewer-pause = 暫停
 replay-viewer-step = 幀步進
 replay-viewer-speed = 速度
+replay-viewer-speed-up = 加速
+replay-viewer-slow-down = 減速

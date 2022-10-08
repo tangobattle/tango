@@ -15,3 +15,5 @@ replays-export-confirm-error = Черт!
 replay-viewer-pause = Пауза
 replay-viewer-step = Этап
 replay-viewer-speed = Скорость
+replay-viewer-speed-up = Speed up
+replay-viewer-slow-down = Slow down

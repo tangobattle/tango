@@ -15,3 +15,5 @@ replays-export-confirm-error = Đm!
 replay-viewer-pause = Tạm dừng
 replay-viewer-step = Tua
 replay-viewer-speed = Tốc độ
+replay-viewer-speed-up = Speed up
+replay-viewer-slow-down = Slow down

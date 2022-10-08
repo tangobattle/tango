@@ -15,3 +15,5 @@ replays-export-confirm-error = Potverdriedubbeltjes!
 replay-viewer-pause = Pauzeren
 replay-viewer-step = Stap
 replay-viewer-speed = Afspeelsnelheid
+replay-viewer-speed-up = Speed up
+replay-viewer-slow-down = Slow down

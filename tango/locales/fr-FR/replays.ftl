@@ -15,3 +15,5 @@ replays-export-confirm-error = Mince !
 replay-viewer-pause = Pause
 replay-viewer-step = Étape
 replay-viewer-speed = Vitesse
+replay-viewer-speed-up = Speed up
+replay-viewer-slow-down = Slow down

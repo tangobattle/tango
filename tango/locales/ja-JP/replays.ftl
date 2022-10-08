@@ -15,3 +15,5 @@ replays-export-confirm-error = やべっ！
 replay-viewer-pause = ポーズ
 replay-viewer-step = ステップ
 replay-viewer-speed = 速度
+replay-viewer-speed-up = 加速
+replay-viewer-slow-down = 減速
