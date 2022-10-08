@@ -1,8 +1,8 @@
 patches = Patches
-patches-open-folder = Open folder
-patches-update = Update
-patches-details-authors = Authors
-patches-details-license = License
-    .all-rights-reserved = All rights reserved
+patches-open-folder = Map openen
+patches-update = Bijwerken
+patches-details-authors = Auteurs
+patches-details-license = Licentie
+    .all-rights-reserved = Alle rechten voorbehouden
 patches-details-source = Website
-patches-details-games = Supported games
+patches-details-games = Ondersteunde spellen
