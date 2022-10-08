@@ -42,6 +42,10 @@ pub fn show(ui: &mut egui::Ui, font_families: &gui::FontFamilies, language: &mut
             unic_langid::langid!("ru-RU"),
             egui::RichText::new("Русский (Россия)").family(font_families.latn.egui.clone()),
         ),
+        (
+            unic_langid::langid!("nl-NL"),
+            egui::RichText::new("Nederlands (Nederland)").family(font_families.latn.egui.clone()),
+        ),
     ];
 
     egui::ComboBox::from_id_source("settings-window-general-language")

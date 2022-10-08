@@ -963,6 +963,17 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
             });
         });
 
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            ui.label(" • ");
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label("Dutch (Netherlands): ");
+
+                ui.hyperlink_to("Virillion", "https://twitter.com/Virillion");
+            });
+        });
+
         ui.heading("Art");
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
