@@ -47,7 +47,8 @@ pub fn show(
                 {
                     speed = std::cmp::max_by(speed - 0.25, 0.25, |x, y| x.partial_cmp(y).unwrap());
                 }
-                ui.add(egui::Slider::new(&mut speed, 0.25..=10.0).step_by(0.25));
+                ui.add(egui::Slider::new(&mut speed, 0.25..=10.0).step_by(0.25))
+                    .on_hover_text(i18n::LOCALES.lookup(language, "replay-viewer-speed").unwrap());
                 if ui
                     .button("🐇")
                     .on_hover_text(i18n::LOCALES.lookup(language, "replay-viewer-speed-up").unwrap())
