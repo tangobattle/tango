@@ -1,4 +1,4 @@
-discord-presence-looking = Looking for match
-discord-presence-in-single-player = In single player
-discord-presence-in-lobby = In lobby
-discord-presence-in-progress = Match in progress
+discord-presence-looking = Op zoek naar een spel
+discord-presence-in-single-player = In de singleplayer
+discord-presence-in-lobby = In de lobby
+discord-presence-in-progress = Spel gaande
