@@ -14,4 +14,4 @@ replays-export-confirm-success = Jeej!
 replays-export-confirm-error = Potverdriedubbeltjes!
 replay-viewer-pause = Pauzeren
 replay-viewer-step = Stap
-replay-viewer-speed = Speed
+replay-viewer-speed = Afspeelsnelheid
