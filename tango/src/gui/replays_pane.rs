@@ -64,7 +64,13 @@ impl State {
 
                         replays.push((path.to_path_buf(), num_inputs > 0, metadata));
                     }
-                    replays.sort_by_key(|(_, _, metadata)| std::cmp::Reverse(metadata.ts));
+                    replays.sort_by_key(|(_, _, metadata)| {
+                        (
+                            std::cmp::Reverse(metadata.ts),
+                            metadata.link_code.clone(),
+                            metadata.round,
+                        )
+                    });
                     Some(replays)
                 });
                 egui_ctx.request_repaint();
