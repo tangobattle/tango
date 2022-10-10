@@ -271,9 +271,10 @@ impl Match {
             BattleResult::Loss => 1,
         };
         log::info!("starting round: local_player_index = {}", local_player_index);
-        let replay_filename = self.replays_path.join(
+        let replay_filename = self.replays_path.join(format!(
+            "{}.tangoreplay",
             format!(
-                "{}-{}-{}-vs-{}-round{}-p{}.tangoreplay",
+                "{}-{}-{}-vs-{}-round{}-p{}",
                 time::OffsetDateTime::from(std::time::SystemTime::now())
                     .format(time::macros::format_description!(
                         "[year padding:zero][month padding:zero repr:numerical][day padding:zero][hour padding:zero][minute padding:zero][second padding:zero]"
@@ -287,8 +288,8 @@ impl Match {
             )
             .chars()
             .filter(|c| "/\\?%*:|\"<>. ".chars().all(|c2| c2 != *c))
-            .collect::<String>(),
-        );
+            .collect::<String>()
+        ));
         log::info!("open replay: {}", replay_filename.display());
 
         let replay_file = std::fs::File::create(&replay_filename)?;
