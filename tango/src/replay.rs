@@ -28,8 +28,8 @@ pub struct Replay {
     pub is_complete: bool,
     pub metadata: Metadata,
     pub local_player_index: u8,
-    pub local_state: Option<mgba::state::State>,
-    pub remote_state: Option<mgba::state::State>,
+    pub local_state: mgba::state::State,
+    pub remote_state: mgba::state::State,
     pub input_pairs: Vec<lockstep::Pair<lockstep::Input, lockstep::Input>>,
 }
 
@@ -84,19 +84,11 @@ impl Replay {
 
         let mut local_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut local_state)?;
-        let local_state = if !local_state.is_empty() {
-            Some(mgba::state::State::from_slice(&local_state))
-        } else {
-            None
-        };
+        let local_state = mgba::state::State::from_slice(&local_state);
 
         let mut remote_state = vec![0u8; zr.read_u32::<byteorder::LittleEndian>()? as usize];
         zr.read_exact(&mut remote_state)?;
-        let remote_state = if !remote_state.is_empty() {
-            Some(mgba::state::State::from_slice(&remote_state))
-        } else {
-            None
-        };
+        let remote_state = mgba::state::State::from_slice(&remote_state);
 
         let mut input_pairs = vec![];
 

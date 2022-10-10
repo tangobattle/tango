@@ -362,7 +362,7 @@ impl Session {
 
         let local_state = replay.local_state.clone();
         thread.handle().run_on_core(move |mut core| {
-            core.load_state(local_state.as_ref().unwrap()).expect("load state");
+            core.load_state(&local_state).expect("load state");
         });
         thread.handle().unpause();
 

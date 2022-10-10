@@ -1,5 +1,7 @@
 #![windows_subsystem = "windows"]
 
+use clap::Parser;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -19,6 +21,7 @@ mod patch;
 mod randomcode;
 mod replay;
 mod replayer;
+mod replaytool;
 mod rom;
 mod save;
 mod scanner;
@@ -36,12 +39,28 @@ use fluent_templates::Loader;
 
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 
+#[derive(clap::Parser)]
+struct Args {
+    replay_path: Option<std::path::PathBuf>,
+
+    #[command(subcommand)]
+    replaytool_command: Option<replaytool::Command>,
+}
+
 enum UserEvent {
     RequestRepaint,
 }
 
 fn main() -> Result<(), anyhow::Error> {
     std::env::set_var("RUST_BACKTRACE", "1");
+
+    let config = config::Config::load_or_create()?;
+    config.ensure_dirs()?;
+
+    let args = Args::parse();
+    if let (Some(path), Some(command)) = (args.replay_path, args.replaytool_command) {
+        return replaytool::main(config, path, command);
+    }
 
     env_logger::Builder::from_default_env()
         .filter(Some("tango"), log::LevelFilter::Info)
@@ -50,9 +69,6 @@ fn main() -> Result<(), anyhow::Error> {
         .init();
 
     log::info!("welcome to tango {}!", version::current());
-
-    let config = config::Config::load_or_create()?;
-    config.ensure_dirs()?;
 
     if std::env::var(TANGO_CHILD_ENV_VAR).unwrap_or_default() == "1" {
         return child_main(config);

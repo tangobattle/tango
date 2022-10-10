@@ -218,13 +218,7 @@ pub fn show(
                                 }
                             };
 
-                            let save_state = if let Some(save_state) = replay.local_state.as_ref() {
-                                save_state
-                            } else {
-                                continue;
-                            };
-
-                            let save = match game.save_from_wram(save_state.wram()) {
+                            let save = match game.save_from_wram(replay.local_state.wram()) {
                                 Ok(save) => save,
                                 Err(e) => {
                                     log::error!("failed to load replay {}: {:?}", path.display(), e);
@@ -285,7 +279,7 @@ pub fn show(
 
                             let assets = match game.load_rom_assets(
                                 &rom,
-                                save_state.wram(),
+                                replay.local_state.wram(),
                                 &patch
                                     .as_ref()
                                     .map(|(_, _, metadata)| metadata.rom_overrides.clone())

@@ -56,11 +56,6 @@ pub async fn export(
         .and_then(|side| side.game_info.as_ref())
         .ok_or(anyhow::anyhow!("missing game info"))?;
 
-    let local_state = replay
-        .local_state
-        .as_ref()
-        .ok_or(anyhow::anyhow!("missing local state"))?;
-
     let input_pairs = replay.input_pairs.clone();
 
     let replayer_state = replayer::State::new(
@@ -82,7 +77,7 @@ pub async fn export(
         traps.extend(hooks.replayer_traps(replayer_state.clone()));
         core.set_traps(traps);
     }
-    core.as_mut().load_state(&local_state)?;
+    core.as_mut().load_state(&replay.local_state)?;
 
     #[cfg(windows)]
     const CREATE_NO_WINDOW: u32 = 0x08000000;
