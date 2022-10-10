@@ -15,7 +15,7 @@ struct Selection {
 }
 
 pub struct State {
-    replays_scanner: scanner::Scanner<std::collections::BTreeMap<std::path::PathBuf, (bool, replay::Metadata)>>,
+    replays_scanner: scanner::Scanner<Vec<(std::path::PathBuf, bool, replay::Metadata)>>,
     selection: Option<Selection>,
 }
 
@@ -34,7 +34,7 @@ impl State {
             let egui_ctx = ctx.clone();
             move || {
                 replays_scanner.rescan(move || {
-                    let mut replays = std::collections::BTreeMap::new();
+                    let mut replays = vec![];
                     for entry in walkdir::WalkDir::new(&replays_path) {
                         let entry = match entry {
                             Ok(entry) => entry,
@@ -62,8 +62,9 @@ impl State {
                             }
                         };
 
-                        replays.insert(path.to_path_buf(), (num_inputs > 0, metadata));
+                        replays.push((path.to_path_buf(), num_inputs > 0, metadata));
                     }
+                    replays.sort_by_key(|(_, _, metadata)| std::cmp::Reverse(metadata.ts));
                     Some(replays)
                 });
                 egui_ctx.request_repaint();
@@ -105,7 +106,7 @@ pub fn show(
 
                 let replays = state.replays_scanner.read();
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
-                    for (path, (_is_complete, metadata)) in replays.iter().rev() {
+                    for (path, _, metadata) in replays.iter() {
                         let ts = if let Some(ts) =
                             std::time::UNIX_EPOCH.checked_add(std::time::Duration::from_millis(metadata.ts))
                         {
