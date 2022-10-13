@@ -114,7 +114,7 @@ pub fn show<'a>(
                                 "{}\t{}\t",
                                 info.map(|info| info.as_ref().name())
                                     .unwrap_or_else(|| "???".to_string()),
-                                chips_view.chip_codes()[chip.code] as char
+                                chips_view.chip_code(chip.code)
                             ));
                         } else {
                             buf.push_str("???");
@@ -290,7 +290,7 @@ pub fn show<'a>(
                                                     ),
                                                 );
                                                 layout_job.append(
-                                                    &format!(" {}", chips_view.chip_codes()[chip.code] as char),
+                                                    &format!(" {}", chips_view.chip_code(chip.code)),
                                                     0.0,
                                                     egui::TextFormat::simple(
                                                         ui.style()
