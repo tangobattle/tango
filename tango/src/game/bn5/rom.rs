@@ -567,7 +567,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_chips(&self) -> usize {
-        411
+        423
     }
 
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
