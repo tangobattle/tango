@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::{game, scanner};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub enum ChipClass {
     Standard,
     Mega,
@@ -48,7 +48,7 @@ pub trait Modcard4 {
     fn bug(&self) -> Option<String>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, std::hash::Hash, serde::Serialize)]
 pub enum NavicustPartColor {
     White,
     Yellow,
