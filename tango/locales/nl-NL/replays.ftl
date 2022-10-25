@@ -7,6 +7,7 @@ replays-export-path = Opslaan in
     .change = Wijzigen
 replays-export-scale-factor = Schaalfactor
 replays-export-disable-bgm = Muziek uitschakelen
+replays-export-twosided = Two-sided
 replays-export-success = Uw replaybestand is met succes geëxporteerd.
 replays-export-error = Er is een fout opgetreden tijdens het exporteren van uw replay: { $error }
 replays-export-cancel = Annuleren
