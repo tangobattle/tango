@@ -7,6 +7,7 @@ replays-export-path = Salvar em
     .change = Mudar
 replays-export-scale-factor = Ajuste de escala
 replays-export-disable-bgm = Desativar música
+replays-export-twosided = Two-sided
 replays-export-success = Sua gravação foi exportada com sucesso.
 replays-export-error = Ocorreu um erro ao exportar a sua gravação: { $error }
 replays-export-cancel = Cancelar
