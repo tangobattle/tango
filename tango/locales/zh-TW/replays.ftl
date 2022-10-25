@@ -7,6 +7,7 @@ replays-export-path = 保存到
     .change = 改變
 replays-export-scale-factor = 縮放係數
 replays-export-disable-bgm = 禁用BGM
+replays-export-twosided = Two-sided
 replays-export-success = 您的回放已成功導出。
 replays-export-error = 導出回放時出錯誤：{ $error }
 replays-export-cancel = 取消
