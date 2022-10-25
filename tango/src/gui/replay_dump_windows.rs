@@ -30,6 +30,7 @@ impl State {
                 path,
                 scale: 5,
                 disable_bgm: false,
+                twosided: false,
                 progress: std::sync::Arc::new(parking_lot::Mutex::new((0, 0))),
                 result: std::sync::Arc::new(parking_lot::Mutex::new(None)),
             },
@@ -45,6 +46,7 @@ pub struct ChildState {
     path: std::path::PathBuf,
     scale: usize,
     disable_bgm: bool,
+    twosided: bool,
     progress: std::sync::Arc<parking_lot::Mutex<(usize, usize)>>,
     result: std::sync::Arc<parking_lot::Mutex<Option<anyhow::Result<()>>>>,
 }
@@ -112,6 +114,10 @@ pub fn show(
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-disable-bgm").unwrap());
                             ui.add(egui::Checkbox::new(&mut state.disable_bgm, ""));
+                            ui.end_row();
+
+                            ui.strong(i18n::LOCALES.lookup(language, "replays-export-twosided").unwrap());
+                            ui.add(egui::Checkbox::new(&mut state.twosided, ""));
                             ui.end_row();
                         });
                 });
@@ -192,19 +198,31 @@ pub fn show(
                         let progress = state.progress.clone();
                         let result = state.result.clone();
                         let mut settings = replay::export::Settings::default_with_scale(state.scale);
+                        let twosided = state.twosided;
                         settings.disable_bgm = state.disable_bgm;
                         let cancellation_token = tokio_util::sync::CancellationToken::new();
                         state.cancellation_token = Some(cancellation_token.clone());
                         tokio::task::spawn(async move {
-                            tokio::select! {
-                                r = replay::export::export(&rom, &replay, &path, &settings, |current, total| {
-                                    *progress.lock() = (current, total);
-                                    egui_ctx.request_repaint();
-                                }) => {
-                                    *result.lock() = Some(r);
-                                    egui_ctx.request_repaint();
+                            let cb = |current, total| {
+                                *progress.lock() = (current, total);
+                                egui_ctx.request_repaint();
+                            };
+                            if twosided {
+                                tokio::select! {
+                                    r = replay::export::export_twosided(&rom, &replay, &path, &settings, cb) => {
+                                        *result.lock() = Some(r);
+                                        egui_ctx.request_repaint();
+                                    }
+                                    _ = cancellation_token.cancelled() => { }
                                 }
-                                _ = cancellation_token.cancelled() => { }
+                            } else {
+                                tokio::select! {
+                                    r = replay::export::export(&rom, &replay, &path, &settings, cb) => {
+                                        *result.lock() = Some(r);
+                                        egui_ctx.request_repaint();
+                                    }
+                                    _ = cancellation_token.cancelled() => { }
+                                }
                             }
                         });
                     }

@@ -10,6 +10,7 @@ replays-export-path = Save to
     .change = Change
 replays-export-scale-factor = Scale factor
 replays-export-disable-bgm = Disable music
+replays-export-twosided = Two-sided
 replays-export-success = Your replay was successfully exported.
 replays-export-error = An error occurred while exporting your replay: {$error}
 replays-export-cancel = Cancel
