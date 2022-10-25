@@ -7,6 +7,7 @@ replays-export-path = Сохранить в
     .change = Изменить
 replays-export-scale-factor = Коэффициент масштабирования
 replays-export-disable-bgm = Отключить музыку
+replays-export-twosided = Two-sided
 replays-export-success = Ваш повтор был успешно экспортирован.
 replays-export-error = Произошла ошибка при экспорте вашего риплея: { $error }
 replays-export-cancel = Отмена
