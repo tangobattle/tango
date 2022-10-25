@@ -7,6 +7,7 @@ replays-export-path = 保存場所
     .change = 変更
 replays-export-scale-factor = 倍率
 replays-export-disable-bgm = BGMを無効にする
+replays-export-twosided = Two-sided
 replays-export-success = リプレイのエクスポートに成功しました。
 replays-export-error = リプレイのエクスポート中にエラーが発生しました。{ $error }
 replays-export-cancel = キャンセル
