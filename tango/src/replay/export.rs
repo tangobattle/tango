@@ -288,7 +288,8 @@ pub async fn export(
 }
 
 pub async fn export_twosided(
-    rom: &[u8],
+    local_rom: &[u8],
+    remote_rom: &[u8],
     replay: &replay::Replay,
     output_path: &std::path::Path,
     settings: &Settings,
@@ -297,8 +298,8 @@ pub async fn export_twosided(
     let local_replay = replay.clone();
     let remote_replay = local_replay.clone().into_remote();
 
-    let (mut local_core, local_state) = make_core_and_state(rom, &local_replay, settings)?;
-    let (mut remote_core, remote_state) = make_core_and_state(rom, &remote_replay, settings)?;
+    let (mut local_core, local_state) = make_core_and_state(local_rom, &local_replay, settings)?;
+    let (mut remote_core, remote_state) = make_core_and_state(remote_rom, &remote_replay, settings)?;
 
     let mut emu_vbuf = vec![0u8; (mgba::gba::SCREEN_WIDTH * mgba::gba::SCREEN_HEIGHT * 4) as usize];
 

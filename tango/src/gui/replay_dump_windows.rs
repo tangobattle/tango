@@ -15,7 +15,13 @@ impl State {
         }
     }
 
-    pub fn add_child(&mut self, rom: Vec<u8>, replay: replay::Replay, path: std::path::PathBuf) {
+    pub fn add_child(
+        &mut self,
+        local_rom: Vec<u8>,
+        remote_rom: Option<Vec<u8>>,
+        replay: replay::Replay,
+        path: std::path::PathBuf,
+    ) {
         let id = self.next_id;
         self.next_id += 1;
         let mut output_path = path.clone();
@@ -25,7 +31,8 @@ impl State {
             ChildState {
                 cancellation_token: None,
                 output_path,
-                rom,
+                local_rom,
+                remote_rom,
                 replay,
                 path,
                 scale: 5,
@@ -41,7 +48,8 @@ impl State {
 pub struct ChildState {
     cancellation_token: Option<tokio_util::sync::CancellationToken>,
     output_path: std::path::PathBuf,
-    rom: Vec<u8>,
+    local_rom: Vec<u8>,
+    remote_rom: Option<Vec<u8>>,
     replay: replay::Replay,
     path: std::path::PathBuf,
     scale: usize,
@@ -117,7 +125,7 @@ pub fn show(
                             ui.end_row();
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-twosided").unwrap());
-                            ui.add(egui::Checkbox::new(&mut state.twosided, ""));
+                            ui.add_enabled(state.remote_rom.is_some(), egui::Checkbox::new(&mut state.twosided, ""));
                             ui.end_row();
                         });
                 });
@@ -192,7 +200,8 @@ pub fn show(
                         .clicked()
                     {
                         let egui_ctx = ui.ctx().clone();
-                        let rom = state.rom.clone();
+                        let local_rom = state.local_rom.clone();
+                        let remote_rom = state.remote_rom.clone();
                         let replay = state.replay.clone();
                         let path = state.output_path.clone();
                         let progress = state.progress.clone();
@@ -209,7 +218,7 @@ pub fn show(
                             };
                             if twosided {
                                 tokio::select! {
-                                    r = replay::export::export_twosided(&rom, &replay, &path, &settings, cb) => {
+                                    r = replay::export::export_twosided(&local_rom, remote_rom.as_ref().unwrap(), &replay, &path, &settings, cb) => {
                                         *result.lock() = Some(r);
                                         egui_ctx.request_repaint();
                                     }
@@ -217,7 +226,7 @@ pub fn show(
                                 }
                             } else {
                                 tokio::select! {
-                                    r = replay::export::export(&rom, &replay, &path, &settings, cb) => {
+                                    r = replay::export::export(&local_rom, &replay, &path, &settings, cb) => {
                                         *result.lock() = Some(r);
                                         egui_ctx.request_repaint();
                                     }

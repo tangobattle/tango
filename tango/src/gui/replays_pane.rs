@@ -8,7 +8,8 @@ struct Selection {
     game: &'static (dyn game::Game + Send + Sync),
     replay: replay::Replay,
     save: Box<dyn save::Save + Send + Sync>,
-    rom: Vec<u8>,
+    local_rom: Vec<u8>,
+    remote_rom: Option<Vec<u8>>,
     patch: Option<(String, semver::Version, patch::Version)>,
     assets: Option<Box<dyn rom::Assets + Send + Sync>>,
     save_view: gui::save_view::State,
@@ -133,15 +134,31 @@ pub fn show(
                             continue;
                         };
 
-                        let game_info = if let Some(game_info) = local_side.game_info.as_ref() {
+                        let local_game_info = if let Some(game_info) = local_side.game_info.as_ref() {
                             game_info
                         } else {
                             continue;
                         };
 
-                        let game = if let Some(game) =
-                            game::find_by_family_and_variant(game_info.rom_family.as_str(), game_info.rom_variant as u8)
-                        {
+                        let local_game = if let Some(game) = game::find_by_family_and_variant(
+                            local_game_info.rom_family.as_str(),
+                            local_game_info.rom_variant as u8,
+                        ) {
+                            game
+                        } else {
+                            continue;
+                        };
+
+                        let remote_game_info = if let Some(game_info) = remote_side.game_info.as_ref() {
+                            game_info
+                        } else {
+                            continue;
+                        };
+
+                        let remote_game = if let Some(game) = game::find_by_family_and_variant(
+                            remote_game_info.rom_family.as_str(),
+                            remote_game_info.rom_variant as u8,
+                        ) {
                             game
                         } else {
                             continue;
@@ -184,7 +201,7 @@ pub fn show(
                                             i18n::LOCALES
                                                 .lookup(
                                                     language,
-                                                    &format!("game-{}.short", game.family_and_variant().0),
+                                                    &format!("game-{}.short", local_game.family_and_variant().0),
                                                 )
                                                 .unwrap()
                                                 .into(),
@@ -218,7 +235,7 @@ pub fn show(
                                 }
                             };
 
-                            let save = match game.save_from_wram(replay.local_state.wram()) {
+                            let save = match local_game.save_from_wram(replay.local_state.wram()) {
                                 Ok(save) => save,
                                 Err(e) => {
                                     log::error!("failed to load replay {}: {:?}", path.display(), e);
@@ -226,13 +243,13 @@ pub fn show(
                                 }
                             };
 
-                            let mut rom = if let Some(rom) = roms.get(&game) {
+                            let mut local_rom = if let Some(rom) = roms.get(&local_game) {
                                 rom.clone()
                             } else {
                                 continue;
                             };
 
-                            let patch = if let Some(patch_info) = game_info.patch.as_ref() {
+                            let patch = if let Some(patch_info) = local_game_info.patch.as_ref() {
                                 let patch = if let Some(patch) = patches.get(&patch_info.name) {
                                     patch
                                 } else {
@@ -251,11 +268,11 @@ pub fn show(
                                     continue;
                                 };
 
-                                let (rom_code, revision) = game.rom_code_and_revision();
+                                let (rom_code, revision) = local_game.rom_code_and_revision();
 
-                                rom = match patch::apply_patch_from_disk(
-                                    &rom,
-                                    game,
+                                local_rom = match patch::apply_patch_from_disk(
+                                    &local_rom,
+                                    local_game,
                                     patches_path,
                                     &patch_info.name,
                                     &version,
@@ -277,8 +294,8 @@ pub fn show(
                                 None
                             };
 
-                            let assets = match game.load_rom_assets(
-                                &rom,
+                            let assets = match local_game.load_rom_assets(
+                                &local_rom,
                                 replay.local_state.wram(),
                                 &patch
                                     .as_ref()
@@ -292,12 +309,50 @@ pub fn show(
                                 }
                             };
 
+                            let remote_rom = if let Some(rom) = roms.get(&remote_game) {
+                                (|| {
+                                    let mut rom = rom.clone();
+                                    if let Some(patch_info) = remote_game_info.patch.as_ref() {
+                                        let version = if let Ok(version) = semver::Version::parse(&patch_info.version) {
+                                            version
+                                        } else {
+                                            return None;
+                                        };
+
+                                        let (rom_code, revision) = remote_game.rom_code_and_revision();
+
+                                        rom = match patch::apply_patch_from_disk(
+                                            &rom,
+                                            remote_game,
+                                            patches_path,
+                                            &patch_info.name,
+                                            &version,
+                                        ) {
+                                            Ok(r) => r,
+                                            Err(e) => {
+                                                log::error!(
+                                                    "failed to apply patch {}: {:?}: {:?}",
+                                                    patch_info.name,
+                                                    (rom_code, revision),
+                                                    e
+                                                );
+                                                return None;
+                                            }
+                                        };
+                                    }
+                                    Some(rom)
+                                })()
+                            } else {
+                                None
+                            };
+
                             state.selection = Some(Selection {
                                 path: path.clone(),
-                                game,
+                                game: local_game,
                                 replay,
                                 save,
-                                rom,
+                                local_rom,
+                                remote_rom,
                                 patch,
                                 assets,
                                 save_view: gui::save_view::State::new(),
@@ -334,7 +389,7 @@ pub fn show(
                                     .patch
                                     .as_ref()
                                     .map(|(name, version, _)| (name.clone(), version.clone()));
-                                let rom = selection.rom.clone();
+                                let rom = selection.local_rom.clone();
                                 let emu_tps_counter = emu_tps_counter.clone();
                                 let replay = selection.replay.clone();
 
@@ -363,7 +418,8 @@ pub fn show(
                             .clicked()
                         {
                             replay_dump_windows.add_child(
-                                selection.rom.clone(),
+                                selection.local_rom.clone(),
+                                selection.remote_rom.clone(),
                                 selection.replay.clone(),
                                 selection.path.clone(),
                             );
