@@ -7,6 +7,7 @@ replays-export-path = Lưu vào
     .change = Thay đổi
 replays-export-scale-factor = Tỉ lệ khung hình
 replays-export-disable-bgm = Tắt nhạc nền
+replays-export-twosided = Two-sided
 replays-export-success = Bản ghi của bạn đã được xuất thành công.
 replays-export-error = Quá trình xuất bản ghi đã gặp lỗi: { $error }
 replays-export-cancel = Hủy
