@@ -173,6 +173,7 @@ fn do_update(path: &std::path::Path) {
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
     let mut command = std::process::Command::new(path);
     command
+        .current_dir(std::env::temp_dir())
         .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
         .spawn()
         .unwrap();
