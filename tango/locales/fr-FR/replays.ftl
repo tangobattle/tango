@@ -7,6 +7,7 @@ replays-export-path = Enregistrer sous
     .change = Changer
 replays-export-scale-factor = Facteur de mise à l'échelle
 replays-export-disable-bgm = Désactiver la musique
+replays-export-twosided = Two-sided
 replays-export-success = Votre match a été converti avec succès.
 replays-export-error = Une erreur s'est produite lors de l'export de votre match: { $error }
 replays-export-cancel = Annuler
