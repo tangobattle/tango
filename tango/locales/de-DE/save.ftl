@@ -1,12 +1,12 @@
 save-tab-cover = Deckel
 save-tab-navi = Navi
 save-tab-navicust = NaviCust
-save-tab-folder = Folder
+save-tab-folder = Ordner
 save-tab-modcards = Modcards
 save-tab-dark-ai = Dark Soul AI
-save-cover-description = Das Registe wurde absichtlich leer gelassen.
+save-cover-description = Das Register wurde absichtlich leer gelassen.
 save-group = Chips zusammenfassen
-dark-ai-secondary-standard-chips = Standard chips (sekundär)
+dark-ai-secondary-standard-chips = Standard Chips (sekundär)
 dark-ai-standard-chips = Standard Chips
 dark-ai-mega-chips = Mega Chips
 dark-ai-giga-chip = Giga Chip
