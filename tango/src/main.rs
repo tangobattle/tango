@@ -33,8 +33,6 @@ mod updater;
 mod version;
 mod video;
 
-use std::io::{Read, Write};
-
 use fluent_templates::Loader;
 
 const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
@@ -86,7 +84,7 @@ fn main() -> Result<(), anyhow::Error> {
     let log_path = config.logs_path().join(log_filename);
     log::info!("logging to: {}", log_path.display());
 
-    let mut log_file = match std::fs::File::create(&log_path) {
+    let log_file = match std::fs::File::create(&log_path) {
         Ok(f) => f,
         Err(e) => {
             rfd::MessageDialog::new()
@@ -106,28 +104,12 @@ fn main() -> Result<(), anyhow::Error> {
         }
     };
 
-    let mut child = std::process::Command::new(std::env::current_exe()?)
+    let status = std::process::Command::new(std::env::current_exe()?)
         .args(std::env::args_os().skip(1).collect::<Vec<std::ffi::OsString>>())
         .env(TANGO_CHILD_ENV_VAR, "1")
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
-
-    let mut child_stderr = child.stderr.take().unwrap();
-    {
-        let mut stderr = std::io::stderr().lock();
-        loop {
-            let mut buf = [0u8; 4096];
-            let n = child_stderr.read(&mut buf)?;
-            if n == 0 {
-                break;
-            }
-            stderr.write_all(&buf)?;
-            log_file.write_all(&buf)?;
-        }
-    }
-
-    let status = child.wait()?;
-    log::info!("child exited with {:?}", status);
+        .stderr(log_file)
+        .spawn()?
+        .wait()?;
 
     if !status.success() {
         rfd::MessageDialog::new()
