@@ -152,7 +152,7 @@ pub fn compute_save_raw_checksum(buf: &[u8], checksum_offset: usize) -> u32 {
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
 pub struct Chip {
     pub id: usize,
-    pub code: usize,
+    pub code: char,
 }
 
 pub trait ChipsView<'a> {

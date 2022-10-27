@@ -104,7 +104,9 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
         Some(save::Chip {
             id: byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]) as usize,
-            code: byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..offset + 4]) as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
+                [byteorder::LittleEndian::read_u16(&self.save.buf[offset + 2..offset + 4]) as usize]
+                as char,
         })
     }
 }

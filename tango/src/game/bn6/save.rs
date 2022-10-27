@@ -193,7 +193,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
 
         Some(save::Chip {
             id: (raw & 0x1ff) as usize,
-            code: (raw >> 9) as usize,
+            code: b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[(raw >> 9) as usize] as char,
         })
     }
 }
