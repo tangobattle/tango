@@ -117,10 +117,6 @@ pub struct ChipsView<'a> {
 }
 
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
-    fn chip_code(&self, i: usize) -> char {
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[i] as char
-    }
-
     fn num_folders(&self) -> usize {
         3 // TODO
     }
