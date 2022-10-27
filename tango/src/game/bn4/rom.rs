@@ -242,9 +242,14 @@ impl<'a> rom::Chip for Chip<'a> {
         )
     }
 
-    fn codes(&self) -> Vec<u8> {
+    fn codes(&self) -> Vec<char> {
         let raw = self.raw_info();
-        raw[0x00..0x04].iter().cloned().filter(|code| *code != 0xff).collect()
+        raw[0x00..0x04]
+            .iter()
+            .cloned()
+            .filter(|code| *code != 0xff)
+            .map(|code| b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"[code as usize] as char)
+            .collect()
     }
 
     fn element(&self) -> usize {

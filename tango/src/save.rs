@@ -156,7 +156,6 @@ pub struct Chip {
 }
 
 pub trait ChipsView<'a> {
-    fn chip_code(&self, i: usize) -> char;
     fn num_folders(&self) -> usize;
     fn equipped_folder_index(&self) -> usize;
     fn regular_chip_is_in_place(&self) -> bool;

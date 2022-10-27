@@ -19,7 +19,7 @@ pub trait Chip {
     fn description(&self) -> String;
     fn icon(&self) -> image::RgbaImage;
     fn image(&self) -> image::RgbaImage;
-    fn codes(&self) -> Vec<u8>;
+    fn codes(&self) -> Vec<char>;
     fn element(&self) -> usize;
     fn class(&self) -> ChipClass;
     fn dark(&self) -> bool;
