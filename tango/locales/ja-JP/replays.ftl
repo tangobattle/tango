@@ -13,6 +13,7 @@ replays-export-error = リプレイのエクスポート中にエラーが発生
 replays-export-cancel = キャンセル
 replays-export-confirm-success = イェイ！
 replays-export-confirm-error = やべっ！
+replays-export-lossless = Lossless 1x
 replay-viewer-pause = ポーズ
 replay-viewer-step = ステップ
 replay-viewer-speed = 速度
