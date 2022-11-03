@@ -13,6 +13,7 @@ replays-export-error = 導出回放時出錯誤：{ $error }
 replays-export-cancel = 取消
 replays-export-confirm-success = 耶！
 replays-export-confirm-error = 哎呀！
+replays-export-lossless = Lossless 1x
 replay-viewer-pause = 暫停
 replay-viewer-step = 幀步進
 replay-viewer-speed = 速度
