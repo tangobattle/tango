@@ -14,11 +14,19 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn default_with_scale(factor: usize) -> Self {
+    pub fn default_with_scale(factor: Option<usize>) -> Self {
         Self {
             ffmpeg: None,
-            ffmpeg_audio_flags: "-c:a aac -ar 48000 -b:a 384k -ac 2".to_string(),
-            ffmpeg_video_flags: format!("-c:v libx264 -vf scale=iw*{}:ih*{}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2", factor, factor),
+            ffmpeg_audio_flags: if factor.is_some() {
+                "-c:a aac -ar 48000 -b:a 384k -ac 2".to_string()
+            } else {
+                "-c:a alac".to_string()
+            },
+            ffmpeg_video_flags: if let Some(factor) = factor {
+                format!("-c:v libx264 -vf scale=iw*{}:ih*{}:flags=neighbor,format=yuv420p -force_key_frames expr:gte(t,n_forced/2) -crf 18 -bf 2", factor, factor)
+            } else {
+                "-c:v libx264rgb -preset ultrafast -qp 0".to_string()
+            },
             ffmpeg_mux_flags: "-movflags +faststart".to_string(),
             video_filter: "".to_string(),
             disable_bgm: false,

@@ -7,6 +7,8 @@ pub struct State {
     next_id: u64,
 }
 
+const DEFAULT_SCALE: usize = 5;
+
 impl State {
     pub fn new() -> Self {
         Self {
@@ -35,7 +37,7 @@ impl State {
                 remote_rom,
                 replay,
                 path,
-                scale: 5,
+                scale: Some(DEFAULT_SCALE),
                 disable_bgm: false,
                 twosided: false,
                 progress: std::sync::Arc::new(parking_lot::Mutex::new((0, 0))),
@@ -52,7 +54,7 @@ pub struct ChildState {
     remote_rom: Option<Vec<u8>>,
     replay: replay::Replay,
     path: std::path::PathBuf,
-    scale: usize,
+    scale: Option<usize>,
     disable_bgm: bool,
     twosided: bool,
     progress: std::sync::Arc<parking_lot::Mutex<(usize, usize)>>,
@@ -117,7 +119,18 @@ pub fn show(
                             ui.end_row();
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-scale-factor").unwrap());
-                            ui.add(egui::DragValue::new(&mut state.scale).speed(1).clamp_range(1..=10));
+                            ui.horizontal(|ui| {
+                                let mut scale = state.scale.unwrap_or(DEFAULT_SCALE);
+                                ui.add_enabled(state.scale.is_some(), egui::DragValue::new(&mut scale).speed(1).clamp_range(1..=10));
+                                if state.scale.is_some() {
+                                    state.scale = Some(scale);
+                                }
+                                let mut lossless = state.scale.is_none();
+                                ui.checkbox(&mut lossless, i18n::LOCALES.lookup(language, "replays-export-lossless").unwrap());
+                                if lossless {
+                                    state.scale = None;
+                                }
+                            });
                             ui.end_row();
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-disable-bgm").unwrap());
