@@ -13,6 +13,7 @@ replays-export-error = Er is een fout opgetreden tijdens het exporteren van uw r
 replays-export-cancel = Annuleren
 replays-export-confirm-success = Jeej!
 replays-export-confirm-error = Potverdriedubbeltjes!
+replays-export-lossless = Lossless 1x
 replay-viewer-pause = Pauzeren
 replay-viewer-step = Stap
 replay-viewer-speed = Afspeelsnelheid
