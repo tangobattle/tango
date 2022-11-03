@@ -13,6 +13,7 @@ replays-export-error = Ocorreu um erro ao exportar a sua gravação: { $error }
 replays-export-cancel = Cancelar
 replays-export-confirm-success = Eba!
 replays-export-confirm-error = Droga!
+replays-export-lossless = Lossless 1x
 replay-viewer-pause = Pausar
 replay-viewer-step = Etapa
 replay-viewer-speed = Velocidade de reprodução
