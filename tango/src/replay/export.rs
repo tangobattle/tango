@@ -148,7 +148,7 @@ fn make_video_ffmpeg(
         ])
         // Output args.
         .args(flags)
-        .args(&["-f", "mp4"])
+        .args(&["-f", "matroska"])
         .arg(&output_path);
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
@@ -169,7 +169,7 @@ fn make_audio_ffmpeg(
         .args(&["-f", "s16le", "-ar", "48k", "-ac", "2", "-i", "pipe:"])
         // Output args.
         .args(flags)
-        .args(&["-f", "mp4"])
+        .args(&["-f", "matroska"])
         .arg(&output_path);
     #[cfg(windows)]
     child.creation_flags(CREATE_NO_WINDOW);
