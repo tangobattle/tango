@@ -109,7 +109,6 @@ pub fn show(
                                                 .and_then(|filename| filename.to_str())
                                                 .unwrap_or("replay.mp4"),
                                         )
-                                        .add_filter("MP4", &["mp4"])
                                         .save_file()
                                     {
                                         state.output_path = path;
