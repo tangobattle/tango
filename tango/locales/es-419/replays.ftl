@@ -13,6 +13,7 @@ replays-export-error = Se ha producido un error al exportar tu repetición: { $e
 replays-export-cancel = Cancelar
 replays-export-confirm-success = ¡Yay!
 replays-export-confirm-error = ¡Maldición!
+replays-export-lossless = Lossless 1x
 replay-viewer-pause = Pausa
 replay-viewer-step = Paso
 replay-viewer-speed = Velocidad

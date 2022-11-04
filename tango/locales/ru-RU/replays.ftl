@@ -13,6 +13,7 @@ replays-export-error = Произошла ошибка при экспорте �
 replays-export-cancel = Отмена
 replays-export-confirm-success = Ура!
 replays-export-confirm-error = Черт!
+replays-export-lossless = Lossless 1x
 replay-viewer-pause = Пауза
 replay-viewer-step = Этап
 replay-viewer-speed = Скорость
