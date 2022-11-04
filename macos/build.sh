@@ -45,5 +45,5 @@ chmod a+x Tango.app/Contents/MacOS/ffmpeg
 
 # Build zip.
 mkdir -p dist
-dmgbuild -s "$(dirname "${BASH_SOURCE[0]}")/dmgbuild.settings.py" Tango dist/tango-macos.dmg
+python3 -m dmgbuild -s "$(dirname "${BASH_SOURCE[0]}")/dmgbuild.settings.py" Tango dist/tango-macos.dmg
 rm -rf tango_macos_workdir
