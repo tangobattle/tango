@@ -866,8 +866,9 @@ dependencies = [
 
 [[package]]
 name = "cmake"
-version = "0.1.48"
-source = "git+https://github.com/tangobattle/cmake-rs?rev=fc9b8372f40bc611ca5df9a62dea00e8e8d3cfaa#fc9b8372f40bc611ca5df9a62dea00e8e8d3cfaa"
+version = "0.1.49"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db34956e100b30725f2eb215f90d4871051239535632f84fea3bc92722c66b7c"
 dependencies = [
  "cc",
 ]
@@ -4565,7 +4566,7 @@ dependencies = [
 [[package]]
 name = "sdl2"
 version = "0.35.2"
-source = "git+https://github.com/Rust-SDL2/rust-sdl2?rev=bae03beaafc0040b8166d36a4bdbe570a05aa52a#bae03beaafc0040b8166d36a4bdbe570a05aa52a"
+source = "git+https://github.com/tangobattle/rust-sdl2?rev=c006781b6293115d1b5f361da093894a1cf0a7eb#c006781b6293115d1b5f361da093894a1cf0a7eb"
 dependencies = [
  "bitflags",
  "lazy_static",
@@ -4576,7 +4577,7 @@ dependencies = [
 [[package]]
 name = "sdl2-sys"
 version = "0.35.2"
-source = "git+https://github.com/Rust-SDL2/rust-sdl2?rev=bae03beaafc0040b8166d36a4bdbe570a05aa52a#bae03beaafc0040b8166d36a4bdbe570a05aa52a"
+source = "git+https://github.com/tangobattle/rust-sdl2?rev=c006781b6293115d1b5f361da093894a1cf0a7eb#c006781b6293115d1b5f361da093894a1cf0a7eb"
 dependencies = [
  "cfg-if",
  "cmake",
