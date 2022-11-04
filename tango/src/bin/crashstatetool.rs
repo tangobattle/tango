@@ -2,7 +2,6 @@ use clap::Parser;
 
 #[derive(clap::Parser)]
 struct Cli {
-    #[clap(parse(from_os_str))]
     path: std::path::PathBuf,
 }
 
