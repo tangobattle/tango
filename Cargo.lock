@@ -4566,7 +4566,7 @@ dependencies = [
 [[package]]
 name = "sdl2"
 version = "0.35.2"
-source = "git+https://github.com/tangobattle/rust-sdl2?rev=c006781b6293115d1b5f361da093894a1cf0a7eb#c006781b6293115d1b5f361da093894a1cf0a7eb"
+source = "git+https://github.com/tangobattle/rust-sdl2?rev=08bbc3d47cdccc0620373b73f2f1c1a5299d3f43#08bbc3d47cdccc0620373b73f2f1c1a5299d3f43"
 dependencies = [
  "bitflags",
  "lazy_static",
@@ -4577,7 +4577,7 @@ dependencies = [
 [[package]]
 name = "sdl2-sys"
 version = "0.35.2"
-source = "git+https://github.com/tangobattle/rust-sdl2?rev=c006781b6293115d1b5f361da093894a1cf0a7eb#c006781b6293115d1b5f361da093894a1cf0a7eb"
+source = "git+https://github.com/tangobattle/rust-sdl2?rev=08bbc3d47cdccc0620373b73f2f1c1a5299d3f43#08bbc3d47cdccc0620373b73f2f1c1a5299d3f43"
 dependencies = [
  "cfg-if",
  "cmake",
