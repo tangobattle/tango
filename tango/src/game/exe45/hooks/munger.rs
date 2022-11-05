@@ -52,8 +52,11 @@ impl Munger {
         &self,
         mut core: mgba::core::CoreMutRef,
         match_type: u32,
-    )  -> (u8, u8) {
-        (core.raw_read_8(self.offsets.rom.comm_menu_num_battle_setups + match_type * 4, -1), core.raw_read_8(self.offsets.rom.comm_menu_num_backgrounds, -1))
+    ) -> (u8, u8) {
+        (
+            core.raw_read_8(self.offsets.rom.comm_menu_num_battle_setups + match_type * 4, -1),
+            core.raw_read_8(self.offsets.rom.comm_menu_num_backgrounds, -1),
+        )
     }
 
     pub(super) fn set_rng1_state(&self, mut core: mgba::core::CoreMutRef, state: u32) {
