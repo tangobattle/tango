@@ -38,14 +38,8 @@ fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     rng2_state
 }
 
-fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: u8) -> (u8, u8) {
-    let battle_settings = match match_type {
-        0 => rng.gen_range(0..0x44u8),
-        1 => rng.gen_range(0..0x60u8),
-        _ => 0u8,
-    };
-
-    (battle_settings, rng.gen_range(0..0x18u8))
+fn random_battle_settings_and_background(rng: &mut impl rand::Rng, total_settings: u8, total_bg: u8) -> (u8, u8) {
+    (rng.gen_range(0..total_settings), rng.gen_range(0..total_bg))
 }
 
 impl game::Hooks for Hooks {
@@ -110,8 +104,11 @@ impl game::Hooks for Hooks {
 
                     let mut rng = sync::block_on(match_.lock_rng());
 
+                    let match_type: u32 = match_.match_type().0 as u32;
+                    let settings_and_bg = munger.get_setting_and_background_count(core, match_type);
+
                     let (battle_settings, background) =
-                        random_battle_settings_and_background(&mut *rng, match_.match_type().0);
+                        random_battle_settings_and_background(&mut *rng, settings_and_bg.0, settings_and_bg.1);
 
                     munger.start_battle_from_comm_menu(core, match_.match_type().0, battle_settings, background);
                 })
@@ -401,8 +398,11 @@ impl game::Hooks for Hooks {
                     Box::new(move |core| {
                         let mut rng = shadow_state.lock_rng();
 
+                        let match_type: u32 = shadow_state.match_type().0 as u32;
+                        let settings_and_bg = munger.get_setting_and_background_count(core, match_type);
+
                         let (battle_settings, background) =
-                            random_battle_settings_and_background(&mut *rng, shadow_state.match_type().0);
+                            random_battle_settings_and_background(&mut *rng, settings_and_bg.0, settings_and_bg.1);
 
                         munger.start_battle_from_comm_menu(
                             core,
