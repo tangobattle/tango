@@ -181,7 +181,7 @@ pub static BR4J_00: Offsets = Offsets {
         comm_menu_handle_link_cable_input:      0x080443E2,
         match_end_ret:                          0x08043fb6,
         battle_start_play_music_call:           0x0800796c,
-        comm_menu_num_backgrounds:              0x0803C8E0,
-        comm_menu_num_battle_setups:            0x0803C8C8,
+        comm_menu_num_backgrounds:              0x0803C8C8,
+        comm_menu_num_battle_setups:            0x0803C8E0,
     },
 };
