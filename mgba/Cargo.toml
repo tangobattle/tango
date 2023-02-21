@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mgba-sys = { "path" = "mgba-sys" }
+mgba-sys = { path = "mgba-sys" }
 parking_lot = "0.12.0"
 log = "0.4"
 lazy_static = "1.4.0"
