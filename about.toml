@@ -12,9 +12,9 @@ accepted = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "AGPL-3.0",
-    "NOASSERTION",
     "GPL-2.0",
     "LGPL-2.1",
     "MPL-2.0",
     "OpenSSL"
 ]
+filter-noassertion = true
