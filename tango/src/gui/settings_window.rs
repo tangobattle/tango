@@ -822,6 +822,12 @@ fn show_about_tab(ui: &mut egui::Ui, emblem: &egui_extras::RetainedImage) {
                     ui.hyperlink_to("Karate_Bugman", "https://twitter.com/Karate_Bugman");
                 });
             });
+
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.label(" • ");
+                ui.hyperlink_to("Countless open source projects", "https://tango.n1gp.net/licenses");
+            });
         });
 
         ui.heading("Translation");
