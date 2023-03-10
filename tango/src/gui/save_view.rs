@@ -1,8 +1,8 @@
 mod dark_ai_view;
 mod folder_view;
-mod modcards_view;
 mod navi_view;
 mod navicust_view;
+mod patch_cards_view;
 
 use fluent_templates::Loader;
 
@@ -13,7 +13,7 @@ enum Tab {
     Navi,
     Navicust,
     Folder,
-    Modcards,
+    PatchCards,
     DarkAI,
 }
 
@@ -22,7 +22,7 @@ pub struct State {
     navi_view: navi_view::State,
     navicust_view: navicust_view::State,
     folder_view: folder_view::State,
-    modcards_view: modcards_view::State,
+    patch_cards_view: patch_cards_view::State,
     dark_ai_view: dark_ai_view::State,
 }
 
@@ -33,7 +33,7 @@ impl State {
             navi_view: navi_view::State::new(),
             navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
-            modcards_view: modcards_view::State::new(),
+            patch_cards_view: patch_cards_view::State::new(),
             dark_ai_view: dark_ai_view::State::new(),
         }
     }
@@ -54,7 +54,7 @@ pub fn show(
         let navi_view = save.view_navi();
         let navicust_view = save.view_navicust();
         let chips_view = save.view_chips();
-        let modcards_view = save.view_modcards();
+        let patch_cards_view = save.view_patch_cards();
         let dark_ai_view = save.view_dark_ai();
 
         let mut available_tabs = vec![];
@@ -67,8 +67,8 @@ pub fn show(
         if chips_view.is_some() {
             available_tabs.push(Tab::Folder);
         }
-        if modcards_view.is_some() {
-            available_tabs.push(Tab::Modcards);
+        if patch_cards_view.is_some() {
+            available_tabs.push(Tab::PatchCards);
         }
         if dark_ai_view.is_some() {
             available_tabs.push(Tab::DarkAI);
@@ -94,7 +94,7 @@ pub fn show(
                                     Tab::Navi => "save-tab-navi",
                                     Tab::Navicust => "save-tab-navicust",
                                     Tab::Folder => "save-tab-folder",
-                                    Tab::Modcards => "save-tab-modcards",
+                                    Tab::PatchCards => "save-tab-patch-cards",
                                     Tab::DarkAI => "save-tab-dark-ai",
                                 },
                             )
@@ -155,17 +155,17 @@ pub fn show(
                     );
                 }
             }
-            Some(Tab::Modcards) => {
-                if let Some(modcards_view) = modcards_view {
-                    modcards_view::show(
+            Some(Tab::PatchCards) => {
+                if let Some(patch_cards_view) = patch_cards_view {
+                    patch_cards_view::show(
                         ui,
                         clipboard,
                         font_families,
                         lang,
                         game_lang,
-                        &modcards_view,
+                        &patch_cards_view,
                         assets,
-                        &mut state.modcards_view,
+                        &mut state.patch_cards_view,
                     );
                 }
             }

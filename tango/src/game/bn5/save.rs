@@ -112,8 +112,10 @@ impl save::Save for Save {
         Some(Box::new(NavicustView { save: self }))
     }
 
-    fn view_modcards(&self) -> Option<save::ModcardsView> {
-        Some(save::ModcardsView::Modcard56s(Box::new(Modcard56sView { save: self })))
+    fn view_patch_cards(&self) -> Option<save::PatchCardsView> {
+        Some(save::PatchCardsView::PatchCard56s(Box::new(PatchCard56sView {
+            save: self,
+        })))
     }
 
     // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
@@ -181,21 +183,21 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 }
 
-pub struct Modcard56sView<'a> {
+pub struct PatchCard56sView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::Modcard56sView<'a> for Modcard56sView<'a> {
+impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
         self.save.buf[0x79a0] as usize
     }
 
-    fn modcard(&self, slot: usize) -> Option<save::Modcard> {
+    fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
         if slot >= self.count() {
             return None;
         }
         let raw = self.save.buf[0x79d0 + slot];
-        Some(save::Modcard {
+        Some(save::PatchCard {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
         })

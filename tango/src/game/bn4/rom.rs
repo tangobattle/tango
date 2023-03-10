@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 
 use crate::rom;
 
-pub mod modcards;
+pub mod patch_cards;
 
 pub struct Offsets {
     chip_data: u32,
@@ -86,7 +86,7 @@ pub struct Assets {
     offsets: &'static Offsets,
     text_parse_options: rom::text::ParseOptions,
     mapper: rom::MemoryMapper,
-    modcards: &'static [Modcard4; 133],
+    patch_cards: &'static [PatchCard4; 133],
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
 }
@@ -401,14 +401,14 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 }
 
-pub struct Modcard4 {
+pub struct PatchCard4 {
     name: &'static str,
     slot: u8,
     effect: &'static str,
     bug: Option<&'static str>,
 }
 
-impl rom::Modcard4 for &Modcard4 {
+impl rom::PatchCard4 for &PatchCard4 {
     fn name(&self) -> String {
         self.name.to_string()
     }
@@ -429,7 +429,7 @@ impl rom::Modcard4 for &Modcard4 {
 impl Assets {
     pub fn new(
         offsets: &'static Offsets,
-        modcards: &'static [Modcard4; 133],
+        patch_cards: &'static [PatchCard4; 133],
         charset: Vec<String>,
         rom: Vec<u8>,
         wram: Vec<u8>,
@@ -463,7 +463,7 @@ impl Assets {
                     (0xf0, 2),
                 ]),
             },
-            modcards,
+            patch_cards,
             mapper,
             chip_icon_palette,
             element_icon_palette,
@@ -517,12 +517,14 @@ impl rom::Assets for Assets {
         Some(self.offsets.navicust_bg)
     }
 
-    fn modcard4<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Modcard4 + 'a>> {
-        self.modcards.get(id).map(|m| Box::new(m) as Box<dyn rom::Modcard4>)
+    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn rom::PatchCard4 + 'a>> {
+        self.patch_cards
+            .get(id)
+            .map(|m| Box::new(m) as Box<dyn rom::PatchCard4>)
     }
 
-    fn num_modcard4s(&self) -> usize {
-        self.modcards.len()
+    fn num_patch_card4s(&self) -> usize {
+        self.patch_cards.len()
     }
 }
 

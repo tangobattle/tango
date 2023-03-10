@@ -12,9 +12,9 @@ pub struct Offsets {
     ncp_descriptions_pointer: u32,
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
-    modcard_data: u32,
-    modcard_names_pointer: u32,
-    modcard_details_names_pointer: u32,
+    patch_card_data: u32,
+    patch_card_names_pointer: u32,
+    patch_card_details_names_pointer: u32,
     navicust_bg: image::Rgba<u8>,
 }
 
@@ -23,72 +23,72 @@ const NAVICUST_BG_F: image::Rgba<u8> = image::Rgba([0xe7, 0x8c, 0x39, 0xff]);
 
 #[rustfmt::skip]
 pub static BR5J_00: Offsets = Offsets {
-    chip_data:                      0x080221bc,
-    chip_names_pointers:            0x08043274,
-    chip_descriptions_pointers:     0x08028164,
-    chip_icon_palette_pointer:      0x0801f144,
-    ncp_data:                       0x081460cc,
-    ncp_names_pointer:              0x08043284,
-    ncp_descriptions_pointer:       0x08139240,
-    element_icon_palette_pointer:   0x081226e4,
-    element_icons_pointer:          0x081226dc,
-    modcard_data:                   0x08144778,
-    modcard_names_pointer:          0x08130fe0,
-    modcard_details_names_pointer:  0x08130fec,
+    chip_data:                          0x080221bc,
+    chip_names_pointers:                0x08043274,
+    chip_descriptions_pointers:         0x08028164,
+    chip_icon_palette_pointer:          0x0801f144,
+    ncp_data:                           0x081460cc,
+    ncp_names_pointer:                  0x08043284,
+    ncp_descriptions_pointer:           0x08139240,
+    element_icon_palette_pointer:       0x081226e4,
+    element_icons_pointer:              0x081226dc,
+    patch_card_data:                    0x08144778,
+    patch_card_names_pointer:           0x08130fe0,
+    patch_card_details_names_pointer:   0x08130fec,
 
     navicust_bg: NAVICUST_BG_G,
 };
 
 #[rustfmt::skip]
 pub static BR6J_00: Offsets = Offsets {
-    chip_data:                      0x080221bc,
-    chip_names_pointers:            0x080432a4,
-    chip_descriptions_pointers:     0x08028164,
-    chip_icon_palette_pointer:      0x0801f144,
-    ncp_data:                       0x08144300,
-    ncp_names_pointer:              0x080432b4,
-    ncp_descriptions_pointer:       0x08137478,
-    element_icon_palette_pointer:   0x081213c4,
-    element_icons_pointer:          0x081213bc,
-    modcard_data:                   0x081429b0,
-    modcard_names_pointer:          0x0812f218,
-    modcard_details_names_pointer:  0x0812f224,
+    chip_data:                          0x080221bc,
+    chip_names_pointers:                0x080432a4,
+    chip_descriptions_pointers:         0x08028164,
+    chip_icon_palette_pointer:          0x0801f144,
+    ncp_data:                           0x08144300,
+    ncp_names_pointer:                  0x080432b4,
+    ncp_descriptions_pointer:           0x08137478,
+    element_icon_palette_pointer:       0x081213c4,
+    element_icons_pointer:              0x081213bc,
+    patch_card_data:                    0x081429b0,
+    patch_card_names_pointer:           0x0812f218,
+    patch_card_details_names_pointer:   0x0812f224,
 
     navicust_bg: NAVICUST_BG_F,
 };
 
 #[rustfmt::skip]
 pub static BR5E_00: Offsets = Offsets {
-    chip_data:                      0x08021da8,
-    chip_names_pointers:            0x08042038,
-    chip_descriptions_pointers:     0x08027d50,
-    chip_icon_palette_pointer:      0x0801ed20,
-    ncp_data:                       0x0813b22c,
-    ncp_names_pointer:              0x08042048,
-    ncp_descriptions_pointer:       0x08130878,
-    element_icon_palette_pointer:   0x0811a9a4,
-    element_icons_pointer:          0x0811a99c,
-    modcard_data:                   0,
-    modcard_names_pointer:          0,
-    modcard_details_names_pointer:  0,
+    chip_data:                          0x08021da8,
+    chip_names_pointers:                0x08042038,
+    chip_descriptions_pointers:         0x08027d50,
+    chip_icon_palette_pointer:          0x0801ed20,
+    ncp_data:                           0x0813b22c,
+    ncp_names_pointer:                  0x08042048,
+    ncp_descriptions_pointer:           0x08130878,
+    element_icon_palette_pointer:       0x0811a9a4,
+    element_icons_pointer:              0x0811a99c,
+    patch_card_data:                    0,
+    patch_card_names_pointer:           0,
+    patch_card_details_names_pointer:   0,
 
     navicust_bg: NAVICUST_BG_G,
 };
 
 #[rustfmt::skip]
 pub static BR6E_00: Offsets = Offsets {
-    chip_data:                      0x08021da8,
-    chip_names_pointers:            0x08042068,
-    chip_descriptions_pointers:     0x08027d50,
-    chip_icon_palette_pointer:      0x0801ed20,
-    ncp_data:                       0x0813944c,
-    ncp_names_pointer:              0x08042078,
-    ncp_descriptions_pointer:       0x0812ea9c,
-    element_icon_palette_pointer:   0x08119674,
-    element_icons_pointer:          0x0811966c,
-    modcard_data:                   0,
-    modcard_names_pointer:          0,
-    modcard_details_names_pointer:  0,
+    chip_data:                          0x08021da8,
+    chip_names_pointers:                0x08042068,
+    chip_descriptions_pointers:         0x08027d50,
+    chip_icon_palette_pointer:          0x0801ed20,
+    ncp_data:                           0x0813944c,
+    ncp_names_pointer:                  0x08042078,
+    ncp_descriptions_pointer:           0x0812ea9c,
+    element_icon_palette_pointer:       0x08119674,
+    element_icons_pointer:              0x0811966c,
+    patch_card_data:                    0,
+    patch_card_names_pointer:           0,
+    patch_card_details_names_pointer:   0,
 
     navicust_bg: NAVICUST_BG_F,
 };
@@ -468,36 +468,36 @@ impl Assets {
     }
 }
 
-struct Modcard56<'a> {
+struct PatchCard56<'a> {
     id: usize,
     assets: &'a Assets,
 }
 
-impl<'a> Modcard56<'a> {
+impl<'a> PatchCard56<'a> {
     pub fn raw_info(&self) -> Vec<u8> {
-        let buf = self.assets.mapper.get(self.assets.offsets.modcard_data);
+        let buf = self.assets.mapper.get(self.assets.offsets.patch_card_data);
         buf[byteorder::LittleEndian::read_u16(&buf[self.id * 2..(self.id + 1) * 2]) as usize
             ..byteorder::LittleEndian::read_u16(&buf[(self.id + 1) * 2..(self.id + 2) * 2]) as usize]
             .to_vec()
     }
 }
 
-impl<'a> rom::Modcard56 for Modcard56<'a> {
+impl<'a> rom::PatchCard56 for PatchCard56<'a> {
     fn name(&self) -> String {
         if self.id == 0 {
             return "".to_string();
         }
 
-        if let Some(modcard56s) = self.assets.overrides.modcard56s.as_ref() {
-            return modcard56s
+        if let Some(patch_card56s) = self.assets.overrides.patch_card56s.as_ref() {
+            return patch_card56s
                 .get(self.id)
-                .and_then(|modcard56| modcard56.name.clone())
+                .and_then(|patch_card56| patch_card56.name.clone())
                 .unwrap_or_else(|| "???".to_string());
         }
 
         if let Ok(parts) = rom::text::parse_entry(
             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
-                &self.assets.mapper.get(self.assets.offsets.modcard_names_pointer)[..4],
+                &self.assets.mapper.get(self.assets.offsets.patch_card_names_pointer)[..4],
             )),
             self.id,
             &self.assets.text_parse_options,
@@ -527,7 +527,7 @@ impl<'a> rom::Modcard56 for Modcard56<'a> {
         raw[1]
     }
 
-    fn effects(&self) -> Vec<rom::Modcard56Effect> {
+    fn effects(&self) -> Vec<rom::PatchCard56Effect> {
         if self.id == 0 {
             return vec![];
         }
@@ -538,34 +538,34 @@ impl<'a> rom::Modcard56 for Modcard56<'a> {
             .map(|chunk| {
                 let id = chunk[0];
                 let parameter = chunk[1];
-                rom::Modcard56Effect {
+                rom::PatchCard56Effect {
                     id,
-                    name: if let Some(modcard56_effects) = self.assets.overrides.modcard56_effects.as_ref() {
-                        modcard56_effects
+                    name: if let Some(patch_card56_effects) = self.assets.overrides.patch_card56_effects.as_ref() {
+                        patch_card56_effects
                             .get(id as usize)
                             .and_then(|effect| effect.name_template.clone())
-                            .unwrap_or_else(|| vec![rom::Modcard56EffectTemplatePart::String("???".to_string())])
+                            .unwrap_or_else(|| vec![rom::PatchCard56EffectTemplatePart::String("???".to_string())])
                     } else {
                         if let Ok(parts) = rom::text::parse_entry(
                             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                                 &self
                                     .assets
                                     .mapper
-                                    .get(self.assets.offsets.modcard_details_names_pointer)[..4],
+                                    .get(self.assets.offsets.patch_card_details_names_pointer)[..4],
                             )),
                             id as usize,
                             &self.assets.text_parse_options,
                         ) {
-                            rom::text::parse_modcard56_effect(parts, PRINT_VAR_COMMAND)
+                            rom::text::parse_patch_card56_effect(parts, PRINT_VAR_COMMAND)
                         } else {
-                            vec![rom::Modcard56EffectTemplatePart::String("???".to_string())]
+                            vec![rom::PatchCard56EffectTemplatePart::String("???".to_string())]
                         }
                     }
                     .into_iter()
                     .flat_map(|p| {
                         match p {
-                            rom::Modcard56EffectTemplatePart::String(s) => s,
-                            rom::Modcard56EffectTemplatePart::PrintVar(v) => {
+                            rom::PatchCard56EffectTemplatePart::String(s) => s,
+                            rom::PatchCard56EffectTemplatePart::PrintVar(v) => {
                                 if v == 1 {
                                     let mut parameter = parameter as u32;
                                     if id == 0x00 || id == 0x02 {
@@ -636,14 +636,14 @@ impl rom::Assets for Assets {
         Some(self.offsets.navicust_bg)
     }
 
-    fn modcard56<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Modcard56 + 'a>> {
-        if id >= self.num_modcard56s() {
+    fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn rom::PatchCard56 + 'a>> {
+        if id >= self.num_patch_card56s() {
             return None;
         }
-        Some(Box::new(Modcard56 { id, assets: self }))
+        Some(Box::new(PatchCard56 { id, assets: self }))
     }
 
-    fn num_modcard56s(&self) -> usize {
+    fn num_patch_card56s(&self) -> usize {
         118
     }
 }

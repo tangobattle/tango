@@ -66,8 +66,8 @@ impl game::Game for EXE4RSImpl {
             overrides
                 .language
                 .as_ref()
-                .and_then(|lang| rom::modcards::for_language(lang))
-                .unwrap_or(&rom::modcards::JA_MODCARDS),
+                .and_then(|lang| rom::patch_cards::for_language(lang))
+                .unwrap_or(&rom::patch_cards::JA_PATCH_CARDS),
             overrides
                 .charset
                 .as_ref()
@@ -139,8 +139,8 @@ impl game::Game for EXE4BMImpl {
             overrides
                 .language
                 .as_ref()
-                .and_then(|lang| rom::modcards::for_language(lang))
-                .unwrap_or(&rom::modcards::JA_MODCARDS),
+                .and_then(|lang| rom::patch_cards::for_language(lang))
+                .unwrap_or(&rom::patch_cards::JA_PATCH_CARDS),
             overrides
                 .charset
                 .as_ref()
@@ -212,8 +212,8 @@ impl game::Game for BN4RSImpl {
             overrides
                 .language
                 .as_ref()
-                .and_then(|lang| rom::modcards::for_language(lang))
-                .unwrap_or(&rom::modcards::EN_MODCARDS),
+                .and_then(|lang| rom::patch_cards::for_language(lang))
+                .unwrap_or(&rom::patch_cards::EN_PATCH_CARDS),
             overrides
                 .charset
                 .as_ref()
@@ -285,8 +285,8 @@ impl game::Game for BN4BMImpl {
             overrides
                 .language
                 .as_ref()
-                .and_then(|lang| rom::modcards::for_language(lang))
-                .unwrap_or(&rom::modcards::EN_MODCARDS),
+                .and_then(|lang| rom::patch_cards::for_language(lang))
+                .unwrap_or(&rom::patch_cards::EN_PATCH_CARDS),
             overrides
                 .charset
                 .as_ref()

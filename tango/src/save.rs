@@ -94,9 +94,9 @@ where
     }
 }
 
-pub enum ModcardsView<'a> {
-    Modcard4s(Box<dyn Modcard4sView<'a> + 'a>),
-    Modcard56s(Box<dyn Modcard56sView<'a> + 'a>),
+pub enum PatchCardsView<'a> {
+    PatchCard4s(Box<dyn PatchCard4sView<'a> + 'a>),
+    PatchCard56s(Box<dyn PatchCard56sView<'a> + 'a>),
 }
 
 pub trait Save
@@ -110,7 +110,7 @@ where
         None
     }
 
-    fn view_modcards(&self) -> Option<ModcardsView> {
+    fn view_patch_cards(&self) -> Option<PatchCardsView> {
         None
     }
 
@@ -168,18 +168,18 @@ pub trait ChipsView<'a> {
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
-pub struct Modcard {
+pub struct PatchCard {
     pub id: usize,
     pub enabled: bool,
 }
 
-pub trait Modcard56sView<'a> {
+pub trait PatchCard56sView<'a> {
     fn count(&self) -> usize;
-    fn modcard(&self, slot: usize) -> Option<Modcard>;
+    fn patch_card(&self, slot: usize) -> Option<PatchCard>;
 }
 
-pub trait Modcard4sView<'a> {
-    fn modcard(&self, slot: usize) -> Option<Modcard>;
+pub trait PatchCard4sView<'a> {
+    fn patch_card(&self, slot: usize) -> Option<PatchCard>;
 }
 
 pub trait NaviView<'a> {

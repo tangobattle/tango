@@ -2,7 +2,7 @@ save-tab-cover = Cover
 save-tab-navi = Navi
 save-tab-navicust = NaviCust
 save-tab-folder = Folder
-save-tab-modcards = Modcards
+save-tab-patch-cards = Patch Cards
 save-tab-dark-ai = Dark Soul AI
 
 save-cover-description = This tab intentionally left blank.

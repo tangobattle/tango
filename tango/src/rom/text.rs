@@ -75,13 +75,13 @@ pub fn parse_entry(buf: &[u8], i: usize, options: &ParseOptions) -> Result<Vec<P
     )
 }
 
-pub fn parse_modcard56_effect(parts: Vec<Part>, print_var_command: u8) -> rom::Modcard56EffectTemplate {
+pub fn parse_patch_card56_effect(parts: Vec<Part>, print_var_command: u8) -> rom::PatchCard56EffectTemplate {
     parts
         .into_iter()
         .flat_map(|part| match part {
-            Part::String(s) => vec![rom::Modcard56EffectTemplatePart::String(s)],
+            Part::String(s) => vec![rom::PatchCard56EffectTemplatePart::String(s)],
             Part::Command { op, params } if op == print_var_command => {
-                vec![rom::Modcard56EffectTemplatePart::PrintVar(params[2] as usize)]
+                vec![rom::PatchCard56EffectTemplatePart::PrintVar(params[2] as usize)]
             }
             _ => vec![],
         })

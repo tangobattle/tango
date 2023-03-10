@@ -27,7 +27,7 @@ pub trait Chip {
     fn damage(&self) -> u32;
 }
 
-pub struct Modcard56Effect {
+pub struct PatchCard56Effect {
     pub id: u8,
     pub name: String,
     pub parameter: u8,
@@ -35,13 +35,13 @@ pub struct Modcard56Effect {
     pub is_debuff: bool,
 }
 
-pub trait Modcard56 {
+pub trait PatchCard56 {
     fn name(&self) -> String;
     fn mb(&self) -> u8;
-    fn effects(&self) -> Vec<Modcard56Effect>;
+    fn effects(&self) -> Vec<PatchCard56Effect>;
 }
 
-pub trait Modcard4 {
+pub trait PatchCard4 {
     fn name(&self) -> String;
     fn slot(&self) -> u8;
     fn effect(&self) -> String;
@@ -78,12 +78,12 @@ pub trait Style {
 }
 
 #[derive(Debug, Clone)]
-pub enum Modcard56EffectTemplatePart {
+pub enum PatchCard56EffectTemplatePart {
     String(String),
     PrintVar(usize),
 }
 
-pub type Modcard56EffectTemplate = Vec<Modcard56EffectTemplatePart>;
+pub type PatchCard56EffectTemplate = Vec<PatchCard56EffectTemplatePart>;
 
 pub trait Navi {
     fn name(&self) -> String;
@@ -94,18 +94,18 @@ pub trait Assets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn Chip + 'a>>;
     fn num_chips(&self) -> usize;
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage>;
-    fn modcard56<'a>(&'a self, id: usize) -> Option<Box<dyn Modcard56 + 'a>> {
+    fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn PatchCard56 + 'a>> {
         let _ = id;
         None
     }
-    fn num_modcard56s(&self) -> usize {
+    fn num_patch_card56s(&self) -> usize {
         0
     }
-    fn modcard4<'a>(&'a self, id: usize) -> Option<Box<dyn Modcard4 + 'a>> {
+    fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn PatchCard4 + 'a>> {
         let _ = id;
         None
     }
-    fn num_modcard4s(&self) -> usize {
+    fn num_patch_card4s(&self) -> usize {
         0
     }
     fn navicust_part<'a>(&'a self, id: usize, variant: usize) -> Option<Box<dyn NavicustPart + 'a>> {
@@ -291,9 +291,9 @@ where
     }
 }
 
-fn deserialize_option_modcard56_effect_template<'de, D>(
+fn deserialize_option_patch_card56_effect_template<'de, D>(
     deserializer: D,
-) -> Result<Option<Modcard56EffectTemplate>, D::Error>
+) -> Result<Option<PatchCard56EffectTemplate>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -307,9 +307,9 @@ where
         v.into_iter()
             .flat_map(|v| {
                 if let Some(t) = v.t {
-                    vec![Modcard56EffectTemplatePart::String(t)]
+                    vec![PatchCard56EffectTemplatePart::String(t)]
                 } else if let Some(p) = v.p {
-                    vec![Modcard56EffectTemplatePart::PrintVar(p as usize)]
+                    vec![PatchCard56EffectTemplatePart::PrintVar(p as usize)]
                 } else {
                     vec![]
                 }
@@ -331,14 +331,14 @@ pub struct NavicustPartOverride {
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
-pub struct Modcard56Override {
+pub struct PatchCard56Override {
     pub name: Option<String>,
 }
 
 #[derive(serde::Deserialize, Debug, Clone)]
-pub struct Modcard56EffectOverride {
-    #[serde(deserialize_with = "deserialize_option_modcard56_effect_template")]
-    pub name_template: Option<Modcard56EffectTemplate>,
+pub struct PatchCard56EffectOverride {
+    #[serde(deserialize_with = "deserialize_option_patch_card56_effect_template")]
+    pub name_template: Option<PatchCard56EffectTemplate>,
 }
 
 #[derive(serde::Deserialize, Default, Debug, Clone)]
@@ -349,6 +349,6 @@ pub struct Overrides {
     pub charset: Option<Vec<String>>,
     pub chips: Option<Vec<ChipOverride>>,
     pub navicust_parts: Option<Vec<NavicustPartOverride>>,
-    pub modcard56s: Option<Vec<Modcard56Override>>,
-    pub modcard56_effects: Option<Vec<Modcard56EffectOverride>>,
+    pub patch_card56s: Option<Vec<PatchCard56Override>>,
+    pub patch_card56_effects: Option<Vec<PatchCard56EffectOverride>>,
 }

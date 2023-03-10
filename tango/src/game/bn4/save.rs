@@ -151,8 +151,10 @@ impl save::Save for Save {
         Some(Box::new(NavicustView { save: self }))
     }
 
-    fn view_modcards(&self) -> Option<save::ModcardsView> {
-        Some(save::ModcardsView::Modcard4s(Box::new(Modcard4sView { save: self })))
+    fn view_patch_cards(&self) -> Option<save::PatchCardsView> {
+        Some(save::PatchCardsView::PatchCard4s(Box::new(PatchCard4sView {
+            save: self,
+        })))
     }
 
     fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
@@ -260,12 +262,12 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     }
 }
 
-pub struct Modcard4sView<'a> {
+pub struct PatchCard4sView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::Modcard4sView<'a> for Modcard4sView<'a> {
-    fn modcard(&self, slot: usize) -> Option<save::Modcard> {
+impl<'a> save::PatchCard4sView<'a> for PatchCard4sView<'a> {
+    fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
         let mut id = self.save.buf[self.save.shift + 0x464c + slot] as usize;
         let enabled = if id < 0x85 {
             true
@@ -276,7 +278,7 @@ impl<'a> save::Modcard4sView<'a> for Modcard4sView<'a> {
             }
             false
         };
-        Some(save::Modcard { id, enabled })
+        Some(save::PatchCard { id, enabled })
     }
 }
 
