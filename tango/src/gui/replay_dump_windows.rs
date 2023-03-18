@@ -120,15 +120,19 @@ pub fn show(
 
                             ui.strong(i18n::LOCALES.lookup(language, "replays-export-scale-factor").unwrap());
                             ui.horizontal(|ui| {
-                                let mut scale = state.scale.unwrap_or(DEFAULT_SCALE);
+                                let mut scale = state.scale.unwrap_or(1);
                                 ui.add_enabled(state.scale.is_some(), egui::DragValue::new(&mut scale).speed(1).clamp_range(1..=10));
                                 if state.scale.is_some() {
                                     state.scale = Some(scale);
                                 }
+
                                 let mut lossless = state.scale.is_none();
+                                let was_lossless = lossless;
                                 ui.checkbox(&mut lossless, i18n::LOCALES.lookup(language, "replays-export-lossless").unwrap());
                                 if lossless {
                                     state.scale = None;
+                                } else if was_lossless {
+                                    state.scale = Some(DEFAULT_SCALE);
                                 }
                             });
                             ui.end_row();
