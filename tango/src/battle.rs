@@ -610,23 +610,24 @@ impl Round {
                 tokio::spawn({
                     let replay_path = self.replay_filename.clone();
                     async move {
-                        let replay_path2 = replay_path.clone();
-                        if let Err(e) = (move || async move {
-                            let client = reqwest::Client::new();
-                            let replay_file = tokio::fs::File::open(&replay_path2).await?;
+                        if let Err(e) = {
+                            let replay_path = replay_path.clone();
+                            (move || async move {
+                                let client = reqwest::Client::new();
+                                let replay_file = tokio::fs::File::open(&replay_path).await?;
 
-                            client
-                                .post(replaycollector_endpoint)
-                                .header("Content-Type", "application/x-tango-replay")
-                                .body(replay_file)
-                                .send()
-                                .await?
-                                .error_for_status()?;
+                                client
+                                    .post(replaycollector_endpoint)
+                                    .header("Content-Type", "application/x-tango-replay")
+                                    .body(replay_file)
+                                    .send()
+                                    .await?
+                                    .error_for_status()?;
 
-                            Ok::<(), anyhow::Error>(())
-                        })()
-                        .await
-                        {
+                                Ok::<(), anyhow::Error>(())
+                            })()
+                            .await
+                        } {
                             log::error!("failed to submit replay {}: {:?}", replay_path.display(), e);
                         }
                     }
