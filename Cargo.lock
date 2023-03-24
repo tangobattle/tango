@@ -3164,7 +3164,7 @@ dependencies = [
 
 [[package]]
 name = "mgba"
-version = "4.0.31"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "bindgen 0.57.0",
