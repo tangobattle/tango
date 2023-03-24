@@ -110,10 +110,9 @@ impl Thread {
 
 impl Drop for ThreadImpl {
     fn drop(&mut self) {
-        unsafe {
-            mgba_sys::mCoreThreadEnd(&mut self.raw);
-            mgba_sys::mCoreThreadJoin(&mut self.raw);
-        }
+        unsafe { mgba_sys::mCoreThreadEnd(&mut self.raw) }
+        unsafe { mgba_sys::mCoreThreadJoin(&mut self.raw) }
+        log::info!("thread is being dropped, ended and joined");
     }
 }
 

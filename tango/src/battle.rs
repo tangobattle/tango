@@ -581,13 +581,10 @@ impl Round {
 
         self.dtick = last_local_input.lag() - self.last_committed_remote_input.lag();
 
-        core.gba_mut().sync_mut().expect("set fps target").set_fps_target(
-            match session::EXPECTED_FPS as f32 + self.tps_adjustment() {
-                fps_target if fps_target <= 0.0 => f32::MIN,
-                fps_target if fps_target == f32::INFINITY => f32::MAX,
-                fps_target => fps_target,
-            },
-        );
+        core.gba_mut()
+            .sync_mut()
+            .expect("set fps target")
+            .set_fps_target(session::EXPECTED_FPS as f32 + self.tps_adjustment());
 
         let round_result = if let Some(round_result) = ff_result.round_result {
             round_result
@@ -679,19 +676,7 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        fn atanh(x: f32) -> f32 {
-            ((1.0 + x) / (1.0 - x)).ln() / 2.0
-        }
-
-        const ROLLBACK_LIMIT: f32 = 30.0;
-
-        match self.dtick as f32 {
-            x if x >= ROLLBACK_LIMIT => f32::INFINITY,   // >= +ve asymptote
-            x if x <= -ROLLBACK_LIMIT => -f32::INFINITY, // <= -ve asymptote
-            x => {
-                atanh(x / ROLLBACK_LIMIT) * ROLLBACK_LIMIT * session::EXPECTED_FPS as f32 / self.iq.max_length() as f32
-            }
-        }
+        self.dtick as f32 * session::EXPECTED_FPS as f32 / self.iq.max_length() as f32
     }
 }
 
