@@ -91,7 +91,6 @@ pub struct Config {
         deserialize_with = "deserialize_language_identifier"
     )]
     pub language: unic_langid::LanguageIdentifier,
-    pub max_queue_length: u32,
     pub video_filter: String,
     pub max_scale: u32,
     pub input_mapping: input::Mapping,
@@ -130,7 +129,6 @@ impl Default for Config {
             theme: Theme::System,
             show_debug: Default::default(),
             language: i18n::FALLBACK_LANG.clone(),
-            max_queue_length: 1200,
             video_filter: "".to_string(),
             max_scale: 0,
             input_mapping: Default::default(),

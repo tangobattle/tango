@@ -75,10 +75,6 @@ where
         }
     }
 
-    pub fn max_length(&self) -> usize {
-        self.max_length
-    }
-
     pub fn add_local_input(&mut self, v: T) {
         self.local_queue.push_back(v);
     }

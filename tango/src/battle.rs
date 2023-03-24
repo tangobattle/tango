@@ -298,12 +298,13 @@ impl Match {
 
         let (first_state_committed_local_packet, first_state_committed_rx) = tokio::sync::oneshot::channel();
 
-        let (input_delay, max_queue_length) = {
+        let input_delay = {
             let config = self.config.read();
-            (config.input_delay, config.max_queue_length)
+            config.input_delay
         };
 
-        let mut iq = lockstep::PairQueue::new(max_queue_length as usize, input_delay);
+        const MAX_QUEUE_LENGTH: usize = 300;
+        let mut iq = lockstep::PairQueue::new(MAX_QUEUE_LENGTH, input_delay);
         log::info!("filling {} ticks of input delay", input_delay);
 
         {
@@ -680,19 +681,7 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        fn atanh(x: f32) -> f32 {
-            ((1.0 + x) / (1.0 - x)).ln() / 2.0
-        }
-
-        const ROLLBACK_LIMIT: f32 = 30.0;
-
-        match self.dtick as f32 {
-            x if x >= ROLLBACK_LIMIT => f32::INFINITY,   // >= +ve asymptote
-            x if x <= -ROLLBACK_LIMIT => -f32::INFINITY, // <= -ve asymptote
-            x => {
-                atanh(x / ROLLBACK_LIMIT) * ROLLBACK_LIMIT * session::EXPECTED_FPS as f32 / self.iq.max_length() as f32
-            }
-        }
+        (self.dtick.abs() as f32 / 15.0).powf(7.0 / 3.0) * self.dtick.signum() as f32
     }
 }
 

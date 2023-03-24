@@ -514,14 +514,6 @@ fn show_netplay_tab(ui: &mut egui::Ui, config: &mut config::Config) {
 
             ui.strong(
                 i18n::LOCALES
-                    .lookup(&config.language, "settings-max-queue-length")
-                    .unwrap(),
-            );
-            ui.add(egui::DragValue::new(&mut config.max_queue_length).speed(1));
-            ui.end_row();
-
-            ui.strong(
-                i18n::LOCALES
                     .lookup(&config.language, "settings-matchmaking-endpoint")
                     .unwrap(),
             );
