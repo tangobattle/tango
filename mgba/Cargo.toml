@@ -1,6 +1,6 @@
 [package]
 name = "mgba"
-version = "4.0.29"
+version = "4.0.31"
 edition = "2021"
 
 [dependencies]
