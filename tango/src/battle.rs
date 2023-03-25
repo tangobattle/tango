@@ -681,7 +681,10 @@ impl Round {
     }
 
     pub fn tps_adjustment(&self) -> f32 {
-        (self.dtick.abs() as f32 / 15.0).powf(7.0 / 3.0) * self.dtick.signum() as f32
+        // This is (dtick / 1.5) ^ (7.0 / 3.0), but we can't do a precise cube root so we do this awkward sign copying thing.
+        (self.dtick.abs() as f32 / 15.0)
+            .powf(7.0 / 3.0)
+            .copysign(self.dtick as f32)
     }
 }
 
