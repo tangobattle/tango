@@ -116,7 +116,7 @@ pub fn show(
     fps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     show_debug: bool,
-    always_show_status_bar: bool,
+    always_show_status_bar: Option<bool>,
     state: &mut State,
     discord_client: &mut discord::Client,
 ) {
@@ -269,7 +269,7 @@ cpsr = {:08x}"#,
         });
     }
 
-    if always_show_status_bar {
+    if always_show_status_bar.unwrap_or(false) {
         show_status_bar(
             ctx,
             language,
@@ -293,7 +293,7 @@ cpsr = {:08x}"#,
         });
 
     const HIDE_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
-    if !always_show_status_bar
+    if always_show_status_bar.is_none()
         && last_mouse_motion_time
             .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
             .unwrap_or(false)
@@ -372,27 +372,24 @@ fn show_status_bar(
                             Some(gui::debug_window::State::new())
                         };
                     }
-                    ui.add(egui::Separator::default().vertical());
                 }
 
-                ui.monospace(format!(
-                    "fps {:7.2}",
-                    1.0 / fps_counter.lock().mean_duration().as_secs_f32()
-                ));
-
-                ui.add(egui::Separator::default().vertical());
-                ui.monospace(format!(
-                    "tps {:7.2} ({:+5.2})",
-                    1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
-                    tps_adjustment
-                ));
-
-                if let Some(latency) = latency {
+                if show_debug {
                     ui.add(egui::Separator::default().vertical());
-                    ui.monospace(format!("ping {:4}ms", latency.as_millis()));
+                    ui.monospace(format!(
+                        "fps {:7.2}",
+                        1.0 / fps_counter.lock().mean_duration().as_secs_f32()
+                    ));
+
+                    ui.add(egui::Separator::default().vertical());
+                    ui.monospace(format!(
+                        "tps {:7.2} ({:+5.2})",
+                        1.0 / emu_tps_counter.lock().mean_duration().as_secs_f32(),
+                        tps_adjustment
+                    ));
                 }
 
-                if let Some((local_qlen, remote_qlen, local_delay, current_tick, local_player_index)) = round_info {
+                if let Some((local_qlen, remote_qlen, local_delay, current_tick, _)) = round_info {
                     if show_debug {
                         ui.add(egui::Separator::default().vertical());
                         ui.monospace(format!(
@@ -402,8 +399,18 @@ fn show_status_bar(
 
                         ui.add(egui::Separator::default().vertical());
                         ui.monospace(format!("tick {:5}", current_tick));
+                    } else {
+                        ui.add(egui::Separator::default().vertical());
+                        ui.monospace(format!("rollback ticks {:2}", local_qlen.saturating_sub(remote_qlen)));
                     }
+                }
 
+                if let Some(latency) = latency {
+                    ui.add(egui::Separator::default().vertical());
+                    ui.monospace(format!("ping {:4}ms", latency.as_millis()));
+                }
+
+                if let Some((_, _, _, _, local_player_index)) = round_info {
                     ui.add(egui::Separator::default().vertical());
                     ui.monospace(format!("P{}", local_player_index + 1));
                 }

@@ -191,7 +191,29 @@ fn show_general_tab(ui: &mut egui::Ui, config: &mut config::Config, font_familie
                         .lookup(&config.language, "settings-always-show-status-bar")
                         .unwrap(),
                 );
-                ui.checkbox(&mut config.always_show_status_bar, "");
+
+                let auto_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-always-show-status-bar.auto")
+                    .unwrap();
+                let never_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-always-show-status-bar.never")
+                    .unwrap();
+                let always_label = i18n::LOCALES
+                    .lookup(&config.language, "settings-always-show-status-bar.always")
+                    .unwrap();
+
+                egui::ComboBox::from_id_source("settings-window-always-show-status-bar")
+                    .selected_text(match config.show_status_bar {
+                        None => &auto_label,
+                        Some(false) => &never_label,
+                        Some(true) => &always_label,
+                    })
+                    .width(200.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut config.show_status_bar, None, &auto_label);
+                        ui.selectable_value(&mut config.show_status_bar, Some(false), &never_label);
+                        ui.selectable_value(&mut config.show_status_bar, Some(true), &always_label);
+                    });
                 ui.end_row();
             }
 

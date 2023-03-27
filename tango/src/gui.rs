@@ -405,7 +405,7 @@ pub fn show(
             state.fps_counter.clone(),
             state.emu_tps_counter.clone(),
             config.show_debug,
-            config.always_show_status_bar,
+            config.show_status_bar,
             state.session_view.get_or_insert_with(|| session_view::State::new()),
             &mut state.discord_client,
         );
