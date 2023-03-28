@@ -31,6 +31,11 @@ impl super::Backend for Backend {
                 username: Some(self.username.clone()),
                 urls: vec!["turn:relay.metered.ca:443?transport=tcp".to_string()],
             },
+            tango_protos::matchmaking::packet::hello::IceServer {
+                credential: None,
+                username: None,
+                urls: vec!["stun:relay.metered.ca:80".to_string()],
+            },
         ])
     }
 }
