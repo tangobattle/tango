@@ -27,6 +27,12 @@ struct Config {
 
     #[envconfig(from = "OPENTOK_API_SECRET", default = "")]
     opentok_api_secret: String,
+
+    #[envconfig(from = "METERED_USERNAME", default = "")]
+    metered_username: String,
+
+    #[envconfig(from = "METERED_CREDENTIAL", default = "")]
+    metered_credential: String,
 }
 
 struct State {
@@ -151,6 +157,12 @@ async fn main() -> anyhow::Result<()> {
             Some(Box::new(iceconfig::opentok::Backend::new(
                 config.opentok_api_key.clone(),
                 config.opentok_api_secret.clone(),
+            )))
+        } else if !config.metered_username.is_empty() && !config.metered_credential.is_empty() {
+            log::info!("using opentok iceconfig backend");
+            Some(Box::new(iceconfig::metered::Backend::new(
+                config.metered_username.clone(),
+                config.metered_credential.clone(),
             )))
         } else {
             log::warn!("no iceconfig backend, will not service iceconfig requests");

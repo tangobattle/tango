@@ -1,5 +1,6 @@
 pub mod opentok;
 pub mod twilio;
+pub mod metered;
 
 #[async_trait::async_trait]
 pub trait Backend {
