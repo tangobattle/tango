@@ -369,17 +369,13 @@ impl game::Hooks for Hooks {
                         log::info!("battle state committed on {}", round.current_tick());
                     }
 
-                    'abort: {
-                        if let Err(e) = sync::block_on(round.add_local_input_and_fastforward(
-                            core,
-                            joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
-                        )) {
-                            log::error!("failed to add local input: {}", e);
-                            break 'abort;
-                        }
-                        return;
+                    if let Err(e) = sync::block_on(round.add_local_input_and_fastforward(
+                        core,
+                        joyflags.load(std::sync::atomic::Ordering::Relaxed) as u16,
+                    )) {
+                        log::error!("failed to add local input: {}", e);
+                        match_.cancel();
                     }
-                    match_.cancel();
                 })
             }),
             (
