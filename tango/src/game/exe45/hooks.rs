@@ -24,7 +24,7 @@ fn step_rng(seed: u32) -> u32 {
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng1_state = 0;
-    for _ in 0..rng.gen_range(0..0x10000) {
+    for _ in 0..rng.gen_range(0..0x100000) {
         rng1_state = step_rng(rng1_state);
     }
     rng1_state
@@ -32,7 +32,7 @@ fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
 
 fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
     let mut rng2_state = 0xa338244f;
-    for _ in 0..rng.gen_range(0..0x10000) {
+    for _ in 0..rng.gen_range(0..0x100000) {
         rng2_state = step_rng(rng2_state);
     }
     rng2_state
@@ -319,7 +319,6 @@ impl game::Hooks for Hooks {
                         // rng2 is the shared rng, it must be synced.
                         let rng2_state = generate_rng2_state(&mut *rng);
                         munger.set_rng2_state(core, rng2_state);
-                        munger.set_rng3_state(core, rng2_state);
 
                         round.set_first_committed_state(
                             core.save_state().expect("save state"),
@@ -328,10 +327,9 @@ impl game::Hooks for Hooks {
                             &munger.tx_packet(core),
                         );
                         log::info!(
-                            "primary rng1 state: {:08x}, rng2 state: {:08x}, rng3 state: {:08x}",
+                            "primary rng1 state: {:08x}, rng2 state: {:08x}",
                             munger.rng1_state(core),
                             munger.rng2_state(core),
-                            munger.rng3_state(core),
                         );
                         log::info!("battle state committed on {}", round.current_tick());
                     }
@@ -531,16 +529,14 @@ impl game::Hooks for Hooks {
                         // rng2 is the shared rng, it must be synced.
                         let rng2_state = generate_rng2_state(&mut *rng);
                         munger.set_rng2_state(core, rng2_state);
-                        munger.set_rng3_state(core, rng2_state);
 
                         // HACK: For some inexplicable reason, we don't always start on tick 0.
                         round
                             .set_first_committed_state(core.save_state().expect("save state"), &munger.tx_packet(core));
                         log::info!(
-                            "shadow rng1 state: {:08x}, rng2 state: {:08x}, rng3 state: {:08x}",
+                            "shadow rng1 state: {:08x}, rng2 state: {:08x}",
                             munger.rng1_state(core),
-                            munger.rng2_state(core),
-                            munger.rng3_state(core)
+                            munger.rng2_state(core)
                         );
                         log::info!("shadow state committed on {}", round.current_tick());
                         return;
