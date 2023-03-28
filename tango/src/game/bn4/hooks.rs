@@ -44,19 +44,15 @@ fn step_rng(seed: u32) -> u32 {
 }
 
 fn generate_rng1_state(rng: &mut impl rand::Rng) -> u32 {
-    let mut rng1_state = 0;
-    for _ in 0..rng.gen_range(0..0x10000) {
-        rng1_state = step_rng(rng1_state);
-    }
-    rng1_state
+    (0..rng.gen_range(0..0x100000))
+        .into_iter()
+        .fold(0, |acc, _| step_rng(acc))
 }
 
 fn generate_rng2_state(rng: &mut impl rand::Rng) -> u32 {
-    let mut rng2_state = 0xa338244f;
-    for _ in 0..rng.gen_range(0..0x10000) {
-        rng2_state = step_rng(rng2_state);
-    }
-    rng2_state
+    (0..rng.gen_range(0..0x100000))
+        .into_iter()
+        .fold(0xa338244f, |acc, _| step_rng(acc))
 }
 
 fn random_battle_settings_and_background(rng: &mut impl rand::Rng, match_type: (u8, u8)) -> (u8, u8) {
