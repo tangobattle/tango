@@ -65,6 +65,11 @@ pub(super) struct ROMOffsets {
     /// Packets to transmit should be injected here into tx_packet.
     pub(super) copy_input_data_ret: u32,
 
+    /// This one is a mystery.
+    ///
+    /// In BN4-6, the segment of code guarded by two consecutive conditions runs unconditionally. However, in EXE4.5, it is guarded by two checks. This hook should skip PC +0x1c to run the code unconditionally.
+    ///
+    /// I have no idea if this actually works correctly. Good luck!
     pub(super) copy_input_data_r0_tst: u32,
 
     pub(super) round_end_set_win: u32,
