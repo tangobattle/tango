@@ -72,6 +72,14 @@ impl game::Hooks for Hooks {
                     core.gba_mut().cpu_mut().set_gpr(1, 0);
                 }),
             ),
+            (self.offsets.rom.copy_input_data_r0_tst, {
+                Box::new(move |mut core: mgba::core::CoreMutRef| {
+                    // Skip giant section of code. This section checks if r0 == 8 and a bunch of input state checks that aren't present in BN4.
+                    // It's probably fine! Maybe!
+                    let pc = core.as_ref().gba().cpu().thumb_pc() as u32;
+                    core.gba_mut().cpu_mut().set_thumb_pc(pc + 0x1C);
+                })
+            }),
         ]
     }
 
@@ -364,17 +372,6 @@ impl game::Hooks for Hooks {
     }
 
     fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
-        let make_copy_input_data_ret_hook = || {
-            let shadow_state = shadow_state.clone();
-            let munger = self.munger();
-            Box::new(move |core: mgba::core::CoreMutRef| {
-                let mut round_state = shadow_state.lock_round_state();
-                let round = round_state.round.as_mut().expect("round");
-                round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
-                round.set_input_injected();
-            })
-        };
-
         vec![
             {
                 let munger = self.munger();
@@ -620,9 +617,16 @@ impl game::Hooks for Hooks {
                     );
                 })
             }),
-            (self.offsets.rom.copy_input_data_ret1, make_copy_input_data_ret_hook()),
-            (self.offsets.rom.copy_input_data_ret2, make_copy_input_data_ret_hook()),
-            (self.offsets.rom.copy_input_data_ret3, make_copy_input_data_ret_hook()),
+            (self.offsets.rom.copy_input_data_ret, {
+                let shadow_state = shadow_state.clone();
+                let munger = self.munger();
+                Box::new(move |core: mgba::core::CoreMutRef| {
+                    let mut round_state = shadow_state.lock_round_state();
+                    let round = round_state.round.as_mut().expect("round");
+                    round.set_remote_packet(round.current_tick() + 1, munger.tx_packet(core).to_vec());
+                    round.set_input_injected();
+                })
+            }),
             (self.offsets.rom.round_call_jump_table_ret, {
                 let shadow_state = shadow_state.clone();
                 Box::new(move |_core| {
@@ -642,19 +646,6 @@ impl game::Hooks for Hooks {
     }
 
     fn replayer_traps(&self, replayer_state: replayer::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
-        let make_copy_input_data_ret_hook = || {
-            let munger = self.munger();
-            let replayer_state = replayer_state.clone();
-            Box::new(move |core: mgba::core::CoreMutRef| {
-                let mut replayer_state = replayer_state.lock_inner();
-                if replayer_state.is_round_ending() {
-                    return;
-                }
-                let current_tick = replayer_state.current_tick();
-                replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
-            })
-        };
-
         vec![
             (self.offsets.rom.battle_start_play_music_call, {
                 let replayer_state = replayer_state.clone();
@@ -816,9 +807,18 @@ impl game::Hooks for Hooks {
                     );
                 })
             }),
-            (self.offsets.rom.copy_input_data_ret1, make_copy_input_data_ret_hook()),
-            (self.offsets.rom.copy_input_data_ret2, make_copy_input_data_ret_hook()),
-            (self.offsets.rom.copy_input_data_ret3, make_copy_input_data_ret_hook()),
+            (self.offsets.rom.copy_input_data_ret, {
+                let munger = self.munger();
+                let replayer_state = replayer_state.clone();
+                Box::new(move |core: mgba::core::CoreMutRef| {
+                    let mut replayer_state = replayer_state.lock_inner();
+                    if replayer_state.is_round_ending() {
+                        return;
+                    }
+                    let current_tick = replayer_state.current_tick();
+                    replayer_state.set_local_packet(current_tick + 1, munger.tx_packet(core).to_vec());
+                })
+            }),
             {
                 let replayer_state = replayer_state.clone();
                 (
