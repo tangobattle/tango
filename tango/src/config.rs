@@ -34,23 +34,6 @@ where
     })
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
-pub enum AudioBackend {
-    #[cfg(feature = "sdl2-audio")]
-    Sdl2,
-    #[cfg(feature = "cpal")]
-    Cpal,
-}
-
-impl Default for AudioBackend {
-    #[allow(unreachable_code)]
-    fn default() -> Self {
-        #[cfg(feature = "sdl2-audio")]
-        return Self::Sdl2;
-        #[cfg(feature = "cpal")]
-        return Self::Cpal;
-    }
-}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Eq)]
 pub enum Theme {
@@ -107,7 +90,6 @@ pub struct Config {
     #[serde(deserialize_with = "ok_or_default")]
     pub graphics_backend: GraphicsBackend,
     #[serde(deserialize_with = "ok_or_default")]
-    pub audio_backend: AudioBackend,
     pub volume: i32,
     pub ui_scale_percent: u32,
     pub allow_prerelease_upgrades: bool,
@@ -143,7 +125,6 @@ impl Default for Config {
             streamer_mode: false,
             show_own_setup: false,
             graphics_backend: Default::default(),
-            audio_backend: Default::default(),
             volume: 0x100,
             ui_scale_percent: 100,
             allow_prerelease_upgrades: !version.pre.is_empty(),

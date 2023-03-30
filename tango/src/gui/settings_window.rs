@@ -490,39 +490,6 @@ fn show_audio_tab(ui: &mut egui::Ui, config: &mut config::Config) {
             ui.add(egui::Slider::new(&mut volume, 0..=100).suffix("%"));
             config.volume = volume * 0x100 / 100;
             ui.end_row();
-
-            {
-                ui.strong(
-                    i18n::LOCALES
-                        .lookup(&config.language, "settings-audio-backend")
-                        .unwrap(),
-                );
-
-                #[cfg(feature = "sdl2-audio")]
-                let sdl2_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-audio-backend.sdl2")
-                    .unwrap();
-                #[cfg(feature = "cpal")]
-                let cpal_label = i18n::LOCALES
-                    .lookup(&config.language, "settings-audio-backend.cpal")
-                    .unwrap();
-
-                egui::ComboBox::from_id_source("settings-window-general-audio-backend")
-                    .width(200.0)
-                    .selected_text(match config.audio_backend {
-                        #[cfg(feature = "sdl2-audio")]
-                        config::AudioBackend::Sdl2 => &sdl2_label,
-                        #[cfg(feature = "cpal")]
-                        config::AudioBackend::Cpal => &cpal_label,
-                    })
-                    .show_ui(ui, |ui| {
-                        #[cfg(feature = "sdl2-audio")]
-                        ui.selectable_value(&mut config.audio_backend, config::AudioBackend::Sdl2, &sdl2_label);
-                        #[cfg(feature = "cpal")]
-                        ui.selectable_value(&mut config.audio_backend, config::AudioBackend::Cpal, &cpal_label);
-                    });
-                ui.end_row();
-            }
         });
 }
 

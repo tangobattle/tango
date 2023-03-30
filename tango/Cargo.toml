@@ -6,8 +6,7 @@ license = "AGPL-3.0-or-later"
 default-run = "tango"
 
 [features]
-default = ["glutin", "wgpu", "cpal", "sdl2-audio"]
-sdl2-audio = []
+default = ["glutin", "wgpu", "cpal"]
 glutin = ["dep:glutin", "dep:egui_glow"]
 cpal = ["dep:cpal"]
 wgpu = ["dep:wgpu", "dep:egui-wgpu"]

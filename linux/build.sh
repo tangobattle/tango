@@ -41,7 +41,7 @@ export LINUX_PACKAGING="linux/packaging"
 export APPIMAGE_BIN_DIR="${LINUX_PACKAGING}/${LINUX_ARCH}/bin"
 
 # Build tango
-cargo build --bin tango --target="${LINUX_ARCH}-unknown-linux-gnu" --no-default-features --features=sdl2-audio,wgpu,cpal --release
+cargo build --bin tango --target="${LINUX_ARCH}-unknown-linux-gnu" --no-default-features --features=wgpu,cpal --release
 
 # Create AppImage packaging directory and a bin folder inside it
 mkdir -p "${APPIMAGE_BIN_DIR}"
