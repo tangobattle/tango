@@ -177,6 +177,8 @@ fn make_warning(
 
     None
 }
+
+#[derive(Clone)]
 struct LocalSelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub save: Box<dyn save::Save + Send + Sync>,
@@ -184,6 +186,7 @@ struct LocalSelection {
     pub patch: Option<(String, semver::Version, patch::Version)>,
 }
 
+#[derive(Clone)]
 struct RemoteSelection {
     pub game: &'static (dyn game::Game + Send + Sync),
     pub rom: Vec<u8>,
@@ -741,13 +744,13 @@ async fn run_connection_task(
                         } else {
                             return Err(ConnectionError::Other(anyhow::anyhow!("no sender?")));
                         };
-                        (sender, lobby.match_type, local_settings, lobby.remote_selection.take(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.take(), lobby.local_selection.take(), lobby.link_code.clone())
+                        (sender, lobby.match_type, local_settings, lobby.remote_selection.clone(), lobby.remote_settings.clone(), lobby.remote_commitment.clone(), lobby.local_negotiated_state.clone(), lobby.local_selection.clone(), lobby.link_code.clone())
                     };
 
                     let remote_selection = if let Some(remote_selection) = remote_selection {
                         remote_selection
                     } else {
-                        return Err(ConnectionError::Other(anyhow::anyhow!("missing shadow rom")));
+                        return Err(ConnectionError::Other(anyhow::anyhow!("missing remote selection?")));
                     };
 
                     let remote_patch_overrides = remote_selection.patch.as_ref().map(|(_, _, version_meta)| version_meta.rom_overrides.clone()).unwrap_or_default();
@@ -755,7 +758,7 @@ async fn run_connection_task(
                     let (local_negotiated_state, raw_local_state) = if let Some((negotiated_state, raw_local_state)) = local_negotiated_state {
                         (negotiated_state, raw_local_state)
                     } else {
-                        return Err(ConnectionError::Other(anyhow::anyhow!("attempted to start match in invalid state")));
+                        return Err(ConnectionError::Other(anyhow::anyhow!("missing local state?")));
                     };
 
                     const CHUNK_SIZE: usize = 32 * 1024;
