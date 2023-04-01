@@ -1,5 +1,5 @@
 use crate::audio;
-use cpal::traits::DeviceTrait;
+use cpal::{traits::DeviceTrait, Sample};
 
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
@@ -44,7 +44,7 @@ fn open_stream(
                     }
                     if data.len() > n * channels as usize {
                         for x in data[n * channels as usize..].iter_mut() {
-                            *x = 32768;
+                            *x = 0.0f32.to_u16();
                         }
                     }
                 }
@@ -68,7 +68,7 @@ fn open_stream(
                     }
                     if data.len() > n * channels as usize {
                         for x in data[n * channels as usize..].iter_mut() {
-                            *x = 0;
+                            *x = 0.0f32.to_i16();
                         }
                     }
                 }
@@ -92,7 +92,7 @@ fn open_stream(
                     }
                     if data.len() > n * channels as usize {
                         for x in data[n * channels as usize..].iter_mut() {
-                            *x = 0.0;
+                            *x = 0.0f32;
                         }
                     }
                 }
