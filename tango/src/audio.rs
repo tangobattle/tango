@@ -32,11 +32,15 @@ pub struct LateBinder {
 }
 
 impl LateBinder {
-    pub fn new(sample_rate: u32) -> Self {
+    pub fn new() -> Self {
         Self {
-            sample_rate,
+            sample_rate: 0,
             stream: std::sync::Arc::new(parking_lot::Mutex::new(None)),
         }
+    }
+
+    pub fn set_sample_rate(&mut self, sample_rate: u32) {
+        self.sample_rate = sample_rate
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -118,4 +122,6 @@ impl Stream for MGBAStream {
     }
 }
 
-pub trait Backend {}
+pub trait Backend {
+    fn sample_rate(&self) -> u32;
+}

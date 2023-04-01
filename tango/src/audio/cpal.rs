@@ -1,5 +1,5 @@
 use crate::audio;
-use cpal::traits::DeviceTrait;
+use cpal::{traits::DeviceTrait, Sample};
 
 fn get_supported_config(device: &cpal::Device) -> anyhow::Result<cpal::SupportedStreamConfig> {
     let mut supported_configs = device.supported_output_configs()?.collect::<Vec<_>>();
@@ -44,7 +44,7 @@ fn open_stream(
                     }
                     if data.len() > n * channels as usize {
                         for x in data[n * channels as usize..].iter_mut() {
-                            *x = 32768;
+                            *x = 0.0f32.to_u16();
                         }
                     }
                 }
@@ -68,7 +68,7 @@ fn open_stream(
                     }
                     if data.len() > n * channels as usize {
                         for x in data[n * channels as usize..].iter_mut() {
-                            *x = 0;
+                            *x = 0.0f32.to_i16();
                         }
                     }
                 }
@@ -92,7 +92,7 @@ fn open_stream(
                     }
                     if data.len() > n * channels as usize {
                         for x in data[n * channels as usize..].iter_mut() {
-                            *x = 0.0;
+                            *x = 0.0f32;
                         }
                     }
                 }
@@ -132,6 +132,7 @@ fn realign_samples(buf: &mut [i16], channels: u16) {
 pub struct Backend {
     _audio_device: cpal::Device,
     _stream: cpal::Stream,
+    sample_rate: cpal::SampleRate,
 }
 
 impl Backend {
@@ -157,8 +158,13 @@ impl Backend {
         Ok(Self {
             _audio_device: audio_device,
             _stream: stream,
+            sample_rate: config.sample_rate,
         })
     }
 }
 
-impl audio::Backend for Backend {}
+impl audio::Backend for Backend {
+    fn sample_rate(&self) -> u32 {
+        self.sample_rate.0
+    }
+}

@@ -42,4 +42,8 @@ impl Backend {
     }
 }
 
-impl audio::Backend for Backend {}
+impl audio::Backend for Backend {
+    fn sample_rate(&self) -> u32 {
+        48000
+    }
+}
