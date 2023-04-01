@@ -1,5 +1,7 @@
 #[cfg(feature = "cpal")]
 pub mod cpal;
+#[cfg(feature = "sdl2-audio")]
+pub mod sdl2;
 
 const SAMPLES: usize = 512;
 
