@@ -1,12 +1,22 @@
 pub struct Backend {
-    username: String,
-    credential: String,
+    application_name: String,
+    api_key: String,
 }
 
 impl Backend {
-    pub fn new(username: String, credential: String) -> Self {
-        Self { username, credential }
+    pub fn new(application_name: String, api_key: String) -> Self {
+        Self {
+            application_name,
+            api_key,
+        }
     }
+}
+
+#[derive(serde::Deserialize)]
+struct ICEServer {
+    username: Option<String>,
+    credential: Option<String>,
+    urls: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -15,27 +25,26 @@ impl super::Backend for Backend {
         &self,
         _remote_ip: &std::net::IpAddr,
     ) -> anyhow::Result<Vec<tango_protos::matchmaking::packet::hello::IceServer>> {
-        Ok(vec![
-            tango_protos::matchmaking::packet::hello::IceServer {
-                credential: Some(self.credential.clone()),
-                username: Some(self.username.clone()),
-                urls: vec!["turn:relay.metered.ca:80".to_string()],
-            },
-            tango_protos::matchmaking::packet::hello::IceServer {
-                credential: Some(self.credential.clone()),
-                username: Some(self.username.clone()),
-                urls: vec!["turn:relay.metered.ca:443".to_string()],
-            },
-            tango_protos::matchmaking::packet::hello::IceServer {
-                credential: Some(self.credential.clone()),
-                username: Some(self.username.clone()),
-                urls: vec!["turn:relay.metered.ca:443?transport=tcp".to_string()],
-            },
-            tango_protos::matchmaking::packet::hello::IceServer {
-                credential: None,
-                username: None,
-                urls: vec!["stun:relay.metered.ca:80".to_string()],
-            },
-        ])
+        let client = reqwest::Client::new();
+
+        let resp = client
+            .get(format!(
+                "https://{}.metered.live/api/v1/turn/credentials?apiKey={}",
+                self.application_name, self.api_key
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<Vec<ICEServer>>()
+            .await?;
+
+        Ok(resp
+            .into_iter()
+            .map(|ice_server| tango_protos::matchmaking::packet::hello::IceServer {
+                credential: ice_server.credential,
+                username: ice_server.username,
+                urls: ice_server.urls.into_iter().collect(),
+            })
+            .collect())
     }
 }
