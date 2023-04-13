@@ -62,12 +62,9 @@ pub fn extract_bnlc_roms_from_steam(path: &std::path::Path) -> Result<(), anyhow
         ["SOFTWARE\\Valve\\Steam", "SOFTWARE\\Wow6432Node\\Valve\\Steam"]
             .into_iter()
             .flat_map(|path| {
-                let subkey = if let Ok(subkey) = hklm.open_subkey(path) {
-                    subkey
-                } else {
-                    return None;
-                };
-                subkey.get_value::<std::ffi::OsString, _>("InstallPath").ok()
+                hklm.open_subkey(path)
+                    .ok()
+                    .and_then(|subkey| subkey.get_value::<std::ffi::OsString, _>("InstallPath").ok())
             })
             .next()
     {
