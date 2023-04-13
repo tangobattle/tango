@@ -95,6 +95,7 @@ fontdue = "0.7"
 num-traits = "0.2"
 num-derive = "0.3"
 fluent-langneg = "0.13"
+zip = "0.6"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.50"
