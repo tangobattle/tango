@@ -58,7 +58,7 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
 pub fn extract_bnlc_roms_from_steam(path: &std::path::Path) -> Result<(), anyhow::Error> {
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    let mut steamapps_common_path = if let Some(install_path) =
+    let steamapps_common_path = if let Some(install_path) =
         ["SOFTWARE\\Valve\\Steam", "SOFTWARE\\Wow6432Node\\Valve\\Steam"]
             .into_iter()
             .flat_map(|path| {
