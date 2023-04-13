@@ -55,66 +55,67 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
 ];
 
 #[cfg(windows)]
-pub fn extract_bnlc_roms_from_steam(path: &std::path::Path) -> Result<(), anyhow::Error> {
+pub fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    let mut roms = std::collections::HashMap::new();
+
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
     let steamapps_common_path = if let Some(install_path) =
         ["SOFTWARE\\Valve\\Steam", "SOFTWARE\\Wow6432Node\\Valve\\Steam"]
             .into_iter()
             .flat_map(|path| {
-                hklm.open_subkey(path)
-                    .ok()
-                    .and_then(|subkey| subkey.get_value::<std::ffi::OsString, _>("InstallPath").ok())
+                hklm.open_subkey(path).ok().and_then(|subkey| {
+                    subkey
+                        .get_value::<std::ffi::OsString, _>("InstallPath")
+                        .ok()
+                        .map(std::path::PathBuf::from)
+                })
             })
             .next()
     {
-        std::path::PathBuf::from(install_path)
+        log::info!("Steam installation found at {}", install_path);
+        install_path
     } else {
-        anyhow::bail!("no Steam installation found");
+        return roms;
     }
     .join("steamapps")
     .join("common");
 
-    extract_bnlc_vol1_roms(
+    roms.extend(scan_bnlc_vol1_roms(
         &steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol1"),
-        path,
-    )?;
-    extract_bnlc_vol2_roms(
+    ));
+    roms.extend(scan_bnlc_vol2_roms(
         &steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol2"),
-        path,
-    )?;
+    ));
 
-    Ok(())
+    roms
 }
 
 #[cfg(not(windows))]
-pub fn extract_bnlc_roms_from_steam(path: &std::path::Path) -> Result<(), anyhow::Error> {
-    anyhow::bail!("cannot extract ROMs from non-windows steam, you'll have to do this manually");
+pub fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    std::collections::HashMap::new()
 }
 
-pub fn extract_bnlc_vol1_roms(lc_path: &std::path::Path, roms_path: &std::path::Path) -> Result<(), anyhow::Error> {
-    Ok(())
+pub fn scan_bnlc_vol1_roms(
+    lc_path: &std::path::Path,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    std::collections::HashMap::new()
 }
 
-pub fn extract_bnlc_vol2_roms(lc_path: &std::path::Path, roms_path: &std::path::Path) -> Result<(), anyhow::Error> {
-    Ok(())
+pub fn scan_bnlc_vol2_roms(
+    lc_path: &std::path::Path,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    std::collections::HashMap::new()
 }
 
 pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    let roms = scan_roms_no_bnlc(path);
-    if !roms.is_empty() {
-        return roms;
-    }
-
-    if let Err(e) = extract_bnlc_roms_from_steam(path) {
-        log::info!("failed to extract roms from BNLC: {:?}", e);
-        return roms;
-    }
-
-    scan_roms_no_bnlc(path)
+    let mut roms = std::collections::HashMap::new();
+    roms.extend(scan_bnlc_steam_roms());
+    roms.extend(scan_non_bnlc_roms(path));
+    roms
 }
 
-fn scan_roms_no_bnlc(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
     for entry in walkdir::WalkDir::new(path) {
