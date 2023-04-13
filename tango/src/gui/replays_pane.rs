@@ -1,4 +1,3 @@
-use chrono_locale::LocaleDate;
 use fluent_templates::Loader;
 
 use crate::{audio, game, gui, i18n, patch, replay, rom, save, scanner, session, stats};
@@ -173,9 +172,7 @@ pub fn show(
 
                         let mut layout_job = egui::text::LayoutJob::default();
                         layout_job.append(
-                            &chrono::DateTime::<chrono::Local>::from(ts)
-                                .formatl("%c", &language.to_string())
-                                .to_string(),
+                            &chrono::DateTime::<chrono::Local>::from(ts).to_string(),
                             0.0,
                             egui::TextFormat::simple(
                                 ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),

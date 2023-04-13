@@ -54,7 +54,63 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
+#[cfg(windows)]
+pub fn extract_bnlc_roms(path: &std::path::Path) -> Result<(), anyhow::Error> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+
+    let mut steamapps_common_path = if let Some(install_path) =
+        ["SOFTWARE\\Valve\\Steam", "SOFTWARE\\Wow6432Node\\Valve\\Steam"]
+            .into_iter()
+            .flat_map(|path| {
+                let subkey = if let Ok(subkey) = hklm.open_subkey(path) {
+                    subkey
+                } else {
+                    return None;
+                };
+                subkey.get_value::<std::ffi::OsString>("InstallPath").ok()
+            })
+            .first()
+    {
+        std::path::PathBuf::from(install_path)
+    } else {
+        anyhow::bail!("no Steam installation located");
+    }
+    .join("steamapps")
+    .join("common");
+
+    // Locate BNLC Vol 1.
+    {
+        let bnlc_vol1_path = steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol1");
+    }
+
+    // Locate BNLC Vol 2.
+    {
+        let mut bnlc_vol2_path = steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol2");
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn extract_bnlc_roms(path: &std::path::Path) -> Result<(), anyhow::Error> {
+    anyhow::bail!("not windows");
+}
+
 pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    let roms = scan_roms_no_bnlc(path);
+    if !roms.is_empty() {
+        return roms;
+    }
+
+    if let Err(e) = extract_bnlc_roms(path) {
+        log::info!("failed to extract roms from BNLC: {:?}", e);
+        return roms;
+    }
+
+    scan_roms_no_bnlc(path)
+}
+
+fn scan_roms_no_bnlc(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
     for entry in walkdir::WalkDir::new(path) {
@@ -96,7 +152,6 @@ pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (
 
     roms
 }
-
 pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static (dyn Game + Send + Sync)]) {
     games.sort_by_key(|g| {
         (
