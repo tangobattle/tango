@@ -1,4 +1,4 @@
-use std::any::Any;
+use std::{any::Any, io::Read};
 
 use crate::{battle, replayer, rom, save, session, shadow};
 
@@ -55,7 +55,7 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
 ];
 
 #[cfg(windows)]
-pub fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
@@ -92,27 +92,92 @@ pub fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + 
 }
 
 #[cfg(not(windows))]
-pub fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     std::collections::HashMap::new()
 }
 
-pub fn scan_bnlc_vol1_roms(
-    lc_path: &std::path::Path,
+fn scan_bnlc_rom_archive(
+    path: &std::path::Path,
 ) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    std::collections::HashMap::new()
-}
-
-pub fn scan_bnlc_vol2_roms(
-    lc_path: &std::path::Path,
-) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    std::collections::HashMap::new()
-}
-
-pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
-    roms.extend(scan_bnlc_steam_roms());
-    roms.extend(scan_non_bnlc_roms(path));
+    let f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => {
+            return roms;
+        }
+    };
+    let mut za = match zip::ZipArchive::new(f) {
+        Ok(za) => za,
+        Err(e) => {
+            log::error!("failed to open lc archive {}: {}", path.display(), e);
+            return roms;
+        }
+    };
+    for entry_name in ["rom.srl", "rom_e.srl"] {
+        let mut entry = match za.by_name(entry_name) {
+            Ok(e) => e,
+            Err(e) => {
+                log::error!(
+                    "failed to open lc archive entry {}/{}: {}",
+                    path.display(),
+                    entry_name,
+                    e
+                );
+                continue;
+            }
+        };
+        let mut rom = vec![];
+        if let Err(e) = entry.read_to_end(&mut rom) {
+            log::error!(
+                "failed to read lc archive entry {}/{}: {}",
+                path.display(),
+                entry_name,
+                e
+            );
+            continue;
+        }
+        let game = match detect(&rom) {
+            Ok(game) => game,
+            Err(_) => {
+                continue;
+            }
+        };
+        roms.insert(game, rom);
+    }
     roms
+}
+
+fn scan_bnlc_rom_archives(
+    lc_path: &std::path::Path,
+    filenames: &[&str],
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    let mut roms = std::collections::HashMap::new();
+    for filename in filenames {
+        roms.extend(scan_bnlc_rom_archive(&lc_path.join("exe").join("data").join(filename)));
+    }
+    roms
+}
+
+fn scan_bnlc_vol1_roms(
+    lc_path: &std::path::Path,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    scan_bnlc_rom_archives(lc_path, &["exe.dat", "exe1.dat", "exe2j.dat", "exe3.dat", "exe3b.dat"])
+}
+
+fn scan_bnlc_vol2_roms(
+    lc_path: &std::path::Path,
+) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    scan_bnlc_rom_archives(
+        lc_path,
+        &[
+            "exe4.dat",
+            "exe4b.dat",
+            "exe5.dat",
+            "exe5b.dat",
+            "exe6.dat",
+            "exe6f.dat",
+        ],
+    )
 }
 
 fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
@@ -157,6 +222,14 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
 
     roms
 }
+
+pub fn scan_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    let mut roms = std::collections::HashMap::new();
+    roms.extend(scan_bnlc_steam_roms());
+    roms.extend(scan_non_bnlc_roms(path));
+    roms
+}
+
 pub fn sort_games(lang: &unic_langid::LanguageIdentifier, games: &mut [&'static (dyn Game + Send + Sync)]) {
     games.sort_by_key(|g| {
         (

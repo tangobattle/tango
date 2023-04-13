@@ -84,7 +84,7 @@ pub const EXE4BM: &'static (dyn game::Game + Send + Sync) = &EXE4BMImpl {};
 
 impl game::Game for EXE4BMImpl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"B4BJ", 0x00)
+        (b"B4BJ", 0x01)
     }
 
     fn family_and_variant(&self) -> (&str, u8) {
@@ -96,7 +96,8 @@ impl game::Game for EXE4BMImpl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0xed7c5b50
+        // TODO
+        0x0
     }
 
     fn match_types(&self) -> &[usize] {
@@ -104,7 +105,7 @@ impl game::Game for EXE4BMImpl {
     }
 
     fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::B4BJ_00
+        &hooks::B4BJ_01
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {

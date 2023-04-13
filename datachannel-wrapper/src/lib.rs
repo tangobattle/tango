@@ -92,7 +92,7 @@ pub enum PeerConnectionEvent {
 impl datachannel::PeerConnectionHandler for PeerConnectionHandler {
     type DCH = DataChannelHandler;
 
-    fn data_channel_handler(&mut self) -> Self::DCH {
+    fn data_channel_handler(&mut self, _info: datachannel::DataChannelInfo) -> Self::DCH {
         let (message_tx, message_rx) = tokio::sync::mpsc::channel(1);
         let (open_tx, open_rx) = tokio::sync::oneshot::channel();
         let state = std::sync::Arc::new(tokio::sync::Mutex::new(DataChannelState {
