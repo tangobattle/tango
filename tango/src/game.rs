@@ -73,7 +73,7 @@ pub fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + 
             })
             .next()
     {
-        log::info!("Steam installation found at {}", install_path);
+        log::info!("Steam installation found at {}", install_path.display());
         install_path
     } else {
         return roms;
