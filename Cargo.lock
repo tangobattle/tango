@@ -5280,7 +5280,7 @@ dependencies = [
 
 [[package]]
 name = "tango"
-version = "4.0.36"
+version = "4.0.37"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5381,7 +5381,7 @@ dependencies = [
 
 [[package]]
 name = "tango-server"
-version = "4.0.35"
+version = "4.0.37"
 dependencies = [
  "anyhow",
  "async-trait",
