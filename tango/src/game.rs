@@ -54,55 +54,38 @@ pub const GAMES: &[&'static (dyn Game + Send + Sync)] = &[
     bn6::BN6F,
 ];
 
-#[cfg(windows)]
 fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
 
-    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-
-    let steamapps_common_path = if let Some(install_path) =
-        ["SOFTWARE\\Valve\\Steam", "SOFTWARE\\Wow6432Node\\Valve\\Steam"]
-            .into_iter()
-            .flat_map(|path| {
-                hklm.open_subkey(path).ok().and_then(|subkey| {
-                    subkey
-                        .get_value::<std::ffi::OsString, _>("InstallPath")
-                        .ok()
-                        .map(std::path::PathBuf::from)
-                })
-            })
-            .next()
-    {
-        log::info!("Steam installation found at {}", install_path.display());
-        install_path
+    let mut steamdir = if let Some(steamdir) = steamlocate::SteamDir::locate() {
+        steamdir
     } else {
         return roms;
-    }
-    .join("steamapps")
-    .join("common");
+    };
 
-    roms.extend(scan_bnlc_rom_archives(
-        &steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol1"),
-    ));
-    roms.extend(scan_bnlc_rom_archives(
-        &steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol2"),
-    ));
+    if let Some(app) = steamdir.app(&1798010) {
+        // Vol 1
+        roms.extend(scan_bnlc_rom_archives(&app.path));
+    }
+
+    if let Some(app) = steamdir.app(&1798020) {
+        // Vol 2
+        roms.extend(scan_bnlc_rom_archives(&app.path));
+    }
 
     roms
-}
-
-#[cfg(not(windows))]
-fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    std::collections::HashMap::new()
 }
 
 fn scan_bnlc_rom_archive(
     path: &std::path::Path,
 ) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
+    log::info!("scanning bnlc archive: {}", path.display());
+
     let mut roms = std::collections::HashMap::new();
     let f = match std::fs::File::open(path) {
         Ok(f) => f,
-        Err(_) => {
+        Err(e) => {
+            log::error!("failed to open lc archive {}: {}", path.display(), e);
             return roms;
         }
     };
@@ -157,6 +140,7 @@ fn scan_bnlc_rom_archives(
     lc_path: &std::path::Path,
 ) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
+
     let data_path = lc_path.join("exe").join("data");
     let read_dir = match std::fs::read_dir(&data_path) {
         Ok(read_dir) => read_dir,

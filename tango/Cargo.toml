@@ -96,9 +96,7 @@ num-traits = "0.2"
 num-derive = "0.3"
 fluent-langneg = "0.13"
 zip = "0.6"
-
-[target.'cfg(windows)'.dependencies]
-winreg = "0.50"
+steamlocate = "1.2"
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.25"
