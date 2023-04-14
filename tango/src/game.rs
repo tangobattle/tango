@@ -120,7 +120,7 @@ fn scan_bnlc_rom_archive(
         let entry_path = if let Some(entry_path) = entry.enclosed_name() {
             entry_path.to_owned()
         } else {
-            log::error!("failed to read lc archive entry {} {}", path.display(), i);
+            log::error!("bnlc: {}({}): failed to get path name", path.display(), i);
             continue;
         };
 
@@ -130,17 +130,21 @@ fn scan_bnlc_rom_archive(
 
         let mut rom = vec![];
         if let Err(e) = entry.read_to_end(&mut rom) {
-            log::error!(
-                "failed to read lc archive entry {}/{}: {}",
-                path.display(),
-                entry_path.display(),
-                e
-            );
+            log::error!("bnlc: {}/{}: {}", path.display(), entry_path.display(), e);
             continue;
         }
         let game = match detect(&rom) {
-            Ok(game) => game,
-            Err(_) => {
+            Ok(game) => {
+                log::info!(
+                    "bnlc: {}/{}: {:?}",
+                    path.display(),
+                    entry_path.display(),
+                    game.family_and_variant()
+                );
+                game
+            }
+            Err(e) => {
+                log::warn!("bnlc: {}/{}: {}", path.display(), entry_path.display(), e);
                 continue;
             }
         };
@@ -200,18 +204,18 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
         let rom = match std::fs::read(path) {
             Ok(rom) => rom,
             Err(e) => {
-                log::warn!("{}: {}", path.display(), e);
+                log::warn!("roms folder: {}: {}", path.display(), e);
                 continue;
             }
         };
 
         let game = match detect(&rom) {
             Ok(game) => {
-                log::info!("{}: {:?}", path.display(), game.family_and_variant());
+                log::info!("roms folder: {}: {:?}", path.display(), game.family_and_variant());
                 game
             }
             Err(e) => {
-                log::warn!("{}: {}", path.display(), e);
+                log::warn!("roms folder: {}: {}", path.display(), e);
                 continue;
             }
         };
