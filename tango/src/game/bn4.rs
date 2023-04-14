@@ -135,7 +135,7 @@ impl game::Game for EXE4BMImpl {
         overrides: &crate::rom::Overrides,
     ) -> Result<Box<dyn crate::rom::Assets + Send + Sync>, anyhow::Error> {
         Ok(Box::new(rom::Assets::new(
-            &rom::B4BJ_00,
+            &rom::B4BJ_01,
             overrides
                 .language
                 .as_ref()

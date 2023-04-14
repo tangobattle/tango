@@ -36,16 +36,16 @@ pub static B4WJ_01: Offsets = Offsets {
 };
 
 #[rustfmt::skip]
-pub static B4BJ_00: Offsets = Offsets {
-    chip_data:                      0x080196f8,
-    chip_names_pointers:            0x0804fa3c,
-    chip_descriptions_pointers:     0x0801fce4,
-    chip_icon_palette_pointer:      0x080159a0,
-    ncp_data:                       0x08045504,
-    ncp_names_pointer:              0x0804fa4c,
-    ncp_descriptions_pointer:       0x0803e528,
-    element_icon_palette_pointer:   0x0810983c,
-    element_icons_pointer:          0x08109830,
+pub static B4BJ_01: Offsets = Offsets {
+    chip_data:                      0x0801972c,
+    chip_names_pointers:            0x0804fa78,
+    chip_descriptions_pointers:     0x0801fd20,
+    chip_icon_palette_pointer:      0x080159d4,
+    ncp_data:                       0x08045540,
+    ncp_names_pointer:              0x0804fa88,
+    ncp_descriptions_pointer:       0x0803e564,
+    element_icon_palette_pointer:   0x081098b8,
+    element_icons_pointer:          0x081098ac,
 
     navicust_bg: NAVICUST_BG_BM,
 };

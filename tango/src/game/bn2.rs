@@ -11,7 +11,7 @@ pub const EXE2: &'static (dyn game::Game + Send + Sync) = &EXE2Impl {};
 
 impl game::Game for EXE2Impl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
-        (b"AE2J", 0x01)
+        (b"AE2J", 0x00)
     }
 
     fn family_and_variant(&self) -> (&str, u8) {
@@ -23,7 +23,7 @@ impl game::Game for EXE2Impl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        0x41576087
+        0x46eed8d
     }
 
     fn match_types(&self) -> &[usize] {
@@ -31,7 +31,7 @@ impl game::Game for EXE2Impl {
     }
 
     fn hooks(&self) -> &'static (dyn game::Hooks + Send + Sync) {
-        &hooks::AE2J_01
+        &hooks::AE2J_00
     }
 
     fn parse_save(&self, data: &[u8]) -> Result<Box<dyn crate::save::Save + Send + Sync>, anyhow::Error> {
