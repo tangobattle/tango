@@ -63,12 +63,14 @@ fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send
         return roms;
     };
 
-    if let Some(app) = steamdir.app(&1798010) {
+    let apps = steamdir.apps();
+
+    if let Some(app) = apps.get(&1798010).and_then(|v| v.as_ref()) {
         // Vol 1
         roms.extend(scan_bnlc_rom_archives(&app.path));
     }
 
-    if let Some(app) = steamdir.app(&1798020) {
+    if let Some(app) = apps.get(&1798020).and_then(|v| v.as_ref()) {
         // Vol 2
         roms.extend(scan_bnlc_rom_archives(&app.path));
     }
@@ -144,20 +146,31 @@ fn scan_bnlc_rom_archives(
     let data_path = lc_path.join("exe").join("data");
     let read_dir = match std::fs::read_dir(&data_path) {
         Ok(read_dir) => read_dir,
-        Err(_) => {
+        Err(e) => {
+            log::warn!("bnlc: {}: {}", lc_path.display(), e);
             return roms;
         }
     };
     for entry in read_dir {
         let entry = match entry {
             Ok(entry) => entry,
-            Err(_) => {
+            Err(e) => {
+                log::warn!("bnlc: {}: {}", lc_path.display(), e);
                 continue;
             }
         };
 
-        if entry.path().file_name() == Some(&std::ffi::OsStr::new("exe.dat"))
-            || entry.path().extension() != Some(&std::ffi::OsStr::new("dat"))
+        let entry_path = entry.path();
+
+        let file_name = if let Some(file_name) = entry_path.file_name() {
+            file_name
+        } else {
+            continue;
+        };
+
+        if !file_name.to_string_lossy().starts_with("exe")
+            || file_name == std::ffi::OsStr::new("exe.dat")
+            || entry_path.extension() != Some(&std::ffi::OsStr::new("dat"))
         {
             continue;
         }
