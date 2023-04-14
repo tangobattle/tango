@@ -81,10 +81,10 @@ fn scan_bnlc_steam_roms() -> std::collections::HashMap<&'static (dyn Game + Send
     .join("steamapps")
     .join("common");
 
-    roms.extend(scan_bnlc_vol1_roms(
+    roms.extend(scan_bnlc_rom_archives(
         &steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol1"),
     ));
-    roms.extend(scan_bnlc_vol2_roms(
+    roms.extend(scan_bnlc_rom_archives(
         &steamapps_common_path.join("MegaMan_BattleNetwork_LegacyCollection_Vol2"),
     ));
 
@@ -113,25 +113,27 @@ fn scan_bnlc_rom_archive(
             return roms;
         }
     };
-    for entry_name in ["rom.srl", "rom_e.srl"] {
-        let mut entry = match za.by_name(entry_name) {
-            Ok(e) => e,
-            Err(e) => {
-                log::error!(
-                    "failed to open lc archive entry {}/{}: {}",
-                    path.display(),
-                    entry_name,
-                    e
-                );
-                continue;
-            }
+
+    for i in 0..za.len() {
+        let mut entry = za.by_index(i).unwrap();
+
+        let entry_path = if let Some(entry_path) = entry.enclosed_name() {
+            entry_path.to_owned()
+        } else {
+            log::error!("failed to read lc archive entry {} {}", path.display(), i);
+            continue;
         };
+
+        if entry_path.extension() != Some(&std::ffi::OsStr::new("srl")) {
+            continue;
+        }
+
         let mut rom = vec![];
         if let Err(e) = entry.read_to_end(&mut rom) {
             log::error!(
                 "failed to read lc archive entry {}/{}: {}",
                 path.display(),
-                entry_name,
+                entry_path.display(),
                 e
             );
             continue;
@@ -149,35 +151,32 @@ fn scan_bnlc_rom_archive(
 
 fn scan_bnlc_rom_archives(
     lc_path: &std::path::Path,
-    filenames: &[&str],
 ) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
     let mut roms = std::collections::HashMap::new();
-    for filename in filenames {
-        roms.extend(scan_bnlc_rom_archive(&lc_path.join("exe").join("data").join(filename)));
+    let data_path = lc_path.join("exe").join("data");
+    let read_dir = match std::fs::read_dir(&data_path) {
+        Ok(read_dir) => read_dir,
+        Err(_) => {
+            return roms;
+        }
+    };
+    for entry in read_dir {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(_) => {
+                continue;
+            }
+        };
+
+        if entry.path().file_name() == Some(&std::ffi::OsStr::new("exe.dat"))
+            || entry.path().extension() != Some(&std::ffi::OsStr::new("dat"))
+        {
+            continue;
+        }
+
+        roms.extend(scan_bnlc_rom_archive(&entry.path()));
     }
     roms
-}
-
-fn scan_bnlc_vol1_roms(
-    lc_path: &std::path::Path,
-) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    scan_bnlc_rom_archives(lc_path, &["exe1.dat", "exe2j.dat", "exe3.dat", "exe3b.dat"])
-}
-
-fn scan_bnlc_vol2_roms(
-    lc_path: &std::path::Path,
-) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    scan_bnlc_rom_archives(
-        lc_path,
-        &[
-            "exe4.dat",
-            "exe4b.dat",
-            "exe5.dat",
-            "exe5k.dat",
-            "exe6.dat",
-            "exe6f.dat",
-        ],
-    )
 }
 
 fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
@@ -197,9 +196,6 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
         }
 
         let path = entry.path();
-        if path.extension() != Some(&std::ffi::OsStr::new("srl")) {
-            continue;
-        }
 
         let rom = match std::fs::read(path) {
             Ok(rom) => rom,
