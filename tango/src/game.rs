@@ -161,7 +161,7 @@ fn scan_bnlc_rom_archives(
 fn scan_bnlc_vol1_roms(
     lc_path: &std::path::Path,
 ) -> std::collections::HashMap<&'static (dyn Game + Send + Sync), Vec<u8>> {
-    scan_bnlc_rom_archives(lc_path, &["exe.dat", "exe1.dat", "exe2j.dat", "exe3.dat", "exe3b.dat"])
+    scan_bnlc_rom_archives(lc_path, &["exe1.dat", "exe2j.dat", "exe3.dat", "exe3b.dat"])
 }
 
 fn scan_bnlc_vol2_roms(
@@ -173,7 +173,7 @@ fn scan_bnlc_vol2_roms(
             "exe4.dat",
             "exe4b.dat",
             "exe5.dat",
-            "exe5b.dat",
+            "exe5k.dat",
             "exe6.dat",
             "exe6f.dat",
         ],
@@ -197,6 +197,9 @@ fn scan_non_bnlc_roms(path: &std::path::Path) -> std::collections::HashMap<&'sta
         }
 
         let path = entry.path();
+        if path.extension() != Some(&std::ffi::OsStr::new("srl")) {
+            continue;
+        }
 
         let rom = match std::fs::read(path) {
             Ok(rom) => rom,

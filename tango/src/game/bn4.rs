@@ -96,8 +96,7 @@ impl game::Game for EXE4BMImpl {
     }
 
     fn expected_crc32(&self) -> u32 {
-        // TODO
-        0x0
+        0x709bbf07
     }
 
     fn match_types(&self) -> &[usize] {
