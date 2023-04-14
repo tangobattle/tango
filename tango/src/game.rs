@@ -168,8 +168,8 @@ fn scan_bnlc_rom_archives(
             continue;
         };
 
-        if !file_name.to_string_lossy().starts_with("exe")
-            || file_name == std::ffi::OsStr::new("exe.dat")
+        if file_name == std::ffi::OsStr::new("exe.dat")
+            || !file_name.to_string_lossy().starts_with("exe")
             || entry_path.extension() != Some(&std::ffi::OsStr::new("dat"))
         {
             continue;
