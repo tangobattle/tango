@@ -23,11 +23,11 @@ pub static AE2E_00: Offsets = Offsets {
 
 #[rustfmt::skip]
 pub static AE2J_00: Offsets = Offsets {
-    chip_data:                      0x0800e430,
-    chip_names_pointers:            0x0800b51c,
-    chip_descriptions_pointers:     0x0800b130,
-    chip_icon_palette_pointer:      0x0800b884,
-    element_icons_pointer:          0x08025f8c,
+    chip_data:                      0x0800e2fc,
+    chip_names_pointers:            0x0800b528,
+    chip_descriptions_pointers:     0x0800affc,
+    chip_icon_palette_pointer:      0x0800b750,
+    element_icons_pointer:          0x08025ec0,
     element_icon_palette_pointer:   0x08005384,
 };
 
