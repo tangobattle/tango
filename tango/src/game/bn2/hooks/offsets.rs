@@ -160,7 +160,7 @@ pub static AE2J_00: Offsets = Offsets {
         round_ending_entry2:                        0x08005dd6,
         round_end_entry:                            0x08006104,
         link_is_p2_ret:                             0x08002b28,
-        comm_menu_init_ret:                         0x0802b1e8,
+        comm_menu_init_ret:                         0x0802b11c,
         match_end_ret:                              0x08006192,
         battle_start_play_music_call:               0x08006b9c,
     },
