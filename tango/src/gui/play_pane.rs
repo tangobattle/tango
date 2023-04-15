@@ -1531,7 +1531,7 @@ fn show_bottom_pane(
                         }
                     }
 
-                    if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
+                    if input_resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                         submitted = true;
                     }
 
@@ -1780,7 +1780,7 @@ pub fn show(
                                                     ),
                                                 );
                                             }
-                                            ui.fonts().layout_job(layout_job)
+                                            ui.fonts(|f| f.layout_job(layout_job))
                                         };
                                         let mut resp = ui.add(
                                             egui::TextEdit::singleline(&mut String::new()).layouter(&mut layouter),

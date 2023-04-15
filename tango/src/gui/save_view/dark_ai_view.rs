@@ -221,7 +221,7 @@ fn show_table<const N: usize>(
                                                         [14, 14],
                                                         &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
-                                                    egui::TextureFilter::Nearest,
+                                                    egui::TextureOptions::NEAREST,
                                                 ));
                                             }
                                         }
@@ -263,7 +263,7 @@ fn show_table<const N: usize>(
                                                         [14, 14],
                                                         &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
-                                                    egui::TextureFilter::Nearest,
+                                                    egui::TextureOptions::NEAREST,
                                                 ));
                                             }
                                         }

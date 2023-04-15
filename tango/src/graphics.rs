@@ -9,5 +9,5 @@ pub trait Backend {
     fn paint(&mut self);
     fn egui_ctx(&self) -> &egui::Context;
     fn run<'a>(&mut self, run_ui: Box<dyn FnMut(&winit::window::Window, &egui::Context) + 'a>) -> std::time::Duration;
-    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool;
+    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> egui_winit::EventResponse;
 }

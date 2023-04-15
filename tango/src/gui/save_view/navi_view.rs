@@ -45,7 +45,7 @@ pub fn show<'a>(
                             [15, 15],
                             &image::imageops::crop_imm(&navi.emblem(), 1, 0, 15, 15).to_image(),
                         ),
-                        egui::TextureFilter::Nearest,
+                        egui::TextureOptions::NEAREST,
                     ));
                 }
 

@@ -227,7 +227,7 @@ pub fn show<'a>(
                                                         [14, 14],
                                                         &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
-                                                    egui::TextureFilter::Nearest,
+                                                    egui::TextureOptions::NEAREST,
                                                 ));
                                             }
                                         }
@@ -250,7 +250,7 @@ pub fn show<'a>(
                                                                         ],
                                                                         &image,
                                                                     ),
-                                                                    egui::TextureFilter::Nearest,
+                                                                    egui::TextureOptions::NEAREST,
                                                                 ),
                                                                 [image.width(), image.height()],
                                                             ));
@@ -351,7 +351,7 @@ pub fn show<'a>(
                                                         [14, 14],
                                                         &image::imageops::crop_imm(&image, 1, 1, 14, 14).to_image(),
                                                     ),
-                                                    egui::TextureFilter::Nearest,
+                                                    egui::TextureOptions::NEAREST,
                                                 ));
                                             }
                                         }

@@ -164,7 +164,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
     let icon_width = icon.width();
     let icon_height = icon.height();
 
-    let wb = winit::window::WindowBuilder::new()
+    let window_builder = winit::window::WindowBuilder::new()
         .with_title(&i18n::LOCALES.lookup(&config.read().language, "window-title").unwrap())
         .with_window_icon(Some(winit::window::Icon::from_rgba(
             icon.into_bytes(),
@@ -184,32 +184,9 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
 
     let mut gfx_backend: Box<dyn graphics::Backend> = match config.read().graphics_backend {
         #[cfg(feature = "glutin")]
-        config::GraphicsBackend::Glutin => Box::new(graphics::glutin::Backend::new(
-            glutin::ContextBuilder::new()
-                .with_depth_buffer(0)
-                .with_stencil_buffer(0)
-                .with_vsync(true)
-                .build_windowed(wb, &event_loop)
-                .unwrap(),
-            &event_loop,
-        )),
-
+        config::GraphicsBackend::Glutin => Box::new(graphics::glutin::Backend::new(window_builder, &event_loop)?),
         #[cfg(feature = "wgpu")]
-        config::GraphicsBackend::Wgpu => Box::new(graphics::wgpu::Backend::new(
-            wb.build(&event_loop).unwrap(),
-            egui_wgpu::winit::Painter::new(
-                wgpu::Backends::PRIMARY | wgpu::Backends::GL,
-                wgpu::PowerPreference::LowPower,
-                wgpu::DeviceDescriptor {
-                    label: None,
-                    features: wgpu::Features::default(),
-                    limits: wgpu::Limits::downlevel_webgl2_defaults(),
-                },
-                wgpu::PresentMode::Fifo,
-                1,
-            ),
-            &event_loop,
-        )),
+        config::GraphicsBackend::Wgpu => Box::new(graphics::wgpu::Backend::new(window_builder, &event_loop)?),
     };
     gfx_backend.set_ui_scale(config.read().ui_scale_percent as f32 / 100.0);
     gfx_backend.run(Box::new(|_, _| {}));
@@ -316,7 +293,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                     winit::event::WindowEvent::MouseInput { .. } | winit::event::WindowEvent::CursorMoved { .. } => {
                         state.last_mouse_motion_time = Some(std::time::Instant::now());
                         if state.steal_input.is_none() {
-                            gfx_backend.on_window_event(&window_event);
+                            let _ = gfx_backend.on_window_event(&window_event);
                         }
                     }
                     winit::event::WindowEvent::KeyboardInput {
@@ -335,7 +312,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                                     &mut next_config.input_mapping,
                                 );
                             } else {
-                                if !gfx_backend.on_window_event(&window_event) {
+                                if !gfx_backend.on_window_event(&window_event).consumed {
                                     input_state.handle_key_down(virutal_keycode);
                                 } else {
                                     input_state.clear_keys();
@@ -343,7 +320,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                             }
                         }
                         winit::event::ElementState::Released => {
-                            if !gfx_backend.on_window_event(&window_event) {
+                            if !gfx_backend.on_window_event(&window_event).consumed {
                                 input_state.handle_key_up(virutal_keycode);
                             } else {
                                 input_state.clear_keys();
@@ -351,7 +328,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                         }
                     },
                     window_event => {
-                        gfx_backend.on_window_event(&window_event);
+                        let _ = gfx_backend.on_window_event(&window_event);
                         match window_event {
                             winit::event::WindowEvent::Focused(false) => {
                                 input_state.clear_keys();

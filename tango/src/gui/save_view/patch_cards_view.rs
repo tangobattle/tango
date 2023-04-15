@@ -70,8 +70,8 @@ pub fn show_patch_card4s<'a>(
     let spacing_y = ui.spacing().item_spacing.y;
     egui_extras::TableBuilder::new(ui)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(egui_extras::Size::remainder())
-        .column(egui_extras::Size::exact(250.0))
+        .column(egui_extras::Column::remainder())
+        .column(egui_extras::Column::exact(250.0))
         .striped(true)
         .body(|body| {
             body.rows(row_height * 2.0 + spacing_y, 6, |i, mut row| {
@@ -198,9 +198,9 @@ pub fn show_patch_card56s<'a>(
     let spacing_y = ui.spacing().item_spacing.y;
     egui_extras::TableBuilder::new(ui)
         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-        .column(egui_extras::Size::remainder())
-        .column(egui_extras::Size::exact(150.0))
-        .column(egui_extras::Size::exact(150.0))
+        .column(egui_extras::Column::remainder())
+        .column(egui_extras::Column::exact(150.0))
+        .column(egui_extras::Column::exact(150.0))
         .striped(true)
         .body(|body| {
             body.heterogeneous_rows(

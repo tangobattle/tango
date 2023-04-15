@@ -34,7 +34,7 @@ impl VBuf {
             texture: ctx.load_texture(
                 "vbuf",
                 egui::ColorImage::new([width, height], egui::Color32::BLACK),
-                egui::TextureFilter::Nearest,
+                egui::TextureOptions::NEAREST,
             ),
         }
     }
@@ -71,7 +71,7 @@ fn show_emulator(
         (mgba::gba::SCREEN_WIDTH as usize, mgba::gba::SCREEN_HEIGHT as usize),
     );
 
-    vbuf.texture.set(vbuf.image.clone(), egui::TextureFilter::Nearest);
+    vbuf.texture.set(vbuf.image.clone(), egui::TextureOptions::NEAREST);
 
     let mut scaling_factor = std::cmp::min_by(
         ui.available_width() * ui.ctx().pixels_per_point() / mgba::gba::SCREEN_WIDTH as f32,

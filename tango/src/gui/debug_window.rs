@@ -46,7 +46,7 @@ pub fn show(
                     .chars()
                     .filter(|c| "0123456789abcdefABCDEF".chars().any(|c2| c2 == *c))
                     .collect();
-                if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
+                if input_resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                     jumping = true;
                 }
 

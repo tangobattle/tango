@@ -53,18 +53,18 @@ hqx = { path = "../hqx" }
 mmpx = { path = "../mmpx" }
 image = { version = "0.24", features = ["png"] }
 thiserror = "1.0"
-egui = { version = "0.19", features = [] }
-glow = "0.11"
-egui_glow = { version = "0.19", features = ["winit", "clipboard", "links"], optional = true }
-egui-wgpu = { version = "0.19", features = ["winit"], optional = true }
-egui-winit = "0.19"
-glutin = { version = "0.29", features = ["serde"], optional = true }
+egui = { version = "0.21", features = [] }
+glow = "0.12"
+egui_glow = { version = "0.21", features = ["winit", "clipboard", "links"], optional = true }
+egui-wgpu = { version = "0.21", features = ["winit"], optional = true }
+egui-winit = "0.21"
+glutin = { version = "0.30", optional = true }
 cpal = { version = "0.14", optional = true }
 fluent-bundle = "0.15"
 fluent-templates = "0.8"
 unic-langid = { version = "0.9", features = ["likelysubtags"] }
 sys-locale = "0.2"
-egui_extras = { version = "0.19", features = ["image"] }
+egui_extras = { version = "0.21", features = ["image"] }
 directories-next = "2.0"
 dark-light = "0.2"
 arboard = "2.1"
@@ -85,8 +85,8 @@ chrono = "0.4"
 itertools = "0.10"
 reqwest = { version = "0.11", features = ["stream", "json"] }
 oneshot = "0.1"
-winit = { version = "0.27", features = ["serde"] }
-wgpu = { version = "0.13", optional = true, features = ["angle"] }
+winit = { version = "0.28", features = ["serde"] }
+wgpu = { version = "0.15", optional = true, features = ["angle"] }
 async-recursion = "1.0"
 sha2 = "0.10"
 serde-hex = "0.1"
@@ -97,6 +97,9 @@ num-derive = "0.3"
 fluent-langneg = "0.13"
 zip = "0.6"
 steamlocate = "1.2"
+glutin-winit = "0.3"
+raw-window-handle = "0.5"
+pollster = '0.3'
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.25"

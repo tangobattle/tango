@@ -775,7 +775,7 @@ pub fn show<'a>(
                                 [image.width() as usize, image.height() as usize],
                                 &image,
                             ),
-                            egui::TextureFilter::Nearest,
+                            egui::TextureOptions::NEAREST,
                         );
                         state.rendered_navicust_cache = Some((image, composed, texture));
                     }

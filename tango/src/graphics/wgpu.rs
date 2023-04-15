@@ -1,24 +1,43 @@
 use crate::graphics;
 
-pub struct Backend<'a> {
+pub struct Backend {
     window: winit::window::Window,
     egui_ctx: egui::Context,
-    painter: egui_wgpu::winit::Painter<'a>,
+    painter: egui_wgpu::winit::Painter,
     egui_winit: egui_winit::State,
     shapes: Vec<egui::epaint::ClippedShape>,
     textures_delta: egui::TexturesDelta,
     ui_scale: f32,
 }
 
-impl<'a> Backend<'a> {
+impl Backend {
     pub fn new<T>(
-        window: winit::window::Window,
-        mut painter: egui_wgpu::winit::Painter<'a>,
+        wb: winit::window::WindowBuilder,
         event_loop: &winit::event_loop::EventLoopWindowTarget<T>,
-    ) -> Self {
+    ) -> Result<Self, anyhow::Error> {
+        let window = wb.build(&event_loop)?;
+
+        let mut painter = egui_wgpu::winit::Painter::new(
+            egui_wgpu::WgpuConfiguration {
+                device_descriptor: wgpu::DeviceDescriptor {
+                    label: None,
+                    features: wgpu::Features::default(),
+                    limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                },
+                backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+                present_mode: wgpu::PresentMode::Fifo,
+                power_preference: wgpu::PowerPreference::LowPower,
+                ..Default::default()
+            },
+            1,
+            0,
+            false,
+        );
+
         unsafe {
-            painter.set_window(Some(&window));
+            pollster::block_on(painter.set_window(Some(&window)))?;
         }
+
         let mut egui_winit = egui_winit::State::new(event_loop);
         egui_winit.set_pixels_per_point(window.scale_factor() as f32);
         egui_winit.set_max_texture_side(painter.max_texture_side().unwrap_or(2048));
@@ -28,7 +47,7 @@ impl<'a> Backend<'a> {
             render_state.device,
             render_state.target_format
         );
-        Self {
+        Ok(Self {
             window,
             painter,
             egui_ctx: egui::Context::default(),
@@ -36,11 +55,11 @@ impl<'a> Backend<'a> {
             shapes: vec![],
             textures_delta: egui::TexturesDelta::default(),
             ui_scale: 1.0,
-        }
+        })
     }
 }
 
-impl<'a> graphics::Backend for Backend<'a> {
+impl graphics::Backend for Backend {
     fn set_ui_scale(&mut self, scale: f32) {
         self.ui_scale = scale;
         self.egui_winit
@@ -54,7 +73,7 @@ impl<'a> graphics::Backend for Backend<'a> {
     fn paint(&mut self) {
         self.painter.paint_and_update_textures(
             self.egui_ctx.pixels_per_point(),
-            egui::Rgba::BLACK,
+            [0.0, 0.0, 0.0, 1.0],
             &self.egui_ctx.tessellate(std::mem::take(&mut self.shapes)),
             &std::mem::take(&mut self.textures_delta),
         );
@@ -85,7 +104,7 @@ impl<'a> graphics::Backend for Backend<'a> {
         repaint_after
     }
 
-    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> bool {
+    fn on_window_event(&mut self, event: &winit::event::WindowEvent) -> egui_winit::EventResponse {
         match event {
             winit::event::WindowEvent::Resized(physical_size) => {
                 if physical_size.width > 0 && physical_size.height > 0 {

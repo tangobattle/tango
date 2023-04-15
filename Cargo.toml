@@ -13,5 +13,3 @@ members = [
 
 [patch.crates-io]
 sdl2 = { git = "https://github.com/tangobattle/rust-sdl2", rev = "08bbc3d47cdccc0620373b73f2f1c1a5299d3f43" }
-egui = { git = "https://github.com/emilk/egui", rev = "1fe08bf7e4bf845b8cb0a677a206e61d1744eb73" }
-wgpu = { git = "https://github.com/tangobattle/wgpu", rev = "ba9a49aa0b4cad4a1b52e47b1d94f572947d076b" }

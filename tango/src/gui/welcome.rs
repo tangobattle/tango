@@ -151,7 +151,7 @@ pub fn show(
                                     .hint_text(i18n::LOCALES.lookup(&config.language, "settings-nickname").unwrap())
                                     .desired_width(200.0),
                             );
-                            if input_resp.lost_focus() && ui.ctx().input().key_pressed(egui::Key::Enter) {
+                            if input_resp.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter)) {
                                 submitted = true;
                             }
                             state.nickname = state.nickname.chars().take(20).collect::<String>().trim().to_string();
