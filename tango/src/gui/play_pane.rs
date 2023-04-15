@@ -2253,7 +2253,7 @@ pub fn show(
                                     ),
                                 );
                                 let resp = egui::ComboBox::from_id_source("patch-version-select-combobox")
-                                    .width(PATCH_VERSION_COMBOBOX_WIDTH - ui.spacing().item_spacing.x * 2.0)
+                                    .width(PATCH_VERSION_COMBOBOX_WIDTH)
                                     .selected_text(layout_job)
                                     .show_ui(ui, |ui| {
                                         let selection = if let Some(selection) = selection.as_mut() {
