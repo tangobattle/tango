@@ -134,32 +134,6 @@ impl State {
             ]),
         });
 
-        let mut style = (*ctx.style()).clone();
-        style.text_styles = [
-            (
-                egui::TextStyle::Heading,
-                egui::FontId::new(22.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Body,
-                egui::FontId::new(18.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Monospace,
-                egui::FontId::new(18.0, egui::FontFamily::Monospace),
-            ),
-            (
-                egui::TextStyle::Button,
-                egui::FontId::new(18.0, egui::FontFamily::Proportional),
-            ),
-            (
-                egui::TextStyle::Small,
-                egui::FontId::new(16.0, egui::FontFamily::Proportional),
-            ),
-        ]
-        .into();
-        ctx.set_style(style);
-
         Self {
             config,
             session: std::sync::Arc::new(parking_lot::Mutex::new(None)),
