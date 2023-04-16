@@ -382,24 +382,24 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                             }
                         }
                         sdl2::event::Event::ControllerAxisMotion { axis, value, which, .. } => {
-                            if value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD {
-                                if let Some(steal_input) = state.steal_input.take() {
-                                    steal_input.run_callback(
-                                        input::PhysicalInput::Axis {
-                                            axis,
-                                            direction: if value > input::AXIS_THRESHOLD {
-                                                input::AxisDirection::Positive
-                                            } else {
-                                                input::AxisDirection::Negative
-                                            },
+                            if let Some(steal_input) = (value > input::AXIS_THRESHOLD || value < -input::AXIS_THRESHOLD)
+                                .then(|| state.steal_input.take())
+                                .flatten()
+                            {
+                                steal_input.run_callback(
+                                    input::PhysicalInput::Axis {
+                                        axis,
+                                        direction: if value > input::AXIS_THRESHOLD {
+                                            input::AxisDirection::Positive
+                                        } else {
+                                            input::AxisDirection::Negative
                                         },
-                                        &mut next_config.input_mapping,
-                                    );
-                                } else {
-                                    input_state.handle_controller_axis_motion(which, axis as usize, value);
-                                }
+                                    },
+                                    &mut next_config.input_mapping,
+                                );
+                            } else {
+                                input_state.handle_controller_axis_motion(which, axis as usize, value);
                             }
-                            input_state.handle_controller_axis_motion(which, axis as usize, value);
                             gfx_backend.window().request_redraw();
                         }
                         sdl2::event::Event::ControllerButtonDown { button, which, .. } => {
