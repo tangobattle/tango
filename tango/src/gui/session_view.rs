@@ -270,6 +270,7 @@ cpsr = {:08x}"#,
     }
 
     if always_show_status_bar.unwrap_or(false) {
+        // This shows the status bar on top of everything.
         show_status_bar(
             ctx,
             language,
@@ -298,6 +299,7 @@ cpsr = {:08x}"#,
             .map(|t| std::time::Instant::now() - t < HIDE_AFTER)
             .unwrap_or(false)
     {
+        // This adjusts the layout.
         show_status_bar(
             ctx,
             language,
