@@ -363,7 +363,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
             winit::event::Event::MainEventsCleared => {
                 // We use SDL for controller events and that's it.
                 for sdl_event in sdl_event_loop.poll_iter() {
-                    (|| match sdl_event {
+                    match sdl_event {
                         sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
                             if game_controller.is_game_controller(which) {
                                 let controller = game_controller.open(which).unwrap();
@@ -416,7 +416,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
                             gfx_backend.window().request_redraw();
                         }
                         _ => {}
-                    })();
+                    }
                 }
             }
 
