@@ -19,8 +19,8 @@ game-bn2 = Mega Man Battle Network 2
 
 game-exe3 = Rockman EXE 3
     .short = EXE3
-    .variant-0 = Rockman EXE 3: White
-    .variant-1 = Rockman EXE 3: Black
+    .variant-0 = Rockman EXE 3
+    .variant-1 = Rockman EXE 3: BLACK
     .match-type-0-0 = Single
     .match-type-0-1 = Lightweight
     .match-type-0-2 = Midweight
