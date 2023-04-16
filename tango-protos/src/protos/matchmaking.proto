@@ -12,16 +12,30 @@ message Packet {
     repeated ICEServer ice_servers = 1;
   }
 
-  message Start { string offer_sdp = 2; }
+  message Start {
+    uint32 protocol_version = 1;
+    string offer_sdp = 2;
+  }
 
   message Offer { string sdp = 1; }
 
   message Answer { string sdp = 1; }
+
+  message Abort {
+    enum Reason {
+      REASON_UNKNOWN = 0;
+      REASON_PROTOCOL_VERSION_TOO_OLD = 1;
+      REASON_PROTOCOL_VERSION_TOO_NEW = 2;
+    }
+
+    Reason reason = 1;
+  }
 
   oneof which {
     Hello hello = 4;
     Start start = 1;
     Offer offer = 2;
     Answer answer = 3;
+    Abort abort = 5;
   }
 }

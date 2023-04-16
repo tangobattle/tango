@@ -138,6 +138,7 @@ pub async fn open(addr: &str, session_id: &str, use_relay: Option<bool>) -> Resu
             tango_protos::matchmaking::Packet {
                 which: Some(tango_protos::matchmaking::packet::Which::Start(
                     tango_protos::matchmaking::packet::Start {
+                        protocol_version: crate::net::protocol::VERSION as u32,
                         offer_sdp: peer_conn.local_description().unwrap().sdp.to_string(),
                     },
                 )),
@@ -154,26 +155,62 @@ pub async fn open(addr: &str, session_id: &str, use_relay: Option<bool>) -> Resu
     })
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("signaling abort: {0:?}")]
+    ServerAbort(tango_protos::matchmaking::packet::Abort),
+
+    #[error("tungstenite: {0:?}")]
+    Tungstenite(#[from] tokio_tungstenite::tungstenite::Error),
+
+    #[error("prost decode error: {0:?}")]
+    ProstDecode(#[from] prost::DecodeError),
+
+    #[error("sdp parse error: {0:?}")]
+    SdpParse(#[from] datachannel_wrapper::sdp::error::SdpParserError),
+
+    #[error("{0:?}")]
+    Other(#[from] anyhow::Error),
+
+    #[error("stream ended early")]
+    StreamEndedEarly,
+
+    #[error("invalid packet")]
+    InvalidPacket(tokio_tungstenite::tungstenite::Message),
+
+    #[error("unexpected packet: {0:?}")]
+    UnexpectedPacket(tango_protos::matchmaking::Packet),
+
+    #[error("peer connection unexpectedly disconnected")]
+    PeerConnectionDisconnected,
+
+    #[error("peer connection failed")]
+    PeerConnectionFailed,
+
+    #[error("peer connection unexpectedly closed")]
+    PeerConnectionClosed,
+}
+
 impl PendingConnection {
     pub async fn connect(
         mut self,
-    ) -> Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), anyhow::Error> {
+    ) -> Result<(datachannel_wrapper::DataChannel, datachannel_wrapper::PeerConnection), Error> {
         loop {
             let raw = if let Some(raw) = self.signaling_stream.try_next().await? {
                 raw
             } else {
-                anyhow::bail!("stream ended early");
+                return Err(Error::StreamEndedEarly);
             };
 
             let packet = if let tokio_tungstenite::tungstenite::Message::Binary(d) = raw {
                 tango_protos::matchmaking::Packet::decode(bytes::Bytes::from(d))?
             } else {
-                anyhow::bail!("invalid packet");
+                return Err(Error::InvalidPacket(raw));
             };
 
-            match packet.which {
-                Some(tango_protos::matchmaking::packet::Which::Start(_)) => {
-                    anyhow::bail!("unexpected start");
+            match &packet.which {
+                Some(tango_protos::matchmaking::packet::Which::Abort(abort)) => {
+                    return Err(Error::ServerAbort(abort.clone()))
                 }
                 Some(tango_protos::matchmaking::packet::Which::Offer(offer)) => {
                     log::info!("received an offer, this is the polite side. rolling back our local description and switching to answer");
@@ -212,8 +249,8 @@ impl PendingConnection {
                         })?;
                     break;
                 }
-                p => {
-                    anyhow::bail!("unexpected packet: {:?}", p);
+                _ => {
+                    return Err(Error::UnexpectedPacket(packet));
                 }
             }
         }
@@ -239,13 +276,13 @@ impl PendingConnection {
                             break;
                         }
                         datachannel_wrapper::ConnectionState::Disconnected => {
-                            anyhow::bail!("peer connection unexpectedly disconnected");
+                            return Err(Error::PeerConnectionDisconnected);
                         }
                         datachannel_wrapper::ConnectionState::Failed => {
-                            anyhow::bail!("peer connection failed");
+                            return Err(Error::PeerConnectionFailed);
                         }
                         datachannel_wrapper::ConnectionState::Closed => {
-                            anyhow::bail!("peer connection unexpectedly closed");
+                            return Err(Error::PeerConnectionClosed);
                         }
                         _ => {}
                     },

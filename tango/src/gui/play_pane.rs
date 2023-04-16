@@ -884,6 +884,9 @@ enum ConnectionError {
     Negotiation(#[from] net::NegotiationError),
 
     #[error(transparent)]
+    Signaling(#[from] net::signaling::Error),
+
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
     #[error(transparent)]
@@ -1283,12 +1286,21 @@ fn show_bottom_pane(
                     ConnectionError::Negotiation(net::NegotiationError::RemoteProtocolVersionTooOld) => i18n::LOCALES
                         .lookup(&config.language, "connection-error-remote-protocol-version-too-old")
                         .unwrap(),
+                    ConnectionError::Signaling(net::signaling::Error::ServerAbort(
+                        tango_protos::matchmaking::packet::Abort { reason },
+                    )) if *reason == tango_protos::matchmaking::packet::abort::Reason::ProtocolVersionTooOld as i32 => {
+                        i18n::LOCALES
+                            .lookup(&config.language, "connection-error-protocol-version-too-old")
+                            .unwrap()
+                    }
                     ConnectionError::Negotiation(net::NegotiationError::RemoteProtocolVersionTooNew) => i18n::LOCALES
                         .lookup(&config.language, "connection-error-remote-protocol-version-too-new")
                         .unwrap(),
+
                     ConnectionError::Io(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                         i18n::LOCALES.lookup(&config.language, "connection-error-eof").unwrap()
                     }
+
                     e => i18n::LOCALES
                         .lookup_with_args(
                             &config.language,
