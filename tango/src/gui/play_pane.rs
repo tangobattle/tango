@@ -1840,7 +1840,7 @@ pub fn show(
                 ui.horizontal_top(|ui| {
                     let patches = patches_scanner.read();
 
-                    let mut supported_patches = std::collections::BTreeMap::new();
+                    let mut supported_patches = std::collections::HashMap::new();
                     if let Some(selection) = selection.as_mut() {
                         for (name, info) in patches.iter() {
                             let mut supported_versions = info
@@ -2035,7 +2035,11 @@ pub fn show(
                                     }
                                 }
 
-                                for (name, (meta, supported_versions)) in supported_patches.iter() {
+                                let mut supported_patches_list = supported_patches.iter().collect::<Vec<_>>();
+                                supported_patches_list.sort_by_key(|(name, _)| {
+                                    (if config.starred_patches.contains(**name) { 0 } else { 1 }, *name)
+                                });
+                                for (name, (meta, supported_versions)) in supported_patches_list {
                                     let warning = (|| {
                                         let lobby = if let Some(lobby) = lobby.as_ref() {
                                             lobby
@@ -2091,6 +2095,16 @@ pub fn show(
                                     let mut layout_job = egui::text::LayoutJob::default();
                                     if warning.is_some() {
                                         gui::warning::append_to_layout_job(ui, &mut layout_job);
+                                    }
+                                    if config.starred_patches.contains(*name) {
+                                        layout_job.append(
+                                            "★ ",
+                                            0.0,
+                                            egui::TextFormat::simple(
+                                                ui.style().text_styles.get(&egui::TextStyle::Body).unwrap().clone(),
+                                                egui::Color32::GOLD,
+                                            ),
+                                        );
                                     }
                                     layout_job.append(
                                         &format!("{} ", *name),

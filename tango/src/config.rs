@@ -118,6 +118,7 @@ pub struct Config {
     pub last_version: semver::Version,
     pub use_relay: Option<bool>,
     pub speed_change_percent: u32,
+    pub starred_patches: std::collections::HashSet<String>,
 }
 
 impl Default for Config {
@@ -154,6 +155,7 @@ impl Default for Config {
             last_version: version,
             use_relay: None,
             speed_change_percent: 300,
+            starred_patches: Default::default(),
         }
     }
 }

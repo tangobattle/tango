@@ -194,6 +194,7 @@ pub fn show(
                 );
             }
             Tab::Patches => {
+                let patches_path = config.patches_path().clone();
                 gui::patches_pane::show(
                     ui,
                     &mut state.patches_pane,
@@ -203,8 +204,9 @@ pub fn show(
                     } else {
                         config::DEFAULT_PATCH_REPO
                     },
+                    &mut config.starred_patches,
                     &mut state.patch_selection,
-                    &config.patches_path(),
+                    &patches_path,
                     patches_scanner.clone(),
                 );
             }

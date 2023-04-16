@@ -15,6 +15,7 @@ pub fn show(
     _state: &mut State,
     language: &unic_langid::LanguageIdentifier,
     repo_url: &str,
+    starred_patches: &mut std::collections::HashSet<String>,
     patch_selection: &mut Option<String>,
     patches_path: &std::path::Path,
     patches_scanner: patch::Scanner,
@@ -73,15 +74,16 @@ pub fn show(
     });
 
     egui::CentralPanel::default().show_inside(ui, |ui| {
-        let patch = if let Some(patch) = patch_selection.as_ref().and_then(|n| patches.get(n)) {
-            patch
-        } else {
-            egui::ScrollArea::vertical()
-                .auto_shrink([false, false])
-                .id_source("patch-window-right-empty")
-                .show(ui, |_ui| {});
-            return;
-        };
+        let (patch, patch_name) =
+            if let Some((patch, n)) = patch_selection.as_ref().and_then(|n| patches.get(n).map(|p| (p, n))) {
+                (patch, n)
+            } else {
+                egui::ScrollArea::vertical()
+                    .auto_shrink([false, false])
+                    .id_source("patch-window-right-empty")
+                    .show(ui, |_ui| {});
+                return;
+            };
 
         ui.with_layout(
             egui::Layout::top_down_justified(egui::Align::Min).with_main_justify(true),
@@ -106,6 +108,25 @@ pub fn show(
                                     ui.with_layout(
                                         egui::Layout::left_to_right(egui::Align::Max).with_main_wrap(true),
                                         |ui| {
+                                            let is_starred = starred_patches.contains(patch_name);
+                                            if ui
+                                                .button(
+                                                    if is_starred {
+                                                        egui::RichText::new("★")
+                                                    } else {
+                                                        egui::RichText::new("☆")
+                                                    }
+                                                    .color(egui::Color32::GOLD),
+                                                )
+                                                .clicked()
+                                            {
+                                                if is_starred {
+                                                    starred_patches.remove(patch_name);
+                                                } else {
+                                                    starred_patches.insert(patch_name.clone());
+                                                }
+                                            }
+
                                             ui.heading(&patch.title);
                                             if let Some((version, _)) = latest_version_and_info.as_ref() {
                                                 ui.label(version.to_string());
