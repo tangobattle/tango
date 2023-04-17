@@ -3,4 +3,5 @@
 cd "$(dirname "$0")"
 export ARCH="$(uname -m)"
 export PATH="$(pwd)/${ARCH}/bin:${PATH}"
+export WINIT_X11_SCALE_FACTOR=1
 exec "$(pwd)/${ARCH}/bin/tango"
