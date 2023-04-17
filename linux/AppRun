@@ -1,7 +1,12 @@
 #!/bin/sh
 
-cd "$(dirname "$0")"
-export ARCH="$(uname -m)"
-export PATH="$(pwd)/${ARCH}/bin:${PATH}"
+cd "$(dirname "$0")" || exit
+
+tango_bin_path=$(pwd)/$(uname -m)/bin
+
+PATH="${tango_bin_path}:${PATH}"
+export PATH
+
 export WINIT_X11_SCALE_FACTOR=1
-exec "$(pwd)/${ARCH}/bin/tango"
+
+exec "${tango_bin_path}/tango"
