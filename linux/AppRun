@@ -1,8 +1,9 @@
 #!/bin/sh
+set -e
 
-cd "$(dirname "$0")" || exit
+cd "$(dirname "$0")"
 
-tango_bin_path=$(pwd)/$(uname -m)/bin
+tango_bin_path="$(pwd)/$(uname -m)/bin"
 
 PATH="${tango_bin_path}:${PATH}"
 export PATH
