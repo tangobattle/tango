@@ -39,10 +39,26 @@ const TANGO_CHILD_ENV_VAR: &str = "TANGO_CHILD";
 
 #[derive(clap::Parser)]
 struct Args {
-    replay_path: Option<std::path::PathBuf>,
-
     #[command(subcommand)]
-    replaytool_command: Option<replaytool::Command>,
+    command: Option<Command>,
+}
+
+#[derive(clap::Subcommand)]
+enum Command {
+    /// Manipulate replays.
+    Replay {
+        /// Path to replay.
+        path: std::path::PathBuf,
+
+        #[command(subcommand)]
+        command: replaytool::Command,
+    },
+
+    /// Join.
+    Join {
+        /// Link code to join.
+        link_code: String,
+    },
 }
 
 enum UserEvent {
@@ -56,8 +72,11 @@ fn main() -> Result<(), anyhow::Error> {
     config.ensure_dirs()?;
 
     let args = Args::parse();
-    if let (Some(path), Some(command)) = (args.replay_path, args.replaytool_command) {
-        return replaytool::main(config, path, command);
+    match args.command {
+        Some(Command::Replay { path, command }) => {
+            return replaytool::main(config, path, command);
+        }
+        _ => {}
     }
 
     env_logger::Builder::from_default_env()
@@ -135,6 +154,13 @@ fn main() -> Result<(), anyhow::Error> {
 }
 
 fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
+    let args = Args::parse();
+
+    let init_link_code = match args.command {
+        Some(Command::Join { link_code }) => Some(link_code),
+        _ => None,
+    };
+
     let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     let _enter_guard = rt.enter();
 
@@ -257,6 +283,7 @@ fn child_main(mut config: config::Config) -> Result<(), anyhow::Error> {
         roms_scanner.clone(),
         saves_scanner.clone(),
         patches_scanner.clone(),
+        init_link_code,
     );
 
     let mut patch_autoupdater = patch::Autoupdater::new(config.clone(), patches_scanner.clone());

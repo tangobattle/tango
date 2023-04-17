@@ -49,6 +49,7 @@ pub fn show(
     selection: &mut Option<gui::Selection>,
     state: &mut State,
     discord_client: &mut discord::Client,
+    init_link_code: &mut Option<String>,
     updater: &updater::Updater,
 ) {
     egui::TopBottomPanel::top("main-top-panel").show(ctx, |ui| {
@@ -145,7 +146,7 @@ pub fn show(
     }
 
     // If a join is requested, switch immediately to the play tab.
-    if discord_client.has_current_join_secret() {
+    if discord_client.has_current_join_secret() || init_link_code.is_some() {
         state.tab = Tab::Play;
     }
 
@@ -174,6 +175,7 @@ pub fn show(
                     emu_tps_counter.clone(),
                     &mut state.play_pane,
                     discord_client,
+                    init_link_code,
                 );
             }
             Tab::Replays => {

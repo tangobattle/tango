@@ -1269,6 +1269,7 @@ fn show_bottom_pane(
     link_code: &mut String,
     show_link_code: &mut bool,
     show_save_select: &mut Option<gui::save_select_view::State>,
+    init_link_code: &mut Option<String>,
 ) {
     let error_window_open = {
         if let Some(ConnectionTask::Failed(err)) = connection_task.as_ref() {
@@ -1547,6 +1548,11 @@ fn show_bottom_pane(
                         submitted = true;
                     }
 
+                    if let Some(init_link_code) = init_link_code.take() {
+                        *link_code = init_link_code.to_string();
+                        submitted = true;
+                    }
+
                     if let Some(join_secret) = discord_client.take_current_join_secret() {
                         *link_code = join_secret.to_string();
                         submitted = true;
@@ -1649,6 +1655,7 @@ pub fn show(
     emu_tps_counter: std::sync::Arc<parking_lot::Mutex<stats::Counter>>,
     state: &mut State,
     discord_client: &mut discord::Client,
+    init_link_code: &mut Option<String>,
 ) {
     let connection_task_arc = state.connection_task.clone();
     let mut connection_task = state.connection_task.blocking_lock();
@@ -1672,6 +1679,7 @@ pub fn show(
             &mut state.link_code,
             &mut state.show_link_code,
             &mut state.show_save_select,
+            init_link_code,
         );
     }
 

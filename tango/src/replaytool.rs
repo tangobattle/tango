@@ -4,9 +4,16 @@ use crate::{config, replay};
 
 #[derive(clap::Subcommand)]
 pub enum Command {
+    /// Swap sides of the replay.
     Invert { output_path: std::path::PathBuf },
+
+    /// Dump replay metadata.
     Metadata,
+
+    /// Dump replay WRAM.
     Wram,
+
+    /// Dump replay in text format.
     Text,
 }
 

@@ -88,6 +88,7 @@ pub struct State {
     session_view: Option<session_view::State>,
     welcome: Option<welcome::State>,
     discord_client: discord::Client,
+    init_link_code: Option<String>,
 }
 
 impl State {
@@ -102,6 +103,7 @@ impl State {
         roms_scanner: rom::Scanner,
         saves_scanner: save::Scanner,
         patches_scanner: patch::Scanner,
+        init_link_code: Option<String>,
     ) -> Self {
         let font_families = FontFamilies {
             latn: FontFamily {
@@ -196,6 +198,7 @@ impl State {
             },
             current_language: None,
             discord_client,
+            init_link_code,
         }
     }
 }
@@ -404,6 +407,7 @@ pub fn show(
             &mut state.selection,
             &mut state.main_view,
             &mut state.discord_client,
+            &mut state.init_link_code,
             updater,
         );
     }
