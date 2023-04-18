@@ -1,7 +1,7 @@
 welcome-heading = Chào mừng đến với Tango!
 welcome-description = Xin hãy hoàn thành những bước sau đây để bạn có thể bắt đầu chơi.
 welcome-step-1 = Thêm ROM của bạn
-welcome-step-1-description = ROM phải là bản gốc, chưa được cài bản vá hoặc mod.
+welcome-step-1-description = Make sure they're pristine, unpatched ROMs. If Mega Man Battle Network Legacy Collection is installed on Steam, Tango will automatically use that instead.
 welcome-step-2 = Thêm file save
 welcome-step-2-description = Đảm bảo rằng file save phải khớp với game tương ứng trong thư mục ROM. Định dạng file phù hợp là .sav hoặc .sa1.
 welcome-step-3 = Tạo nickname
