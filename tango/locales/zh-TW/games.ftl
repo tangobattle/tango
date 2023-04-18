@@ -1,4 +1,4 @@
-game-exe1 = 程式強化
+game-exe1 = 洛克人EXE
     .short = EXE1
     .variant-0 = 洛克人EXE
     .match-type-0-0 = 一局
