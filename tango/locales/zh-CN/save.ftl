@@ -12,6 +12,6 @@ auto-battle-data-mega-chips = 高级芯片
 auto-battle-data-giga-chip = 究极芯片
 auto-battle-data-combos = 组合
 auto-battle-data-program-advance = 程序强化
-auto-battle-data-unset = 未設定
+auto-battle-data-unset = 未设置
 copy-navicust-image-to-clipboard = 复制个性化截图到剪贴板
     .copied = 复制了！
