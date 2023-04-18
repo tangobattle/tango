@@ -38,6 +38,7 @@ own-setup = Eigen opstelling
 connection-error = Verbindingsfout
 connection-error-remote-protocol-version-too-old = Kan geen verbinding maken met de andere speler: ze gebruiken een oudere versie van Tango.
 connection-error-remote-protocol-version-too-new = De andere speler gebruikt een nieuwere versie van Tango. Werk Tango alstublieft bij.
+connection-error-protocol-version-too-old = Your version of Tango is too old to connect to the matchmaking server. Please update.
 connection-error-eof = De andere speler heeft de verbinding verbroken.
 connection-error-other = Er is een verbindingsfout opgetreden: { $error }
 connection-error-confirm = Potverdikkie!

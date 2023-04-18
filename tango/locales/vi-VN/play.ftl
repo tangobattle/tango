@@ -38,6 +38,7 @@ own-setup = Setup bản thân
 connection-error = Lỗi kết nối
 connection-error-remote-protocol-version-too-old = Không thể kết nối với đối thủ: họ đang dùng phiên bản cũ hơn của Tango.
 connection-error-remote-protocol-version-too-new = Đối thủ đang dùng phiên bản mới hơn của Tango. Hãy cập nhật.
+connection-error-protocol-version-too-old = Your version of Tango is too old to connect to the matchmaking server. Please update.
 connection-error-eof = Đối thủ đã ngắt kết nối.
 connection-error-other = Lỗi kết nối đã xảy ra: { $error }
 connection-error-confirm = Đm!

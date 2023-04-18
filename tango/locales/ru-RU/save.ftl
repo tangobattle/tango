@@ -12,6 +12,6 @@ auto-battle-data-mega-chips = Мега чипы
 auto-battle-data-giga-chip = Гига чип
 auto-battle-data-combos = Комбо
 auto-battle-data-program-advance = Продвинутые программы
-auto-battle-data-unset = Не указан
+auto-battle-data-unset = Снять
 copy-navicust-image-to-clipboard = Скопировать изображение НавиКаст в буфер обмена
     .copied = Скопировано!

@@ -12,6 +12,6 @@ auto-battle-data-mega-chips = 高級晶片
 auto-battle-data-giga-chip = 究極晶片
 auto-battle-data-combos = 組合
 auto-battle-data-program-advance = 程式強化
-auto-battle-data-unset = 未設定
+auto-battle-data-unset = 未設置
 copy-navicust-image-to-clipboard = 複製個性化截圖到剪貼板
     .copied = 複製了！

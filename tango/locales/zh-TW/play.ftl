@@ -38,6 +38,7 @@ own-setup = 自己的配置
 connection-error = 連接錯誤
 connection-error-remote-protocol-version-too-old = 對方的Tango版本過舊，無法連接。
 connection-error-remote-protocol-version-too-new = 對方的Tango版本過新，請更新。
+connection-error-protocol-version-too-old = 你的Tango版本過舊，無法連接到配對服務器。請更新。
 connection-error-eof = 與對方的連接已中斷。
 connection-error-other = 發生連接錯誤：{ $error }
 connection-error-confirm = 哎呀！
