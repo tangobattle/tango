@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, NaviView as _};
+use crate::save::{self, NaviView as _, PatchCard56sView as _};
 
 const SRAM_START_OFFSET: usize = 0x0100;
 const SRAM_SIZE: usize = 0x6710;
@@ -130,6 +130,12 @@ impl save::Save for Save {
         }
     }
 
+    fn view_patch_cards_mut(&mut self) -> Option<save::PatchCardsViewMut> {
+        Some(save::PatchCardsViewMut::PatchCard56s(Box::new(PatchCard56sViewMut {
+            save: self,
+        })))
+    }
+
     // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
     //     Some(Box::new(NaviView { save: self }))
     // }
@@ -218,6 +224,52 @@ impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
         })
+    }
+}
+
+pub struct PatchCard56sViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
+    fn set_count(&mut self, count: usize) {
+        self.save.buf[0x65f0] = count as u8;
+        self.rebuild();
+    }
+
+    fn set_patch_card(&mut self, slot: usize, patch_card: save::PatchCard) -> bool {
+        let view = PatchCard56sView { save: self.save };
+        if slot >= view.count() {
+            return false;
+        }
+        self.save.buf[0x6620 + slot] = (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
+        self.rebuild();
+        true
+    }
+}
+
+impl<'a> PatchCard56sViewMut<'a> {
+    fn rebuild(&mut self) {
+        for i in 0..118 {
+            self.set_patch_card_loaded(i, false);
+        }
+
+        for i in 0..(PatchCard56sView { save: self.save }).count() {
+            let patch_card = if let Some(patch_card) = (PatchCard56sView { save: self.save }).patch_card(i) {
+                patch_card
+            } else {
+                continue;
+            };
+            self.set_patch_card_loaded(patch_card.id, true);
+        }
+    }
+
+    fn set_patch_card_loaded(&mut self, id: usize, loaded: bool) {
+        let mask = match self.save.game_info.variant {
+            Variant::Gregar => 0x43,
+            Variant::Falzar => 0x8d,
+        };
+        self.save.buf[0x5047 + id] = self.save.buf[0x06bf + id] ^ if loaded { mask } else { 0xff };
     }
 }
 

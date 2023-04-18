@@ -99,6 +99,11 @@ pub enum PatchCardsView<'a> {
     PatchCard56s(Box<dyn PatchCard56sView<'a> + 'a>),
 }
 
+pub enum PatchCardsViewMut<'a> {
+    PatchCard4s(Box<dyn PatchCard4sViewMut<'a> + 'a>),
+    PatchCard56s(Box<dyn PatchCard56sViewMut<'a> + 'a>),
+}
+
 pub trait Save
 where
     Self: SaveClone,
@@ -111,6 +116,10 @@ where
     }
 
     fn view_patch_cards(&self) -> Option<PatchCardsView> {
+        None
+    }
+
+    fn view_patch_cards_mut(&mut self) -> Option<PatchCardsViewMut> {
         None
     }
 
@@ -178,8 +187,17 @@ pub trait PatchCard56sView<'a> {
     fn patch_card(&self, slot: usize) -> Option<PatchCard>;
 }
 
+pub trait PatchCard56sViewMut<'a> {
+    fn set_count(&mut self, count: usize);
+    fn set_patch_card(&mut self, slot: usize, patch_card: PatchCard) -> bool;
+}
+
 pub trait PatchCard4sView<'a> {
     fn patch_card(&self, slot: usize) -> Option<PatchCard>;
+}
+
+pub trait PatchCard4sViewMut<'a> {
+    fn set_patch_card(&mut self, slot: usize, patch_card: PatchCard) -> bool;
 }
 
 pub trait NaviView<'a> {
