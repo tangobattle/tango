@@ -38,6 +38,7 @@ own-setup = Votre propre setup
 connection-error = Erreur de connexion
 connection-error-remote-protocol-version-too-old = Impossible de se connecter à l'adversaire : iel utilise une ancienne version de Tango.
 connection-error-remote-protocol-version-too-new = L'adversaire utilise une version plus récente de Tango. Veuillez mettre Tango à jour.
+connection-error-protocol-version-too-old = Your version of Tango is too old to connect to the matchmaking server. Please update.
 connection-error-eof = L'adversaire a été déconnecté(e).
 connection-error-other = Une erreur de connexion est survenue : { $error }
 connection-error-confirm = Mince !
