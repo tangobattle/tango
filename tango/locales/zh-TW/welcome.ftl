@@ -1,7 +1,7 @@
 welcome-heading = 歡迎使用Tango！
 welcome-description = 在你開始遊戲之前，你只需要完成幾個步驟。
 welcome-step-1 = 添加你的ROM
-welcome-step-1-description = Make sure they're pristine, unpatched ROMs. If Mega Man Battle Network Legacy Collection is installed on Steam, Tango will automatically use that instead.
+welcome-step-1-description = 確保ROM是原始沒打補丁的。如果你在Steam上安裝了《ROCKMAN EXE 合集》，Tango將自動使用來代替。
 welcome-step-2 = 添加你的遊戲存檔
 welcome-step-2-description = 確保遊戲存檔與你放在ROM文件夾中的遊戲兼容。遊戲存檔應該是.sav或.sa1文件。
 welcome-step-3 = 設置你的暱稱
