@@ -121,16 +121,18 @@ impl save::Save for Save {
     }
 
     fn view_patch_cards(&self) -> Option<save::PatchCardsView> {
-        if self.game_info.region == Region::JP {
-            Some(save::PatchCardsView::PatchCard56s(Box::new(PatchCard56sView {
-                save: self,
-            })))
-        } else {
-            None
+        if self.game_info.region != Region::JP {
+            return None;
         }
+        Some(save::PatchCardsView::PatchCard56s(Box::new(PatchCard56sView {
+            save: self,
+        })))
     }
 
     fn view_patch_cards_mut(&mut self) -> Option<save::PatchCardsViewMut> {
+        if self.game_info.region != Region::JP {
+            return None;
+        }
         Some(save::PatchCardsViewMut::PatchCard56s(Box::new(PatchCard56sViewMut {
             save: self,
         })))
