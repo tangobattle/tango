@@ -163,8 +163,8 @@ impl save::Save for Save {
         })))
     }
 
-    fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
-        Some(Box::new(DarkAIView { save: self }))
+    fn view_auto_battle_data(&self) -> Option<Box<dyn save::AutoBattleDataView + '_>> {
+        Some(Box::new(AutoBattleDataView { save: self }))
     }
 
     fn as_raw_wram(&self) -> &[u8] {
@@ -307,11 +307,11 @@ impl<'a> save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
     }
 }
 
-pub struct DarkAIView<'a> {
+pub struct AutoBattleDataView<'a> {
     save: &'a Save,
 }
 
-impl<'a> save::DarkAIView<'a> for DarkAIView<'a> {
+impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<u16> {
         if id >= 350 {
             return None;

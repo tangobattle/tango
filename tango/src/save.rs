@@ -127,7 +127,7 @@ where
         None
     }
 
-    fn view_dark_ai(&self) -> Option<Box<dyn DarkAIView + '_>> {
+    fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView + '_>> {
         None
     }
 
@@ -228,7 +228,7 @@ pub trait NavicustView<'a> {
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
 }
 
-pub trait DarkAIView<'a> {
+pub trait AutoBattleDataView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<u16>;
     fn secondary_chip_use_count(&self, id: usize) -> Option<u16>;
 }

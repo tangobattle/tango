@@ -1,4 +1,4 @@
-mod dark_ai_view;
+mod auto_battle_data_view;
 mod folder_view;
 mod navi_view;
 mod navicust_view;
@@ -14,7 +14,7 @@ enum Tab {
     Navicust,
     Folder,
     PatchCards,
-    DarkAI,
+    AutoBattleData,
 }
 
 pub struct State {
@@ -23,7 +23,7 @@ pub struct State {
     navicust_view: navicust_view::State,
     folder_view: folder_view::State,
     patch_cards_view: patch_cards_view::State,
-    dark_ai_view: dark_ai_view::State,
+    auto_battle_data_view: auto_battle_data_view::State,
 }
 
 impl State {
@@ -34,7 +34,7 @@ impl State {
             navicust_view: navicust_view::State::new(),
             folder_view: folder_view::State::new(),
             patch_cards_view: patch_cards_view::State::new(),
-            dark_ai_view: dark_ai_view::State::new(),
+            auto_battle_data_view: auto_battle_data_view::State::new(),
         }
     }
 }
@@ -55,7 +55,7 @@ pub fn show(
         let navicust_view = save.view_navicust();
         let chips_view = save.view_chips();
         let patch_cards_view = save.view_patch_cards();
-        let dark_ai_view = save.view_dark_ai();
+        let auto_battle_data_view = save.view_auto_battle_data();
 
         let mut available_tabs = vec![];
         if navi_view.is_some() {
@@ -70,8 +70,8 @@ pub fn show(
         if patch_cards_view.is_some() {
             available_tabs.push(Tab::PatchCards);
         }
-        if dark_ai_view.is_some() {
-            available_tabs.push(Tab::DarkAI);
+        if auto_battle_data_view.is_some() {
+            available_tabs.push(Tab::AutoBattleData);
         }
 
         ui.horizontal(|ui| {
@@ -95,7 +95,7 @@ pub fn show(
                                     Tab::Navicust => "save-tab-navicust",
                                     Tab::Folder => "save-tab-folder",
                                     Tab::PatchCards => "save-tab-patch-cards",
-                                    Tab::DarkAI => "save-tab-dark-ai",
+                                    Tab::AutoBattleData => "save-tab-auto-battle-data",
                                 },
                             )
                             .unwrap(),
@@ -169,17 +169,17 @@ pub fn show(
                     );
                 }
             }
-            Some(Tab::DarkAI) => {
-                if let Some(dark_ai_view) = dark_ai_view {
-                    dark_ai_view::show(
+            Some(Tab::AutoBattleData) => {
+                if let Some(auto_battle_data_view) = auto_battle_data_view {
+                    auto_battle_data_view::show(
                         ui,
                         clipboard,
                         font_families,
                         lang,
                         game_lang,
-                        &dark_ai_view,
+                        &auto_battle_data_view,
                         assets,
-                        &mut state.dark_ai_view,
+                        &mut state.auto_battle_data_view,
                     );
                 }
             }

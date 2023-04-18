@@ -6,7 +6,7 @@ use crate::{gui, i18n, rom, save};
 pub struct State {
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
-    materialized: Option<MaterializedDarkAI>,
+    materialized: Option<MaterializedAutoBattleData>,
 }
 
 impl State {
@@ -26,7 +26,7 @@ const GIGA_CHIP_COUNTS: &[usize; 1] = &[1];
 const COMBO_COUNTS: &[usize; 8] = &[1, 1, 1, 1, 1, 1, 1, 1];
 const PROGRAM_ADVANCE_COUNTS: &[usize; 1] = &[1];
 
-struct MaterializedDarkAI {
+struct MaterializedAutoBattleData {
     secondary_standard_chips: [Option<usize>; 3],
     standard_chips: [Option<usize>; 16],
     mega_chips: [Option<usize>; 5],
@@ -36,11 +36,14 @@ struct MaterializedDarkAI {
     program_advance: Option<usize>,
 }
 
-impl MaterializedDarkAI {
-    fn new(dark_ai_view: &Box<dyn save::DarkAIView + '_>, assets: &Box<dyn rom::Assets + Send + Sync>) -> Self {
+impl MaterializedAutoBattleData {
+    fn new(
+        auto_battle_data_view: &Box<dyn save::AutoBattleDataView + '_>,
+        assets: &Box<dyn rom::Assets + Send + Sync>,
+    ) -> Self {
         let mut use_counts = vec![];
         loop {
-            if let Some(count) = dark_ai_view.chip_use_count(use_counts.len()) {
+            if let Some(count) = auto_battle_data_view.chip_use_count(use_counts.len()) {
                 use_counts.push(count);
             } else {
                 break;
@@ -49,14 +52,14 @@ impl MaterializedDarkAI {
 
         let mut secondary_use_counts = vec![];
         loop {
-            if let Some(count) = dark_ai_view.secondary_chip_use_count(secondary_use_counts.len()) {
+            if let Some(count) = auto_battle_data_view.secondary_chip_use_count(secondary_use_counts.len()) {
                 secondary_use_counts.push(count);
             } else {
                 break;
             }
         }
 
-        MaterializedDarkAI {
+        MaterializedAutoBattleData {
             secondary_standard_chips: secondary_use_counts
                 .iter()
                 .enumerate()
@@ -284,7 +287,7 @@ fn show_table<const N: usize>(
                             } else {
                                 strip.cell(|_ui| {});
                                 strip.cell(|ui| {
-                                    ui.weak(i18n::LOCALES.lookup(lang, "dark-ai-unset").unwrap());
+                                    ui.weak(i18n::LOCALES.lookup(lang, "auto-battle-data-unset").unwrap());
                                 });
                                 strip.cell(|_ui| {});
                                 strip.cell(|_ui| {});
@@ -320,13 +323,13 @@ pub fn show<'a>(
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
     game_lang: &unic_langid::LanguageIdentifier,
-    dark_ai_view: &Box<dyn save::DarkAIView<'a> + 'a>,
+    auto_battle_data_view: &Box<dyn save::AutoBattleDataView<'a> + 'a>,
     assets: &Box<dyn rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
     let materialized = state
         .materialized
-        .get_or_insert_with(|| MaterializedDarkAI::new(dark_ai_view, assets));
+        .get_or_insert_with(|| MaterializedAutoBattleData::new(auto_battle_data_view, assets));
 
     ui.horizontal(|ui| {
         if ui
@@ -358,11 +361,15 @@ pub fn show<'a>(
     });
 
     egui::ScrollArea::vertical()
-        .id_source("dark-ai-view")
+        .id_source("auto-battle-data-view")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            ui.push_id(egui::Id::new("dark-ai-view-secondary-standard-chips"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-secondary-standard-chips").unwrap());
+            ui.push_id(egui::Id::new("auto-battle-data-view-secondary-standard-chips"), |ui| {
+                ui.strong(
+                    i18n::LOCALES
+                        .lookup(lang, "auto-battle-data-secondary-standard-chips")
+                        .unwrap(),
+                );
                 show_table(
                     ui,
                     &materialized.secondary_standard_chips,
@@ -376,8 +383,8 @@ pub fn show<'a>(
                 );
             });
 
-            ui.push_id(egui::Id::new("dark-ai-view-standard-chips"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-standard-chips").unwrap());
+            ui.push_id(egui::Id::new("auto-battle-data-view-standard-chips"), |ui| {
+                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-standard-chips").unwrap());
                 show_table(
                     ui,
                     &materialized.standard_chips,
@@ -391,8 +398,8 @@ pub fn show<'a>(
                 );
             });
 
-            ui.push_id(egui::Id::new("dark-ai-view-mega-chips"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-mega-chips").unwrap());
+            ui.push_id(egui::Id::new("auto-battle-data-view-mega-chips"), |ui| {
+                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-mega-chips").unwrap());
                 show_table(
                     ui,
                     &materialized.mega_chips,
@@ -406,8 +413,8 @@ pub fn show<'a>(
                 );
             });
 
-            ui.push_id(egui::Id::new("dark-ai-view-giga-chip"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-giga-chip").unwrap());
+            ui.push_id(egui::Id::new("auto-battle-data-view-giga-chip"), |ui| {
+                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-giga-chip").unwrap());
                 show_table(
                     ui,
                     &[materialized.giga_chip],
@@ -421,8 +428,8 @@ pub fn show<'a>(
                 );
             });
 
-            ui.push_id(egui::Id::new("dark-ai-view-combos"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-combos").unwrap());
+            ui.push_id(egui::Id::new("auto-battle-data-view-combos"), |ui| {
+                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-combos").unwrap());
                 show_table(
                     ui,
                     &[None; 8],
@@ -436,8 +443,8 @@ pub fn show<'a>(
                 );
             });
 
-            ui.push_id(egui::Id::new("dark-ai-view-program-advance"), |ui| {
-                ui.strong(i18n::LOCALES.lookup(lang, "dark-ai-program-advance").unwrap());
+            ui.push_id(egui::Id::new("auto-battle-data-view-program-advance"), |ui| {
+                ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-program-advance").unwrap());
                 show_table(
                     ui,
                     &[materialized.program_advance],
