@@ -157,6 +157,12 @@ impl save::Save for Save {
         })))
     }
 
+    fn view_patch_cards_mut(&mut self) -> Option<save::PatchCardsViewMut> {
+        Some(save::PatchCardsViewMut::PatchCard4s(Box::new(PatchCard4sViewMut {
+            save: self,
+        })))
+    }
+
     fn view_dark_ai(&self) -> Option<Box<dyn save::DarkAIView + '_>> {
         Some(Box::new(DarkAIView { save: self }))
     }
@@ -279,6 +285,25 @@ impl<'a> save::PatchCard4sView<'a> for PatchCard4sView<'a> {
             false
         };
         Some(save::PatchCard { id, enabled })
+    }
+}
+
+pub struct PatchCard4sViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::PatchCard4sViewMut<'a> for PatchCard4sViewMut<'a> {
+    fn set_patch_card(&mut self, slot: usize, patch_card: Option<save::PatchCard>) {
+        self.save.buf[self.save.shift + 0x464c + slot] = 0xff;
+        self.save.buf[self.save.shift + 0x464c + 7 + slot] = 0xff;
+
+        let patch_card = if let Some(patch_card) = patch_card {
+            patch_card
+        } else {
+            return;
+        };
+
+        self.save.buf[self.save.shift + 0x464c + if patch_card.enabled { 0 } else { 7 } + slot] = patch_card.id as u8;
     }
 }
 
