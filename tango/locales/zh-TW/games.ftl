@@ -1,4 +1,4 @@
-game-exe1 = 洛克人EXE
+game-exe1 = 程式強化
     .short = EXE1
     .variant-0 = 洛克人EXE
     .match-type-0-0 = 一局
@@ -16,7 +16,7 @@ game-bn2 = 洛克人EXE2（英文版）
     .match-type-0-0 = 一局
 game-exe3 = 洛克人EXE3
     .short = EXE3
-    .variant-0 = Rockman EXE 3
+    .variant-0 = 洛克人EXE3
     .variant-1 = 洛克人EXE3：黑
     .match-type-0-0 = 一局
     .match-type-0-1 = 羽量級
