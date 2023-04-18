@@ -115,6 +115,10 @@ where
         None
     }
 
+    fn view_chips_mut(&mut self) -> Option<Box<dyn ChipsViewMut + '_>> {
+        None
+    }
+
     fn view_patch_cards(&self) -> Option<PatchCardsView> {
         None
     }
@@ -174,6 +178,30 @@ pub trait ChipsView<'a> {
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize>;
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]>;
     fn chip(&self, folder_index: usize, chip_index: usize) -> Option<Chip>;
+}
+
+pub trait ChipsViewMut<'a> {
+    fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
+        let _ = folder_index;
+        false
+    }
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: Chip) -> bool;
+    fn set_tag_chip_indexes(&mut self, folder_index: usize, chip_indexes: Option<[usize; 2]>) -> bool {
+        let _ = folder_index;
+        let _ = chip_indexes;
+        false
+    }
+    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        let _ = folder_index;
+        let _ = chip_index;
+        false
+    }
+    fn can_set_regular_chip(&self) -> bool {
+        false
+    }
+    fn can_set_tag_chips(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
