@@ -50,16 +50,18 @@ impl Backend {
             .build(raw_window_handle);
         let not_current_gl_context = unsafe {
             gl_display
-                    .create_context(&gl_config, &context_attributes)
-                    .unwrap_or_else(|_| {
-                        log::error!("failed to create gl_context with attributes: {:?}. retrying with fallback context attributes: {:?}",
-                            &context_attributes,
-                            &fallback_context_attributes);
-                        gl_config
-                            .display()
-                            .create_context(&gl_config, &fallback_context_attributes)
-                            .expect("failed to create context even with fallback attributes")
-                    })
+                .create_context(&gl_config, &context_attributes)
+                .unwrap_or_else(|err| {
+                    log::error!(
+                        "failed to create gl_context with attributes: {:?}: {:?}",
+                        &context_attributes,
+                        err
+                    );
+                    gl_config
+                        .display()
+                        .create_context(&gl_config, &fallback_context_attributes)
+                        .expect("failed to create context even with fallback attributes")
+                })
         };
 
         let window = window.take().unwrap_or_else(|| {
