@@ -1,6 +1,6 @@
 settings = Configurações
 settings-tab-general = Geral
-settings-tab-input = Controle
+settings-tab-input = Teclas
 settings-tab-graphics = Gráficos
 settings-tab-audio = Áudio
 settings-tab-netplay = Netplay

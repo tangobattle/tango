@@ -1,6 +1,6 @@
 play = Jugar
 play-play = Jugar
-play-fight = ¡Netbattle
+play-fight = ¡Netbattle!
 play-leave = Abandonar
 play-random = Generar código aleatorio
 play-ready = ¡Listo!
@@ -38,7 +38,7 @@ own-setup = Build propia
 connection-error = Error de conexión
 connection-error-remote-protocol-version-too-old = No se pudo conectar al otro jugador: está usando una versión antigua de Tango.
 connection-error-remote-protocol-version-too-new = El otro jugador está usando una versión más nueva de Tango. Por favor, actualice.
-connection-error-protocol-version-too-old = Your version of Tango is too old to connect to the matchmaking server. Please update.
+connection-error-protocol-version-too-old = Tu versión de Tango es muy antigua como para conectarte al servidor de emparejamiento. Por favor actualiza.
 connection-error-eof = El otro jugador se ha desconectado.
 connection-error-other = Ha ocurrido un error de conexión: { $error }
 connection-error-confirm = ¡Maldición!
