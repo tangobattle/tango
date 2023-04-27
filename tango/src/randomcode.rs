@@ -382,6 +382,7 @@ lazy_static! {
                         "alpha",
                         "amogus",
                         "angy",
+                        "applm",
                         "area",
                         "aura",
                         "banned",
