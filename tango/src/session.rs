@@ -347,6 +347,7 @@ impl Session {
         );
         let mut traps = hooks.common_traps();
         traps.extend(hooks.replayer_traps(replayer_state.clone()));
+        traps.extend(hooks.replayer_playback_traps());
         core.set_traps(traps);
 
         let thread = mgba::thread::Thread::new(core);

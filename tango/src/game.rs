@@ -308,6 +308,10 @@ pub trait Hooks {
 
     fn shadow_traps(&self, shadow_state: shadow::State) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)>;
 
+    fn replayer_playback_traps(&self) -> Vec<(u32, Box<dyn Fn(mgba::core::CoreMutRef)>)> {
+        vec![]
+    }
+
     fn primary_traps(
         &self,
         joyflags: std::sync::Arc<std::sync::atomic::AtomicU32>,

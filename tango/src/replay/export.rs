@@ -73,6 +73,7 @@ fn make_core_and_state(
         let replayer_state = replayer_state.clone();
         let mut traps = hooks.common_traps();
         traps.extend(hooks.replayer_traps(replayer_state.clone()));
+        traps.extend(hooks.replayer_playback_traps());
         core.set_traps(traps);
     }
     core.as_mut().load_state(&replay.local_state)?;
