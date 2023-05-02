@@ -5,12 +5,7 @@ impl super::Filter for HQ2XFilter {
     }
 
     fn apply(&self, src: &[u8], dst: &mut [u8], size: (usize, usize)) {
-        hqx::hq2x(
-            unsafe { src.align_to::<u32>().1 },
-            unsafe { dst.align_to_mut::<u32>().1 },
-            size.0,
-            size.1,
-        );
+        hqx::hq2x(bytemuck::cast_slice(src), bytemuck::cast_slice_mut(dst), size.0, size.1);
     }
 }
 
@@ -21,12 +16,7 @@ impl super::Filter for HQ3XFilter {
     }
 
     fn apply(&self, src: &[u8], dst: &mut [u8], size: (usize, usize)) {
-        hqx::hq3x(
-            unsafe { src.align_to::<u32>().1 },
-            unsafe { dst.align_to_mut::<u32>().1 },
-            size.0,
-            size.1,
-        );
+        hqx::hq3x(bytemuck::cast_slice(src), bytemuck::cast_slice_mut(dst), size.0, size.1);
     }
 }
 
@@ -37,11 +27,6 @@ impl super::Filter for HQ4XFilter {
     }
 
     fn apply(&self, src: &[u8], dst: &mut [u8], size: (usize, usize)) {
-        hqx::hq4x(
-            unsafe { src.align_to::<u32>().1 },
-            unsafe { dst.align_to_mut::<u32>().1 },
-            size.0,
-            size.1,
-        );
+        hqx::hq4x(bytemuck::cast_slice(src), bytemuck::cast_slice_mut(dst), size.0, size.1);
     }
 }
