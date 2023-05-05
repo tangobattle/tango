@@ -356,7 +356,12 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
 
 impl<'a> ChipsViewMut<'a> {
     fn rebuild(&mut self) {
-        // TODO: Actually rebuild.
+        // Kind of goody, but it works.
+        for id in 0..411 {
+            for variant in 0..4 {
+                self.set_pack_count(id, variant, 99);
+            }
+        }
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: u8) {
