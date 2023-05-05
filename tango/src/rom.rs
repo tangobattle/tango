@@ -285,11 +285,9 @@ fn deserialize_option_language_identifier<'de, D>(
 where
     D: serde::Deserializer<'de>,
 {
-    if let Some(buf) = Option::<String>::deserialize(deserializer)? {
+    Ok(Option::<String>::deserialize(deserializer)?.map_or(Ok(None), |buf| {
         buf.parse().map(|v| Some(v)).map_err(serde::de::Error::custom)
-    } else {
-        Ok(None)
-    }
+    })?)
 }
 
 fn deserialize_option_patch_card56_effect_template<'de, D>(
