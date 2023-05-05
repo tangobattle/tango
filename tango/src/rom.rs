@@ -25,6 +25,7 @@ pub trait Chip {
     fn dark(&self) -> bool;
     fn mb(&self) -> u8;
     fn damage(&self) -> u32;
+    fn library_sort_order(&self) -> usize;
 }
 
 pub struct PatchCard56Effect {

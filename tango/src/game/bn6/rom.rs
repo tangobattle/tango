@@ -291,6 +291,11 @@ impl<'a> rom::Chip for Chip<'a> {
             0
         }
     }
+
+    fn library_sort_order(&self) -> usize {
+        let raw = self.raw_info();
+        byteorder::LittleEndian::read_u16(&raw[0x1c..0x1c + 2]) as usize
+    }
 }
 
 struct NavicustPart<'a> {
