@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, NaviView as _, PatchCard56sView as _};
+use crate::save::{self, ChipsView as _, NaviView as _, PatchCard56sView as _};
 
 const SRAM_START_OFFSET: usize = 0x0100;
 const SRAM_SIZE: usize = 0x6710;
@@ -173,6 +173,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
+        if folder_index >= self.num_folders() {
+            return None;
+        }
+
         let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let idx = self.save.buf[navi_stats_offset + 0x2e + folder_index];
         if idx >= 30 {
@@ -183,6 +187,10 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn tag_chip_indexes(&self, folder_index: usize) -> Option<[usize; 2]> {
+        if folder_index >= self.num_folders() {
+            return None;
+        }
+
         let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         let idx1 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00];
         let idx2 = self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01];
@@ -272,6 +280,87 @@ impl<'a> PatchCard56sViewMut<'a> {
             Variant::Falzar => 0x8d,
         };
         self.save.buf[0x5047 + id] = self.save.buf[0x06bf + id] ^ if loaded { mask } else { 0xff };
+    }
+}
+
+pub struct ChipsViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
+    fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
+        let _ = folder_index;
+        false
+    }
+
+    fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: save::Chip) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
+            return false;
+        }
+
+        let offset = 0x2178 + folder_index * (30 * 2) + chip_index * 2;
+        let variant = if let Some(variant) = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
+            .iter()
+            .position(|c| *c == chip.code as u8)
+        {
+            variant
+        } else {
+            return false;
+        };
+        byteorder::LittleEndian::write_u16(
+            &mut self.save.buf[offset..offset + 2],
+            chip.id as u16 | ((variant as u16) << 9),
+        );
+        self.rebuild();
+        true
+    }
+
+    fn set_tag_chip_indexes(&mut self, folder_index: usize, chip_indexes: Option<[usize; 2]>) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() {
+            return false;
+        }
+
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        let (idx1, idx2) = if let Some([idx1, idx2]) = chip_indexes {
+            if idx1 >= 30 || idx2 >= 30 {
+                return false;
+            }
+            (idx1, idx2)
+        } else {
+            (0xff, 0xff)
+        };
+
+        self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x00] = idx1 as u8;
+        self.save.buf[navi_stats_offset + 0x56 + folder_index * 2 + 0x01] = idx2 as u8;
+        true
+    }
+
+    fn set_regular_chip_index(&mut self, folder_index: usize, chip_index: usize) -> bool {
+        if folder_index >= (ChipsView { save: self.save }).num_folders() || chip_index >= 30 {
+            return false;
+        }
+
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        self.save.buf[navi_stats_offset + 0x2e + folder_index] = chip_index as u8;
+        true
+    }
+
+    fn can_set_regular_chip(&self) -> bool {
+        true
+    }
+
+    fn can_set_tag_chips(&self) -> bool {
+        true
+    }
+}
+
+impl<'a> ChipsViewMut<'a> {
+    fn rebuild(&mut self) {
+        // TODO: Actually rebuild.
+    }
+
+    fn set_pack_count(&mut self, id: usize, variant: usize, count: u8) {
+        self.save.buf[0x2230 + id * 0xc + variant] = count;
     }
 }
 
