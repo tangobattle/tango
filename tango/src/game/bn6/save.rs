@@ -289,8 +289,12 @@ pub struct ChipsViewMut<'a> {
 
 impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
     fn set_equipped_folder(&mut self, folder_index: usize) -> bool {
-        let _ = folder_index;
-        false
+        if folder_index >= (ChipsView { save: self.save }).num_folders() {
+            return false;
+        }
+        let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
+        self.save.buf[navi_stats_offset + 0x2d] = folder_index as u8;
+        true
     }
 
     fn set_chip(&mut self, folder_index: usize, chip_index: usize, chip: save::Chip) -> bool {
