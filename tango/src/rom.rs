@@ -263,7 +263,7 @@ impl MemoryMapper {
             std::borrow::Cow::Borrowed(&self.wram[(start & !0x02000000) as usize..])
         } else if start >= 0x08000000 && start < 0x0a000000 {
             std::borrow::Cow::Borrowed(&self.rom[(start & !0x08000000) as usize..])
-        } else if start >= 0x88000000 && start <= 0x8a000000 {
+        } else if start >= 0x88000000 && start < 0x8a000000 {
             std::borrow::Cow::Owned(
                 self.unlz77_cache
                     .lock()
