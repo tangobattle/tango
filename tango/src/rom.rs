@@ -205,7 +205,7 @@ pub fn read_merged_tiles(raw: &[u8], cols: usize) -> Option<PalettedImage> {
     Some(merge_tiles(&tiles, cols))
 }
 
-pub fn unlz77(mut r: &[u8]) -> std::io::Result<Vec<u8>> {
+pub fn unlz77(mut r: impl std::io::Read) -> std::io::Result<Vec<u8>> {
     let mut out = vec![];
 
     let header = r.read_u32::<byteorder::LittleEndian>()?;
