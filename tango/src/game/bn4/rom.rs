@@ -289,9 +289,9 @@ impl<'a> rom::Chip for Chip<'a> {
         }
     }
 
-    fn library_sort_order(&self) -> usize {
+    fn library_sort_order(&self) -> Option<usize> {
         let raw = self.raw_info();
-        byteorder::LittleEndian::read_u16(&raw[0x1c..0x1c + 2]) as usize
+        Some(byteorder::LittleEndian::read_u16(&raw[0x1c..0x1c + 2]) as usize)
     }
 }
 

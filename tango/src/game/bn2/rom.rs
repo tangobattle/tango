@@ -177,8 +177,8 @@ impl<'a> rom::Chip for Chip<'a> {
         byteorder::LittleEndian::read_u16(&raw[0x0c..0x0c + 2]) as u32
     }
 
-    fn library_sort_order(&self) -> usize {
-        self.id
+    fn library_sort_order(&self) -> Option<usize> {
+        Some(self.id)
     }
 }
 
