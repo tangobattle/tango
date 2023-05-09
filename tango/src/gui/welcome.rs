@@ -69,7 +69,7 @@ pub fn show(
                                 .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
                                 .clicked()
                             {
-                                let _ = open::that(&config.roms_path());
+                                let _ = opener::open(&config.roms_path());
                             }
                             ui.add_enabled_ui(!roms_scanner.is_scanning(), |ui| {
                                 if ui
@@ -111,7 +111,7 @@ pub fn show(
                                 .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
                                 .clicked()
                             {
-                                let _ = open::that(&config.saves_path());
+                                let _ = opener::open(&config.saves_path());
                             }
 
                             ui.add_enabled_ui(!saves_scanner.is_scanning(), |ui| {

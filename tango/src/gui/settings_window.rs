@@ -657,7 +657,7 @@ fn show_advanced_tab(
                         )
                         .clicked()
                     {
-                        let _ = open::that(&config.data_path);
+                        let _ = opener::open(&config.data_path);
                     }
 
                     if ui

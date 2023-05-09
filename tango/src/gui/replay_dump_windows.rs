@@ -156,7 +156,18 @@ pub fn show(
                             );
                             if ui
                                 .button(format!(
-                                    "{}",
+                                    "📄 {}",
+                                    i18n::LOCALES
+                                        .lookup(language, "replays-export-show-file")
+                                        .unwrap()
+                                ))
+                                .clicked()
+                            {
+                                let _ = opener::reveal(&state.output_path);
+                            }
+                            if ui
+                                .button(format!(
+                                    "✅ {}",
                                     i18n::LOCALES
                                         .lookup(language, "replays-export-confirm-success")
                                         .unwrap()
@@ -178,7 +189,7 @@ pub fn show(
                             );
                             if ui
                                 .button(format!(
-                                    "{}",
+                                    "❎ {}",
                                     i18n::LOCALES.lookup(language, "replays-export-confirm-error").unwrap()
                                 ))
                                 .clicked()
