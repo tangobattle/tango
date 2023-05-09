@@ -165,17 +165,6 @@ pub fn show(
                             {
                                 let _ = opener::reveal(&state.output_path);
                             }
-                            if ui
-                                .button(format!(
-                                    "✅ {}",
-                                    i18n::LOCALES
-                                        .lookup(language, "replays-export-confirm-success")
-                                        .unwrap()
-                                ))
-                                .clicked()
-                            {
-                                open2 = false;
-                            }
                         }
                         Err(e) => {
                             ui.label(
