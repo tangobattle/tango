@@ -29,6 +29,8 @@ select-save = Select save
     .new-save = New save...
     .open-folder = Open folder
 
+new-save = New save
+
 lobby-issue-no-local-rom = You do not have a copy of the opponent's game: {$game_name}
 lobby-issue-no-remote-rom = The opponent does not have a copy of the game: {$game_name}
 lobby-issue-no-local-patch = You do not have a copy of the opponent's patch: {$patch_name} v{$patch_version}

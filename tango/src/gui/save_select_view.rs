@@ -32,7 +32,7 @@ pub fn show(
     let patches = patches_scanner.read();
 
     if show.as_mut().unwrap().new_save_window.is_some() {
-        gui::new_save_window::show(ui, &mut show.as_mut().unwrap().new_save_window);
+        gui::new_save_window::show(ui.ctx(), &mut show.as_mut().unwrap().new_save_window, language);
     }
 
     ui.vertical(|ui| {
@@ -89,16 +89,18 @@ pub fn show(
                         show.as_mut().unwrap().selection = None;
                     }
 
-                    if ui
-                        .selectable_label(
-                            false,
-                            format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
-                        )
-                        .clicked()
-                    {
-                        show.as_mut().unwrap().new_save_window = Some(gui::new_save_window::State::new(
-                            show.as_ref().unwrap().selection.as_ref().unwrap().0,
-                        ));
+                    if let Some(&(game, _)) = show.as_ref().unwrap().selection.as_ref() {
+                        ui.add_enabled_ui(!game.save_templates().is_empty(), |ui| {
+                            if ui
+                                .selectable_label(
+                                    false,
+                                    format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
+                                )
+                                .clicked()
+                            {
+                                show.as_mut().unwrap().new_save_window = Some(gui::new_save_window::State::new(game));
+                            }
+                        });
                     }
                 }
 
