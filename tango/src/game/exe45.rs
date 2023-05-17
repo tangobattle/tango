@@ -59,4 +59,13 @@ impl game::Game for EXE45Impl {
             wram.to_vec(),
         )))
     }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref SAVE: save::Save = save::Save::from_wram(include_bytes!("exe45/save/any.raw")).unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+        }
+        TEMPLATES.as_slice()
+    }
 }
