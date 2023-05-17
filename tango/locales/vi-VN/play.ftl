@@ -22,6 +22,7 @@ select-save = Chọn file save
     .select = Chọn
     .no-save-selected = Chưa chọn file save
     .return-to-games-list = Trờ về danh sách game
+    .new-save = New save...
     .open-folder = Mở thư mục
 lobby-issue-no-local-rom = Bạn không có phiên bản game của đối thủ: { $game_name }
 lobby-issue-no-remote-rom = Đối thủ không có phiên bản game: { $game_name }
