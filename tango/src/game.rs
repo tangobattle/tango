@@ -297,6 +297,13 @@ where
     ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error> {
         anyhow::bail!("not implemented");
     }
+    fn save_templates(&self) -> &'static std::collections::BTreeMap<String, Box<dyn save::Save + Send + Sync>> {
+        lazy_static! {
+            static ref EMPTY: std::collections::BTreeMap<String, Box<dyn save::Save + Send + Sync>> =
+                std::collections::BTreeMap::new();
+        }
+        &*EMPTY
+    }
 }
 
 pub trait Hooks {
