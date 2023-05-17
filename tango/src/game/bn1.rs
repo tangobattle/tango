@@ -83,7 +83,7 @@ impl game::Game for EXE1Impl {
             )
             .unwrap();
             static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
-                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync),)];
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
         }
         TEMPLATES.as_slice()
     }
@@ -166,7 +166,7 @@ impl game::Game for BN1Impl {
             )
             .unwrap();
             static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
-                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync),)];
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
         }
         TEMPLATES.as_slice()
     }

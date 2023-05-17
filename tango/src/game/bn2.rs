@@ -9,6 +9,21 @@ const MATCH_TYPES: &[usize] = &[1];
 struct EXE2Impl;
 pub const EXE2: &'static (dyn game::Game + Send + Sync) = &EXE2Impl {};
 
+lazy_static! {
+    static ref HUB_ANY_SAVE: save::Save = save::Save::from_wram(include_bytes!("bn2/save/hub_any.raw")).unwrap();
+    static ref GUTS_ANY_SAVE: save::Save = save::Save::from_wram(include_bytes!("bn2/save/guts_any.raw")).unwrap();
+    static ref CUSTOM_ANY_SAVE: save::Save = save::Save::from_wram(include_bytes!("bn2/save/custom_any.raw")).unwrap();
+    static ref TEAM_ANY_SAVE: save::Save = save::Save::from_wram(include_bytes!("bn2/save/team_any.raw")).unwrap();
+    static ref SHIELD_ANY_SAVE: save::Save = save::Save::from_wram(include_bytes!("bn2/save/shield_any.raw")).unwrap();
+    static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+        ("hub", &*HUB_ANY_SAVE as &(dyn crate::save::Save + Send + Sync)),
+        ("guts", &*GUTS_ANY_SAVE as &(dyn crate::save::Save + Send + Sync)),
+        ("custom", &*CUSTOM_ANY_SAVE as &(dyn crate::save::Save + Send + Sync)),
+        ("team", &*TEAM_ANY_SAVE as &(dyn crate::save::Save + Send + Sync)),
+        ("shield", &*SHIELD_ANY_SAVE as &(dyn crate::save::Save + Send + Sync)),
+    ];
+}
+
 impl game::Game for EXE2Impl {
     fn rom_code_and_revision(&self) -> (&[u8; 4], u8) {
         (b"AE2J", 0x00)
@@ -58,6 +73,10 @@ impl game::Game for EXE2Impl {
             rom.to_vec(),
             save.to_vec(),
         )))
+    }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        TEMPLATES.as_slice()
     }
 }
 
@@ -113,5 +132,9 @@ impl game::Game for BN2Impl {
             rom.to_vec(),
             save.to_vec(),
         )))
+    }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        TEMPLATES.as_slice()
     }
 }
