@@ -13,6 +13,7 @@ replays-export-error = Beim Exportieren Ihrer Aufzeichnung ist ein Fehler aufget
 replays-export-cancel = Abbrechen
 replays-export-confirm-success = Juhu!
 replays-export-confirm-error = Verdammt!
+replays-export-show-file = Show file
 replays-export-lossless = Verlustfrei 1x
 replay-viewer-pause = Pause
 replay-viewer-step = Schritt
