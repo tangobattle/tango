@@ -22,6 +22,7 @@ select-save = セーブファイルを選択
     .select = 選択
     .no-save-selected = セーブファイルが選択されていません
     .return-to-games-list = 作品一覧へ戻る
+    .new-save = New save...
     .open-folder = フォルダを開く
 lobby-issue-no-local-rom = 相手が選択した作品を持っていません：{ $game_name }
 lobby-issue-no-remote-rom = 相手は自分が選択した作品を持っていません：{ $game_name }
