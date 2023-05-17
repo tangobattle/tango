@@ -4,11 +4,15 @@ use crate::{game, gui, i18n, net, patch, rom, save};
 
 pub struct State {
     selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>,
+    new_save_window: Option<gui::new_save_window::State>,
 }
 
 impl State {
     pub fn new(selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>) -> Self {
-        Self { selection }
+        Self {
+            selection,
+            new_save_window: None,
+        }
     }
 }
 
@@ -26,6 +30,10 @@ pub fn show(
     let roms = roms_scanner.read();
     let saves = saves_scanner.read();
     let patches = patches_scanner.read();
+
+    if show.as_mut().unwrap().new_save_window.is_some() {
+        gui::new_save_window::show(ui, &mut show.as_mut().unwrap().new_save_window);
+    }
 
     ui.vertical(|ui| {
         let games = game::sorted_all_games(language);
@@ -87,7 +95,11 @@ pub fn show(
                             format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
                         )
                         .clicked()
-                    {}
+                    {
+                        show.as_mut().unwrap().new_save_window = Some(gui::new_save_window::State::new(
+                            show.as_ref().unwrap().selection.as_ref().unwrap().0,
+                        ));
+                    }
                 }
 
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
