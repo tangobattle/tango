@@ -160,7 +160,7 @@ impl game::Game for BN1Impl {
             static ref SAVE: save::Save = save::Save::from_raw(
                 include_bytes!("bn1/save/us.raw").clone(),
                 save::GameInfo {
-                    region: save::Region::JP,
+                    region: save::Region::US,
                 }
             );
             static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
