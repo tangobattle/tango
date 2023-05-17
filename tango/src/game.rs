@@ -295,10 +295,8 @@ where
         _wram: &[u8],
         _overrides: &rom::Overrides,
     ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error>;
-    fn save_templates(&self) -> &'static std::collections::BTreeMap<String, Box<dyn save::Save + Send + Sync>> {
-        static EMPTY: std::collections::BTreeMap<String, Box<dyn save::Save + Send + Sync>> =
-            std::collections::BTreeMap::new();
-        &EMPTY
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        &[][..]
     }
 }
 

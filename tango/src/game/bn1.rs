@@ -72,6 +72,20 @@ impl game::Game for EXE1Impl {
             wram.to_vec(),
         )))
     }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref SAVE: save::Save = save::Save::from_raw(
+                include_bytes!("bn1/save/jp.raw").clone(),
+                save::GameInfo {
+                    region: save::Region::JP,
+                }
+            );
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync),)];
+        }
+        TEMPLATES.as_slice()
+    }
 }
 
 struct BN1Impl;
@@ -139,5 +153,19 @@ impl game::Game for BN1Impl {
             rom.to_vec(),
             wram.to_vec(),
         )))
+    }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref SAVE: save::Save = save::Save::from_raw(
+                include_bytes!("bn1/save/us.raw").clone(),
+                save::GameInfo {
+                    region: save::Region::JP,
+                }
+            );
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync),)];
+        }
+        TEMPLATES.as_slice()
     }
 }
