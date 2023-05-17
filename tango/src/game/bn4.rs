@@ -77,6 +77,50 @@ impl game::Game for EXE4RSImpl {
             wram.to_vec(),
         )))
     }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref DARK_HP_997_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn4/save/dark_hp_997_rs_jp.raw"),
+                save::GameInfo {
+                    region: save::Region::JP,
+                    variant: save::Variant::RedSun
+                }
+            )
+            .unwrap();
+            static ref LIGHT_HP_999_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn4/save/light_hp_999_rs_jp.raw"),
+                save::GameInfo {
+                    region: save::Region::JP,
+                    variant: save::Variant::RedSun
+                }
+            )
+            .unwrap();
+            static ref LIGHT_HP_1000_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn4/save/light_hp_1000_rs_jp.raw"),
+                save::GameInfo {
+                    region: save::Region::JP,
+                    variant: save::Variant::RedSun
+                }
+            )
+            .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+                (
+                    "dark-hp-997",
+                    &*DARK_HP_997_SAVE as &(dyn crate::save::Save + Send + Sync)
+                ),
+                (
+                    "light-hp-999",
+                    &*LIGHT_HP_999_SAVE as &(dyn crate::save::Save + Send + Sync)
+                ),
+                (
+                    "light-hp-1000",
+                    &*LIGHT_HP_1000_SAVE as &(dyn crate::save::Save + Send + Sync)
+                ),
+            ];
+        }
+        TEMPLATES.as_slice()
+    }
 }
 
 struct EXE4BMImpl;
@@ -149,6 +193,50 @@ impl game::Game for EXE4BMImpl {
             rom.to_vec(),
             wram.to_vec(),
         )))
+    }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref DARK_HP_997_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn4/save/dark_hp_997_bm_jp.raw"),
+                save::GameInfo {
+                    region: save::Region::JP,
+                    variant: save::Variant::RedSun
+                }
+            )
+            .unwrap();
+            static ref LIGHT_HP_999_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn4/save/light_hp_999_bm_jp.raw"),
+                save::GameInfo {
+                    region: save::Region::JP,
+                    variant: save::Variant::RedSun
+                }
+            )
+            .unwrap();
+            static ref LIGHT_HP_1000_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn4/save/light_hp_1000_bm_jp.raw"),
+                save::GameInfo {
+                    region: save::Region::JP,
+                    variant: save::Variant::RedSun
+                }
+            )
+            .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+                (
+                    "dark-hp-997",
+                    &*DARK_HP_997_SAVE as &(dyn crate::save::Save + Send + Sync)
+                ),
+                (
+                    "light-hp-999",
+                    &*LIGHT_HP_999_SAVE as &(dyn crate::save::Save + Send + Sync)
+                ),
+                (
+                    "light-hp-1000",
+                    &*LIGHT_HP_1000_SAVE as &(dyn crate::save::Save + Send + Sync)
+                ),
+            ];
+        }
+        TEMPLATES.as_slice()
     }
 }
 
