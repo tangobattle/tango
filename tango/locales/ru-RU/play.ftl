@@ -24,6 +24,7 @@ select-save = Выберите сохранение
     .return-to-games-list = Вернуться к списку игр
     .new-save = New save...
     .open-folder = Открыть папку
+new-save = New save
 lobby-issue-no-local-rom = У вас нет копии игры противника: { $game_name }
 lobby-issue-no-remote-rom = У противника нет копии игры: { $game_name }
 lobby-issue-no-local-patch = У вас нет копии патча противника: { $patch_name } v{ $patch_version }
