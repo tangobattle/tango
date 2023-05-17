@@ -22,6 +22,7 @@ select-save = Selecteer save
     .select = Selecteer
     .no-save-selected = Geen save geselecteerd
     .return-to-games-list = Terug naar de spellijst
+    .new-save = New save...
     .open-folder = Map openen
 lobby-issue-no-local-rom = Je hebt geen exemplaar van het spel van je tegenstander: { $game_name }
 lobby-issue-no-remote-rom = Je tegenstander heeft geen exemplaar van het spel: { $game_name }
