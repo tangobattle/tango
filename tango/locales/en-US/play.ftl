@@ -26,6 +26,7 @@ select-save = Select save
     .select = Select
     .no-save-selected = No save selected
     .return-to-games-list = Return to games list
+    .new-save = New save...
     .open-folder = Open folder
 
 lobby-issue-no-local-rom = You do not have a copy of the opponent's game: {$game_name}

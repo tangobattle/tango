@@ -80,6 +80,14 @@ pub fn show(
                     {
                         show.as_mut().unwrap().selection = None;
                     }
+
+                    if ui
+                        .selectable_label(
+                            false,
+                            format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
+                        )
+                        .clicked()
+                    {}
                 }
 
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
