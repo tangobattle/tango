@@ -22,6 +22,7 @@ select-save = 遊戲存檔
     .select = 選擇
     .no-save-selected = 未選擇遊戲存檔
     .return-to-games-list = 返回遊戲列表
+    .new-save = New save...
     .open-folder = 打開文件夾
 lobby-issue-no-local-rom = 沒有對方遊戲：{ $game_name }
 lobby-issue-no-remote-rom = 對方沒有此遊戲： { $game_name }
