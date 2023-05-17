@@ -22,6 +22,7 @@ select-save = Spielstand wählen
     .select = Auswählen
     .no-save-selected = Kein Spielstand ausgewählt
     .return-to-games-list = Zurück zur Spieleliste
+    .new-save = New save...
     .open-folder = Ordner öffnen
 lobby-issue-no-local-rom = Du hast keine Kopie des Spiels des Gegners: { $game_name }
 lobby-issue-no-remote-rom = Der Gegner hat keine Kopie des Spiels: { $game_name }
