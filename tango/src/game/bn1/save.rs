@@ -24,10 +24,6 @@ pub struct Save {
 }
 
 impl Save {
-    pub fn from_raw(buf: [u8; SRAM_SIZE], game_info: GameInfo) -> Self {
-        Self { buf, game_info }
-    }
-
     pub fn new(buf: &[u8]) -> Result<Self, anyhow::Error> {
         let buf: [u8; SRAM_SIZE] = buf
             .get(..SRAM_SIZE)
