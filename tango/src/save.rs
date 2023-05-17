@@ -131,6 +131,10 @@ where
         None
     }
 
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn NavicustViewMut + '_>> {
+        None
+    }
+
     fn view_auto_battle_data(&self) -> Option<Box<dyn AutoBattleDataView + '_>> {
         None
     }
@@ -249,11 +253,26 @@ pub trait NavicustView<'a> {
     fn style(&self) -> Option<usize> {
         None
     }
+    fn num_styles(&self) -> usize {
+        0
+    }
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn command_line(&self) -> usize;
     fn has_out_of_bounds(&self) -> bool;
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
+}
+
+pub trait NavicustViewMut<'a> {
+    fn can_set_style(&self) -> bool {
+        false
+    }
+
+    fn set_style(&self, _style: usize) -> bool {
+        false
+    }
+
+    fn set_navicust_part(&self, _i: usize, _part: NavicustPart) -> bool;
 }
 
 pub trait AutoBattleDataView<'a> {

@@ -183,8 +183,12 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         Some((self.save.buf[0x1881] & 0x3f) as usize)
     }
 
+    fn num_styles(&self) -> usize {
+        20
+    }
+
     fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
-        if i >= 25 {
+        if i >= self.count() {
             return None;
         }
 
