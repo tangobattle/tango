@@ -294,9 +294,7 @@ where
         _rom: &[u8],
         _wram: &[u8],
         _overrides: &rom::Overrides,
-    ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error> {
-        anyhow::bail!("not implemented");
-    }
+    ) -> Result<Box<dyn rom::Assets + Send + Sync>, anyhow::Error>;
     fn save_templates(&self) -> &'static std::collections::BTreeMap<String, Box<dyn save::Save + Send + Sync>> {
         lazy_static! {
             static ref EMPTY: std::collections::BTreeMap<String, Box<dyn save::Save + Send + Sync>> =
