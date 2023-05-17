@@ -24,6 +24,7 @@ select-save = Chọn file save
     .return-to-games-list = Trờ về danh sách game
     .new-save = New save...
     .open-folder = Mở thư mục
+new-save = New save
 lobby-issue-no-local-rom = Bạn không có phiên bản game của đối thủ: { $game_name }
 lobby-issue-no-remote-rom = Đối thủ không có phiên bản game: { $game_name }
 lobby-issue-no-local-patch = Bạn không có bản vá của đối thủ: { $patch_name } v{ $patch_version }
