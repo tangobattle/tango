@@ -24,6 +24,7 @@ select-save = Selecione o save
     .return-to-games-list = Voltar à lista de jogos
     .new-save = New save...
     .open-folder = Abrir pasta
+new-save = New save
 lobby-issue-no-local-rom = Você não tem uma cópia do jogo do seu oponente: { $game_name }
 lobby-issue-no-remote-rom = O oponente não possui uma cópia do jogo: { $game_name }
 lobby-issue-no-local-patch = Você não tem uma cópia do patch do oponente: { $patch_name } v{ $patch_version }
