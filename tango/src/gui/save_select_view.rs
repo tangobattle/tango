@@ -124,7 +124,22 @@ pub fn show(
                                         menu_selection = save_templates.first().map(|(name, save)| (*name, *save));
                                     } else {
                                         for (name, save) in save_templates {
-                                            if ui.button(format!("{}", name)).clicked() {
+                                            if ui
+                                                .button(format!(
+                                                    "{}",
+                                                    i18n::LOCALES
+                                                        .lookup(
+                                                            language,
+                                                            &format!(
+                                                                "game-{}.save-{}",
+                                                                game.family_and_variant().0,
+                                                                name
+                                                            )
+                                                        )
+                                                        .unwrap()
+                                                ))
+                                                .clicked()
+                                            {
                                                 menu_selection = Some((*name, *save));
                                             }
                                         }

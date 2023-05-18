@@ -237,6 +237,22 @@ impl game::Game for BN6GImpl {
             overrides,
         )))
     }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn6/save/g_us.raw"),
+                save::GameInfo {
+                    region: save::Region::US,
+                    variant: save::Variant::Gregar,
+                }
+            )
+            .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+        }
+        TEMPLATES.as_slice()
+    }
 }
 
 struct BN6FImpl;
@@ -303,5 +319,21 @@ impl game::Game for BN6FImpl {
             &rom::EN_CHARSET,
             overrides,
         )))
+    }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn6/save/f_us.raw"),
+                save::GameInfo {
+                    region: save::Region::US,
+                    variant: save::Variant::Falzar,
+                }
+            )
+            .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> =
+                vec![("", &*SAVE as &(dyn crate::save::Save + Send + Sync))];
+        }
+        TEMPLATES.as_slice()
     }
 }
