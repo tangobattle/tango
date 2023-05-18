@@ -253,9 +253,6 @@ pub trait NavicustView<'a> {
     fn style(&self) -> Option<usize> {
         None
     }
-    fn num_styles(&self) -> usize {
-        0
-    }
     fn width(&self) -> usize;
     fn height(&self) -> usize;
     fn command_line(&self) -> usize;
