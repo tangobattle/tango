@@ -26,6 +26,7 @@ select-save = Selecione o save
     .open-folder = Abrir pasta
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 new-save = New save
 lobby-issue-no-local-rom = Você não tem uma cópia do jogo do seu oponente: { $game_name }
 lobby-issue-no-remote-rom = O oponente não possui uma cópia do jogo: { $game_name }
