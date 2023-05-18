@@ -26,6 +26,7 @@ select-save = Selecteer save
     .open-folder = Map openen
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 new-save = New save
 lobby-issue-no-local-rom = Je hebt geen exemplaar van het spel van je tegenstander: { $game_name }
 lobby-issue-no-remote-rom = Je tegenstander heeft geen exemplaar van het spel: { $game_name }
