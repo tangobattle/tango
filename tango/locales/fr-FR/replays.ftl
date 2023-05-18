@@ -13,6 +13,7 @@ replays-export-error = Une erreur s'est produite lors de l'export de votre match
 replays-export-cancel = Annuler
 replays-export-confirm-success = Youpi !
 replays-export-confirm-error = Mince !
+replays-export-show-file = Show file
 replays-export-lossless = Sans perte 1x
 replay-viewer-pause = Pause
 replay-viewer-step = Étape
