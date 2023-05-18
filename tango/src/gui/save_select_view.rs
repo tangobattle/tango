@@ -185,6 +185,7 @@ pub fn show(
                                         };
 
                                         *show = None;
+                                        saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                         *selection = Some(gui::Selection::new(
                                             game,
                                             save::ScannedSave {
@@ -236,7 +237,40 @@ pub fn show(
                                             },
                                         ),
                                     );
-                                    if ui.selectable_label(selected, layout_job).clicked() {
+                                    if ui
+                                        .selectable_label(selected, layout_job)
+                                        .context_menu(|ui| {
+                                            if ui
+                                                .button(egui::RichText::new(format!(
+                                                    "✏️ {}",
+                                                    i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
+                                                )))
+                                                .clicked()
+                                            {
+                                                *show = None;
+                                                saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+                                                ui.close_menu();
+                                            }
+
+                                            if ui
+                                                .button(
+                                                    egui::RichText::new(format!(
+                                                        "🗑️ {}",
+                                                        i18n::LOCALES
+                                                            .lookup(language, "select-save.delete-save")
+                                                            .unwrap()
+                                                    ))
+                                                    .color(egui::Color32::RED),
+                                                )
+                                                .clicked()
+                                            {
+                                                *show = None;
+                                                saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
+                                                ui.close_menu();
+                                            }
+                                        })
+                                        .clicked()
+                                    {
                                         let (game, rom, patch) = if let Some(selection) = selection.take() {
                                             if selection.game == game {
                                                 (selection.game, selection.rom, selection.patch)

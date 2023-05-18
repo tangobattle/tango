@@ -28,6 +28,8 @@ select-save = Select save
     .return-to-games-list = Return to games list
     .new-save = New save...
     .open-folder = Open folder
+    .rename-save = Rename
+    .delete-save = Delete
 
 new-save = New save
 
