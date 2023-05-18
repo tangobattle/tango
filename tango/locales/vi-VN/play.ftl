@@ -26,6 +26,7 @@ select-save = Chọn file save
     .open-folder = Mở thư mục
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 new-save = New save
 lobby-issue-no-local-rom = Bạn không có phiên bản game của đối thủ: { $game_name }
 lobby-issue-no-remote-rom = Đối thủ không có phiên bản game: { $game_name }
