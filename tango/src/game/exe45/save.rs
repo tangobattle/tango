@@ -92,10 +92,8 @@ impl save::Save for Save {
     }
 
     fn rebuild_checksum(&mut self) {
-        byteorder::LittleEndian::write_u32(
-            &mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4],
-            self.compute_checksum(),
-        )
+        let checksum = self.compute_checksum();
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
     }
 }
 
