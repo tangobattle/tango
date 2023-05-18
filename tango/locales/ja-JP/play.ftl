@@ -26,6 +26,7 @@ select-save = セーブファイルを選択
     .open-folder = フォルダを開く
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 new-save = New save
 lobby-issue-no-local-rom = 相手が選択した作品を持っていません：{ $game_name }
 lobby-issue-no-remote-rom = 相手は自分が選択した作品を持っていません：{ $game_name }
