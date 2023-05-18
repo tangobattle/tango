@@ -15,13 +15,26 @@ impl State {
 }
 
 fn create_new_save(
+    language: &unic_langid::LanguageIdentifier,
     saves_path: &std::path::Path,
     game: &(dyn game::Game + Send + Sync),
     name: &str,
 ) -> Result<(std::path::PathBuf, std::fs::File), std::io::Error> {
     let mut counter = 0;
     let (family, variant) = game.family_and_variant();
-    let prefix = format!("{} {} {}", family, variant, name);
+    let mut prefix = i18n::LOCALES
+        .lookup(language, &format!("game-{}.variant-{}", family, variant))
+        .unwrap()
+        .replace(":", "");
+    if !name.is_empty() {
+        prefix.push_str(" - ");
+        prefix.push_str(
+            &i18n::LOCALES
+                .lookup(language, &format!("game-{}.save-{}", family, name))
+                .unwrap(),
+        );
+    }
+
     loop {
         let path = saves_path.join(format!(
             "{}.sav",
@@ -146,7 +159,7 @@ pub fn show(
                                     }
 
                                     if let Some((name, save)) = menu_selection {
-                                        let (path, mut f) = match create_new_save(saves_path, game, name) {
+                                        let (path, mut f) = match create_new_save(language, saves_path, game, name) {
                                             Ok((path, f)) => (path, f),
                                             Err(e) => {
                                                 log::error!("failed to create save: {}", e);
