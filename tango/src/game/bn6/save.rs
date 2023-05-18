@@ -138,9 +138,9 @@ impl save::Save for Save {
         })))
     }
 
-    // fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
-    //     Some(Box::new(NaviView { save: self }))
-    // }
+    fn view_navi(&self) -> Option<Box<dyn save::NaviView + '_>> {
+        Some(Box::new(NaviView { save: self }))
+    }
 
     fn as_raw_wram(&self) -> &[u8] {
         &self.buf

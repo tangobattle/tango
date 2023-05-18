@@ -30,6 +30,7 @@ select-save = Select save
     .open-folder = Open folder
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 
 new-save = New save
 

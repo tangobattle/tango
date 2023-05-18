@@ -1,6 +1,6 @@
 use fluent_templates::Loader;
 
-use crate::{config, game, gui, i18n, rom, save};
+use crate::{config, game, gui, i18n, rom};
 
 pub struct State {
     nickname: String,

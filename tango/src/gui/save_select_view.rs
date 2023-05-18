@@ -14,13 +14,44 @@ impl State {
     }
 }
 
+fn create_next_file(path: &std::path::Path) -> Result<(std::path::PathBuf, std::fs::File), std::io::Error> {
+    let mut counter = 0;
+
+    let file_stem = path.file_stem().unwrap_or_else(|| std::ffi::OsStr::new(""));
+    let ext = path.extension().unwrap_or_else(|| std::ffi::OsStr::new(""));
+
+    loop {
+        let mut new_path = path.to_path_buf();
+        if counter > 0 {
+            let mut new_file_name = file_stem.to_os_string();
+            new_file_name.push(format!(" {}", counter));
+            if !ext.is_empty() {
+                new_file_name.push(".");
+                new_file_name.push(ext);
+            }
+            new_path.set_file_name(new_file_name);
+        }
+        match std::fs::File::options().write(true).create_new(true).open(&new_path) {
+            Ok(f) => {
+                return Ok((new_path, f));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                counter += 1;
+                continue;
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+}
+
 fn create_new_save(
     language: &unic_langid::LanguageIdentifier,
     saves_path: &std::path::Path,
     game: &(dyn game::Game + Send + Sync),
     name: &str,
 ) -> Result<(std::path::PathBuf, std::fs::File), std::io::Error> {
-    let mut counter = 0;
     let (family, variant) = game.family_and_variant();
     let mut prefix = i18n::LOCALES
         .lookup(language, &format!("game-{}.variant-{}", family, variant))
@@ -34,29 +65,9 @@ fn create_new_save(
                 .unwrap(),
         );
     }
+    prefix.push_str(".sav");
 
-    loop {
-        let path = saves_path.join(format!(
-            "{}.sav",
-            if counter == 0 {
-                prefix.clone()
-            } else {
-                format!("{} {}", prefix, counter)
-            }
-        ));
-        match std::fs::File::options().write(true).create_new(true).open(&path) {
-            Ok(f) => {
-                return Ok((path, f));
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                counter += 1;
-                continue;
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        }
-    }
+    Ok(create_next_file(&saves_path.join(prefix))?)
 }
 
 pub fn show(
@@ -185,7 +196,6 @@ pub fn show(
                                         };
 
                                         *show = None;
-                                        saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                         *selection = Some(gui::Selection::new(
                                             game,
                                             save::ScannedSave {
@@ -242,15 +252,60 @@ pub fn show(
                                         .context_menu(|ui| {
                                             if ui
                                                 .button(egui::RichText::new(format!(
+                                                    "📄 {}",
+                                                    i18n::LOCALES
+                                                        .lookup(language, "select-save.duplicate-save")
+                                                        .unwrap()
+                                                )))
+                                                .clicked()
+                                            {
+                                                let (path, mut f) = match create_next_file(&save.path) {
+                                                    Ok((path, f)) => (path, f),
+                                                    Err(e) => {
+                                                        log::error!("failed to create save: {}", e);
+                                                        ui.close_menu();
+                                                        return;
+                                                    }
+                                                };
+
+                                                if let Err(e) = f.write_all(&save.save.to_vec()) {
+                                                    log::error!("failed to write save: {}", e);
+                                                    ui.close_menu();
+                                                    return;
+                                                }
+
+                                                let (game, rom, patch) = if let Some(selection) = selection.take() {
+                                                    if selection.game == game {
+                                                        (selection.game, selection.rom, selection.patch)
+                                                    } else {
+                                                        (game, roms.get(&game).unwrap().clone(), None)
+                                                    }
+                                                } else {
+                                                    (game, roms.get(&game).unwrap().clone(), None)
+                                                };
+
+                                                *show = None;
+                                                *selection = Some(gui::Selection::new(
+                                                    game,
+                                                    save::ScannedSave {
+                                                        path,
+                                                        save: save.save.clone_box(),
+                                                    },
+                                                    patch,
+                                                    rom,
+                                                ));
+
+                                                ui.close_menu();
+                                            }
+
+                                            if ui
+                                                .button(egui::RichText::new(format!(
                                                     "✏️ {}",
                                                     i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
                                                 )))
                                                 .clicked()
                                             {
                                                 // TODO: Show rename dialog.
-
-                                                *show = None;
-                                                saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                                 ui.close_menu();
                                             }
 
@@ -267,9 +322,6 @@ pub fn show(
                                                 .clicked()
                                             {
                                                 // TODO: Show confirm dialog.
-
-                                                *show = None;
-                                                saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                                 ui.close_menu();
                                             }
                                         })
