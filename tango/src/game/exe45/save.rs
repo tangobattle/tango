@@ -90,6 +90,13 @@ impl save::Save for Save {
         save::mask_save(&mut buf[..SRAM_SIZE], MASK_OFFSET);
         buf
     }
+
+    fn rebuild_checksum(&mut self) {
+        byteorder::LittleEndian::write_u32(
+            &mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4],
+            self.compute_checksum(),
+        )
+    }
 }
 
 pub struct ChipsView<'a> {
