@@ -26,6 +26,7 @@ select-save = 遊戲存檔
     .open-folder = 打開文件夾
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 new-save = New save
 lobby-issue-no-local-rom = 沒有對方遊戲：{ $game_name }
 lobby-issue-no-remote-rom = 對方沒有此遊戲： { $game_name }
