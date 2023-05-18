@@ -21,7 +21,6 @@ pub fn show(
     font_families: &gui::FontFamilies,
     config: &mut config::Config,
     roms_scanner: rom::Scanner,
-    saves_scanner: save::Scanner,
     state: &mut State,
 ) {
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -34,7 +33,6 @@ pub fn show(
             ui.add_space(8.0);
 
             let has_roms = !roms_scanner.read().is_empty();
-            let has_saves = !saves_scanner.read().is_empty();
 
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -92,53 +90,10 @@ pub fn show(
                 ui.add_space(16.0);
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        if has_saves {
-                            ui.label(egui::RichText::new("✅").color(egui::Color32::from_rgb(0x4c, 0xaf, 0x50)));
-                        } else {
-                            ui.label(egui::RichText::new("⌛").color(egui::Color32::from_rgb(0xf4, 0xba, 0x51)));
-                        }
-                        ui.strong(i18n::LOCALES.lookup(&config.language, "welcome-step-2").unwrap());
-                    });
-                    if has_roms && !has_saves {
-                        ui.label(
-                            i18n::LOCALES
-                                .lookup(&config.language, "welcome-step-2-description")
-                                .unwrap(),
-                        );
-                        ui.monospace(format!("{}", config.saves_path().display()));
-                        ui.horizontal(|ui| {
-                            if ui
-                                .button(i18n::LOCALES.lookup(&config.language, "welcome-open-folder").unwrap())
-                                .clicked()
-                            {
-                                let _ = opener::open(&config.saves_path());
-                            }
-
-                            ui.add_enabled_ui(!saves_scanner.is_scanning(), |ui| {
-                                if ui
-                                    .button(i18n::LOCALES.lookup(&config.language, "welcome-continue").unwrap())
-                                    .clicked()
-                                {
-                                    let saves_path = config.saves_path();
-                                    let saves_scanner = saves_scanner.clone();
-                                    let egui_ctx = ui.ctx().clone();
-                                    tokio::task::spawn_blocking(move || {
-                                        saves_scanner.rescan(|| Some(save::scan_saves(&saves_path)));
-                                        egui_ctx.request_repaint();
-                                    });
-                                }
-                            });
-                        });
-                    }
-                });
-
-                ui.add_space(16.0);
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("⌛").color(egui::Color32::from_rgb(0xf4, 0xba, 0x51)));
                         ui.strong(i18n::LOCALES.lookup(&config.language, "welcome-step-3").unwrap());
                     });
-                    if has_roms && has_saves {
+                    if has_roms {
                         ui.label(
                             i18n::LOCALES
                                 .lookup(&config.language, "welcome-step-3-description")

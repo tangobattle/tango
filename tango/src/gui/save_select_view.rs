@@ -247,6 +247,8 @@ pub fn show(
                                                 )))
                                                 .clicked()
                                             {
+                                                // TODO: Show rename dialog.
+
                                                 *show = None;
                                                 saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                                 ui.close_menu();
@@ -264,6 +266,8 @@ pub fn show(
                                                 )
                                                 .clicked()
                                             {
+                                                // TODO: Show confirm dialog.
+
                                                 *show = None;
                                                 saves_scanner.rescan(move || Some(save::scan_saves(&saves_path)));
                                                 ui.close_menu();
