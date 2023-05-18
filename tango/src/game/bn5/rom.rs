@@ -191,7 +191,7 @@ impl<'a> rom::Chip for Chip<'a> {
                             params,
                         } => {
                             if let Ok(parts) = rom::text::parse(
-                                &self.assets.mapper.get(0x02001376 + params[1] as u32 * 100),
+                                &self.assets.mapper.get(0x02001376 + params[1] as u32 * 0x64),
                                 &self.assets.text_parse_options,
                             ) {
                                 parts

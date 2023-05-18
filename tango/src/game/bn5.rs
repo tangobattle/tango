@@ -266,6 +266,32 @@ impl game::Game for BN5PImpl {
             wram.to_vec(),
         )))
     }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref DARK_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn5/save/dark_protoman_us.raw"),
+                save::GameInfo {
+                    region: save::Region::US,
+                    variant: save::Variant::Protoman
+                }
+            )
+            .unwrap();
+            static ref LIGHT_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn5/save/light_protoman_us.raw"),
+                save::GameInfo {
+                    region: save::Region::US,
+                    variant: save::Variant::Protoman
+                }
+            )
+            .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+                ("dark", &*DARK_SAVE as &(dyn crate::save::Save + Send + Sync)),
+                ("light", &*LIGHT_SAVE as &(dyn crate::save::Save + Send + Sync)),
+            ];
+        }
+        TEMPLATES.as_slice()
+    }
 }
 
 struct BN5CImpl;
@@ -335,5 +361,31 @@ impl game::Game for BN5CImpl {
             rom.to_vec(),
             wram.to_vec(),
         )))
+    }
+
+    fn save_templates(&self) -> &[(&'static str, &(dyn crate::save::Save + Send + Sync))] {
+        lazy_static! {
+            static ref DARK_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn5/save/dark_colonel_us.raw"),
+                save::GameInfo {
+                    region: save::Region::US,
+                    variant: save::Variant::Colonel
+                }
+            )
+            .unwrap();
+            static ref LIGHT_SAVE: save::Save = save::Save::from_wram(
+                include_bytes!("bn5/save/light_colonel_us.raw"),
+                save::GameInfo {
+                    region: save::Region::US,
+                    variant: save::Variant::Colonel
+                }
+            )
+            .unwrap();
+            static ref TEMPLATES: Vec<(&'static str, &'static (dyn crate::save::Save + Send + Sync))> = vec![
+                ("dark", &*DARK_SAVE as &(dyn crate::save::Save + Send + Sync)),
+                ("light", &*LIGHT_SAVE as &(dyn crate::save::Save + Send + Sync)),
+            ];
+        }
+        TEMPLATES.as_slice()
     }
 }
