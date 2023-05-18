@@ -23,11 +23,14 @@ fn create_new_save(
     let (family, variant) = game.family_and_variant();
     let prefix = format!("{} {} {}", family, variant, name);
     loop {
-        let path = saves_path.join(if counter == 0 {
-            prefix.clone()
-        } else {
-            format!("{} {}", prefix, counter)
-        });
+        let path = saves_path.join(format!(
+            "{}.sav",
+            if counter == 0 {
+                prefix.clone()
+            } else {
+                format!("{} {}", prefix, counter)
+            }
+        ));
         match std::fs::File::options().write(true).create_new(true).open(&path) {
             Ok(f) => {
                 return Ok((path, f));
