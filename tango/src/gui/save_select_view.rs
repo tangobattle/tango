@@ -298,32 +298,32 @@ pub fn show(
                                                 ui.close_menu();
                                             }
 
-                                            if ui
-                                                .button(egui::RichText::new(format!(
-                                                    "✏️ {}",
-                                                    i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
-                                                )))
-                                                .clicked()
-                                            {
-                                                // TODO: Show rename dialog.
-                                                ui.close_menu();
-                                            }
+                                            // if ui
+                                            //     .button(egui::RichText::new(format!(
+                                            //         "✏️ {}",
+                                            //         i18n::LOCALES.lookup(language, "select-save.rename-save").unwrap()
+                                            //     )))
+                                            //     .clicked()
+                                            // {
+                                            //     // TODO: Show rename dialog.
+                                            //     ui.close_menu();
+                                            // }
 
-                                            if ui
-                                                .button(
-                                                    egui::RichText::new(format!(
-                                                        "🗑️ {}",
-                                                        i18n::LOCALES
-                                                            .lookup(language, "select-save.delete-save")
-                                                            .unwrap()
-                                                    ))
-                                                    .color(egui::Color32::RED),
-                                                )
-                                                .clicked()
-                                            {
-                                                // TODO: Show confirm dialog.
-                                                ui.close_menu();
-                                            }
+                                            // if ui
+                                            //     .button(
+                                            //         egui::RichText::new(format!(
+                                            //             "🗑️ {}",
+                                            //             i18n::LOCALES
+                                            //                 .lookup(language, "select-save.delete-save")
+                                            //                 .unwrap()
+                                            //         ))
+                                            //         .color(egui::Color32::RED),
+                                            //     )
+                                            //     .clicked()
+                                            // {
+                                            //     // TODO: Show confirm dialog.
+                                            //     ui.close_menu();
+                                            // }
                                         })
                                         .clicked()
                                     {
