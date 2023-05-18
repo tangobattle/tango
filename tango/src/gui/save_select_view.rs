@@ -1,17 +1,44 @@
+use std::io::Write;
+
 use fluent_templates::Loader;
 
 use crate::{game, gui, i18n, net, patch, rom, save};
 
 pub struct State {
     selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>,
-    new_save_window: Option<gui::new_save_window::State>,
 }
 
 impl State {
     pub fn new(selection: Option<(&'static (dyn game::Game + Send + Sync), Option<std::path::PathBuf>)>) -> Self {
-        Self {
-            selection,
-            new_save_window: None,
+        Self { selection }
+    }
+}
+
+fn create_new_save(
+    saves_path: &std::path::Path,
+    game: &(dyn game::Game + Send + Sync),
+    name: &str,
+) -> Result<(std::path::PathBuf, std::fs::File), std::io::Error> {
+    let mut counter = 0;
+    let (family, variant) = game.family_and_variant();
+    let prefix = format!("{} {} {}", family, variant, name);
+    loop {
+        let path = saves_path.join(if counter == 0 {
+            prefix.clone()
+        } else {
+            format!("{} {}", prefix, counter)
+        });
+        match std::fs::File::options().write(true).create_new(true).open(&path) {
+            Ok(f) => {
+                return Ok((path, f));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                counter += 1;
+                continue;
+            }
+            Err(e) => {
+                return Err(e);
+            }
         }
     }
 }
@@ -30,10 +57,6 @@ pub fn show(
     let roms = roms_scanner.read();
     let saves = saves_scanner.read();
     let patches = patches_scanner.read();
-
-    if show.as_mut().unwrap().new_save_window.is_some() {
-        gui::new_save_window::show(ui.ctx(), &mut show.as_mut().unwrap().new_save_window, language);
-    }
 
     ui.vertical(|ui| {
         let games = game::sorted_all_games(language);
@@ -75,33 +98,82 @@ pub fn show(
             ui.with_layout(egui::Layout::top_down_justified(egui::Align::LEFT), |ui| {
                 if show.as_ref().unwrap().selection.is_some() {
                     if ui
-                        .selectable_label(
-                            false,
-                            format!(
-                                "⬅️ {}",
-                                i18n::LOCALES
-                                    .lookup(language, "select-save.return-to-games-list")
-                                    .unwrap()
-                            ),
-                        )
+                        .button(format!(
+                            "⬅️ {}",
+                            i18n::LOCALES
+                                .lookup(language, "select-save.return-to-games-list")
+                                .unwrap()
+                        ))
                         .clicked()
                     {
                         show.as_mut().unwrap().selection = None;
                     }
 
                     if let Some(&(game, _)) = show.as_ref().unwrap().selection.as_ref() {
-                        ui.add_enabled_ui(!game.save_templates().is_empty(), |ui| {
-                            if ui
-                                .selectable_label(
-                                    false,
-                                    format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
-                                )
-                                .clicked()
-                            {
-                                show.as_mut().unwrap().new_save_window = Some(gui::new_save_window::State::new(game));
-                            }
+                        let save_templates = game.save_templates();
+                        ui.add_enabled_ui(!save_templates.is_empty(), |ui| {
+                            ui.menu_button(
+                                format!("➕ {}", i18n::LOCALES.lookup(language, "select-save.new-save").unwrap()),
+                                |ui| {
+                                    let mut menu_selection = None;
+
+                                    if save_templates.len() == 1 {
+                                        menu_selection = save_templates.first().map(|(name, save)| (*name, *save));
+                                    } else {
+                                        for (name, save) in save_templates {
+                                            if ui.button(format!("{}", name)).clicked() {
+                                                menu_selection = Some((*name, *save));
+                                            }
+                                        }
+                                    }
+
+                                    if let Some((name, save)) = menu_selection {
+                                        let (path, mut f) = match create_new_save(saves_path, game, name) {
+                                            Ok((path, f)) => (path, f),
+                                            Err(e) => {
+                                                log::error!("failed to create save: {}", e);
+                                                ui.close_menu();
+                                                return;
+                                            }
+                                        };
+
+                                        if let Err(e) = f.write_all(&save.to_vec()) {
+                                            log::error!("failed to write save: {}", e);
+                                            ui.close_menu();
+                                            return;
+                                        }
+
+                                        let (game, rom, patch) = if let Some(selection) = selection.take() {
+                                            if selection.game == game {
+                                                (selection.game, selection.rom, selection.patch)
+                                            } else {
+                                                (game, roms.get(&game).unwrap().clone(), None)
+                                            }
+                                        } else {
+                                            (game, roms.get(&game).unwrap().clone(), None)
+                                        };
+
+                                        *show = None;
+                                        *selection = Some(gui::Selection::new(
+                                            game,
+                                            save::ScannedSave {
+                                                path,
+                                                save: save.clone_box(),
+                                            },
+                                            patch,
+                                            rom,
+                                        ));
+
+                                        ui.close_menu();
+                                    }
+                                },
+                            );
                         });
                     }
+                }
+
+                if show.is_none() {
+                    return;
                 }
 
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {

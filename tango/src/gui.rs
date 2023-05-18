@@ -7,7 +7,6 @@ mod debug_window;
 mod escape_window;
 mod language_select;
 mod main_view;
-mod new_save_window;
 mod patches_pane;
 mod play_pane;
 mod replay_dump_windows;
