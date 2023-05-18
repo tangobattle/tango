@@ -179,6 +179,9 @@ pub fn show(
                                             }
                                         };
 
+                                        let mut save = save.clone_box();
+                                        save.rebuild_checksum();
+
                                         if let Err(e) = f.write_all(&save.to_vec()) {
                                             log::error!("failed to write save: {}", e);
                                             ui.close_menu();
@@ -198,10 +201,7 @@ pub fn show(
                                         *show = None;
                                         *selection = Some(gui::Selection::new(
                                             game,
-                                            save::ScannedSave {
-                                                path,
-                                                save: save.clone_box(),
-                                            },
+                                            save::ScannedSave { path, save },
                                             patch,
                                             rom,
                                         ));

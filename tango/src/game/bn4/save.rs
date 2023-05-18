@@ -127,9 +127,8 @@ impl Save {
         byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4])
     }
 
-    #[allow(dead_code)]
     pub fn compute_checksum(&self) -> u32 {
-        compute_raw_checksum(&self.buf[self.shift..], self.shift) + checksum_start_for_variant(self.game_info.variant)
+        compute_raw_checksum(&self.buf, self.shift) + checksum_start_for_variant(self.game_info.variant)
             - if self.game_info.region == Region::JP {
                 self.buf[0] as u32
             } else {
