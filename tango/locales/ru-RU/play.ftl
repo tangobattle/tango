@@ -26,6 +26,7 @@ select-save = Выберите сохранение
     .open-folder = Открыть папку
     .rename-save = Rename
     .delete-save = Delete
+    .duplicate-save = Duplicate
 new-save = New save
 lobby-issue-no-local-rom = У вас нет копии игры противника: { $game_name }
 lobby-issue-no-remote-rom = У противника нет копии игры: { $game_name }
