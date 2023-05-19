@@ -39,8 +39,8 @@ fn ncp_bitmap<'a>(
 pub type ComposedNavicust = ndarray::Array2<Option<usize>>;
 
 pub fn compose<'a>(
-    navicust_view: &Box<dyn crate::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn crate::rom::Assets + Send + Sync + 'a>,
+    navicust_view: &(dyn crate::save::NavicustView<'a> + 'a),
+    assets: &(dyn crate::rom::Assets + 'a),
 ) -> ComposedNavicust {
     let mut composed = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
     for i in 0..navicust_view.count() {

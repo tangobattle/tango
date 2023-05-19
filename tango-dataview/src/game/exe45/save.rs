@@ -97,7 +97,7 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild(&mut self) {
+    fn rebuild(&mut self, _assets: &dyn crate::rom::Assets) {
         self.rebuild_checksum();
     }
 }

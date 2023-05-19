@@ -705,9 +705,9 @@ pub fn show<'a>(
                 },
                 |ui| {
                     if !state.rendered_navicust_cache.is_some() {
-                        let composed = navicust_view
-                            .precomposed()
-                            .unwrap_or_else(|| tango_dataview::navicust::compose(navicust_view, assets));
+                        let composed = navicust_view.precomposed().unwrap_or_else(|| {
+                            tango_dataview::navicust::compose(navicust_view.as_ref(), assets.as_ref())
+                        });
                         let image = render_navicust(
                             &composed,
                             &navicust_layout,

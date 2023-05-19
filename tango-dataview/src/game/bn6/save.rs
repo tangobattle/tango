@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, ChipsView as _, NaviView as _, PatchCard56sView as _};
+use crate::save::{self, ChipsView as _, NaviView as _, PatchCard56sView as _, Save as _};
 
 const SRAM_START_OFFSET: usize = 0x0100;
 const SRAM_SIZE: usize = 0x6710;
@@ -126,6 +126,18 @@ impl Save {
         byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
     }
 
+    fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
+        let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
+        self.buf[0x4d48..0x4d48 + 0x44].copy_from_slice(
+            &composed
+                .into_iter()
+                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
+                .chain(std::iter::repeat(0))
+                .take(0x44)
+                .collect::<Vec<_>>(),
+        )
+    }
+
     fn rebuild_anticheat(&mut self) {
         self.rebuild_patch_cards_anticheat();
     }
@@ -173,7 +185,8 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild(&mut self) {
+    fn rebuild(&mut self, assets: &dyn crate::rom::Assets) {
+        self.rebuild_precomposed_navicust(assets);
         self.rebuild_anticheat();
         self.rebuild_checksum();
     }

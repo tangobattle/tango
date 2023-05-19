@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save;
+use crate::save::{self, Save as _};
 
 const SRAM_SIZE: usize = 0x73d2;
 const MASK_OFFSET: usize = 0x1554;
@@ -140,6 +140,18 @@ impl Save {
         &self.game_info
     }
 
+    fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
+        let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
+        self.buf[self.shift + 0x4540..self.shift + 0x4540 + 0x24].copy_from_slice(
+            &composed
+                .into_iter()
+                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
+                .chain(std::iter::repeat(0))
+                .take(0x24)
+                .collect::<Vec<_>>(),
+        )
+    }
+
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
         byteorder::LittleEndian::write_u32(
@@ -185,7 +197,8 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild(&mut self) {
+    fn rebuild(&mut self, assets: &dyn crate::rom::Assets) {
+        self.rebuild_precomposed_navicust(assets);
         self.rebuild_checksum();
     }
 }

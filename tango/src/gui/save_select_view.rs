@@ -179,15 +179,6 @@ pub fn show(
                                             }
                                         };
 
-                                        let mut save = save.clone_box();
-                                        save.rebuild();
-
-                                        if let Err(e) = f.write_all(&save.to_vec()) {
-                                            log::error!("failed to write save: {}", e);
-                                            ui.close_menu();
-                                            return;
-                                        }
-
                                         let (game, rom, patch) = if let Some(selection) = selection.take() {
                                             if selection.game == game {
                                                 (selection.game, selection.rom, selection.patch)
@@ -197,6 +188,19 @@ pub fn show(
                                         } else {
                                             (game, roms.get(&game).unwrap().clone(), None)
                                         };
+
+                                        let mut save = save.clone_box();
+                                        save.rebuild(
+                                            game.load_rom_assets(&rom, save.as_raw_wram(), &rom::Overrides::default())
+                                                .unwrap()
+                                                .as_ref(),
+                                        );
+
+                                        if let Err(e) = f.write_all(&save.to_vec()) {
+                                            log::error!("failed to write save: {}", e);
+                                            ui.close_menu();
+                                            return;
+                                        }
 
                                         *show = None;
                                         *selection = Some(gui::Selection::new(

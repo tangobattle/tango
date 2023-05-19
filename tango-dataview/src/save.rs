@@ -30,7 +30,7 @@ where
     fn to_vec(&self) -> Vec<u8>;
     fn as_raw_wram(&self) -> &[u8];
 
-    fn rebuild(&mut self);
+    fn rebuild(&mut self, assets: &dyn crate::rom::Assets);
 
     fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
