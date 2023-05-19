@@ -308,10 +308,6 @@ where
         self.assets.num_navicust_parts()
     }
 
-    fn navicust_bg(&self) -> Option<image::Rgba<u8>> {
-        self.assets.navicust_bg()
-    }
-
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn tango_dataview::rom::Style + 'a>> {
         self.assets.style(id)
     }

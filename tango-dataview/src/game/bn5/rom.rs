@@ -610,10 +610,6 @@ impl rom::Assets for Assets {
         (48, 4)
     }
 
-    fn navicust_bg(&self) -> Option<image::Rgba<u8>> {
-        Some(self.offsets.navicust_bg)
-    }
-
     fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn rom::PatchCard56 + 'a>> {
         if id >= self.num_patch_card56s() {
             return None;
@@ -629,6 +625,7 @@ impl rom::Assets for Assets {
         Some(rom::NavicustLayout {
             command_line: 2,
             has_out_of_bounds: false,
+            background: self.offsets.navicust_bg,
         })
     }
 }

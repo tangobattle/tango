@@ -484,10 +484,6 @@ impl rom::Assets for Assets {
         (51, 4)
     }
 
-    fn navicust_bg(&self) -> Option<image::Rgba<u8>> {
-        Some(self.offsets.navicust_bg)
-    }
-
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Style + 'a>> {
         if id >= self.num_styles() {
             return None;
@@ -503,6 +499,7 @@ impl rom::Assets for Assets {
         Some(rom::NavicustLayout {
             command_line: 2,
             has_out_of_bounds: false,
+            background: self.offsets.navicust_bg,
         })
     }
 }

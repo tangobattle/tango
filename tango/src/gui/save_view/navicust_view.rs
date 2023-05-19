@@ -206,9 +206,8 @@ fn render_navicust<'a>(
         body.height() + PADDING_V * 2 + color_bar.height() + PADDING_V,
     );
 
-    let bg = assets.navicust_bg().unwrap_or(image::Rgba([0, 0, 0, 0]));
     for pixel in image.pixels_mut() {
-        *pixel = bg;
+        *pixel = navicust_layout.background;
     }
 
     image::imageops::overlay(&mut image, &color_bar, PADDING_H as i64, PADDING_V as i64);

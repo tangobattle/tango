@@ -89,6 +89,7 @@ pub trait Navi {
 pub struct NavicustLayout {
     pub command_line: usize,
     pub has_out_of_bounds: bool,
+    pub background: image::Rgba<u8>,
 }
 
 pub trait Assets {
@@ -116,9 +117,6 @@ pub trait Assets {
     }
     fn num_navicust_parts(&self) -> (usize, usize) {
         (0, 0)
-    }
-    fn navicust_bg(&self) -> Option<image::Rgba<u8>> {
-        None
     }
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn Style + 'a>> {
         let _ = id;
