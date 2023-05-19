@@ -30,6 +30,7 @@ pub struct GameInfo {
 #[derive(Clone)]
 pub struct Save {
     buf: [u8; SAVE_SIZE],
+    shift: usize,
     game_info: GameInfo,
 }
 
@@ -39,7 +40,13 @@ impl Save {
             .get(SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
+
         save::mask_save(&mut buf[..], MASK_OFFSET);
+
+        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
+        if shift > 0x1fc || (shift & 3) != 0 {
+            return Err(save::Error::InvalidShift(shift));
+        }
 
         let game_info = match &buf[GAME_NAME_OFFSET..GAME_NAME_OFFSET + 20] {
             b"REXE6 G 20050924a JP" => GameInfo {
@@ -63,14 +70,14 @@ impl Save {
             }
         };
 
-        let save = Self { buf, game_info };
+        let save = Self { buf, shift, game_info };
 
         let computed_checksum = save.compute_checksum();
         if save.checksum() != computed_checksum {
             return Err(save::Error::ChecksumMismatch {
                 actual: save.checksum(),
                 expected: vec![computed_checksum],
-                shift: 0,
+                shift,
                 attempt: 0,
             });
         }
@@ -79,11 +86,17 @@ impl Save {
     }
 
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
+        let shift = byteorder::LittleEndian::read_u32(&buf[SHIFT_OFFSET..SHIFT_OFFSET + 4]) as usize;
+        if shift > 0x1fc || (shift & 3) != 0 {
+            return Err(save::Error::InvalidShift(shift));
+        }
+
         Ok(Self {
             buf: buf
                 .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(save::Error::InvalidSize(buf.len()))?,
+            shift,
             game_info,
         })
     }
@@ -93,11 +106,11 @@ impl Save {
     }
 
     pub fn checksum(&self) -> u32 {
-        byteorder::LittleEndian::read_u32(&self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4])
+        byteorder::LittleEndian::read_u32(&self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4])
     }
 
     pub fn compute_checksum(&self) -> u32 {
-        save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET)
+        save::compute_save_raw_checksum(&self.buf, self.shift + CHECKSUM_OFFSET)
             + match self.game_info.variant {
                 Variant::Gregar => 0x72,
                 Variant::Falzar => 0x18,
@@ -105,16 +118,18 @@ impl Save {
     }
 
     fn navi_stats_offset(&self, id: usize) -> usize {
-        (if self.game_info.region == Region::JP {
-            0x478c
-        } else {
-            0x47cc
-        }) + 0x64 * if id == 0 { 0 } else { 1 }
+        self.shift
+            + (if self.game_info.region == Region::JP {
+                0x478c
+            } else {
+                0x47cc
+            })
+            + 0x64 * if id == 0 { 0 } else { 1 }
     }
 
     fn rebuild_patch_cards_anticheat(&mut self) {
         for id in 0..super::NUM_PATCH_CARD56S {
-            self.buf[0x5047 + id] = self.buf[0x06bf + id]
+            self.buf[self.shift + 0x5047 + id] = self.buf[self.shift + 0x06bf + id]
                 ^ match self.game_info.variant {
                     Variant::Gregar => 0x43,
                     Variant::Falzar => 0x8d,
@@ -124,12 +139,15 @@ impl Save {
 
     fn rebuild_checksum(&mut self) {
         let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
+        byteorder::LittleEndian::write_u32(
+            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
+            checksum,
+        );
     }
 
     fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
         let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
-        self.buf[0x4d48..0x4d48 + 0x44].copy_from_slice(
+        self.buf[self.shift + 0x4d48..self.shift + 0x4d48 + 0x44].copy_from_slice(
             &composed
                 .into_iter()
                 .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
@@ -199,7 +217,7 @@ pub struct ChipsView<'a> {
 
 impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     fn num_folders(&self) -> usize {
-        self.save.buf[0x1c09] as usize
+        self.save.buf[self.save.shift + 0x1c09] as usize
     }
 
     fn equipped_folder_index(&self) -> usize {
@@ -241,7 +259,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
             return None;
         }
 
-        let offset = 0x2178 + folder_index * (30 * 2) + chip_index * 2;
+        let offset = self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * 2;
         let raw = byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]);
 
         Some(save::Chip {
@@ -251,7 +269,7 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
     }
 
     fn pack_count(&self, id: usize, variant: usize) -> Option<usize> {
-        Some(self.save.buf[0x2230 + id * 0xc + variant] as usize)
+        Some(self.save.buf[self.save.shift + 0x2230 + id * 0xc + variant] as usize)
     }
 }
 
@@ -261,14 +279,14 @@ pub struct PatchCard56sView<'a> {
 
 impl<'a> save::PatchCard56sView<'a> for PatchCard56sView<'a> {
     fn count(&self) -> usize {
-        self.save.buf[0x65f0] as usize
+        self.save.buf[self.save.shift + 0x65f0] as usize
     }
 
     fn patch_card(&self, slot: usize) -> Option<save::PatchCard> {
         if slot >= self.count() {
             return None;
         }
-        let raw = self.save.buf[0x6620 + slot];
+        let raw = self.save.buf[self.save.shift + 0x6620 + slot];
         Some(save::PatchCard {
             id: (raw & 0x7f) as usize,
             enabled: raw >> 7 == 0,
@@ -282,7 +300,7 @@ pub struct PatchCard56sViewMut<'a> {
 
 impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize) {
-        self.save.buf[0x65f0] = count as u8;
+        self.save.buf[self.save.shift + 0x65f0] = count as u8;
     }
 
     fn set_patch_card(&mut self, slot: usize, patch_card: save::PatchCard) -> bool {
@@ -290,7 +308,8 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         if slot >= view.count() {
             return false;
         }
-        self.save.buf[0x6620 + slot] = (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
+        self.save.buf[self.save.shift + 0x6620 + slot] =
+            (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
         true
     }
 }
@@ -314,7 +333,7 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
             return false;
         }
 
-        let offset = 0x2178 + folder_index * (30 * 2) + chip_index * 2;
+        let offset = self.save.shift + 0x2178 + folder_index * (30 * 2) + chip_index * 2;
         let variant = if let Some(variant) = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ*"
             .iter()
             .position(|c| *c == chip.code as u8)
@@ -361,7 +380,7 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
     }
 
     fn set_pack_count(&mut self, id: usize, variant: usize, count: usize) -> bool {
-        self.save.buf[0x2230 + id * 0xc + variant] = count as u8;
+        self.save.buf[self.save.shift + 0x2230 + id * 0xc + variant] = count as u8;
         true
     }
 }
@@ -384,11 +403,12 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
             return None;
         }
 
-        let ncp_offset = if self.save.game_info.region == Region::JP {
-            0x4150
-        } else {
-            0x4190
-        };
+        let ncp_offset = self.save.shift
+            + if self.save.game_info.region == Region::JP {
+                0x4150
+            } else {
+                0x4190
+            };
 
         let buf = &self.save.buf[ncp_offset + i * 8..ncp_offset + (i + 1) * 8];
         let raw = buf[0];
@@ -407,11 +427,12 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     }
 
     fn precomposed(&self) -> Option<crate::navicust::ComposedNavicust> {
-        let offset = if self.save.game_info.region == Region::JP {
-            0x410C
-        } else {
-            0x414C
-        };
+        let offset = self.save.shift
+            + if self.save.game_info.region == Region::JP {
+                0x410C
+            } else {
+                0x414C
+            };
 
         Some(
             ndarray::Array2::from_shape_vec(
@@ -431,6 +452,6 @@ pub struct NaviView<'a> {
 
 impl<'a> save::NaviView<'a> for NaviView<'a> {
     fn navi(&self) -> usize {
-        self.save.buf[0x1b81] as usize
+        self.save.buf[self.save.shift + 0x1b81] as usize
     }
 }
