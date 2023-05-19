@@ -1,4 +1,4 @@
-use byteorder::ByteOrder;
+use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::save::{self, PatchCard56sView as _, Save as _};
 
@@ -316,6 +316,23 @@ impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
         }
         let offset = 0x2340 + id * 2;
         Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
+    }
+
+    fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
+        let mut buf = &self.save.buf[0x554c..];
+        crate::abd::MaterializedAutoBattleData::new(
+            (0..42)
+                .map(|_| {
+                    let v = buf.read_u16::<byteorder::LittleEndian>().unwrap() as usize;
+                    if v == 0xffff {
+                        return None;
+                    }
+                    return Some(v);
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap(),
+        )
     }
 }
 

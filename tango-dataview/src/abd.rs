@@ -1,23 +1,20 @@
 use itertools::Itertools;
 
-pub const SECONDARY_STANDARD_CHIP_COUNTS: &[usize; 3] = &[1, 1, 1];
-pub const STANDARD_CHIP_COUNTS: &[usize; 16] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
-pub const MEGA_CHIP_COUNTS: &[usize; 5] = &[1, 1, 1, 1, 1];
-pub const GIGA_CHIP_COUNTS: &[usize; 1] = &[1];
-pub const COMBO_COUNTS: &[usize; 8] = &[1, 1, 1, 1, 1, 1, 1, 1];
-pub const PROGRAM_ADVANCE_COUNTS: &[usize; 1] = &[1];
+const SECONDARY_STANDARD_CHIP_COUNTS: &[usize; 3] = &[1, 1, 1];
+const STANDARD_CHIP_COUNTS: &[usize; 16] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+const MEGA_CHIP_COUNTS: &[usize; 5] = &[1, 1, 1, 1, 1];
+const GIGA_CHIP_COUNTS: &[usize; 1] = &[1];
+const COMBO_COUNTS: &[usize; 8] = &[1, 1, 1, 1, 1, 1, 1, 1];
+const PROGRAM_ADVANCE_COUNTS: &[usize; 1] = &[1];
 
-pub struct MaterializedAutoBattleData {
-    pub secondary_standard_chips: [Option<usize>; 3],
-    pub standard_chips: [Option<usize>; 16],
-    pub mega_chips: [Option<usize>; 5],
-    pub giga_chip: Option<usize>,
-    pub combos: [Option<usize>; 8],
-    pub program_advance: Option<usize>,
-}
+pub struct MaterializedAutoBattleData([Option<usize>; 42]);
 
 impl MaterializedAutoBattleData {
-    pub fn new(
+    pub fn new(v: [Option<usize>; 42]) -> Self {
+        Self(v)
+    }
+
+    pub fn materialize(
         auto_battle_data_view: &(dyn crate::save::AutoBattleDataView + '_),
         assets: &dyn crate::rom::Assets,
     ) -> Self {
@@ -39,83 +36,125 @@ impl MaterializedAutoBattleData {
             }
         }
 
-        MaterializedAutoBattleData {
-            secondary_standard_chips: secondary_use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == crate::rom::ChipClass::Standard)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| Some(id))
-                .chain(std::iter::repeat(None))
-                .take(3)
+        Self::new(
+            std::iter::empty()
+                .chain(
+                    secondary_use_counts
+                        .iter()
+                        .enumerate()
+                        .filter(|(id, count)| {
+                            assets
+                                .chip(*id)
+                                .map(|c| c.class() == crate::rom::ChipClass::Standard)
+                                .unwrap_or(false)
+                                && **count > 0
+                        })
+                        .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
+                        .map(|(id, _)| Some(id))
+                        .chain(std::iter::repeat(None))
+                        .zip(SECONDARY_STANDARD_CHIP_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
+                .chain(
+                    use_counts
+                        .iter()
+                        .enumerate()
+                        .filter(|(id, count)| {
+                            assets
+                                .chip(*id)
+                                .map(|c| c.class() == crate::rom::ChipClass::Standard)
+                                .unwrap_or(false)
+                                && **count > 0
+                        })
+                        .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
+                        .map(|(id, _)| Some(id))
+                        .chain(std::iter::repeat(None))
+                        .zip(STANDARD_CHIP_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
+                .chain(
+                    use_counts
+                        .iter()
+                        .enumerate()
+                        .filter(|(id, count)| {
+                            assets
+                                .chip(*id)
+                                .map(|c| c.class() == crate::rom::ChipClass::Mega)
+                                .unwrap_or(false)
+                                && **count > 0
+                        })
+                        .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
+                        .map(|(id, _)| Some(id))
+                        .chain(std::iter::repeat(None))
+                        .zip(MEGA_CHIP_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
+                .chain(
+                    std::iter::repeat(None)
+                        .zip(COMBO_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
+                .chain(
+                    use_counts
+                        .iter()
+                        .enumerate()
+                        .filter(|(id, count)| {
+                            assets
+                                .chip(*id)
+                                .map(|c| c.class() == crate::rom::ChipClass::Giga)
+                                .unwrap_or(false)
+                                && **count > 0
+                        })
+                        .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
+                        .map(|(id, _)| Some(id))
+                        .chain(std::iter::repeat(None))
+                        .zip(GIGA_CHIP_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
+                .chain(
+                    use_counts
+                        .iter()
+                        .enumerate()
+                        .filter(|(id, count)| {
+                            assets
+                                .chip(*id)
+                                .map(|c| c.class() == crate::rom::ChipClass::ProgramAdvance)
+                                .unwrap_or(false)
+                                && **count > 0
+                        })
+                        .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
+                        .map(|(id, _)| Some(id))
+                        .chain(std::iter::repeat(None))
+                        .zip(PROGRAM_ADVANCE_COUNTS)
+                        .flat_map(|(item, count)| vec![item; *count]),
+                )
                 .collect::<Vec<_>>()
                 .try_into()
                 .unwrap(),
-            standard_chips: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == crate::rom::ChipClass::Standard)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| Some(id))
-                .chain(std::iter::repeat(None))
-                .take(16)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            mega_chips: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == crate::rom::ChipClass::Mega)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| Some(id))
-                .chain(std::iter::repeat(None))
-                .take(5)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            giga_chip: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == crate::rom::ChipClass::Giga)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .min_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| id),
-            combos: [None; 8],
-            program_advance: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == crate::rom::ChipClass::ProgramAdvance)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .min_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| id),
-        }
+        )
+    }
+
+    pub fn secondary_standard_chips(&self) -> &[Option<usize>] {
+        &self.0[0..3]
+    }
+
+    pub fn standard_chips(&self) -> &[Option<usize>] {
+        &self.0[3..27]
+    }
+
+    pub fn mega_chips(&self) -> &[Option<usize>] {
+        &self.0[27..32]
+    }
+
+    pub fn giga_chip(&self) -> Option<usize> {
+        self.0[32]
+    }
+
+    pub fn combos(&self) -> &[Option<usize>] {
+        &self.0[33..41]
+    }
+
+    pub fn program_advance(&self) -> Option<usize> {
+        self.0[41]
     }
 }

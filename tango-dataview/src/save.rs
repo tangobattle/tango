@@ -192,6 +192,7 @@ pub trait NavicustViewMut<'a> {
 pub trait AutoBattleDataView<'a> {
     fn chip_use_count(&self, id: usize) -> Option<u16>;
     fn secondary_chip_use_count(&self, id: usize) -> Option<u16>;
+    fn materialized(&self) -> crate::abd::MaterializedAutoBattleData;
 }
 
 #[derive(thiserror::Error, Debug)]

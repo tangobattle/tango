@@ -1,4 +1,5 @@
 use fluent_templates::Loader;
+use itertools::Itertools;
 
 use crate::{gui, i18n};
 
@@ -18,10 +19,9 @@ impl State {
     }
 }
 
-fn show_table<const N: usize>(
+fn show_table(
     ui: &mut egui::Ui,
-    chips: &[Option<usize>; N],
-    counts: &[usize; N],
+    chips: &[Option<usize>],
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     font_families: &gui::FontFamilies,
     lang: &unic_langid::LanguageIdentifier,
@@ -32,7 +32,7 @@ fn show_table<const N: usize>(
     egui_extras::StripBuilder::new(ui)
         .sizes(egui_extras::Size::exact(28.0), chips.len())
         .vertical(|mut outer_strip| {
-            for (i, (id, count)) in std::iter::zip(chips, counts).enumerate() {
+            for (i, (id, g)) in chips.iter().group_by(|k| **k).into_iter().enumerate() {
                 outer_strip.cell(|ui| {
                     let info = id.and_then(|id| assets.chip(id));
 
@@ -88,11 +88,11 @@ fn show_table<const N: usize>(
                         .size(egui_extras::Size::exact(30.0))
                         .horizontal(|mut strip| {
                             strip.cell(|ui| {
-                                ui.strong(format!("{}x", count));
+                                ui.strong(format!("{}x", g.count()));
                             });
                             if let Some(id) = id {
                                 strip.cell(|ui| {
-                                    match chip_icon_texture_cache.entry(*id) {
+                                    match chip_icon_texture_cache.entry(id) {
                                         std::collections::hash_map::Entry::Occupied(_) => {}
                                         std::collections::hash_map::Entry::Vacant(e) => {
                                             if let Some(image) = info.as_ref().map(|info| info.icon()) {
@@ -176,23 +176,25 @@ fn show_table<const N: usize>(
         });
 }
 
-fn make_string<'a, const N: usize>(
-    chips: &'a [Option<usize>; N],
-    counts: &'a [usize; N],
-    assets: &'a Box<dyn tango_dataview::rom::Assets + Send + Sync>,
-) -> impl std::iter::Iterator<Item = String> + 'a {
-    std::iter::zip(chips, counts).map(|(id, count)| {
-        let name = if let Some(id) = id {
-            if let Some(info) = assets.chip(*id) {
-                info.name()
+fn make_string(chips: &[Option<usize>], assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>) -> String {
+    chips
+        .iter()
+        .group_by(|k| **k)
+        .into_iter()
+        .map(|(id, g)| {
+            let name = if let Some(id) = id {
+                if let Some(info) = assets.chip(id) {
+                    info.name()
+                } else {
+                    "-".to_string()
+                }
             } else {
                 "-".to_string()
-            }
-        } else {
-            "-".to_string()
-        };
-        format!("{}\t{}", count, name)
-    })
+            };
+            format!("{}\t{}", g.count(), name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 pub fn show<'a>(
@@ -205,9 +207,9 @@ pub fn show<'a>(
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
-    let materialized = state.materialized.get_or_insert_with(|| {
-        tango_dataview::abd::MaterializedAutoBattleData::new(auto_battle_data_view.as_ref(), assets.as_ref())
-    });
+    let materialized = state
+        .materialized
+        .get_or_insert_with(|| auto_battle_data_view.materialized());
 
     ui.horizontal(|ui| {
         if ui
@@ -218,33 +220,14 @@ pub fn show<'a>(
             .clicked()
         {
             let _ = clipboard.set_text(
-                make_string(
-                    &materialized.secondary_standard_chips,
-                    tango_dataview::abd::SECONDARY_STANDARD_CHIP_COUNTS,
-                    assets,
-                )
-                .chain(make_string(
-                    &materialized.standard_chips,
-                    tango_dataview::abd::STANDARD_CHIP_COUNTS,
-                    assets,
-                ))
-                .chain(make_string(
-                    &materialized.mega_chips,
-                    tango_dataview::abd::MEGA_CHIP_COUNTS,
-                    assets,
-                ))
-                .chain(make_string(
-                    &[materialized.giga_chip],
-                    tango_dataview::abd::GIGA_CHIP_COUNTS,
-                    assets,
-                ))
-                .chain(make_string(&[None; 8], tango_dataview::abd::COMBO_COUNTS, assets))
-                .chain(make_string(
-                    &[materialized.program_advance],
-                    tango_dataview::abd::PROGRAM_ADVANCE_COUNTS,
-                    assets,
-                ))
-                .collect::<Vec<_>>()
+                vec![
+                    make_string(materialized.secondary_standard_chips(), assets),
+                    make_string(materialized.standard_chips(), assets),
+                    make_string(materialized.mega_chips(), assets),
+                    make_string(&[materialized.giga_chip()], assets),
+                    make_string(&[None; 8], assets),
+                    make_string(&[materialized.program_advance()], assets),
+                ]
                 .join("\n"),
             );
         }
@@ -262,8 +245,7 @@ pub fn show<'a>(
                 );
                 show_table(
                     ui,
-                    &materialized.secondary_standard_chips,
-                    tango_dataview::abd::SECONDARY_STANDARD_CHIP_COUNTS,
+                    materialized.secondary_standard_chips(),
                     assets,
                     font_families,
                     lang,
@@ -277,8 +259,7 @@ pub fn show<'a>(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-standard-chips").unwrap());
                 show_table(
                     ui,
-                    &materialized.standard_chips,
-                    tango_dataview::abd::STANDARD_CHIP_COUNTS,
+                    materialized.standard_chips(),
                     assets,
                     font_families,
                     lang,
@@ -292,8 +273,7 @@ pub fn show<'a>(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-mega-chips").unwrap());
                 show_table(
                     ui,
-                    &materialized.mega_chips,
-                    tango_dataview::abd::MEGA_CHIP_COUNTS,
+                    materialized.mega_chips(),
                     assets,
                     font_families,
                     lang,
@@ -307,8 +287,7 @@ pub fn show<'a>(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-giga-chip").unwrap());
                 show_table(
                     ui,
-                    &[materialized.giga_chip],
-                    tango_dataview::abd::GIGA_CHIP_COUNTS,
+                    &[materialized.giga_chip()],
                     assets,
                     font_families,
                     lang,
@@ -323,7 +302,6 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[None; 8],
-                    tango_dataview::abd::COMBO_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -337,8 +315,7 @@ pub fn show<'a>(
                 ui.strong(i18n::LOCALES.lookup(lang, "auto-battle-data-program-advance").unwrap());
                 show_table(
                     ui,
-                    &[materialized.program_advance],
-                    tango_dataview::abd::PROGRAM_ADVANCE_COUNTS,
+                    &[materialized.program_advance()],
                     assets,
                     font_families,
                     lang,
