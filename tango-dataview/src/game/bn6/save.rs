@@ -392,14 +392,6 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         7
     }
 
-    fn command_line(&self) -> usize {
-        3
-    }
-
-    fn has_out_of_bounds(&self) -> bool {
-        true
-    }
-
     fn navicust_part(&self, i: usize) -> Option<save::NavicustPart> {
         if i >= self.count() {
             return None;

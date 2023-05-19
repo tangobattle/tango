@@ -327,4 +327,8 @@ where
     fn num_navis(&self) -> usize {
         self.assets.num_navis()
     }
+
+    fn navicust_layout(&self) -> Option<tango_dataview::rom::NavicustLayout> {
+        self.assets.navicust_layout()
+    }
 }

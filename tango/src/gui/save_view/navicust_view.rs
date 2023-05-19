@@ -160,11 +160,12 @@ const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff
 
 fn render_navicust<'a>(
     composed: &ComposedNavicust,
+    navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
     raw_font: &[u8],
 ) -> image::RgbaImage {
-    let body = render_navicust_body(composed, navicust_view, assets);
+    let body = render_navicust_body(composed, navicust_layout, navicust_view, assets);
 
     let color_bar = if let Some(style) = navicust_view.style() {
         let color_bar_right = render_navicust_color_bar3(assets.style(style).and_then(|style| style.extra_ncp_color()));
@@ -413,6 +414,7 @@ fn render_navicust_color_bar456<'a>(
 
 fn render_navicust_body<'a>(
     composed: &ComposedNavicust,
+    navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
 ) -> image::RgbaImage {
@@ -513,7 +515,7 @@ fn render_navicust_body<'a>(
     // First pass: draw background.
     for y in 0..composed.width() {
         for x in 0..composed.height() {
-            if navicust_view.has_out_of_bounds()
+            if navicust_layout.has_out_of_bounds
                 && ((x == 0 && y == 0)
                     || (x == 0 && y == composed.height() - 1)
                     || (x == composed.width() - 1 && y == 0)
@@ -612,7 +614,7 @@ fn render_navicust_body<'a>(
     }
 
     // Fourth pass: draw command line.
-    let command_line_top = navicust_view.command_line() as f32 * SQUARE_SIZE;
+    let command_line_top = navicust_layout.command_line as f32 * SQUARE_SIZE;
     pixmap.stroke_path(
         &command_line_path,
         &border_stroke_paint,
@@ -629,7 +631,7 @@ fn render_navicust_body<'a>(
     );
 
     // Fifth pass: draw out of bounds overlay.
-    if navicust_view.has_out_of_bounds() {
+    if navicust_layout.has_out_of_bounds {
         let path = {
             let mut pb = tiny_skia::PathBuilder::new();
 
@@ -681,7 +683,11 @@ pub fn show<'a>(
     state: &mut State,
     prefer_vertical: bool,
 ) {
-    const NCP_CHIP_WIDTH: f32 = 150.0;
+    let navicust_layout = if let Some(navicust_layout) = assets.navicust_layout() {
+        navicust_layout
+    } else {
+        return;
+    };
 
     let items = (0..navicust_view.count())
         .flat_map(|i| {
@@ -769,6 +775,7 @@ pub fn show<'a>(
                         let composed = compose_navicust(navicust_view, assets);
                         let image = render_navicust(
                             &composed,
+                            &navicust_layout,
                             navicust_view,
                             assets,
                             font_families.raw_for_language(game_lang),
@@ -825,6 +832,8 @@ pub fn show<'a>(
                             }
                         }
                     }
+
+                    const NCP_CHIP_WIDTH: f32 = 150.0;
 
                     ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {

@@ -181,14 +181,6 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         5
     }
 
-    fn command_line(&self) -> usize {
-        2
-    }
-
-    fn has_out_of_bounds(&self) -> bool {
-        false
-    }
-
     fn style(&self) -> Option<usize> {
         Some((self.save.buf[0x1881] & 0x3f) as usize)
     }

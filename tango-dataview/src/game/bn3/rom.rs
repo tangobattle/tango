@@ -498,6 +498,13 @@ impl rom::Assets for Assets {
     fn num_styles(&self) -> usize {
         40
     }
+
+    fn navicust_layout(&self) -> Option<rom::NavicustLayout> {
+        Some(rom::NavicustLayout {
+            command_line: 2,
+            has_out_of_bounds: false,
+        })
+    }
 }
 
 #[rustfmt::skip]

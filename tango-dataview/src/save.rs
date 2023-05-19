@@ -176,8 +176,6 @@ pub trait NavicustView<'a> {
     }
     fn width(&self) -> usize;
     fn height(&self) -> usize;
-    fn command_line(&self) -> usize;
-    fn has_out_of_bounds(&self) -> bool;
     fn navicust_part(&self, i: usize) -> Option<NavicustPart>;
 }
 

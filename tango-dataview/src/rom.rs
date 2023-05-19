@@ -86,6 +86,11 @@ pub trait Navi {
     fn emblem(&self) -> image::RgbaImage;
 }
 
+pub struct NavicustLayout {
+    pub command_line: usize,
+    pub has_out_of_bounds: bool,
+}
+
 pub trait Assets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn Chip + 'a>>;
     fn num_chips(&self) -> usize;
@@ -128,6 +133,9 @@ pub trait Assets {
     }
     fn num_navis(&self) -> usize {
         0
+    }
+    fn navicust_layout(&self) -> Option<NavicustLayout> {
+        None
     }
 }
 

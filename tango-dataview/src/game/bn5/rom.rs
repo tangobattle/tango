@@ -624,6 +624,13 @@ impl rom::Assets for Assets {
     fn num_patch_card56s(&self) -> usize {
         112
     }
+
+    fn navicust_layout(&self) -> Option<rom::NavicustLayout> {
+        Some(rom::NavicustLayout {
+            command_line: 2,
+            has_out_of_bounds: false,
+        })
+    }
 }
 
 #[rustfmt::skip]
