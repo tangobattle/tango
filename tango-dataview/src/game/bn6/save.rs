@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _, Save as _};
+use crate::save::{self, ChipsView as _, NaviView as _, NavicustView as _, PatchCard56sView as _};
 
 const SAVE_START_OFFSET: usize = 0x0100;
 const SAVE_SIZE: usize = 0x6710;

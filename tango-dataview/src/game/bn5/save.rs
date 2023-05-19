@@ -1,6 +1,6 @@
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
-use crate::save::{self, PatchCard56sView as _, Save as _};
+use crate::save::{self, PatchCard56sView as _};
 
 const SAVE_START_OFFSET: usize = 0x0100;
 const SAVE_SIZE: usize = 0x7c14;
