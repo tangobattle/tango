@@ -95,6 +95,18 @@ pub struct NavicustLayout {
 pub trait Assets {
     fn chip<'a>(&'a self, id: usize) -> Option<Box<dyn Chip + 'a>>;
     fn num_chips(&self) -> usize;
+    fn can_set_regular_chip(&self) -> bool {
+        false
+    }
+    fn can_set_tag_chips(&self) -> bool {
+        false
+    }
+    fn regular_chip_is_in_place(&self) -> bool {
+        false
+    }
+    fn chips_have_mb(&self) -> bool {
+        true
+    }
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage>;
     fn patch_card56<'a>(&'a self, id: usize) -> Option<Box<dyn PatchCard56 + 'a>> {
         let _ = id;
@@ -124,6 +136,9 @@ pub trait Assets {
     }
     fn num_styles(&self) -> usize {
         0
+    }
+    fn can_set_style(&self) -> bool {
+        false
     }
     fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn Navi + 'a>> {
         let _ = id;

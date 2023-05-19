@@ -453,6 +453,14 @@ impl rom::Assets for Assets {
         374
     }
 
+    fn can_set_regular_chip(&self) -> bool {
+        true
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        true
+    }
+
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
         if id >= 5 {
             return None;
@@ -493,6 +501,10 @@ impl rom::Assets for Assets {
 
     fn num_styles(&self) -> usize {
         40
+    }
+
+    fn can_set_style(&self) -> bool {
+        true
     }
 
     fn navicust_layout(&self) -> Option<rom::NavicustLayout> {

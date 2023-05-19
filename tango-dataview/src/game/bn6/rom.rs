@@ -553,6 +553,18 @@ impl rom::Assets for Assets {
         411
     }
 
+    fn can_set_regular_chip(&self) -> bool {
+        true
+    }
+
+    fn can_set_tag_chips(&self) -> bool {
+        true
+    }
+
+    fn regular_chip_is_in_place(&self) -> bool {
+        true
+    }
+
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
         if id >= 11 {
             return None;

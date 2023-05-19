@@ -174,10 +174,6 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         self.save.buf[navi_stats_offset + 0x2d] as usize
     }
 
-    fn regular_chip_is_in_place(&self) -> bool {
-        true
-    }
-
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
         if folder_index >= self.num_folders() {
             return None;
@@ -352,14 +348,6 @@ impl<'a> save::ChipsViewMut<'a> for ChipsViewMut<'a> {
 
         let navi_stats_offset = self.save.navi_stats_offset(NaviView { save: self.save }.navi());
         self.save.buf[navi_stats_offset + 0x2e + folder_index] = chip_index as u8;
-        true
-    }
-
-    fn can_set_regular_chip(&self) -> bool {
-        true
-    }
-
-    fn can_set_tag_chips(&self) -> bool {
         true
     }
 }

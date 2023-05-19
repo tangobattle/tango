@@ -40,7 +40,7 @@ pub fn show<'a>(
         .map(|i| chips_view.chip(chips_view.equipped_folder_index(), i))
         .collect::<Vec<_>>();
 
-    if !chips_view.regular_chip_is_in_place() {
+    if !assets.regular_chip_is_in_place() {
         if let Some(regular_chip_index) = chips_view.regular_chip_index(chips_view.equipped_folder_index()) {
             let chip = chips.remove(0);
             chips.insert(regular_chip_index, chip);
@@ -200,7 +200,7 @@ pub fn show<'a>(
                                 .size(egui_extras::Size::remainder())
                                 .size(egui_extras::Size::exact(28.0))
                                 .size(egui_extras::Size::exact(30.0));
-                            if chips_view.chips_have_mb() {
+                            if assets.chips_have_mb() {
                                 sb = sb.size(egui_extras::Size::exact(50.0));
                             }
 
@@ -369,7 +369,7 @@ pub fn show<'a>(
                                         }
                                     });
                                 });
-                                if chips_view.chips_have_mb() {
+                                if assets.chips_have_mb() {
                                     strip.cell(|ui| {
                                         let mb = info.as_ref().map(|info| info.mb()).unwrap_or(0);
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

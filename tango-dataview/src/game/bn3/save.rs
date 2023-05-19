@@ -135,10 +135,6 @@ impl<'a> save::ChipsView<'a> for ChipsView<'a> {
         self.save.buf[0x1882] as usize
     }
 
-    fn regular_chip_is_in_place(&self) -> bool {
-        true
-    }
-
     fn regular_chip_index(&self, folder_index: usize) -> Option<usize> {
         let idx = self.save.buf[0x189d + folder_index];
         if idx >= 30 {

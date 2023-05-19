@@ -215,6 +215,10 @@ impl rom::Assets for Assets {
         240
     }
 
+    fn chips_have_mb(&self) -> bool {
+        false
+    }
+
     fn element_icon(&self, id: usize) -> Option<image::RgbaImage> {
         if id >= 5 {
             return None;
