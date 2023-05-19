@@ -302,20 +302,20 @@ pub struct AutoBattleDataView<'a> {
 }
 
 impl<'a> save::AutoBattleDataView<'a> for AutoBattleDataView<'a> {
-    fn chip_use_count(&self, id: usize) -> Option<u16> {
+    fn chip_use_count(&self, id: usize) -> Option<usize> {
         if id >= 368 {
             return None;
         }
         let offset = 0x7340 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
+        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]) as usize)
     }
 
-    fn secondary_chip_use_count(&self, id: usize) -> Option<u16> {
+    fn secondary_chip_use_count(&self, id: usize) -> Option<usize> {
         if id >= 368 {
             return None;
         }
         let offset = 0x2340 + id * 2;
-        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]))
+        Some(byteorder::LittleEndian::read_u16(&self.save.buf[offset..offset + 2]) as usize)
     }
 
     fn materialized(&self) -> crate::abd::MaterializedAutoBattleData {
