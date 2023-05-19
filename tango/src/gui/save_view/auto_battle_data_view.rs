@@ -1,12 +1,11 @@
 use fluent_templates::Loader;
-use itertools::Itertools;
 
 use crate::{gui, i18n};
 
 pub struct State {
     chip_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
     element_icon_texture_cache: std::collections::HashMap<usize, egui::TextureHandle>,
-    materialized: Option<MaterializedAutoBattleData>,
+    materialized: Option<tango_dataview::abd::MaterializedAutoBattleData>,
 }
 
 impl State {
@@ -15,127 +14,6 @@ impl State {
             chip_icon_texture_cache: std::collections::HashMap::new(),
             element_icon_texture_cache: std::collections::HashMap::new(),
             materialized: None,
-        }
-    }
-}
-
-const SECONDARY_STANDARD_CHIP_COUNTS: &[usize; 3] = &[1, 1, 1];
-const STANDARD_CHIP_COUNTS: &[usize; 16] = &[4, 4, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
-const MEGA_CHIP_COUNTS: &[usize; 5] = &[1, 1, 1, 1, 1];
-const GIGA_CHIP_COUNTS: &[usize; 1] = &[1];
-const COMBO_COUNTS: &[usize; 8] = &[1, 1, 1, 1, 1, 1, 1, 1];
-const PROGRAM_ADVANCE_COUNTS: &[usize; 1] = &[1];
-
-struct MaterializedAutoBattleData {
-    secondary_standard_chips: [Option<usize>; 3],
-    standard_chips: [Option<usize>; 16],
-    mega_chips: [Option<usize>; 5],
-    giga_chip: Option<usize>,
-    #[allow(dead_code)]
-    combos: [Option<usize>; 8],
-    program_advance: Option<usize>,
-}
-
-impl MaterializedAutoBattleData {
-    fn new(
-        auto_battle_data_view: &Box<dyn tango_dataview::save::AutoBattleDataView + '_>,
-        assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
-    ) -> Self {
-        let mut use_counts = vec![];
-        loop {
-            if let Some(count) = auto_battle_data_view.chip_use_count(use_counts.len()) {
-                use_counts.push(count);
-            } else {
-                break;
-            }
-        }
-
-        let mut secondary_use_counts = vec![];
-        loop {
-            if let Some(count) = auto_battle_data_view.secondary_chip_use_count(secondary_use_counts.len()) {
-                secondary_use_counts.push(count);
-            } else {
-                break;
-            }
-        }
-
-        MaterializedAutoBattleData {
-            secondary_standard_chips: secondary_use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Standard)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| Some(id))
-                .chain(std::iter::repeat(None))
-                .take(3)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            standard_chips: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Standard)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| Some(id))
-                .chain(std::iter::repeat(None))
-                .take(16)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            mega_chips: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Mega)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .sorted_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| Some(id))
-                .chain(std::iter::repeat(None))
-                .take(5)
-                .collect::<Vec<_>>()
-                .try_into()
-                .unwrap(),
-            giga_chip: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == tango_dataview::rom::ChipClass::Giga)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .min_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| id),
-            combos: [None; 8],
-            program_advance: use_counts
-                .iter()
-                .enumerate()
-                .filter(|(id, count)| {
-                    assets
-                        .chip(*id)
-                        .map(|c| c.class() == tango_dataview::rom::ChipClass::ProgramAdvance)
-                        .unwrap_or(false)
-                        && **count > 0
-                })
-                .min_by_key(|(id, count)| (std::cmp::Reverse(**count), *id))
-                .map(|(id, _)| id),
         }
     }
 }
@@ -327,9 +205,9 @@ pub fn show<'a>(
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync>,
     state: &mut State,
 ) {
-    let materialized = state
-        .materialized
-        .get_or_insert_with(|| MaterializedAutoBattleData::new(auto_battle_data_view, assets));
+    let materialized = state.materialized.get_or_insert_with(|| {
+        tango_dataview::abd::MaterializedAutoBattleData::new(auto_battle_data_view.as_ref(), assets.as_ref())
+    });
 
     ui.horizontal(|ui| {
         if ui
@@ -342,16 +220,28 @@ pub fn show<'a>(
             let _ = clipboard.set_text(
                 make_string(
                     &materialized.secondary_standard_chips,
-                    SECONDARY_STANDARD_CHIP_COUNTS,
+                    tango_dataview::abd::SECONDARY_STANDARD_CHIP_COUNTS,
                     assets,
                 )
-                .chain(make_string(&materialized.standard_chips, STANDARD_CHIP_COUNTS, assets))
-                .chain(make_string(&materialized.mega_chips, MEGA_CHIP_COUNTS, assets))
-                .chain(make_string(&[materialized.giga_chip], GIGA_CHIP_COUNTS, assets))
-                .chain(make_string(&[None; 8], COMBO_COUNTS, assets))
+                .chain(make_string(
+                    &materialized.standard_chips,
+                    tango_dataview::abd::STANDARD_CHIP_COUNTS,
+                    assets,
+                ))
+                .chain(make_string(
+                    &materialized.mega_chips,
+                    tango_dataview::abd::MEGA_CHIP_COUNTS,
+                    assets,
+                ))
+                .chain(make_string(
+                    &[materialized.giga_chip],
+                    tango_dataview::abd::GIGA_CHIP_COUNTS,
+                    assets,
+                ))
+                .chain(make_string(&[None; 8], tango_dataview::abd::COMBO_COUNTS, assets))
                 .chain(make_string(
                     &[materialized.program_advance],
-                    PROGRAM_ADVANCE_COUNTS,
+                    tango_dataview::abd::PROGRAM_ADVANCE_COUNTS,
                     assets,
                 ))
                 .collect::<Vec<_>>()
@@ -373,7 +263,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &materialized.secondary_standard_chips,
-                    SECONDARY_STANDARD_CHIP_COUNTS,
+                    tango_dataview::abd::SECONDARY_STANDARD_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -388,7 +278,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &materialized.standard_chips,
-                    STANDARD_CHIP_COUNTS,
+                    tango_dataview::abd::STANDARD_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -403,7 +293,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &materialized.mega_chips,
-                    MEGA_CHIP_COUNTS,
+                    tango_dataview::abd::MEGA_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -418,7 +308,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[materialized.giga_chip],
-                    GIGA_CHIP_COUNTS,
+                    tango_dataview::abd::GIGA_CHIP_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -433,7 +323,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[None; 8],
-                    COMBO_COUNTS,
+                    tango_dataview::abd::COMBO_COUNTS,
                     assets,
                     font_families,
                     lang,
@@ -448,7 +338,7 @@ pub fn show<'a>(
                 show_table(
                     ui,
                     &[materialized.program_advance],
-                    PROGRAM_ADVANCE_COUNTS,
+                    tango_dataview::abd::PROGRAM_ADVANCE_COUNTS,
                     assets,
                     font_families,
                     lang,

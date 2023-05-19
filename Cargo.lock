@@ -5536,6 +5536,7 @@ version = "0.1.0"
 dependencies = [
  "byteorder",
  "image 0.24.3",
+ "itertools",
  "ndarray",
  "parking_lot",
  "thiserror",
