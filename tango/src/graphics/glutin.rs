@@ -44,23 +44,24 @@ impl Backend {
 
         let raw_window_handle = window.as_ref().map(|w| w.raw_window_handle());
 
+        let context_attributes = glutin::context::ContextAttributesBuilder::new().build(raw_window_handle);
+        let fallback_context_attributes = glutin::context::ContextAttributesBuilder::new()
+            .with_context_api(glutin::context::ContextApi::Gles(None))
+            .build(raw_window_handle);
         let not_current_gl_context = unsafe {
             gl_display
-                .create_context(
-                    &gl_config,
-                    &glutin::context::ContextAttributesBuilder::new().build(raw_window_handle),
-                )
-                .unwrap_or_else(|err| {
-                    log::error!("failed to create gl context, will retry with gles: {:?}", err);
+                .create_context(&gl_config, &context_attributes)
+                .unwrap_or_else(|e| {
+                    log::error!(
+                        "failed to create gl_context with {:?}, retrying with fallback context {:?}: {}",
+                        &context_attributes,
+                        &fallback_context_attributes,
+                        e
+                    );
                     gl_config
                         .display()
-                        .create_context(
-                            &gl_config,
-                            &glutin::context::ContextAttributesBuilder::new()
-                                .with_context_api(glutin::context::ContextApi::Gles(None))
-                                .build(raw_window_handle),
-                        )
-                        .expect("failed to create context even with gles")
+                        .create_context(&gl_config, &fallback_context_attributes)
+                        .expect("failed to create context even with fallback attributes")
                 })
         };
 
