@@ -394,26 +394,28 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
 
     fn uncompressed_bitmap(&self) -> rom::NavicustBitmap {
         let raw = self.raw_info();
-        image::ImageBuffer::from_vec(
-            5,
-            5,
+        ndarray::Array2::from_shape_vec(
+            (5, 5),
             self.assets
                 .mapper
                 .get(byteorder::LittleEndian::read_u32(&raw[0x08..0x0c]))[..25]
-                .to_vec(),
+                .iter()
+                .map(|x| *x != 0)
+                .collect(),
         )
         .unwrap()
     }
 
     fn compressed_bitmap(&self) -> rom::NavicustBitmap {
         let raw = self.raw_info();
-        image::ImageBuffer::from_vec(
-            5,
-            5,
+        ndarray::Array2::from_shape_vec(
+            (5, 5),
             self.assets
                 .mapper
                 .get(byteorder::LittleEndian::read_u32(&raw[0x0c..0x10]))[..25]
-                .to_vec(),
+                .iter()
+                .map(|x| *x != 0)
+                .collect(),
         )
         .unwrap()
     }

@@ -79,31 +79,42 @@ fn show_part_name(
         .on_hover_text(description);
 }
 
+fn rotate90<T>(arr: &ndarray::Array2<T>) -> ndarray::Array2<T>
+where
+    T: Clone,
+{
+    let mut arr = arr.t().as_standard_layout().into_owned();
+    for row in arr.rows_mut() {
+        row.into_slice().unwrap().reverse();
+    }
+    arr
+}
+
+fn rotate<'a, T>(arr: &'a ndarray::Array2<T>, num: usize) -> std::borrow::Cow<'a, ndarray::Array2<T>>
+where
+    T: Clone,
+{
+    let mut arr = std::borrow::Cow::Borrowed(arr);
+    for _ in 0..num {
+        arr = std::borrow::Cow::Owned(rotate90(&arr));
+    }
+    arr
+}
+
 fn ncp_bitmap<'a>(
     info: &'a Box<dyn tango_dataview::rom::NavicustPart + 'a>,
     compressed: bool,
     rot: u8,
 ) -> tango_dataview::rom::NavicustBitmap {
-    let mut bitmap = if compressed {
-        info.compressed_bitmap()
-    } else {
-        info.uncompressed_bitmap()
-    };
-
-    match rot {
-        1 => {
-            bitmap = image::imageops::rotate90(&bitmap);
-        }
-        2 => {
-            image::imageops::rotate180_in_place(&mut bitmap);
-        }
-        3 => {
-            bitmap = image::imageops::rotate270(&bitmap);
-        }
-        _ => {}
-    }
-
-    bitmap
+    rotate(
+        &if compressed {
+            info.compressed_bitmap()
+        } else {
+            info.uncompressed_bitmap()
+        },
+        rot as usize,
+    )
+    .into_owned()
 }
 
 type ComposedNavicust = image::ImageBuffer<image::LumaA<u8>, Vec<u8>>;
@@ -127,18 +138,17 @@ fn compose_navicust<'a>(
         };
 
         let bitmap = ncp_bitmap(&info, ncp.compressed, ncp.rot);
-        let width = bitmap.width();
-        let height = bitmap.height();
+        let (height, width) = bitmap.dim();
 
         // Convert bitmap to composable Navicust image (LumaA).
         image::imageops::overlay(
             &mut composed,
             &image::ImageBuffer::from_vec(
-                width,
-                height,
+                width as u32,
+                height as u32,
                 bitmap
                     .into_iter()
-                    .flat_map(|b| [i as u8, if *b != 0 { 0xff } else { 0 }])
+                    .flat_map(|b| [i as u8, if b { 0xff } else { 0 }])
                     .collect::<Vec<u8>>(),
             )
             .unwrap(),

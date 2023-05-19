@@ -57,7 +57,7 @@ pub enum NavicustPartColor {
     Gray,
 }
 
-pub type NavicustBitmap = image::ImageBuffer<image::Luma<u8>, Vec<u8>>;
+pub type NavicustBitmap = ndarray::Array2<bool>;
 
 pub trait NavicustPart {
     fn name(&self) -> String;
