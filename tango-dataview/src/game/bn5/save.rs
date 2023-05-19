@@ -116,36 +116,6 @@ impl Save {
                 Variant::Colonel => 0x18,
             }
     }
-
-    fn rebuild_checksum(&mut self) {
-        let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(
-            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
-            checksum,
-        );
-    }
-
-    fn rebuild_materialized_auto_battle_data(&mut self, assets: &dyn crate::rom::Assets) {
-        let materialized =
-            crate::abd::MaterializedAutoBattleData::materialize(self.view_auto_battle_data().unwrap().as_ref(), assets);
-        let mut buf = &mut self.buf[self.shift + 0x554c..];
-        for v in materialized.as_slice() {
-            buf.write_u16::<byteorder::LittleEndian>(v.map(|v| v as u16).unwrap_or(0xffff))
-                .unwrap();
-        }
-    }
-
-    fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
-        let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
-        self.buf[self.shift + 0x4d48..self.shift + 0x4d48 + 0x24].copy_from_slice(
-            &composed
-                .into_iter()
-                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
-                .chain(std::iter::repeat(0))
-                .take(0x24)
-                .collect::<Vec<_>>(),
-        )
-    }
 }
 
 impl save::Save for Save {
@@ -192,10 +162,12 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild(&mut self, assets: &dyn crate::rom::Assets) {
-        self.rebuild_materialized_auto_battle_data(assets);
-        self.rebuild_precomposed_navicust(assets);
-        self.rebuild_checksum();
+    fn rebuild_checksum(&mut self) {
+        let checksum = self.compute_checksum();
+        byteorder::LittleEndian::write_u32(
+            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
+            checksum,
+        );
     }
 }
 
@@ -278,6 +250,10 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
             (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
         true
     }
+
+    fn rebuild_anticheat(&mut self) {
+        // No anticheat?
+    }
 }
 
 pub struct NavicustView<'a> {
@@ -329,6 +305,18 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
         )
     }
 }
+
+// fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
+//     let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
+//     self.buf[self.shift + 0x4d48..self.shift + 0x4d48 + 0x24].copy_from_slice(
+//         &composed
+//             .into_iter()
+//             .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
+//             .chain(std::iter::repeat(0))
+//             .take(0x24)
+//             .collect::<Vec<_>>(),
+//     )
+// }
 
 pub struct AutoBattleDataView<'a> {
     save: &'a Save,
@@ -390,6 +378,16 @@ impl<'a> save::AutoBattleDataViewMut<'a> for AutoBattleDataViewMut<'a> {
         let offset: usize = 0x2340 + id * 2;
         byteorder::LittleEndian::write_u16(&mut self.save.buf[offset..offset + 2], count as u16);
         true
+    }
+
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets) {
+        let materialized =
+            crate::abd::MaterializedAutoBattleData::materialize(&AutoBattleDataView { save: self.save }, assets);
+        let mut buf = &mut self.save.buf[self.save.shift + 0x554c..];
+        for v in materialized.as_slice() {
+            buf.write_u16::<byteorder::LittleEndian>(v.map(|v| v as u16).unwrap_or(0xffff))
+                .unwrap();
+        }
     }
 }
 

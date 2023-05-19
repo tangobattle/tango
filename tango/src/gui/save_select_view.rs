@@ -190,11 +190,7 @@ pub fn show(
                                         };
 
                                         let mut save = save.clone_box();
-                                        save.rebuild(
-                                            game.load_rom_assets(&rom, save.as_raw_wram(), &rom::Overrides::default())
-                                                .unwrap()
-                                                .as_ref(),
-                                        );
+                                        save.rebuild_checksum();
 
                                         if let Err(e) = f.write_all(&save.to_vec()) {
                                             log::error!("failed to write save: {}", e);

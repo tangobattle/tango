@@ -30,7 +30,7 @@ where
     fn to_vec(&self) -> Vec<u8>;
     fn as_raw_wram(&self) -> &[u8];
 
-    fn rebuild(&mut self, assets: &dyn crate::rom::Assets);
+    fn rebuild_checksum(&mut self);
 
     fn view_chips(&self) -> Option<Box<dyn ChipsView + '_>> {
         None
@@ -132,6 +132,7 @@ pub trait ChipsViewMut<'a> {
         let _ = count;
         false
     }
+    // TODO: reubuild anticheat?
 }
 
 #[derive(Clone, Debug, std::hash::Hash, Eq, PartialEq)]
@@ -148,6 +149,7 @@ pub trait PatchCard56sView<'a> {
 pub trait PatchCard56sViewMut<'a> {
     fn set_count(&mut self, count: usize);
     fn set_patch_card(&mut self, slot: usize, patch_card: PatchCard) -> bool;
+    fn rebuild_anticheat(&mut self);
 }
 
 pub trait PatchCard4sView<'a> {
@@ -191,6 +193,7 @@ pub trait NavicustViewMut<'a> {
     }
 
     fn set_navicust_part(&mut self, i: usize, part: NavicustPart) -> bool;
+    fn rebuild_precomposed(&mut self, assets: &dyn crate::rom::Assets);
 }
 
 pub trait AutoBattleDataView<'a> {
@@ -202,6 +205,7 @@ pub trait AutoBattleDataView<'a> {
 pub trait AutoBattleDataViewMut<'a> {
     fn set_chip_use_count(&mut self, id: usize, count: usize) -> bool;
     fn set_secondary_chip_use_count(&mut self, id: usize, count: usize) -> bool;
+    fn rebuild_materialized(&mut self, assets: &dyn crate::rom::Assets);
 }
 
 #[derive(thiserror::Error, Debug)]

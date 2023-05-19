@@ -48,11 +48,6 @@ impl Save {
     pub fn compute_checksum(&self) -> u32 {
         save::compute_save_raw_checksum(&self.buf, CHECKSUM_OFFSET) + 0x16
     }
-
-    fn rebuild_checksum(&mut self) {
-        let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
-    }
 }
 
 impl save::Save for Save {
@@ -70,8 +65,9 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild(&mut self, _assets: &dyn crate::rom::Assets) {
-        self.rebuild_checksum();
+    fn rebuild_checksum(&mut self) {
+        let checksum = self.compute_checksum();
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
     }
 }
 

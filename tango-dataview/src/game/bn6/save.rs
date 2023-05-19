@@ -126,40 +126,6 @@ impl Save {
             })
             + 0x64 * if id == 0 { 0 } else { 1 }
     }
-
-    fn rebuild_patch_cards_anticheat(&mut self) {
-        for id in 0..super::NUM_PATCH_CARD56S {
-            self.buf[self.shift + 0x5047 + id] = self.buf[self.shift + 0x06bf + id]
-                ^ match self.game_info.variant {
-                    Variant::Gregar => 0x43,
-                    Variant::Falzar => 0x8d,
-                };
-        }
-    }
-
-    fn rebuild_checksum(&mut self) {
-        let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(
-            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
-            checksum,
-        );
-    }
-
-    fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
-        let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
-        self.buf[self.shift + 0x4d48..self.shift + 0x4d48 + 0x44].copy_from_slice(
-            &composed
-                .into_iter()
-                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
-                .chain(std::iter::repeat(0))
-                .take(0x44)
-                .collect::<Vec<_>>(),
-        )
-    }
-
-    fn rebuild_anticheat(&mut self) {
-        self.rebuild_patch_cards_anticheat();
-    }
 }
 
 impl save::Save for Save {
@@ -212,10 +178,12 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild(&mut self, assets: &dyn crate::rom::Assets) {
-        self.rebuild_precomposed_navicust(assets);
-        self.rebuild_anticheat();
-        self.rebuild_checksum();
+    fn rebuild_checksum(&mut self) {
+        let checksum = self.compute_checksum();
+        byteorder::LittleEndian::write_u32(
+            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
+            checksum,
+        );
     }
 }
 
@@ -319,6 +287,17 @@ impl<'a> save::PatchCard56sViewMut<'a> for PatchCard56sViewMut<'a> {
         self.save.buf[self.save.shift + 0x6620 + slot] =
             (patch_card.id | (if patch_card.enabled { 0 } else { 1 } << 7)) as u8;
         true
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        let mask = match self.save.game_info.variant {
+            Variant::Gregar => 0x43,
+            Variant::Falzar => 0x8d,
+        };
+        for id in 0..super::NUM_PATCH_CARD56S {
+            // TODO: Do we need to check if the patch card is loaded and mask with 0xff if not loaded?
+            self.save.buf[self.save.shift + 0x5047 + id] = self.save.buf[self.save.shift + 0x06bf + id] ^ mask;
+        }
     }
 }
 
@@ -482,6 +461,18 @@ impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
         buf[0x5] = part.rot as u8;
         buf[0x6] = if part.compressed { 1 } else { 0 };
         true
+    }
+
+    fn rebuild_precomposed(&mut self, assets: &dyn crate::rom::Assets) {
+        let composed = crate::navicust::compose(&NavicustView { save: self.save }, assets);
+        self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x44].copy_from_slice(
+            &composed
+                .into_iter()
+                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
+                .chain(std::iter::repeat(0))
+                .take(0x44)
+                .collect::<Vec<_>>(),
+        )
     }
 }
 
