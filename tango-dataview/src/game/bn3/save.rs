@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 
 use crate::save;
 
-const SRAM_SIZE: usize = 0x57b0;
+const SAVE_SIZE: usize = 0x57b0;
 const GAME_NAME_OFFSET: usize = 0x1e00;
 const CHECKSUM_OFFSET: usize = 0x1dd8;
 
@@ -26,7 +26,7 @@ pub struct GameInfo {
 
 #[derive(Clone)]
 pub struct Save {
-    buf: [u8; SRAM_SIZE],
+    buf: [u8; SAVE_SIZE],
     game_info: GameInfo,
 }
 
@@ -36,8 +36,8 @@ fn compute_raw_checksum(buf: &[u8]) -> u32 {
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
-        let buf: [u8; SRAM_SIZE] = buf
-            .get(..SRAM_SIZE)
+        let buf: [u8; SAVE_SIZE] = buf
+            .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
 
@@ -75,7 +75,7 @@ impl Save {
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
-                .get(..SRAM_SIZE)
+                .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(save::Error::InvalidSize(buf.len()))?,
             game_info,
@@ -117,7 +117,7 @@ impl save::Save for Save {
 
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
-        buf[..SRAM_SIZE].copy_from_slice(&self.buf);
+        buf[..SAVE_SIZE].copy_from_slice(&self.buf);
         buf
     }
 

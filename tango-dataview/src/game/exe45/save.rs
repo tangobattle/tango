@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 
 use crate::save;
 
-const SRAM_SIZE: usize = 0xc7a8;
+const SAVE_SIZE: usize = 0xc7a8;
 const MASK_OFFSET: usize = 0x3c84;
 const GAME_NAME_OFFSET: usize = 0x4ba8;
 const CHECKSUM_OFFSET: usize = 0x4b88;
@@ -10,13 +10,13 @@ const SHIFT_OFFSET: usize = 0x3c80;
 
 #[derive(Clone)]
 pub struct Save {
-    buf: [u8; SRAM_SIZE],
+    buf: [u8; SAVE_SIZE],
 }
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
-        let mut buf: [u8; SRAM_SIZE] = buf
-            .get(..SRAM_SIZE)
+        let mut buf: [u8; SAVE_SIZE] = buf
+            .get(..SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
         save::mask_save(&mut buf[..], MASK_OFFSET);
@@ -62,7 +62,7 @@ impl Save {
     pub fn from_wram(buf: &[u8]) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
-                .get(..SRAM_SIZE)
+                .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(save::Error::InvalidSize(buf.len()))?,
         })
@@ -93,8 +93,8 @@ impl save::Save for Save {
 
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
-        buf[..SRAM_SIZE].copy_from_slice(&self.buf);
-        save::mask_save(&mut buf[..SRAM_SIZE], MASK_OFFSET);
+        buf[..SAVE_SIZE].copy_from_slice(&self.buf);
+        save::mask_save(&mut buf[..SAVE_SIZE], MASK_OFFSET);
         buf
     }
 

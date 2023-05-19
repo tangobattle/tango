@@ -2,8 +2,8 @@ use byteorder::ByteOrder;
 
 use crate::save::{self, ChipsView as _, NaviView as _, PatchCard56sView as _, Save as _};
 
-const SRAM_START_OFFSET: usize = 0x0100;
-const SRAM_SIZE: usize = 0x6710;
+const SAVE_START_OFFSET: usize = 0x0100;
+const SAVE_SIZE: usize = 0x6710;
 const MASK_OFFSET: usize = 0x1064;
 const GAME_NAME_OFFSET: usize = 0x1c70;
 const CHECKSUM_OFFSET: usize = 0x1c6c;
@@ -29,14 +29,14 @@ pub struct GameInfo {
 
 #[derive(Clone)]
 pub struct Save {
-    buf: [u8; SRAM_SIZE],
+    buf: [u8; SAVE_SIZE],
     game_info: GameInfo,
 }
 
 impl Save {
     pub fn new(buf: &[u8]) -> Result<Self, save::Error> {
-        let mut buf: [u8; SRAM_SIZE] = buf
-            .get(SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE)
+        let mut buf: [u8; SAVE_SIZE] = buf
+            .get(SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE)
             .and_then(|buf| buf.try_into().ok())
             .ok_or(save::Error::InvalidSize(buf.len()))?;
         save::mask_save(&mut buf[..], MASK_OFFSET);
@@ -81,7 +81,7 @@ impl Save {
     pub fn from_wram(buf: &[u8], game_info: GameInfo) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
-                .get(..SRAM_SIZE)
+                .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(save::Error::InvalidSize(buf.len()))?,
             game_info,
@@ -181,8 +181,8 @@ impl save::Save for Save {
 
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
-        buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE].copy_from_slice(&self.buf);
-        save::mask_save(&mut buf[SRAM_START_OFFSET..SRAM_START_OFFSET + SRAM_SIZE], MASK_OFFSET);
+        buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE].copy_from_slice(&self.buf);
+        save::mask_save(&mut buf[SAVE_START_OFFSET..SAVE_START_OFFSET + SAVE_SIZE], MASK_OFFSET);
         buf
     }
 

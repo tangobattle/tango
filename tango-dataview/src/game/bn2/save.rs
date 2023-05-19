@@ -2,13 +2,13 @@ use byteorder::ByteOrder;
 
 use crate::save;
 
-const SRAM_SIZE: usize = 0x3a78;
+const SAVE_SIZE: usize = 0x3a78;
 const GAME_NAME_OFFSET: usize = 0x1198;
 const CHECKSUM_OFFSET: usize = 0x114c;
 
 #[derive(Clone)]
 pub struct Save {
-    buf: [u8; SRAM_SIZE],
+    buf: [u8; SAVE_SIZE],
 }
 
 impl Save {
@@ -35,7 +35,7 @@ impl Save {
     pub fn from_wram(buf: &[u8]) -> Result<Self, save::Error> {
         Ok(Self {
             buf: buf
-                .get(..SRAM_SIZE)
+                .get(..SAVE_SIZE)
                 .and_then(|buf| buf.try_into().ok())
                 .ok_or(save::Error::InvalidSize(buf.len()))?,
         })
@@ -66,7 +66,7 @@ impl save::Save for Save {
 
     fn to_vec(&self) -> Vec<u8> {
         let mut buf = vec![0; 65536];
-        buf[..SRAM_SIZE].copy_from_slice(&self.buf);
+        buf[..SAVE_SIZE].copy_from_slice(&self.buf);
         buf
     }
 
