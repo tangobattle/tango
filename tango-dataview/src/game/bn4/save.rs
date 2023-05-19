@@ -139,6 +139,14 @@ impl Save {
     pub fn game_info(&self) -> &GameInfo {
         &self.game_info
     }
+
+    fn rebuild_checksum(&mut self) {
+        let checksum = self.compute_checksum();
+        byteorder::LittleEndian::write_u32(
+            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
+            checksum,
+        );
+    }
 }
 
 impl save::Save for Save {
@@ -177,12 +185,8 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild_checksum(&mut self) {
-        let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(
-            &mut self.buf[self.shift + CHECKSUM_OFFSET..self.shift + CHECKSUM_OFFSET + 4],
-            checksum,
-        );
+    fn rebuild(&mut self) {
+        self.rebuild_checksum();
     }
 }
 

@@ -120,6 +120,15 @@ impl Save {
                 };
         }
     }
+
+    fn rebuild_checksum(&mut self) {
+        let checksum = self.compute_checksum();
+        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
+    }
+
+    fn rebuild_anticheat(&mut self) {
+        self.rebuild_patch_cards_anticheat();
+    }
 }
 
 impl save::Save for Save {
@@ -164,13 +173,9 @@ impl save::Save for Save {
         buf
     }
 
-    fn rebuild_checksum(&mut self) {
-        let checksum = self.compute_checksum();
-        byteorder::LittleEndian::write_u32(&mut self.buf[CHECKSUM_OFFSET..CHECKSUM_OFFSET + 4], checksum);
-    }
-
-    fn rebuild_anticheat(&mut self) {
-        self.rebuild_patch_cards_anticheat();
+    fn rebuild(&mut self) {
+        self.rebuild_anticheat();
+        self.rebuild_checksum();
     }
 }
 

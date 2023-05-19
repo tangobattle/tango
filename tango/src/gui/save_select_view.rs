@@ -180,7 +180,7 @@ pub fn show(
                                         };
 
                                         let mut save = save.clone_box();
-                                        save.rebuild_checksum();
+                                        save.rebuild();
 
                                         if let Err(e) = f.write_all(&save.to_vec()) {
                                             log::error!("failed to write save: {}", e);
