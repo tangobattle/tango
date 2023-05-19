@@ -4,7 +4,11 @@ use itertools::Itertools;
 use crate::{gui, i18n};
 
 pub struct State {
-    rendered_navicust_cache: Option<(image::RgbaImage, ComposedNavicust, egui::TextureHandle)>,
+    rendered_navicust_cache: Option<(
+        image::RgbaImage,
+        tango_dataview::navicust::ComposedNavicust,
+        egui::TextureHandle,
+    )>,
 }
 
 impl State {
@@ -79,95 +83,6 @@ fn show_part_name(
         .on_hover_text(description);
 }
 
-fn rotate90<T>(arr: &ndarray::Array2<T>) -> ndarray::Array2<T>
-where
-    T: Clone,
-{
-    let mut arr = arr.t().as_standard_layout().into_owned();
-    for row in arr.rows_mut() {
-        row.into_slice().unwrap().reverse();
-    }
-    arr
-}
-
-fn rotate<'a, T>(arr: &'a ndarray::Array2<T>, num: usize) -> std::borrow::Cow<'a, ndarray::Array2<T>>
-where
-    T: Clone,
-{
-    let mut arr = std::borrow::Cow::Borrowed(arr);
-    for _ in 0..num {
-        arr = std::borrow::Cow::Owned(rotate90(&arr));
-    }
-    arr
-}
-
-fn ncp_bitmap<'a>(
-    info: &'a Box<dyn tango_dataview::rom::NavicustPart + 'a>,
-    compressed: bool,
-    rot: u8,
-) -> tango_dataview::rom::NavicustBitmap {
-    rotate(
-        &if compressed {
-            info.compressed_bitmap()
-        } else {
-            info.uncompressed_bitmap()
-        },
-        rot as usize,
-    )
-    .into_owned()
-}
-
-type ComposedNavicust = ndarray::Array2<Option<usize>>;
-
-fn compose_navicust<'a>(
-    navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
-    assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
-) -> ComposedNavicust {
-    let mut composed = ndarray::Array2::from_elem((navicust_view.height(), navicust_view.width()), None);
-    for i in 0..navicust_view.count() {
-        let ncp = if let Some(ncp) = navicust_view.navicust_part(i) {
-            ncp
-        } else {
-            continue;
-        };
-
-        let info = if let Some(info) = assets.navicust_part(ncp.id, ncp.variant) {
-            info
-        } else {
-            continue;
-        };
-
-        let bitmap = ncp_bitmap(&info, ncp.compressed, ncp.rot);
-        let (bitmap_height, bitmap_width) = bitmap.dim();
-        let ncp_y = (ncp.row as isize) - bitmap_height as isize / 2;
-        let ncp_x = (ncp.col as isize) - bitmap_width as isize / 2;
-
-        let (src_y, dst_y) = if ncp_y < 0 {
-            (-ncp_y as usize, 0)
-        } else {
-            (0, ncp_y as usize)
-        };
-
-        let (src_x, dst_x) = if ncp_x < 0 {
-            (-ncp_x as usize, 0)
-        } else {
-            (0, ncp_x as usize)
-        };
-
-        for (src_row, dst_row) in std::iter::zip(
-            bitmap.slice(ndarray::s![src_y.., src_x..]).rows(),
-            composed.slice_mut(ndarray::s![dst_y.., dst_x..]).rows_mut(),
-        ) {
-            for (src, dst) in std::iter::zip(src_row, dst_row) {
-                if *src {
-                    *dst = Some(i);
-                }
-            }
-        }
-    }
-    composed
-}
-
 const PADDING_H: u32 = 20;
 const PADDING_V: u32 = 20;
 
@@ -178,7 +93,7 @@ const BG_FILL_COLOR: image::Rgba<u8> = image::Rgba([0x20, 0x20, 0x20, 0xff]);
 const BORDER_STROKE_COLOR: image::Rgba<u8> = image::Rgba([0x00, 0x00, 0x00, 0xff]);
 
 fn render_navicust<'a>(
-    composed: &ComposedNavicust,
+    composed: &tango_dataview::navicust::ComposedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
@@ -431,7 +346,7 @@ fn render_navicust_color_bar456<'a>(
 }
 
 fn render_navicust_body<'a>(
-    composed: &ComposedNavicust,
+    composed: &tango_dataview::navicust::ComposedNavicust,
     navicust_layout: &tango_dataview::rom::NavicustLayout,
     navicust_view: &Box<dyn tango_dataview::save::NavicustView<'a> + 'a>,
     assets: &Box<dyn tango_dataview::rom::Assets + Send + Sync + 'a>,
@@ -790,7 +705,7 @@ pub fn show<'a>(
                 },
                 |ui| {
                     if !state.rendered_navicust_cache.is_some() {
-                        let composed = compose_navicust(navicust_view, assets);
+                        let composed = tango_dataview::navicust::compose(navicust_view, assets);
                         let image = render_navicust(
                             &composed,
                             &navicust_layout,
