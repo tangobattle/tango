@@ -63,11 +63,6 @@ impl game::Game for EXE4RSImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4WJ_01,
-                overrides
-                    .language
-                    .as_ref()
-                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
-                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::JA_PATCH_CARDS),
                 overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::JA_CHARSET
                         .iter()
@@ -188,11 +183,6 @@ impl game::Game for EXE4BMImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4BJ_01,
-                overrides
-                    .language
-                    .as_ref()
-                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
-                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::JA_PATCH_CARDS),
                 overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::JA_CHARSET
                         .iter()
@@ -313,11 +303,6 @@ impl game::Game for BN4RSImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4WE_00,
-                overrides
-                    .language
-                    .as_ref()
-                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
-                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::EN_PATCH_CARDS),
                 overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::EN_CHARSET
                         .iter()
@@ -438,11 +423,6 @@ impl game::Game for BN4BMImpl {
         Ok(Box::new(crate::rom::OverridenAssets::new(
             tango_dataview::game::bn4::rom::Assets::new(
                 &tango_dataview::game::bn4::rom::B4BE_00,
-                overrides
-                    .language
-                    .as_ref()
-                    .and_then(|lang| tango_dataview::game::bn4::rom::patch_cards::for_language(lang))
-                    .unwrap_or(&tango_dataview::game::bn4::rom::patch_cards::EN_PATCH_CARDS),
                 overrides.charset.as_ref().cloned().unwrap_or_else(|| {
                     tango_dataview::game::bn4::rom::EN_CHARSET
                         .iter()

@@ -1,13 +1,3 @@
-pub fn for_language(language: &unic_langid::LanguageIdentifier) -> Option<&'static [super::PatchCard4; 133]> {
-    if language.matches(&unic_langid::langid!("ja"), false, true) {
-        Some(JA_PATCH_CARDS)
-    } else if language.matches(&unic_langid::langid!("en"), false, true) {
-        Some(EN_PATCH_CARDS)
-    } else {
-        None
-    }
-}
-
 pub const JA_PATCH_CARDS: &[super::PatchCard4; 133] = &[
     super::PatchCard4 {
         name: "ウェポンチェンジ",

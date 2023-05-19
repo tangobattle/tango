@@ -2,7 +2,7 @@ use byteorder::ByteOrder;
 
 use crate::{rom, text};
 
-pub mod patch_cards;
+mod patch_cards;
 
 pub struct Offsets {
     chip_data: u32,
@@ -15,6 +15,7 @@ pub struct Offsets {
     element_icon_palette_pointer: u32,
     element_icons_pointer: u32,
     navicust_bg: image::Rgba<u8>,
+    patch_cards: &'static [PatchCard4; 133],
 }
 
 const NAVICUST_BG_RS: image::Rgba<u8> = image::Rgba([0x8c, 0x10, 0x10, 0xff]);
@@ -33,6 +34,7 @@ pub static B4WJ_01: Offsets = Offsets {
     element_icons_pointer:          0x081098a0,
 
     navicust_bg: NAVICUST_BG_RS,
+    patch_cards: patch_cards::JA_PATCH_CARDS,
 };
 
 #[rustfmt::skip]
@@ -48,6 +50,7 @@ pub static B4BJ_01: Offsets = Offsets {
     element_icons_pointer:          0x081098ac,
 
     navicust_bg: NAVICUST_BG_BM,
+    patch_cards: patch_cards::JA_PATCH_CARDS,
 };
 
 #[rustfmt::skip]
@@ -63,6 +66,7 @@ pub static B4WE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099cc,
 
     navicust_bg: NAVICUST_BG_RS,
+    patch_cards: patch_cards::EN_PATCH_CARDS,
 };
 
 #[rustfmt::skip]
@@ -78,6 +82,7 @@ pub static B4BE_00: Offsets = Offsets {
     element_icons_pointer:          0x081099d8,
 
     navicust_bg: NAVICUST_BG_BM,
+    patch_cards: patch_cards::EN_PATCH_CARDS,
 };
 
 const EREADER_COMMAND: u8 = 0xff;
@@ -86,7 +91,6 @@ pub struct Assets {
     offsets: &'static Offsets,
     text_parse_options: text::ParseOptions,
     mapper: rom::MemoryMapper,
-    patch_cards: &'static [PatchCard4; 133],
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
 }
@@ -432,13 +436,7 @@ impl rom::PatchCard4 for &PatchCard4 {
 }
 
 impl Assets {
-    pub fn new(
-        offsets: &'static Offsets,
-        patch_cards: &'static [PatchCard4; 133],
-        charset: Vec<String>,
-        rom: Vec<u8>,
-        wram: Vec<u8>,
-    ) -> Self {
+    pub fn new(offsets: &'static Offsets, charset: Vec<String>, rom: Vec<u8>, wram: Vec<u8>) -> Self {
         let mapper = rom::MemoryMapper::new(rom, wram);
 
         let chip_icon_palette = rom::read_palette(
@@ -468,7 +466,6 @@ impl Assets {
                     (0xf0, 2),
                 ]),
             },
-            patch_cards,
             mapper,
             chip_icon_palette,
             element_icon_palette,
@@ -523,13 +520,14 @@ impl rom::Assets for Assets {
     }
 
     fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn rom::PatchCard4 + 'a>> {
-        self.patch_cards
+        self.offsets
+            .patch_cards
             .get(id)
             .map(|m| Box::new(m) as Box<dyn rom::PatchCard4>)
     }
 
     fn num_patch_card4s(&self) -> usize {
-        self.patch_cards.len()
+        self.offsets.patch_cards.len()
     }
 
     fn navicust_layout(&self) -> Option<rom::NavicustLayout> {

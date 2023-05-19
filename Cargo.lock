@@ -5499,7 +5499,6 @@ dependencies = [
  "image 0.24.3",
  "parking_lot",
  "thiserror",
- "unic-langid",
 ]
 
 [[package]]
