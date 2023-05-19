@@ -484,7 +484,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_chips(&self) -> usize {
-        389
+        super::NUM_CHIPS
     }
 
     fn can_set_regular_chip(&self) -> bool {
@@ -518,7 +518,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_navicust_parts(&self) -> (usize, usize) {
-        (47, 4)
+        super::NUM_NAVICUST_PARTS
     }
 
     fn patch_card4<'a>(&'a self, id: usize) -> Option<Box<dyn rom::PatchCard4 + 'a>> {
@@ -529,7 +529,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_patch_card4s(&self) -> usize {
-        self.offsets.patch_cards.len()
+        super::NUM_PATCH_CARD4S
     }
 
     fn navicust_layout(&self) -> Option<rom::NavicustLayout> {

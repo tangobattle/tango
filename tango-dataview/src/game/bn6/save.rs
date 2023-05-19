@@ -113,7 +113,7 @@ impl Save {
     }
 
     fn rebuild_patch_cards_anticheat(&mut self) {
-        for id in 0..118 {
+        for id in 0..super::NUM_PATCH_CARD56S {
             self.buf[0x5047 + id] = self.buf[0x06bf + id]
                 ^ match self.game_info.variant {
                     Variant::Gregar => 0x43,

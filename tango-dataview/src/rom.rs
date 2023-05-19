@@ -137,9 +137,6 @@ pub trait Assets {
     fn num_styles(&self) -> usize {
         0
     }
-    fn can_set_style(&self) -> bool {
-        false
-    }
     fn navi<'a>(&'a self, id: usize) -> Option<Box<dyn Navi + 'a>> {
         let _ = id;
         None

@@ -212,7 +212,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_chips(&self) -> usize {
-        240
+        super::NUM_CHIPS
     }
 
     fn chips_have_mb(&self) -> bool {

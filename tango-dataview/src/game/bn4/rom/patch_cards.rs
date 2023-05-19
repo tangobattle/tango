@@ -1,4 +1,4 @@
-pub const JA_PATCH_CARDS: &[super::PatchCard4; 133] = &[
+pub const JA_PATCH_CARDS: &[super::PatchCard4; super::super::NUM_PATCH_CARD4S] = &[
     super::PatchCard4 {
         name: "ウェポンチェンジ",
         slot: 0,

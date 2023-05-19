@@ -283,7 +283,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_chips(&self) -> usize {
-        389
+        super::NUM_CHIPS
     }
 
     fn regular_chip_is_in_place(&self) -> bool {
@@ -312,7 +312,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_navis(&self) -> usize {
-        23
+        super::NUM_NAVIS
     }
 }
 

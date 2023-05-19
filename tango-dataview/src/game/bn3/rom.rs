@@ -452,7 +452,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_chips(&self) -> usize {
-        374
+        super::NUM_CHIPS
     }
 
     fn can_set_regular_chip(&self) -> bool {
@@ -491,7 +491,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_navicust_parts(&self) -> (usize, usize) {
-        (51, 4)
+        super::NUM_NAVICUST_PARTS
     }
 
     fn style<'a>(&'a self, id: usize) -> Option<Box<dyn rom::Style + 'a>> {
@@ -502,11 +502,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_styles(&self) -> usize {
-        40
-    }
-
-    fn can_set_style(&self) -> bool {
-        true
+        super::NUM_STYLES
     }
 
     fn navicust_layout(&self) -> Option<rom::NavicustLayout> {

@@ -221,7 +221,7 @@ impl rom::Assets for Assets {
     }
 
     fn num_chips(&self) -> usize {
-        304
+        super::NUM_CHIPS
     }
 
     fn can_set_regular_chip(&self) -> bool {
@@ -244,10 +244,6 @@ impl rom::Assets for Assets {
             rom::read_merged_tiles(&buf[id * rom::TILE_BYTES * 4..(id + 1) * rom::TILE_BYTES * 4], 2).unwrap(),
             &self.element_icon_palette,
         ))
-    }
-
-    fn can_set_style(&self) -> bool {
-        true
     }
 }
 
