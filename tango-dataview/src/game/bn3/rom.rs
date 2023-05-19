@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::rom;
+use crate::{rom, text};
 
 pub struct Offsets {
     chip_data: u32,
@@ -85,7 +85,7 @@ pub static A3XE_00: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    text_parse_options: rom::text::ParseOptions,
+    text_parse_options: text::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -109,7 +109,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_names_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self
                 .assets
                 .mapper
@@ -121,7 +121,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -137,7 +137,7 @@ impl<'a> rom::Chip for Chip<'a> {
         let pointer = self.assets.offsets.chip_descriptions_pointers + ((self.id / 0x100) * 4) as u32;
         let id = self.id % 0x100;
 
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self
                 .assets
                 .mapper
@@ -149,7 +149,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -265,7 +265,7 @@ impl<'a> NavicustPart<'a> {
 
 impl<'a> rom::NavicustPart for NavicustPart<'a> {
     fn name(&self) -> String {
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                 &self.assets.mapper.get(self.assets.offsets.ncp_names_pointer)[..4],
             )),
@@ -276,7 +276,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match &part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "",
                     }
                     .chars()
@@ -289,7 +289,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
     }
 
     fn description(&self) -> String {
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                 &self.assets.mapper.get(self.assets.offsets.ncp_descriptions_pointer)[..4],
             )),
@@ -300,7 +300,7 @@ impl<'a> rom::NavicustPart for NavicustPart<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -378,7 +378,7 @@ impl Assets {
 
         Self {
             offsets,
-            text_parse_options: rom::text::ParseOptions {
+            text_parse_options: text::ParseOptions {
                 charset,
                 extension_ops: 0xe5..=0xe6,
                 eof_op: 0xe7,
@@ -402,7 +402,7 @@ impl<'a> rom::Style for Style<'a> {
         let typ = self.id >> 3;
         let element = self.id & 0x7;
 
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                 &self.assets.mapper.get(self.assets.offsets.key_items_names_pointer)[..4],
             )),
@@ -413,7 +413,7 @@ impl<'a> rom::Style for Style<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match &part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "",
                     }
                     .chars()

@@ -1,5 +1,3 @@
-pub mod text;
-
 use byteorder::{ByteOrder, ReadBytesExt};
 
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -1,6 +1,6 @@
 use byteorder::ByteOrder;
 
-use crate::rom;
+use crate::{rom, text};
 
 pub struct Offsets {
     chip_data: u32,
@@ -33,7 +33,7 @@ pub static AREJ_00: Offsets = Offsets {
 
 pub struct Assets {
     offsets: &'static Offsets,
-    text_parse_options: rom::text::ParseOptions,
+    text_parse_options: text::ParseOptions,
     mapper: rom::MemoryMapper,
     chip_icon_palette: [image::Rgba<u8>; 16],
     element_icon_palette: [image::Rgba<u8>; 16],
@@ -54,7 +54,7 @@ impl<'a> Chip<'a> {
 
 impl<'a> rom::Chip for Chip<'a> {
     fn name(&self) -> String {
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                 &self.assets.mapper.get(self.assets.offsets.chip_names_pointer)[..4],
             )),
@@ -65,7 +65,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -78,7 +78,7 @@ impl<'a> rom::Chip for Chip<'a> {
     }
 
     fn description(&self) -> String {
-        if let Ok(parts) = rom::text::parse_entry(
+        if let Ok(parts) = text::parse_entry(
             &self.assets.mapper.get(byteorder::LittleEndian::read_u32(
                 &self.assets.mapper.get(self.assets.offsets.chip_descriptions_pointer)[..4],
             )),
@@ -89,7 +89,7 @@ impl<'a> rom::Chip for Chip<'a> {
                 .into_iter()
                 .flat_map(|part| {
                     match part {
-                        rom::text::Part::String(s) => s,
+                        text::Part::String(s) => s,
                         _ => "".to_string(),
                     }
                     .chars()
@@ -189,7 +189,7 @@ impl Assets {
 
         Self {
             offsets,
-            text_parse_options: rom::text::ParseOptions {
+            text_parse_options: text::ParseOptions {
                 charset,
                 extension_ops: 0xe5..=0xe6,
                 eof_op: 0xe7,
