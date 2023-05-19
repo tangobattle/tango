@@ -6,6 +6,7 @@ const SRAM_SIZE: usize = 0xc7a8;
 const MASK_OFFSET: usize = 0x3c84;
 const GAME_NAME_OFFSET: usize = 0x4ba8;
 const CHECKSUM_OFFSET: usize = 0x4b88;
+const SHIFT_OFFSET: usize = 0x3c80;
 
 #[derive(Clone)]
 pub struct Save {
