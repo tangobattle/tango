@@ -1,6 +1,6 @@
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
-use crate::save::{self};
+use crate::save;
 
 const SAVE_SIZE: usize = 0x73d2;
 const MASK_OFFSET: usize = 0x1554;
