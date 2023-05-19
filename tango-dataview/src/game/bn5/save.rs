@@ -1,6 +1,6 @@
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
-use crate::save::{self, PatchCard56sView as _};
+use crate::save::{self, NavicustView as _, PatchCard56sView as _};
 
 const SAVE_START_OFFSET: usize = 0x0100;
 const SAVE_SIZE: usize = 0x7c14;
@@ -125,6 +125,10 @@ impl save::Save for Save {
 
     fn view_navicust(&self) -> Option<Box<dyn save::NavicustView + '_>> {
         Some(Box::new(NavicustView { save: self }))
+    }
+
+    fn view_navicust_mut(&mut self) -> Option<Box<dyn save::NavicustViewMut + '_>> {
+        Some(Box::new(NavicustViewMut { save: self }))
     }
 
     fn view_patch_cards(&self) -> Option<save::PatchCardsView> {
@@ -306,17 +310,40 @@ impl<'a> save::NavicustView<'a> for NavicustView<'a> {
     }
 }
 
-// fn rebuild_precomposed_navicust(&mut self, assets: &dyn crate::rom::Assets) {
-//     let composed = crate::navicust::compose(self.view_navicust().unwrap().as_ref(), assets);
-//     self.buf[self.shift + 0x4d48..self.shift + 0x4d48 + 0x24].copy_from_slice(
-//         &composed
-//             .into_iter()
-//             .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
-//             .chain(std::iter::repeat(0))
-//             .take(0x24)
-//             .collect::<Vec<_>>(),
-//     )
-// }
+pub struct NavicustViewMut<'a> {
+    save: &'a mut Save,
+}
+
+impl<'a> save::NavicustViewMut<'a> for NavicustViewMut<'a> {
+    fn set_navicust_part(&mut self, i: usize, part: save::NavicustPart) -> bool {
+        if part.id >= super::NUM_NAVICUST_PARTS.0 || part.variant >= super::NUM_NAVICUST_PARTS.1 {
+            return false;
+        }
+        if i >= (NavicustView { save: self.save }).count() {
+            return false;
+        }
+
+        let buf = &mut self.save.buf[self.save.shift + 0x4d6c + i * 8..self.save.shift + 0x4d6c + (i + 1) * 8];
+        buf[0x0] = (part.id * 4 + part.variant) as u8;
+        buf[0x3] = part.col as u8;
+        buf[0x4] = part.row as u8;
+        buf[0x5] = part.rot as u8;
+        buf[0x6] = if part.compressed { 1 } else { 0 };
+        true
+    }
+
+    fn rebuild_precomposed(&mut self, assets: &dyn crate::rom::Assets) {
+        let composed = crate::navicust::compose(&NavicustView { save: self.save }, assets);
+        self.save.buf[self.save.shift + 0x4d48..self.save.shift + 0x4d48 + 0x24].copy_from_slice(
+            &composed
+                .into_iter()
+                .map(|v| v.map(|v| v + 1).unwrap_or(0) as u8)
+                .chain(std::iter::repeat(0))
+                .take(0x24)
+                .collect::<Vec<_>>(),
+        )
+    }
+}
 
 pub struct AutoBattleDataView<'a> {
     save: &'a Save,
